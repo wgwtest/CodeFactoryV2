@@ -1,0 +1,8 @@
+Section 1
+Incident policy overview.
+
+Section 2
+Every incident report must be submitted within 2 hours by the duty officer.
+
+Section 3
+The review board approves closure after evidence verification.
