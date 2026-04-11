@@ -1,23 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Generator
-
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from app.config import settings
-from app.db.session import SessionLocal
+from app.db.session import get_session
 from app.documents.service import DocumentService
 from app.documents.storage import LocalStorage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-def get_document_service() -> Generator[DocumentService, None, None]:
-    session = SessionLocal()
-    try:
-        yield DocumentService(session, LocalStorage(settings.storage_root))
-    finally:
-        session.close()
+def get_document_service(session=Depends(get_session)) -> DocumentService:
+    return DocumentService(session, LocalStorage(settings.storage_root))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

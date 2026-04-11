@@ -63,3 +63,21 @@ class QueryService:
             .all()
         )
         return [{"id": item.id, "name": item.canonical_name, "steps": item.payload.get("steps", [])} for item in items]
+
+    def search(self, version_label: str, query: str) -> list[dict]:
+        items = (
+            self.session.query(KnowledgeItem)
+            .join(KnowledgeVersion, KnowledgeVersion.id == KnowledgeItem.knowledge_version_id)
+            .filter(KnowledgeVersion.version_label == version_label)
+            .filter(KnowledgeItem.canonical_name.ilike(f"%{query}%"))
+            .all()
+        )
+        return [
+            {
+                "id": item.id,
+                "canonical_name": item.canonical_name,
+                "item_type": item.item_type,
+                "version_label": version_label,
+            }
+            for item in items
+        ]

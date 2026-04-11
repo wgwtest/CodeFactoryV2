@@ -1,13 +1,32 @@
 # Knowledge Warehouse Foundation
 
-Minimal foundation for the Knowledge Warehouse workspace, featuring a FastAPI-powered health endpoint and the tooling needed to run the API and tests locally.
+First shippable vertical slice for the Software Factory knowledge warehouse. This workspace ingests `PDF/DOC/DOCX`, stores versioned source material, extracts candidate knowledge, supports review and publish workflows, and exposes graph and process exploration views.
 
-## Local commands
-- `uv run pytest apps/api/tests/test_health.py -q` – run the health-check test (TDD step).
-- `uv run pytest apps/api/tests -q` – execute the API test suite.
-- `just api-test` – runs the API tests via `just`.
-- `just up` – `docker compose up -d` (starts Postgres 16 and MinIO with sensible defaults).
+## First release capabilities
+- Upload and version source documents.
+- Parse structured evidence segments from uploaded files.
+- Extract candidate entities, events, processes, rules, and metrics.
+- Review and publish governed knowledge versions.
+- Explore graph and process projections from published knowledge.
+- Enforce publisher role checks and persist publish audit logs.
+
+## Local development
+1. `cp .env.example .env`
+2. `docker compose up -d`
+3. `uv sync`
+4. `corepack pnpm install`
+5. `uv run uvicorn app.main:app --reload --app-dir apps/api`
+6. `corepack pnpm --dir apps/web dev --host 127.0.0.1 --port 5173`
+
+## Verification commands
+- `uv run pytest apps/api/tests -q`
+- `corepack pnpm --dir apps/web test`
+- `corepack pnpm --dir apps/web exec playwright test`
+- `just api-test`
 
 ## Services
-- Postgres 16 on `localhost:5432`
-- MinIO console on `localhost:9001`, object storage on `localhost:9000`
+- PostgreSQL 16: `localhost:5432`
+- MinIO API: `localhost:9000`
+- MinIO console: `localhost:9001`
+- Web console: `http://127.0.0.1:5173`
+- API: `http://127.0.0.1:8000/api`
