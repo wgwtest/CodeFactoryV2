@@ -1,8 +1,8 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.db.session import SessionLocal, engine
 from app.main import create_app
 
 
@@ -13,11 +13,11 @@ def app():
 
 @pytest.fixture()
 def db_session() -> Session:
-    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    with session_local() as session:
+    with SessionLocal() as session:
         yield session
+    Base.metadata.drop_all(engine)
 
 
 @pytest.fixture()
