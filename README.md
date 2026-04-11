@@ -2,7 +2,7 @@
 
 Minimal foundation for the Knowledge Warehouse workspace, featuring a FastAPI-powered health endpoint and the tooling needed to run the API and tests locally.
 
--## Local commands
+## Local commands
 - `uv run pytest apps/api/tests/test_health.py -q` – run the health-check test (TDD step).
 - `uv run pytest apps/api/tests -q` – execute the API test suite.
 - `just api-test` – runs the API tests via `just`.
