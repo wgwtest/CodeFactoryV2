@@ -18,3 +18,8 @@ def db_session() -> Session:
     session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     with session_local() as session:
         yield session
+
+
+@pytest.fixture()
+def temp_storage_dir(tmp_path):
+    return tmp_path / "storage"
