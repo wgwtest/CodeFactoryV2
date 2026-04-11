@@ -1,16 +1,511 @@
-import { Button, Card, Typography } from "antd";
+import type { Key } from "react";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Divider,
+  Drawer,
+  Empty,
+  Input,
+  List,
+  Radio,
+  Space,
+  Tag,
+  Typography,
+} from "antd";
 
 import { CandidateReviewTable } from "../components/CandidateReviewTable";
+import { api } from "../lib/api";
+import type {
+  ArchiveKnowledgeBatchApproveInput,
+  ArchiveKnowledgeItemDetail,
+  ArchiveKnowledgeItemReviewInput,
+  ArchiveKnowledgeItemUpdateInput,
+  ArchiveKnowledgeMergeInput,
+  ArchiveReviewCandidate,
+  ArchiveReviewStatus,
+} from "../lib/api";
+
+const archiveId = "20161116-nas";
+
+const itemTypeLabels: Record<string, string> = {
+  entity: "实体",
+  event: "事件",
+  process: "流程",
+};
+
+const categoryLabels: Record<string, string> = {
+  architecture_artifact: "架构产物",
+  architecture_concept: "架构概念",
+  domain_concept: "领域概念",
+  domain_process: "领域流程",
+  information_exchange: "信息交换",
+  operational_node: "运行节点",
+  organization: "组织",
+  service_category: "服务分类",
+  service_taxonomy: "服务分类",
+  system_or_service: "系统/服务",
+  timeline_event: "时间事件",
+};
+
+const reviewStatusLabels: Record<ArchiveReviewStatus, string> = {
+  pending: "待审核",
+  approved: "已通过",
+  rejected: "已驳回",
+};
+
+type ItemTypeFilter = "all" | "entity" | "event" | "process";
+type ReviewStatusFilter = "all" | ArchiveReviewStatus;
 
 export function GovernancePage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<ArchiveReviewCandidate[]>([]);
+  const [query, setQuery] = useState("");
+  const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>("all");
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>("pending");
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [activeDetail, setActiveDetail] = useState<ArchiveKnowledgeItemDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [drawerSaving, setDrawerSaving] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftCategory, setDraftCategory] = useState("");
+  const [draftAliases, setDraftAliases] = useState("");
+
+  async function loadCandidates() {
+    const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`);
+    setCandidates(response.data);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialCandidates() {
+      try {
+        const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`);
+        if (cancelled) {
+          return;
+        }
+        setCandidates(response.data);
+        setError(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "加载候选知识失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInitialCandidates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeItemId) {
+      setActiveDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadItemDetail() {
+      try {
+        setDetailLoading(true);
+        const response = await api.get<ArchiveKnowledgeItemDetail>(
+          `/knowledge/archive/${archiveId}/items/${activeItemId}`,
+        );
+        if (cancelled) {
+          return;
+        }
+        setActiveDetail(response.data);
+        setDraftName(response.data.name);
+        setDraftCategory(response.data.category);
+        setDraftAliases(response.data.aliases.join(","));
+        setActionError(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          setActionError(loadError instanceof Error ? loadError.message : "加载知识详情失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      }
+    }
+
+    void loadItemDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeItemId]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredCandidates = candidates.filter((item) => {
+    if (itemTypeFilter !== "all" && item.item_type !== itemTypeFilter) {
+      return false;
+    }
+    if (reviewStatusFilter !== "all" && item.review_status !== reviewStatusFilter) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    const haystack = [item.canonical_name, item.evidence_excerpt].join(" ").toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+
+  const mergeCandidates = candidates.filter((item) => {
+    if (!activeDetail) {
+      return false;
+    }
+    return item.id !== activeDetail.id && item.item_type === activeDetail.item_type;
+  });
+
+  async function handleApplyChanges() {
+    if (!activeDetail) {
+      return;
+    }
+
+    try {
+      setDrawerSaving(true);
+      const payload: ArchiveKnowledgeItemUpdateInput = {
+        name: draftName.trim(),
+        category: draftCategory.trim(),
+        aliases: parseAliasInput(draftAliases),
+      };
+      const response = await api.patch<ArchiveKnowledgeItemDetail>(
+        `/knowledge/archive/${archiveId}/items/${activeDetail.id}`,
+        payload,
+      );
+      setActiveDetail(response.data);
+      setDraftAliases(response.data.aliases.join(","));
+      await loadCandidates();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "应用修改失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
+  async function handleReview(itemId: string, reviewStatus: ArchiveReviewStatus) {
+    try {
+      setDrawerSaving(true);
+      const payload: ArchiveKnowledgeItemReviewInput = { review_status: reviewStatus };
+      const response = await api.post<ArchiveKnowledgeItemDetail>(
+        `/knowledge/archive/${archiveId}/items/${itemId}/review`,
+        payload,
+      );
+      if (activeDetail && activeDetail.id === itemId) {
+        setActiveDetail({ ...activeDetail, ...response.data });
+      }
+      await loadCandidates();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "更新审核状态失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
+  async function handleBatchApprove() {
+    try {
+      setDrawerSaving(true);
+      const payload: ArchiveKnowledgeBatchApproveInput = {
+        item_ids: selectedRowKeys.map((item) => String(item)),
+      };
+      await api.post(`/knowledge/archive/${archiveId}/reviews/batch-approve`, payload);
+      setSelectedRowKeys([]);
+      await loadCandidates();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "批量通过失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
+  async function handleMerge(secondaryItemId: string) {
+    if (!activeDetail) {
+      return;
+    }
+
+    try {
+      setDrawerSaving(true);
+      const payload: ArchiveKnowledgeMergeInput = {
+        primary_item_id: activeDetail.id,
+        secondary_item_id: secondaryItemId,
+      };
+      const response = await api.post<ArchiveKnowledgeItemDetail>(
+        `/knowledge/archive/${archiveId}/items/merge`,
+        payload,
+      );
+      setActiveDetail(response.data);
+      setDraftName(response.data.name);
+      setDraftCategory(response.data.category);
+      setDraftAliases(response.data.aliases.join(","));
+      await loadCandidates();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "合并知识失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
   return (
     <Card>
-      <Typography.Title level={3}>Candidate Review Queue</Typography.Title>
-      <Typography.Paragraph>
-        Review extracted entities, events, and processes before they are promoted into a published knowledge version.
-      </Typography.Paragraph>
-      <CandidateReviewTable />
-      <Button type="primary">Publish Version</Button>
+      <Space direction="vertical" size={16} style={{ display: "flex" }}>
+        <div>
+          <Typography.Title level={3}>知识审核发布</Typography.Title>
+          <Typography.Paragraph>
+            审核机器抽取出的候选知识，并将修正直接应用到当前知识库。
+          </Typography.Paragraph>
+          <Typography.Paragraph type="secondary">
+            支持改名、改类、别名编辑、单项通过、驳回、批量通过和同类知识合并。
+          </Typography.Paragraph>
+        </div>
+
+        {error ? <Alert type="error" message="候选知识暂不可用" description={error} showIcon /> : null}
+        {actionError ? <Alert type="error" message="操作未完成" description={actionError} showIcon /> : null}
+
+        <Space direction="vertical" size={12} style={{ display: "flex" }}>
+          <Input.Search
+            allowClear
+            placeholder="搜索名称或别名"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+
+          <Space direction="vertical" size={8} style={{ display: "flex" }}>
+            <div>
+              <Typography.Text strong>类型筛选</Typography.Text>
+            </div>
+            <Radio.Group
+              optionType="button"
+              buttonStyle="solid"
+              value={itemTypeFilter}
+              onChange={(event) => setItemTypeFilter(event.target.value)}
+              options={[
+                { label: "全部类型", value: "all" },
+                { label: "实体", value: "entity" },
+                { label: "事件", value: "event" },
+                { label: "流程", value: "process" },
+              ]}
+            />
+          </Space>
+
+          <Space direction="vertical" size={8} style={{ display: "flex" }}>
+            <div>
+              <Typography.Text strong>审核状态</Typography.Text>
+            </div>
+            <Radio.Group
+              optionType="button"
+              buttonStyle="solid"
+              value={reviewStatusFilter}
+              onChange={(event) => setReviewStatusFilter(event.target.value)}
+              options={[
+                { label: "只看待审核", value: "pending" },
+                { label: "全部", value: "all" },
+                { label: "已通过", value: "approved" },
+                { label: "已驳回", value: "rejected" },
+              ]}
+            />
+          </Space>
+
+          <Space align="center" wrap>
+            <Typography.Text type="secondary">当前筛出 {filteredCandidates.length} 项</Typography.Text>
+            <Button type="primary" disabled={selectedRowKeys.length === 0} loading={drawerSaving} onClick={handleBatchApprove}>
+              批量通过
+            </Button>
+          </Space>
+        </Space>
+
+        <CandidateReviewTable
+          items={filteredCandidates}
+          loading={loading}
+          selectedRowKeys={selectedRowKeys}
+          onSelectionChange={setSelectedRowKeys}
+          onOpenItem={setActiveItemId}
+          onReview={handleReview}
+        />
+
+        <Drawer
+          title="知识详情与编辑"
+          open={activeItemId !== null}
+          onClose={() => setActiveItemId(null)}
+          width={760}
+        >
+          {detailLoading ? <Typography.Text type="secondary">正在加载知识详情...</Typography.Text> : null}
+
+          {!detailLoading && activeDetail ? (
+            <Space direction="vertical" size={16} style={{ display: "flex" }}>
+              <div>
+                <Space align="center" wrap>
+                  <Typography.Title level={4} style={{ margin: 0 }}>
+                    {activeDetail.name}
+                  </Typography.Title>
+                  <Tag>{itemTypeLabels[activeDetail.item_type] ?? activeDetail.item_type}</Tag>
+                  <Tag>{categoryLabels[activeDetail.category] ?? activeDetail.category}</Tag>
+                  <Tag color={activeDetail.review_status === "approved" ? "green" : activeDetail.review_status === "rejected" ? "red" : "gold"}>
+                    {reviewStatusLabels[activeDetail.review_status]}
+                  </Tag>
+                </Space>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
+                  {activeDetail.interpretation.summary}
+                </Typography.Paragraph>
+              </div>
+
+              <Descriptions bordered size="small" column={2}>
+                <Descriptions.Item label="类型">{itemTypeLabels[activeDetail.item_type] ?? activeDetail.item_type}</Descriptions.Item>
+                <Descriptions.Item label="覆盖文档">{activeDetail.document_count} 份</Descriptions.Item>
+                <Descriptions.Item label="显示名称">{activeDetail.interpretation.display_name || "无"}</Descriptions.Item>
+                <Descriptions.Item label="标准名">{activeDetail.interpretation.standard_name || "无"}</Descriptions.Item>
+              </Descriptions>
+
+              <Divider style={{ margin: 0 }} />
+
+              <div>
+                <Typography.Title level={5}>编辑信息</Typography.Title>
+                <Space direction="vertical" size={12} style={{ display: "flex" }}>
+                  <Input placeholder="知识名称" value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+                  <Input placeholder="知识类别" value={draftCategory} onChange={(event) => setDraftCategory(event.target.value)} />
+                  <Input
+                    placeholder="别名，按回车确认"
+                    value={draftAliases}
+                    onChange={(event) => setDraftAliases(event.target.value)}
+                  />
+                  <Space wrap>
+                    <Button type="primary" loading={drawerSaving} onClick={handleApplyChanges}>
+                      应用修改
+                    </Button>
+                    <Button loading={drawerSaving} onClick={() => handleReview(activeDetail.id, "approved")}>
+                      通过
+                    </Button>
+                    <Button danger loading={drawerSaving} onClick={() => handleReview(activeDetail.id, "rejected")}>
+                      驳回
+                    </Button>
+                  </Space>
+                </Space>
+              </div>
+
+              <Divider style={{ margin: 0 }} />
+
+              <div>
+                <Typography.Title level={5}>关联文档</Typography.Title>
+                {activeDetail.documents.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联文档" />
+                ) : (
+                  <List
+                    bordered
+                    size="small"
+                    dataSource={activeDetail.documents}
+                    renderItem={(document) => (
+                      <List.Item>
+                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
+                          <Typography.Text strong>{document.title}</Typography.Text>
+                          <Typography.Text type="secondary">
+                            {document.file_type} · {document.source_archive}
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </div>
+
+              <div>
+                <Typography.Title level={5}>证据摘录</Typography.Title>
+                {activeDetail.evidence.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无证据摘录" />
+                ) : (
+                  <List
+                    bordered
+                    size="small"
+                    dataSource={activeDetail.evidence}
+                    renderItem={(evidenceItem) => (
+                      <List.Item>
+                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
+                          <Typography.Text strong>{evidenceItem.document_title || "未知文档"}</Typography.Text>
+                          <Typography.Text>{evidenceItem.excerpt || "无摘录"}</Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </div>
+
+              <div>
+                <Typography.Title level={5}>关系项</Typography.Title>
+                {activeDetail.related_items.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关系项" />
+                ) : (
+                  <List
+                    bordered
+                    size="small"
+                    dataSource={activeDetail.related_items}
+                    renderItem={(relatedItem) => (
+                      <List.Item>
+                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
+                          <Typography.Text strong>{relatedItem.name}</Typography.Text>
+                          <Typography.Text type="secondary">
+                            {itemTypeLabels[relatedItem.item_type] ?? relatedItem.item_type} · {relatedItem.relation_type}
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </div>
+
+              <div>
+                <Typography.Title level={5}>可合并项</Typography.Title>
+                {mergeCandidates.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可合并的同类知识项" />
+                ) : (
+                  <List
+                    bordered
+                    size="small"
+                    dataSource={mergeCandidates}
+                    renderItem={(item) => (
+                      <List.Item
+                        actions={[
+                          <Button key="merge" type="link" loading={drawerSaving} onClick={() => handleMerge(item.id)}>
+                            合并到当前项
+                          </Button>,
+                        ]}
+                      >
+                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
+                          <Typography.Text strong>{item.canonical_name}</Typography.Text>
+                          <Typography.Text type="secondary">
+                            {categoryLabels[item.category] ?? item.category} · {item.document_count} 份文档
+                          </Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </div>
+            </Space>
+          ) : null}
+        </Drawer>
+      </Space>
     </Card>
   );
+}
+
+function parseAliasInput(value: string): string[] {
+  return value
+    .split(/[,\n，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }

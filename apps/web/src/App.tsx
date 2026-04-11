@@ -7,25 +7,26 @@ import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { ProcessViewPage } from "./pages/ProcessViewPage";
 
 const items = [
-  { key: "/", label: <Link to="/">Documents</Link> },
-  { key: "/governance", label: <Link to="/governance">Governance</Link> },
-  { key: "/graph", label: <Link to="/graph">Knowledge Graph</Link> },
-  { key: "/processes", label: <Link to="/processes">Process View</Link> }
+  { key: "/", label: <Link to="/">文档导入</Link> },
+  { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
+  { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
+  { key: "/processes", label: <Link to="/processes">流程视图</Link> }
 ];
 
 export default function App() {
   const location = useLocation();
+  const selectedMenuKey = location.pathname === "/documents" ? "/" : location.pathname;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Layout.Header style={{ display: "flex", alignItems: "center", gap: 24 }}>
         <Typography.Title level={4} style={{ color: "#fff", margin: 0 }}>
-          Knowledge Warehouse
+          知识仓库
         </Typography.Title>
         <Menu
           theme="dark"
           mode="horizontal"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedMenuKey]}
           items={items}
           style={{ flex: 1, minWidth: 0 }}
         />
@@ -33,6 +34,7 @@ export default function App() {
       <Layout.Content style={{ padding: 24 }}>
         <Routes>
           <Route path="/" element={<DocumentsPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
           <Route path="/processes" element={<ProcessViewPage />} />

@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+pysqlite:///:memory:"
     storage_bucket: str = "knowledge-warehouse"
     storage_root: str = ".data/storage"
+    knowledge_output_root: str = ".data/knowledge_output"
+    default_archive_id: str = "20161116-nas"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="KW_")
 

@@ -1,0 +1,593 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from app.archive_knowledge.artifact_catalog import build_interpretation
+
+ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
+    ("entities", "entity"),
+    ("events", "event"),
+    ("processes", "process"),
+)
+VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+
+
+class ArchiveKnowledgeService:
+    def __init__(self, output_root: str | Path) -> None:
+        self.output_root = Path(output_root)
+
+    def get_summary(self, archive_id: str) -> dict:
+        payload = self._load_public(archive_id)
+        return {"archive_id": archive_id, **payload["summary"]}
+
+    def get_graph(self, archive_id: str) -> dict:
+        payload = self._load_public(archive_id)
+        nodes = []
+        for collection_name, node_type in ITEM_COLLECTIONS:
+            for item in payload.get(collection_name, []):
+                nodes.append(
+                    {
+                        "id": item["id"],
+                        "label": item["name"],
+                        "type": item.get("category", node_type),
+                        "document_count": len(item.get("document_ids", [])),
+                    }
+                )
+
+        node_ids = {node["id"] for node in nodes}
+        edges = [
+            relation
+            for relation in payload.get("relations", [])
+            if relation.get("from") in node_ids and relation.get("to") in node_ids
+        ]
+        return {
+            "archive_id": archive_id,
+            "nodes": nodes,
+            "edges": [
+                {"source": edge["from"], "target": edge["to"], "label": edge["type"]}
+                for edge in edges
+            ],
+            "summary": payload["summary"],
+        }
+
+    def get_processes(self, archive_id: str) -> list[dict]:
+        payload = self._load_public(archive_id)
+        return payload.get("processes", [])
+
+    def get_entities(self, archive_id: str) -> list[dict]:
+        payload = self._load_public(archive_id)
+        entities = [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "category": item.get("category"),
+                "aliases": item.get("aliases", []),
+                "document_count": len(item.get("document_ids", [])),
+                "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+            }
+            for item in payload.get("entities", [])
+        ]
+        return sorted(entities, key=lambda item: (-item["document_count"], item["name"]))
+
+    def get_item_detail(self, archive_id: str, item_id: str) -> dict | None:
+        payload = self._load_raw(archive_id)
+        item_info = self._find_item_info(payload, item_id)
+        if item_info is None:
+            return None
+
+        _, item_type, _, item = item_info
+        document_index = self._build_document_index(payload)
+        documents = self._build_item_documents(item, document_index)
+        evidence = self._build_item_evidence(item, document_index)
+        related_items = self._build_related_items(payload, item_id)
+
+        return {
+            "id": item["id"],
+            "name": item["name"],
+            "item_type": item_type,
+            "category": item.get("category"),
+            "aliases": item.get("aliases", []),
+            "review_status": item.get("review_status", "pending"),
+            "document_count": len(item.get("document_ids", [])),
+            "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+            "documents": documents,
+            "evidence": evidence,
+            "related_items": related_items,
+        }
+
+    def get_document_detail(self, archive_id: str, document_id: str) -> dict | None:
+        payload = self._load_public(archive_id)
+        document_index = self._build_document_index(payload)
+        document = document_index.get(document_id)
+        if document is None:
+            return None
+
+        document_stats = self._build_document_stats(payload)
+        return {
+            "document": self._build_document_record(document, document_stats.get(document_id)),
+            "knowledge_items": self._build_document_knowledge_items(payload, document_id, document),
+        }
+
+    def get_documents(self, archive_id: str) -> list[dict]:
+        payload = self._load_public(archive_id)
+        document_stats = self._build_document_stats(payload)
+
+        documents = []
+        for document in payload.get("documents", []):
+            documents.append(self._build_document_record(document, document_stats.get(document["id"])))
+
+        return sorted(documents, key=lambda item: (-item["knowledge_item_count"], item["title"]))
+
+    def get_review_candidates(
+        self,
+        archive_id: str,
+        query: str | None = None,
+        item_type: str | None = None,
+        review_status: str | None = None,
+    ) -> list[dict]:
+        payload = self._load_raw(archive_id)
+        document_titles = {document["id"]: document["title"] for document in payload.get("documents", [])}
+        candidates = []
+        normalized_query = (query or "").strip().lower()
+
+        for collection_name, current_item_type in ITEM_COLLECTIONS:
+            if item_type and item_type != current_item_type:
+                continue
+
+            for item in payload.get(collection_name, []):
+                current_review_status = item.get("review_status", "pending")
+                if review_status and current_review_status != review_status:
+                    continue
+
+                haystack = " ".join([item["name"], *item.get("aliases", [])]).lower()
+                if normalized_query and normalized_query not in haystack:
+                    continue
+
+                evidence = item.get("evidence", [])
+                first_evidence = evidence[0] if evidence else {}
+                candidates.append(
+                    {
+                        "id": item["id"],
+                        "item_type": current_item_type,
+                        "canonical_name": item["name"],
+                        "category": item.get("category"),
+                        "document_count": len(item.get("document_ids", [])),
+                        "confidence": self._estimate_confidence(item),
+                        "review_status": current_review_status,
+                        "evidence_excerpt": first_evidence.get("excerpt", ""),
+                        "evidence_document_title": document_titles.get(first_evidence.get("document_id")),
+                    }
+                )
+
+        return sorted(
+            candidates,
+            key=lambda item: (-item["confidence"], -item["document_count"], item["canonical_name"]),
+        )
+
+    def search(self, archive_id: str, query: str) -> list[dict]:
+        normalized = query.lower().strip()
+        payload = self._load_public(archive_id)
+        results = []
+        for collection_name, item_type in ITEM_COLLECTIONS:
+            for item in payload.get(collection_name, []):
+                haystack = " ".join([item["name"], *item.get("aliases", [])]).lower()
+                if normalized and normalized not in haystack:
+                    continue
+                results.append(
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "type": item_type,
+                        "category": item.get("category"),
+                        "document_count": len(item.get("document_ids", [])),
+                    }
+                )
+        return results
+
+    def update_item(self, archive_id: str, item_id: str, *, name: str, category: str, aliases: list[str]) -> dict | None:
+        payload = self._load_for_edit(archive_id)
+        item_info = self._find_item_info(payload, item_id)
+        if item_info is None:
+            return None
+
+        _, _, _, item = item_info
+        item["name"] = name.strip()
+        item["category"] = category.strip()
+        item["aliases"] = self._normalize_aliases(item["name"], aliases)
+        self._save_payload(archive_id, payload)
+        return self.get_item_detail(archive_id, item_id)
+
+    def set_review_status(self, archive_id: str, item_id: str, review_status: str) -> dict | None:
+        payload = self._load_for_edit(archive_id)
+        item_info = self._find_item_info(payload, item_id)
+        if item_info is None:
+            return None
+
+        _, _, _, item = item_info
+        item["review_status"] = self._normalize_review_status(review_status)
+        self._save_payload(archive_id, payload)
+        return self.get_item_detail(archive_id, item_id)
+
+    def batch_approve(self, archive_id: str, item_ids: list[str]) -> dict:
+        payload = self._load_for_edit(archive_id)
+        updated_count = 0
+        for item_id in item_ids:
+            item_info = self._find_item_info(payload, item_id)
+            if item_info is None:
+                continue
+            _, _, _, item = item_info
+            if item.get("review_status", "pending") != "approved":
+                item["review_status"] = "approved"
+                updated_count += 1
+
+        if updated_count:
+            self._save_payload(archive_id, payload)
+        return {"updated_count": updated_count}
+
+    def merge_items(self, archive_id: str, primary_item_id: str, secondary_item_id: str) -> dict | None:
+        payload = self._load_for_edit(archive_id)
+        primary_info = self._find_item_info(payload, primary_item_id)
+        secondary_info = self._find_item_info(payload, secondary_item_id)
+        if primary_info is None or secondary_info is None:
+            return None
+
+        primary_collection_name, primary_item_type, _, primary_item = primary_info
+        secondary_collection_name, secondary_item_type, secondary_index, secondary_item = secondary_info
+        if primary_item_type != secondary_item_type:
+            raise ValueError("Only knowledge items of the same type can be merged")
+
+        primary_item["document_ids"] = self._merge_unique_strings(
+            primary_item.get("document_ids", []),
+            secondary_item.get("document_ids", []),
+        )
+        primary_item["evidence"] = self._merge_evidence(
+            primary_item.get("evidence", []),
+            secondary_item.get("evidence", []),
+        )
+        primary_item["aliases"] = self._normalize_aliases(
+            primary_item["name"],
+            [
+                *primary_item.get("aliases", []),
+                *secondary_item.get("aliases", []),
+                secondary_item["name"],
+            ],
+        )
+
+        payload[secondary_collection_name].pop(secondary_index)
+        payload["relations"] = self._merge_relations(
+            payload.get("relations", []),
+            primary_item_id=primary_item_id,
+            secondary_item_id=secondary_item_id,
+        )
+
+        if primary_collection_name != secondary_collection_name:
+            raise ValueError("Merge target collection mismatch")
+
+        self._save_payload(archive_id, payload)
+        return self.get_item_detail(archive_id, primary_item_id)
+
+    def _resolve_base_path(self, archive_id: str) -> Path:
+        return self.output_root / f"{archive_id}-knowledge.json"
+
+    def _resolve_edit_path(self, archive_id: str) -> Path:
+        return self.output_root / f"{archive_id}-knowledge-curated.json"
+
+    def _resolve_read_path(self, archive_id: str) -> Path:
+        curated_path = self._resolve_edit_path(archive_id)
+        if curated_path.exists():
+            return curated_path
+        return self._resolve_base_path(archive_id)
+
+    def _load_public(self, archive_id: str) -> dict:
+        payload = self._load_raw(archive_id)
+        return self._apply_visibility_filter(payload)
+
+    def _load_raw(self, archive_id: str) -> dict:
+        archive_path = self._resolve_read_path(archive_id)
+        payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        self._normalize_payload(payload)
+        return payload
+
+    def _load_for_edit(self, archive_id: str) -> dict:
+        payload = self._load_raw(archive_id)
+        self._normalize_payload(payload)
+        return payload
+
+    def _save_payload(self, archive_id: str, payload: dict) -> None:
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        self._normalize_payload(payload)
+        payload["summary"] = self._rebuild_summary(payload, visible_only=True)
+        self._resolve_edit_path(archive_id).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _build_document_index(payload: dict) -> dict[str, dict]:
+        return {document["id"]: document for document in payload.get("documents", [])}
+
+    @staticmethod
+    def _find_item_info(payload: dict, item_id: str) -> tuple[str, str, int, dict] | None:
+        for collection_name, item_type in ITEM_COLLECTIONS:
+            for index, item in enumerate(payload.get(collection_name, [])):
+                if item["id"] == item_id:
+                    return collection_name, item_type, index, item
+        return None
+
+    @staticmethod
+    def _estimate_confidence(item: dict) -> float:
+        document_count = len(item.get("document_ids", []))
+        evidence_count = len(item.get("evidence", []))
+        aliases = item.get("aliases", [])
+        score = 0.55
+        score += 0.1 * min(document_count, 3)
+        score += 0.05 * min(evidence_count, 3)
+        if aliases:
+            score += 0.05
+        return round(min(score, 0.99), 2)
+
+    @staticmethod
+    def _normalize_label(value: str) -> str:
+        if not any(char in value for char in "╠╧╜ß╣╬╫╖╥╗▄"):
+            return value
+        try:
+            return value.encode("cp437").decode("gb18030")
+        except UnicodeError:
+            return value
+
+    def _normalize_payload(self, payload: dict) -> None:
+        for collection_name, _ in ITEM_COLLECTIONS:
+            for item in payload.get(collection_name, []):
+                item["review_status"] = self._normalize_review_status(item.get("review_status"))
+                item["aliases"] = self._normalize_aliases(item["name"], item.get("aliases", []))
+
+    def _apply_visibility_filter(self, payload: dict) -> dict:
+        filtered = {
+            "documents": payload.get("documents", []),
+            "relations": [],
+        }
+        visible_item_ids: set[str] = set()
+        visible_document_ids = {document["id"] for document in payload.get("documents", [])}
+
+        for collection_name, _ in ITEM_COLLECTIONS:
+            visible_items = [
+                item
+                for item in payload.get(collection_name, [])
+                if item.get("review_status", "pending") != "rejected"
+            ]
+            filtered[collection_name] = visible_items
+            visible_item_ids.update(item["id"] for item in visible_items)
+
+        filtered["relations"] = [
+            relation
+            for relation in payload.get("relations", [])
+            if relation.get("from") in visible_item_ids.union(visible_document_ids)
+            and relation.get("to") in visible_item_ids.union(visible_document_ids)
+        ]
+        filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
+        return filtered
+
+    def _rebuild_summary(self, payload: dict, *, visible_only: bool) -> dict:
+        def _items(collection_name: str) -> list[dict]:
+            items = payload.get(collection_name, [])
+            if not visible_only:
+                return items
+            return [item for item in items if item.get("review_status", "pending") != "rejected"]
+
+        return {
+            "document_count": len(payload.get("documents", [])),
+            "entity_count": len(_items("entities")),
+            "event_count": len(_items("events")),
+            "process_count": len(_items("processes")),
+        }
+
+    @classmethod
+    def _build_document_stats(cls, payload: dict) -> dict[str, dict[str, int]]:
+        document_stats = {
+            document["id"]: {
+                "entity_count": 0,
+                "event_count": 0,
+                "process_count": 0,
+            }
+            for document in payload.get("documents", [])
+        }
+
+        for collection_name, field_name in (
+            ("entities", "entity_count"),
+            ("events", "event_count"),
+            ("processes", "process_count"),
+        ):
+            for item in payload.get(collection_name, []):
+                for document_id in item.get("document_ids", []):
+                    if document_id in document_stats:
+                        document_stats[document_id][field_name] += 1
+
+        return document_stats
+
+    @classmethod
+    def _build_document_record(cls, document: dict, stats: dict | None) -> dict:
+        normalized_stats = stats or {"entity_count": 0, "event_count": 0, "process_count": 0}
+        return {
+            "id": document["id"],
+            "title": document["title"],
+            "file_type": document["file_type"],
+            "source_archive": cls._normalize_label(document["source_archive"]),
+            "character_count": document["character_count"],
+            **normalized_stats,
+            "knowledge_item_count": (
+                normalized_stats["entity_count"]
+                + normalized_stats["event_count"]
+                + normalized_stats["process_count"]
+            ),
+        }
+
+    @classmethod
+    def _build_document_knowledge_items(cls, payload: dict, document_id: str, document: dict) -> list[dict]:
+        knowledge_items = []
+        item_type_order = {"entity": 0, "event": 1, "process": 2}
+
+        for collection_name, item_type in ITEM_COLLECTIONS:
+            for item in payload.get(collection_name, []):
+                if document_id not in item.get("document_ids", []):
+                    continue
+                knowledge_items.append(
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "item_type": item_type,
+                        "category": item.get("category"),
+                        "aliases": item.get("aliases", []),
+                        "review_status": item.get("review_status", "pending"),
+                        "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+                        "evidence": [
+                            {
+                                "document_id": evidence_item.get("document_id"),
+                                "document_title": document["title"],
+                                "excerpt": evidence_item.get("excerpt", ""),
+                            }
+                            for evidence_item in item.get("evidence", [])
+                            if evidence_item.get("document_id") == document_id
+                        ],
+                    }
+                )
+
+        return sorted(knowledge_items, key=lambda item: (item_type_order[item["item_type"]], item["id"]))
+
+    @classmethod
+    def _build_item_documents(cls, item: dict, document_index: dict[str, dict]) -> list[dict]:
+        documents = []
+        for document_id in item.get("document_ids", []):
+            document = document_index.get(document_id)
+            if not document:
+                continue
+            documents.append(
+                {
+                    "id": document["id"],
+                    "title": document["title"],
+                    "file_type": document["file_type"],
+                    "source_archive": cls._normalize_label(document["source_archive"]),
+                }
+            )
+        return documents
+
+    @staticmethod
+    def _build_item_evidence(item: dict, document_index: dict[str, dict]) -> list[dict]:
+        evidence = []
+        for evidence_item in item.get("evidence", []):
+            document = document_index.get(evidence_item.get("document_id"))
+            evidence.append(
+                {
+                    "document_id": evidence_item.get("document_id"),
+                    "document_title": document["title"] if document else None,
+                    "excerpt": evidence_item.get("excerpt", ""),
+                }
+            )
+        return evidence
+
+    def _build_related_items(self, payload: dict, item_id: str) -> list[dict]:
+        related_items = []
+        seen_relations: set[tuple[str, str]] = set()
+        for relation in payload.get("relations", []):
+            if relation.get("type") == "document_mentions":
+                continue
+            if relation.get("from") == item_id:
+                related_item_id = relation.get("to")
+            elif relation.get("to") == item_id:
+                related_item_id = relation.get("from")
+            else:
+                continue
+
+            related_info = self._find_item_info(payload, related_item_id)
+            if related_info is None:
+                continue
+
+            _, related_type, _, related_item = related_info
+            relation_key = (relation["type"], related_item["id"])
+            if relation_key in seen_relations:
+                continue
+
+            seen_relations.add(relation_key)
+            related_items.append(
+                {
+                    "id": related_item["id"],
+                    "name": related_item["name"],
+                    "item_type": related_type,
+                    "relation_type": relation["type"],
+                }
+            )
+
+        return related_items
+
+    @staticmethod
+    def _normalize_review_status(value: str | None) -> str:
+        if value in VALID_REVIEW_STATUSES:
+            return value
+        return "pending"
+
+    @staticmethod
+    def _normalize_aliases(name: str, aliases: list[str]) -> list[str]:
+        normalized_name = name.strip()
+        normalized_aliases = []
+        seen: set[str] = set()
+        for value in aliases:
+            alias = value.strip()
+            if not alias or alias == normalized_name or alias in seen:
+                continue
+            seen.add(alias)
+            normalized_aliases.append(alias)
+        return normalized_aliases
+
+    @staticmethod
+    def _merge_unique_strings(*groups: list[str]) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for values in groups:
+            for value in values:
+                if value in seen:
+                    continue
+                seen.add(value)
+                merged.append(value)
+        return merged
+
+    @staticmethod
+    def _merge_evidence(*groups: list[dict]) -> list[dict]:
+        merged: list[dict] = []
+        seen: set[tuple[str | None, str]] = set()
+        for evidence_group in groups:
+            for evidence in evidence_group:
+                key = (evidence.get("document_id"), evidence.get("excerpt", ""))
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(
+                    {
+                        "document_id": evidence.get("document_id"),
+                        "excerpt": evidence.get("excerpt", ""),
+                    }
+                )
+        return merged
+
+    @staticmethod
+    def _merge_relations(relations: list[dict], *, primary_item_id: str, secondary_item_id: str) -> list[dict]:
+        merged_relations: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for relation in relations:
+            source_id = primary_item_id if relation.get("from") == secondary_item_id else relation.get("from")
+            target_id = primary_item_id if relation.get("to") == secondary_item_id else relation.get("to")
+            if source_id == target_id:
+                continue
+
+            relation_key = (relation["type"], source_id, target_id)
+            if relation_key in seen:
+                continue
+
+            seen.add(relation_key)
+            merged_relations.append(
+                {
+                    **relation,
+                    "from": source_id,
+                    "to": target_id,
+                }
+            )
+        return merged_relations

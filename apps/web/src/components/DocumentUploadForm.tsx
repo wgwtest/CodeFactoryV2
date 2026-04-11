@@ -3,17 +3,17 @@ import { Button, Form, Input, Upload } from "antd";
 export function DocumentUploadForm() {
   return (
     <Form layout="vertical">
-      <Form.Item label="Title" name="title">
+      <Form.Item label="标题" name="title">
         <Input />
       </Form.Item>
-      <Form.Item label="Source Name" name="source_name">
+      <Form.Item label="来源名称" name="source_name">
         <Input />
       </Form.Item>
       <Upload beforeUpload={() => false}>
-        <Button>Select File</Button>
+        <Button>选择文件</Button>
       </Upload>
       <Button type="primary" htmlType="submit">
-        Upload
+        上传
       </Button>
     </Form>
   );
