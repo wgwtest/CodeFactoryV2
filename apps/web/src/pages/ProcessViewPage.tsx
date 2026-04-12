@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card, Typography } from "antd";
-
 import type { ArchiveKnowledgeProcess } from "../lib/api";
 import { api } from "../lib/api";
 import { ProcessFlow } from "../components/ProcessFlow";
+import { ValidationWorkspace } from "../components/ValidationWorkspace";
 
 const archiveId = "20161116-nas";
 
@@ -41,12 +40,12 @@ export function ProcessViewPage() {
   }, []);
 
   return (
-    <Card>
-      <Typography.Title level={3}>流程视图</Typography.Title>
-      <Typography.Paragraph>
-        查看从 NAS 档案资料中归纳出的流程知识，包括互操作、治理和路线图规划等流程。
-      </Typography.Paragraph>
+    <ValidationWorkspace
+      title="流程视图"
+      description="查看从 NAS 档案资料中归纳出的流程知识，包括互操作、治理和路线图规划等流程。"
+      stats={[{ title: "流程总数", value: processes.length }]}
+    >
       <ProcessFlow error={error} loading={loading} processes={processes} />
-    </Card>
+    </ValidationWorkspace>
   );
 }

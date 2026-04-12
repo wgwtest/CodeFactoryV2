@@ -1,7 +1,9 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Drawer, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Button, Descriptions, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
 
 import { api } from "../lib/api";
+import { EvidenceList } from "./EvidenceList";
+import { ValidationDrawer } from "./ValidationDrawer";
 import type {
   ArchiveKnowledgeEntity,
   ArchiveKnowledgeGraph,
@@ -174,17 +176,17 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
         />
       </Space>
 
-      <Drawer title="实体详情" open={selectedEntityId !== null} onClose={() => setSelectedEntityId(null)} width={640}>
-        {detailLoading ? (
-          <Space direction="vertical" size={8} style={{ display: "flex" }}>
-            <Spin />
-            <Typography.Text type="secondary">正在加载实体详情...</Typography.Text>
-          </Space>
-        ) : null}
-
-        {detailError ? <Alert type="error" message="实体详情暂不可用" description={detailError} showIcon /> : null}
-
-        {!detailLoading && !detailError && detail ? (
+      <ValidationDrawer
+        title="实体详情"
+        open={selectedEntityId !== null}
+        onClose={() => setSelectedEntityId(null)}
+        width={640}
+        loading={detailLoading}
+        loadingText="正在加载实体详情..."
+        error={detailError}
+        errorMessage="实体详情暂不可用"
+      >
+        {detail ? (
           <Space direction="vertical" size={16} style={{ display: "flex" }}>
             <div>
               <Typography.Title level={4} style={{ marginTop: 0 }}>
@@ -215,24 +217,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
               <Descriptions.Item label="别名">{detail.aliases.join(" / ") || "无"}</Descriptions.Item>
             </Descriptions>
 
-            <div>
-              <Typography.Title level={5}>证据摘录</Typography.Title>
-              <List
-                bordered
-                dataSource={detail.evidence}
-                locale={{ emptyText: "暂无证据摘录" }}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Space direction="vertical" size={4}>
-                      <Typography.Text>{item.excerpt || "无摘录"}</Typography.Text>
-                      {item.document_title ? (
-                        <Typography.Text type="secondary">{item.document_title}</Typography.Text>
-                      ) : null}
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            </div>
+            <EvidenceList title="证据摘录" items={detail.evidence} />
 
             <div>
               <Typography.Title level={5}>关联文档</Typography.Title>
@@ -272,7 +257,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
             </div>
           </Space>
         ) : null}
-      </Drawer>
+      </ValidationDrawer>
     </Space>
   );
 }

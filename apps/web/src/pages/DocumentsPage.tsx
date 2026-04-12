@@ -1,7 +1,10 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Button, Descriptions, Empty, Input, List, Space, Table, Tag, Typography } from "antd";
 
 import { DocumentUploadForm } from "../components/DocumentUploadForm";
+import { EvidenceList } from "../components/EvidenceList";
+import { ValidationDrawer } from "../components/ValidationDrawer";
+import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { api } from "../lib/api";
 import type {
   ArchiveKnowledgeDocument,
@@ -128,13 +131,22 @@ export function DocumentsPage() {
   };
 
   return (
-    <Card>
+    <ValidationWorkspace
+      title="上传源文档"
+      description="导入政策、手册或规程类资料，形成可追溯的文档版本，作为后续解析、抽取和治理的基础。"
+      stats={
+        summary
+          ? [
+              { title: "文档总数", value: summary.document_count },
+              { title: "实体", value: summary.entity_count },
+              { title: "事件", value: summary.event_count },
+              { title: "流程", value: summary.process_count },
+            ]
+          : []
+      }
+    >
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
         <div>
-          <Typography.Title level={3}>上传源文档</Typography.Title>
-          <Typography.Paragraph>
-            导入政策、手册或规程类资料，形成可追溯的文档版本，作为后续解析、抽取和治理的基础。
-          </Typography.Paragraph>
           <DocumentUploadForm />
         </div>
 
@@ -143,14 +155,6 @@ export function DocumentsPage() {
           <Typography.Paragraph type="secondary">
             当前演示清单来自 20161116 NAS 架构资料集，展示已解压并完成知识构建的真实文档。
           </Typography.Paragraph>
-          {summary ? (
-            <Row gutter={16}>
-              <Col><Statistic title="文档总数" value={summary.document_count} /></Col>
-              <Col><Statistic title="实体" value={summary.entity_count} /></Col>
-              <Col><Statistic title="事件" value={summary.event_count} /></Col>
-              <Col><Statistic title="流程" value={summary.process_count} /></Col>
-            </Row>
-          ) : null}
         </div>
 
         {error ? <Alert type="error" message="档案文档暂不可用" description={error} showIcon /> : null}
@@ -203,17 +207,17 @@ export function DocumentsPage() {
           />
         </Space>
 
-        <Drawer title="文档详情" open={selectedDocumentId !== null} onClose={() => setSelectedDocumentId(null)} width={720}>
-          {detailLoading ? (
-            <Space direction="vertical" size={8} style={{ display: "flex" }}>
-              <Spin />
-              <Typography.Text type="secondary">正在加载文档详情...</Typography.Text>
-            </Space>
-          ) : null}
-
-          {detailError ? <Alert type="error" message="文档详情暂不可用" description={detailError} showIcon /> : null}
-
-          {!detailLoading && !detailError && documentDetail ? (
+        <ValidationDrawer
+          title="文档详情"
+          open={selectedDocumentId !== null}
+          onClose={() => setSelectedDocumentId(null)}
+          width={720}
+          loading={detailLoading}
+          loadingText="正在加载文档详情..."
+          error={detailError}
+          errorMessage="文档详情暂不可用"
+        >
+          {documentDetail ? (
             <Space direction="vertical" size={16} style={{ display: "flex" }}>
               <div>
                 <Typography.Title level={4} style={{ marginTop: 0 }}>
@@ -246,9 +250,9 @@ export function DocumentsPage() {
               ))}
             </Space>
           ) : null}
-        </Drawer>
+        </ValidationDrawer>
       </Space>
-    </Card>
+    </ValidationWorkspace>
   );
 }
 
@@ -293,15 +297,7 @@ function DocumentKnowledgeSection({ title, items }: DocumentKnowledgeSectionProp
                   <Typography.Text type="secondary">别名：{item.aliases.join(" / ")}</Typography.Text>
                 ) : null}
 
-                <div>
-                  <Typography.Text type="secondary">证据摘录</Typography.Text>
-                  <List
-                    size="small"
-                    dataSource={item.evidence}
-                    locale={{ emptyText: "暂无证据摘录" }}
-                    renderItem={(evidenceItem) => <List.Item>{evidenceItem.excerpt || "无摘录"}</List.Item>}
-                  />
-                </div>
+                <EvidenceList items={item.evidence} size="small" bordered={false} />
               </Space>
             </List.Item>
           )}

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card, Typography } from "antd";
-
 import type { ArchiveKnowledgeEntity, ArchiveKnowledgeGraph, ArchiveKnowledgeSummary } from "../lib/api";
 import { api } from "../lib/api";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
+import { ValidationWorkspace } from "../components/ValidationWorkspace";
 
 const archiveId = "20161116-nas";
 
@@ -49,12 +48,21 @@ export function KnowledgeGraphPage() {
   }, []);
 
   return (
-    <Card>
-      <Typography.Title level={3}>知识图谱</Typography.Title>
-      <Typography.Paragraph>
-        浏览从 20161116 NAS 架构资料集中提取出的实体、架构产物和关联关系。
-      </Typography.Paragraph>
+    <ValidationWorkspace
+      title="知识图谱"
+      description="浏览从 20161116 NAS 架构资料集中提取出的实体、架构产物和关联关系。"
+      stats={
+        summary
+          ? [
+              { title: "文档", value: summary.document_count },
+              { title: "实体", value: summary.entity_count },
+              { title: "事件", value: summary.event_count },
+              { title: "流程", value: summary.process_count },
+            ]
+          : []
+      }
+    >
       <KnowledgeGraph archiveId={archiveId} entities={entities} error={error} graph={graph} loading={loading} summary={summary} />
-    </Card>
+    </ValidationWorkspace>
   );
 }
