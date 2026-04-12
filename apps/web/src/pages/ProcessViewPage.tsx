@@ -39,8 +39,8 @@ export function ProcessViewPage() {
 
   return (
     <ValidationWorkspace
-      title="流程视图"
-      description="查看从 NAS 档案资料中归纳出的流程知识，包括互操作、治理和路线图规划等流程。"
+      title="流程链路视图"
+      description="查看已发布流程清单，并下钻流程证据、关联对象、业务关系结构与关系邻域。"
       stats={[{ title: "流程总数", value: processes.length }]}
     >
       <ProcessFlow error={error} loading={loading} processes={processes} />

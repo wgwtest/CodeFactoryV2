@@ -10,7 +10,7 @@ const items = [
   { key: "/", label: <Link to="/">文档导入</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
-  { key: "/processes", label: <Link to="/processes">流程视图</Link> }
+  { key: "/processes", label: <Link to="/processes">流程链路</Link> }
 ];
 
 export default function App() {

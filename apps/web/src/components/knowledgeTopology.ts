@@ -99,16 +99,8 @@ export function getTopologyLayout(
   }
 
   const degreeById = buildDegreeIndex({
-    archive_id: "layout",
     nodes: visibleGraph.nodes,
     edges: visibleGraph.edges,
-    summary: {
-      archive_id: "layout",
-      document_count: 0,
-      entity_count: 0,
-      event_count: 0,
-      process_count: 0,
-    },
   });
 
   return {
