@@ -18,6 +18,22 @@ vi.mock("../lib/api", () => ({
 
 test("renders knowledge review workspace, supports filtering, editing, batch approval, and merge", async () => {
   getMock.mockImplementation((url: string) => {
+    if (url.endsWith("/publication")) {
+      return Promise.resolve({
+        data: {
+          archive_id: "20161116-nas",
+          current_version: null,
+          versions: [],
+          working_summary: {
+            document_count: 2,
+            entity_count: 2,
+            event_count: 1,
+            process_count: 0
+          }
+        }
+      });
+    }
+
     if (url.includes("/review-candidates")) {
       return Promise.resolve({
         data: [
@@ -135,6 +151,21 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
     if (url.endsWith("/reviews/batch-approve")) {
       return Promise.resolve({ data: { updated_count: 1 } });
     }
+    if (url.endsWith("/publish")) {
+      return Promise.resolve({
+        data: {
+          version_label: "v1",
+          publisher: "architect",
+          published_at: "2026-04-12T00:00:00Z",
+          summary: {
+            document_count: 2,
+            entity_count: 2,
+            event_count: 1,
+            process_count: 0
+          }
+        }
+      });
+    }
     if (url.endsWith("/items/entity-ov1/review")) {
       return Promise.resolve({
         data: {
@@ -175,6 +206,7 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
   render(<GovernancePage />);
 
   expect(await screen.findByText("知识审核发布")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "发布当前已通过知识" })).toBeInTheDocument();
   expect(screen.getByPlaceholderText("搜索名称或别名")).toBeInTheDocument();
   expect(await screen.findByText("OV-1")).toBeInTheDocument();
   expect(screen.queryByText("远期目标（Far Term）")).not.toBeInTheDocument();
@@ -221,11 +253,29 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
     })
   );
 
+  fireEvent.click(screen.getByRole("button", { name: "全部通过待审核" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/knowledge/archive/20161116-nas/reviews/batch-approve", {
+      item_ids: ["entity-ov1", "entity-ov1-duplicate"]
+    })
+  );
+
   fireEvent.click(screen.getByRole("button", { name: "合并到当前项" }));
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/knowledge/archive/20161116-nas/items/merge", {
       primary_item_id: "entity-ov1",
       secondary_item_id: "entity-ov1-duplicate"
+    })
+  );
+
+  fireEvent.change(screen.getByPlaceholderText("版本标签，例如 v1"), { target: { value: "v1" } });
+  fireEvent.change(screen.getByPlaceholderText("发布人"), { target: { value: "architect" } });
+  fireEvent.click(screen.getByRole("button", { name: "发布当前已通过知识" }));
+
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/knowledge/archive/20161116-nas/publish", {
+      version_label: "v1",
+      publisher: "architect"
     })
   );
 });

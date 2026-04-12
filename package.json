@@ -3,6 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.8.0",
   "scripts": {
+    "graphify:rebuild": "bash scripts/graphify_rebuild.sh",
+    "graphify:query": "bash scripts/graphify_query.sh",
     "web:test": "corepack pnpm --dir apps/web test",
     "web:e2e": "corepack pnpm --dir apps/web exec playwright test"
   }

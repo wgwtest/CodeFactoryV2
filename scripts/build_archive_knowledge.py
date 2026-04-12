@@ -1,23 +1,20 @@
-\
 from __future__ import annotations
 
 import json
 import subprocess
-import tempfile
 from hashlib import md5
 from pathlib import Path
 
+from app.archive_knowledge.rebuild import reconcile_curated_payload
 from app.knowledge_builder import SourceDocument, build_knowledge_index
-from app.parsing.parsers.doc_converter import convert_doc_to_docx
-from app.parsing.parsers.docx_parser import parse_docx
-from app.parsing.parsers.pdf_parser import parse_pdf
+from app.parsing.service import ParsingService
 
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARCHIVE_DIR = Path('/home/wgw/CodexProject/CodeFactoryV2/20161116体系结构文献翻译汇总')
 EXTRACT_ROOT = WORKTREE_ROOT / '.data/source_archives/20161116'
 OUTPUT_ROOT = WORKTREE_ROOT / '.data/knowledge_output'
-SUPPORTED_SUFFIXES = {'.pdf', '.docx', '.doc'}
+SUPPORTED_SUFFIXES = {'.pdf', '.docx', '.doc', '.xlsx', '.xls'}
 
 
 def main() -> None:
@@ -27,13 +24,47 @@ def main() -> None:
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     json_path = OUTPUT_ROOT / '20161116-nas-knowledge.json'
+    curated_path = OUTPUT_ROOT / '20161116-nas-knowledge-curated.json'
     md_path = OUTPUT_ROOT / '20161116-nas-knowledge.md'
+    parse_manifest_path = OUTPUT_ROOT / '20161116-nas-parsed-documents.json'
 
     json_path.write_text(json.dumps(knowledge, ensure_ascii=False, indent=2), encoding='utf-8')
+    curated_path.write_text(
+        json.dumps(
+            reconcile_curated_payload(
+                knowledge,
+                _load_json(curated_path),
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
     md_path.write_text(render_summary(knowledge), encoding='utf-8')
+    parse_manifest_path.write_text(
+        json.dumps(
+            [
+                {
+                    "path": document.path,
+                    "title": document.title,
+                    "file_type": document.file_type,
+                    "source_archive": document.source_archive,
+                    "parser_name": document.parser_name,
+                    "segment_count": document.segment_count,
+                    "character_count": len(document.text),
+                }
+                for document in documents
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
 
     print(f'Wrote {json_path}')
+    print(f'Wrote {curated_path}')
     print(f'Wrote {md_path}')
+    print(f'Wrote {parse_manifest_path}')
     print(json.dumps(knowledge['summary'], ensure_ascii=False, indent=2))
 
 
@@ -61,6 +92,7 @@ def extract_archives(archive_dir: Path, extract_root: Path) -> None:
 def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]:
     roots = [document_roots] if isinstance(document_roots, Path) else list(document_roots)
     documents_by_digest: dict[str, tuple[int, SourceDocument]] = {}
+    parsing_service = ParsingService()
 
     for priority, root in enumerate(roots):
         if not root.exists():
@@ -75,10 +107,11 @@ def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]
                 continue
 
             try:
-                text = extract_text(path)
+                parsed = parsing_service.parse_file(path)
             except Exception as exc:
                 print(f'SKIP unreadable file: {path} ({exc})')
                 continue
+            text = '\n'.join(segment.content for segment in parsed.segments)
             if not text.strip():
                 continue
 
@@ -90,6 +123,9 @@ def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]
                 file_type=suffix.lstrip('.'),
                 source_archive=source_archive,
                 text=text,
+                parser_name=parsed.parser_name,
+                segment_count=len(parsed.segments),
+                segments=parsed.segments,
             )
 
             digest = _file_digest(path)
@@ -98,20 +134,6 @@ def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]
                 documents_by_digest[digest] = (priority, document)
 
     return sorted((item[1] for item in documents_by_digest.values()), key=lambda document: document.path)
-
-
-def extract_text(path: Path) -> str:
-    suffix = path.suffix.lower()
-    if suffix == '.pdf':
-        pages = parse_pdf(str(path))
-        return '\n'.join(text for _, text in pages if text.strip())
-    if suffix == '.docx':
-        return '\n'.join(parse_docx(str(path)))
-    if suffix == '.doc':
-        with tempfile.TemporaryDirectory() as temp_dir:
-            docx_path = convert_doc_to_docx(str(path), temp_dir)
-            return '\n'.join(parse_docx(docx_path))
-    return ''
 
 
 def render_summary(knowledge: dict) -> str:
@@ -154,6 +176,12 @@ def _file_digest(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b''):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _load_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':
