@@ -384,3 +384,67 @@ def test_archive_review_mutations_create_curated_knowledge_and_update_public_vie
         {"document_id": "doc-2", "document_title": "NAS Roadmap", "excerpt": "Roadmap OV-1 excerpt"},
         {"document_id": "doc-2", "document_title": "NAS Roadmap", "excerpt": "Duplicate OV-1 excerpt"},
     ]
+
+
+def test_archive_publish_creates_versioned_snapshot_and_publication_overview(tmp_path) -> None:
+    archive_file = tmp_path / "20161116-nas-knowledge.json"
+    _write_archive(archive_file)
+
+    app = create_app()
+    app.dependency_overrides[get_archive_knowledge_service] = lambda: ArchiveKnowledgeService(tmp_path)
+    client = TestClient(app)
+
+    publication_before = client.get("/api/knowledge/archive/20161116-nas/publication")
+    assert publication_before.status_code == 200
+    assert publication_before.json()["current_version"] is None
+
+    approved = client.post(
+        "/api/knowledge/archive/20161116-nas/reviews/batch-approve",
+        json={
+            "item_ids": [
+                "entity-nas",
+                "entity-ov1",
+                "entity-ov1-duplicate",
+                "event-far-term",
+                "process-service-interoperability",
+            ]
+        },
+    )
+    assert approved.status_code == 200
+    assert approved.json() == {"updated_count": 5}
+
+    published = client.post(
+        "/api/knowledge/archive/20161116-nas/publish",
+        json={"version_label": "v1", "publisher": "architect"},
+    )
+    assert published.status_code == 200
+    assert published.json()["version_label"] == "v1"
+    assert published.json()["publisher"] == "architect"
+    assert published.json()["summary"] == {
+        "document_count": 2,
+        "entity_count": 3,
+        "event_count": 1,
+        "process_count": 1,
+    }
+
+    publication_after = client.get("/api/knowledge/archive/20161116-nas/publication")
+    assert publication_after.status_code == 200
+    assert publication_after.json()["current_version"] == {
+        "version_label": "v1",
+        "publisher": "architect",
+        "published_at": published.json()["published_at"],
+        "summary": {
+            "document_count": 2,
+            "entity_count": 3,
+            "event_count": 1,
+            "process_count": 1,
+        },
+    }
+    assert publication_after.json()["versions"][0]["version_label"] == "v1"
+
+    graph = client.get("/api/knowledge/archive/20161116-nas/graph")
+    assert graph.status_code == 200
+    assert graph.json()["publication"]["version_label"] == "v1"
+    assert graph.json()["publication"]["publisher"] == "architect"
+
+    assert (tmp_path / "20161116-nas-published-v1.json").exists()

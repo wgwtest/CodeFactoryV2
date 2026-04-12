@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import type { ArchiveKnowledgeEntity, ArchiveKnowledgeGraph, ArchiveKnowledgeSummary } from "../lib/api";
-import { getArchiveEntities, getArchiveGraph, getArchiveSummary } from "../lib/archiveKnowledge";
+import { Typography } from "antd";
+import type {
+  ArchiveKnowledgeEntity,
+  ArchiveKnowledgeGraph,
+  ArchiveKnowledgeSummary,
+  ArchivePublicationOverview,
+} from "../lib/api";
+import { getArchiveEntities, getArchiveGraph, getArchivePublication, getArchiveSummary } from "../lib/archiveKnowledge";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 
@@ -10,16 +16,18 @@ export function KnowledgeGraphPage() {
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
   const [graph, setGraph] = useState<ArchiveKnowledgeGraph | null>(null);
   const [entities, setEntities] = useState<ArchiveKnowledgeEntity[]>([]);
+  const [publicationOverview, setPublicationOverview] = useState<ArchivePublicationOverview | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadArchiveKnowledge() {
       try {
-        const [summaryResponse, graphResponse, entitiesResponse] = await Promise.all([
+        const [summaryResponse, graphResponse, entitiesResponse, publicationResponse] = await Promise.all([
           getArchiveSummary(),
           getArchiveGraph(),
           getArchiveEntities(),
+          getArchivePublication(),
         ]);
         if (cancelled) {
           return;
@@ -27,6 +35,7 @@ export function KnowledgeGraphPage() {
         setSummary(summaryResponse.data);
         setGraph(graphResponse.data);
         setEntities(entitiesResponse.data);
+        setPublicationOverview(publicationResponse.data);
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
@@ -60,6 +69,11 @@ export function KnowledgeGraphPage() {
           : []
       }
     >
+      {publicationOverview?.current_version ? (
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          当前发布版本：{publicationOverview.current_version.version_label}
+        </Typography.Paragraph>
+      ) : null}
       <KnowledgeGraph entities={entities} error={error} graph={graph} loading={loading} summary={summary} />
     </ValidationWorkspace>
   );

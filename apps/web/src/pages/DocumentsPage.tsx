@@ -12,6 +12,8 @@ import type {
   ArchiveKnowledgeDocumentDetail,
   ArchiveKnowledgeDocumentKnowledgeItem,
   ArchiveKnowledgeSummary,
+  IntakeDocumentDetail,
+  IntakeDocumentSummary,
 } from "../lib/api";
 
 const categoryLabels: Record<string, string> = {
@@ -37,6 +39,13 @@ export function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
   const [documents, setDocuments] = useState<ArchiveKnowledgeDocument[]>([]);
+  const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocumentSummary[]>([]);
+  const [intakeLoading, setIntakeLoading] = useState(true);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
+  const [selectedIntakeDocumentId, setSelectedIntakeDocumentId] = useState<string | null>(null);
+  const [intakeDocumentDetail, setIntakeDocumentDetail] = useState<IntakeDocumentDetail | null>(null);
+  const [intakeDetailLoading, setIntakeDetailLoading] = useState(false);
+  const [intakeDetailError, setIntakeDetailError] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState("");
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [documentDetail, setDocumentDetail] = useState<ArchiveKnowledgeDocumentDetail | null>(null);
@@ -44,37 +53,96 @@ export function DocumentsPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const deferredSearchValue = useDeferredValue(searchValue);
 
+  async function loadArchiveDocuments(cancelled?: { current: boolean }) {
+    try {
+      const [summaryResponse, documentsResponse] = await Promise.all([
+        getArchiveSummary(),
+        getArchiveDocuments(),
+      ]);
+      if (cancelled?.current) {
+        return;
+      }
+      setSummary(summaryResponse.data);
+      setDocuments(documentsResponse.data);
+      setError(null);
+    } catch (loadError) {
+      if (!cancelled?.current) {
+        setError(loadError instanceof Error ? loadError.message : "加载档案文档失败");
+      }
+    } finally {
+      if (!cancelled?.current) {
+        setLoading(false);
+      }
+    }
+  }
+
+  async function loadIntakeDocuments(cancelled?: { current: boolean }) {
+    try {
+      const response = await api.get<IntakeDocumentSummary[]>("/documents");
+      if (cancelled?.current) {
+        return;
+      }
+      setIntakeDocuments(response.data);
+      setIntakeError(null);
+    } catch (loadError) {
+      if (!cancelled?.current) {
+        setIntakeError(loadError instanceof Error ? loadError.message : "加载接入文档失败");
+      }
+    } finally {
+      if (!cancelled?.current) {
+        setIntakeLoading(false);
+      }
+    }
+  }
+
   useEffect(() => {
+    const cancelled = { current: false };
+
+    void Promise.all([
+      loadArchiveDocuments(cancelled),
+      loadIntakeDocuments(cancelled),
+    ]);
+    return () => {
+      cancelled.current = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const documentId = selectedIntakeDocumentId;
+
+    if (!documentId) {
+      setIntakeDocumentDetail(null);
+      setIntakeDetailError(null);
+      return;
+    }
+
     let cancelled = false;
 
-    async function loadArchiveDocuments() {
+    async function loadIntakeDocumentDetail() {
       try {
-        const [summaryResponse, documentsResponse] = await Promise.all([
-          getArchiveSummary(),
-          getArchiveDocuments(),
-        ]);
+        setIntakeDetailLoading(true);
+        const response = await api.get<IntakeDocumentDetail>(`/documents/${documentId}`);
         if (cancelled) {
           return;
         }
-        setSummary(summaryResponse.data);
-        setDocuments(documentsResponse.data);
-        setError(null);
+        setIntakeDocumentDetail(response.data);
+        setIntakeDetailError(null);
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载档案文档失败");
+          setIntakeDetailError(loadError instanceof Error ? loadError.message : "加载解析详情失败");
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setIntakeDetailLoading(false);
         }
       }
     }
 
-    void loadArchiveDocuments();
+    void loadIntakeDocumentDetail();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedIntakeDocumentId]);
 
   useEffect(() => {
     const documentId = selectedDocumentId;
@@ -150,8 +218,133 @@ export function DocumentsPage() {
     >
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
         <div>
-          <DocumentUploadForm />
+          <DocumentUploadForm onUploaded={() => loadIntakeDocuments()} />
         </div>
+
+        <div>
+          <Typography.Title level={4}>接入解析验证</Typography.Title>
+          <Typography.Paragraph type="secondary">
+            展示当前已接入文档的版本状态、最新解析批次和片段预览，用于验证 `P1.2` 的结构化解析产物。
+          </Typography.Paragraph>
+        </div>
+
+        {intakeError ? <Alert type="error" message="接入文档暂不可用" description={intakeError} showIcon /> : null}
+
+        <Table
+          rowKey="id"
+          loading={intakeLoading}
+          dataSource={intakeDocuments}
+          locale={{ emptyText: "暂无接入文档" }}
+          pagination={{ pageSize: 5 }}
+          columns={[
+            { title: "标题", dataIndex: "title" },
+            { title: "来源", dataIndex: "source_name" },
+            {
+              title: "最新版本",
+              render: (_: unknown, record: IntakeDocumentSummary) =>
+                record.latest_version ? `V${record.latest_version.version_number}` : "无版本",
+            },
+            {
+              title: "解析状态",
+              render: (_: unknown, record: IntakeDocumentSummary) => mapVersionStatus(record.latest_version?.status),
+            },
+            {
+              title: "解析器",
+              render: (_: unknown, record: IntakeDocumentSummary) => record.latest_version?.latest_parse_run?.parser_name ?? "未解析",
+            },
+            {
+              title: "片段数",
+              render: (_: unknown, record: IntakeDocumentSummary) => record.latest_version?.latest_parse_run?.segment_count ?? 0,
+            },
+            {
+              title: "操作",
+              render: (_: unknown, record: IntakeDocumentSummary) => (
+                <Button type="link" onClick={() => setSelectedIntakeDocumentId(record.id)}>
+                  查看解析
+                </Button>
+              ),
+            },
+          ]}
+        />
+
+        <ValidationDrawer
+          title="解析详情"
+          open={selectedIntakeDocumentId !== null}
+          onClose={() => setSelectedIntakeDocumentId(null)}
+          width={760}
+          loading={intakeDetailLoading}
+          loadingText="正在加载解析详情..."
+          error={intakeDetailError}
+          errorMessage="解析详情暂不可用"
+        >
+          {intakeDocumentDetail ? (
+            <Space direction="vertical" size={16} style={{ display: "flex" }}>
+              <div>
+                <Typography.Title level={4} style={{ marginTop: 0 }}>
+                  {intakeDocumentDetail.title}
+                </Typography.Title>
+                <Typography.Text type="secondary">{intakeDocumentDetail.source_name}</Typography.Text>
+              </div>
+
+              {intakeDocumentDetail.latest_version ? (
+                <Descriptions bordered size="small" column={2}>
+                  <Descriptions.Item label="最新版本">
+                    V{intakeDocumentDetail.latest_version.version_number}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="文件名">
+                    {intakeDocumentDetail.latest_version.file_name}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="解析状态">
+                    {mapVersionStatus(intakeDocumentDetail.latest_version.status)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="解析器">
+                    {intakeDocumentDetail.latest_version.latest_parse_run?.parser_name ?? "未解析"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="解析批次">
+                    {intakeDocumentDetail.latest_version.parse_runs.length}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="片段数">
+                    {intakeDocumentDetail.latest_version.latest_parse_run?.segment_count ?? 0}
+                  </Descriptions.Item>
+                </Descriptions>
+              ) : (
+                <Empty description="暂无版本详情" />
+              )}
+
+              {intakeDocumentDetail.latest_version?.latest_parse_run?.failure_reason ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="解析失败原因"
+                  description={intakeDocumentDetail.latest_version.latest_parse_run.failure_reason}
+                />
+              ) : null}
+
+              <div>
+                <Typography.Title level={5}>解析片段预览</Typography.Title>
+                {intakeDocumentDetail.latest_version?.segments_preview.length ? (
+                  <List
+                    bordered
+                    dataSource={intakeDocumentDetail.latest_version.segments_preview}
+                    renderItem={(segment) => (
+                      <List.Item>
+                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
+                          <Space wrap>
+                            <Typography.Text strong>{segment.heading}</Typography.Text>
+                            <Tag>{segment.block_type}</Tag>
+                          </Space>
+                          <Typography.Text>{segment.content}</Typography.Text>
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无解析片段" />
+                )}
+              </div>
+            </Space>
+          ) : null}
+        </ValidationDrawer>
 
         <div>
           <Typography.Title level={4}>已建库档案文档</Typography.Title>
@@ -257,6 +450,19 @@ export function DocumentsPage() {
       </Space>
     </ValidationWorkspace>
   );
+}
+
+function mapVersionStatus(status?: string) {
+  if (status === "parsed") {
+    return "已解析";
+  }
+  if (status === "parse_failed") {
+    return "解析失败";
+  }
+  if (status === "uploaded") {
+    return "待解析";
+  }
+  return status ?? "未知";
 }
 
 type DocumentKnowledgeSectionProps = {

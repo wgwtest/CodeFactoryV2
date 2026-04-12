@@ -30,6 +30,7 @@ class DocumentVersion(Base):
     storage_key: Mapped[str] = mapped_column(String(255), default="")
     mime_type: Mapped[str] = mapped_column(String(128), default="application/octet-stream")
     status: Mapped[str] = mapped_column(String(32), default="uploaded")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     document: Mapped[Document] = relationship(back_populates="versions")
 
 
@@ -39,7 +40,9 @@ class ParseRun(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     document_version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id"))
     status: Mapped[str] = mapped_column(String(32))
+    parser_name: Mapped[str] = mapped_column(String(64), default="")
     parser_version: Mapped[str] = mapped_column(String(32), default="v1")
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 
@@ -49,6 +52,7 @@ class DocumentSegment(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     parse_run_id: Mapped[str] = mapped_column(ForeignKey("parse_runs.id"))
     segment_order: Mapped[int] = mapped_column(Integer)
+    block_type: Mapped[str] = mapped_column(String(32), default="section")
     heading: Mapped[str] = mapped_column(String(255))
     content: Mapped[str] = mapped_column(Text)
     anchor: Mapped[dict] = mapped_column(JSON, default=dict)

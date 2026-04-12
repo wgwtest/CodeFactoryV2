@@ -32,6 +32,11 @@ class ArchiveMergePayload(BaseModel):
     secondary_item_id: str
 
 
+class ArchivePublishPayload(BaseModel):
+    version_label: str
+    publisher: str
+
+
 def get_query_service(session=Depends(get_session)) -> QueryService:
     return QueryService(session)
 
@@ -120,6 +125,14 @@ def get_archive_review_candidates(
     )
 
 
+@router.get("/archive/{archive_id}/publication")
+def get_archive_publication(
+    archive_id: str,
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_publication_overview(archive_id)
+
+
 @router.get("/archive/{archive_id}/search")
 def search_archive_knowledge(
     archive_id: str,
@@ -187,3 +200,19 @@ def merge_archive_items(
     if detail is None:
         raise HTTPException(status_code=404, detail="Archive item not found")
     return detail
+
+
+@router.post("/archive/{archive_id}/publish")
+def publish_archive_knowledge(
+    archive_id: str,
+    payload: ArchivePublishPayload,
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    try:
+        return service.publish_snapshot(
+            archive_id,
+            version_label=payload.version_label,
+            publisher=payload.publisher,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

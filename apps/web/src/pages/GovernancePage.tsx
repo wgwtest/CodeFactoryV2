@@ -19,12 +19,14 @@ import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { api } from "../lib/api";
+import { getArchivePublication } from "../lib/archiveKnowledge";
 import type {
   ArchiveKnowledgeBatchApproveInput,
   ArchiveKnowledgeItemDetail,
   ArchiveKnowledgeItemReviewInput,
   ArchiveKnowledgeItemUpdateInput,
   ArchiveKnowledgeMergeInput,
+  ArchivePublicationOverview,
   ArchiveReviewCandidate,
   ArchiveReviewStatus,
 } from "../lib/api";
@@ -71,15 +73,23 @@ export function GovernancePage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [activeDetail, setActiveDetail] = useState<ArchiveKnowledgeItemDetail | null>(null);
+  const [publicationOverview, setPublicationOverview] = useState<ArchivePublicationOverview | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [drawerSaving, setDrawerSaving] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftCategory, setDraftCategory] = useState("");
   const [draftAliases, setDraftAliases] = useState("");
+  const [versionLabel, setVersionLabel] = useState("v1");
+  const [publisher, setPublisher] = useState("architect");
 
   async function loadCandidates() {
     const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`);
     setCandidates(response.data);
+  }
+
+  async function loadPublication() {
+    const response = await getArchivePublication(archiveId);
+    setPublicationOverview(response.data);
   }
 
   useEffect(() => {
@@ -87,11 +97,15 @@ export function GovernancePage() {
 
     async function loadInitialCandidates() {
       try {
-        const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`);
+        const [candidateResponse, publicationResponse] = await Promise.all([
+          api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`),
+          getArchivePublication(archiveId),
+        ]);
         if (cancelled) {
           return;
         }
-        setCandidates(response.data);
+        setCandidates(candidateResponse.data);
+        setPublicationOverview(publicationResponse.data);
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
@@ -235,6 +249,25 @@ export function GovernancePage() {
     }
   }
 
+  async function handleApproveAllPending() {
+    try {
+      setDrawerSaving(true);
+      const payload: ArchiveKnowledgeBatchApproveInput = {
+        item_ids: candidates
+          .filter((item) => item.review_status === "pending")
+          .map((item) => item.id),
+      };
+      await api.post(`/knowledge/archive/${archiveId}/reviews/batch-approve`, payload);
+      setSelectedRowKeys([]);
+      await loadCandidates();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "批量通过全部待审核失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
   async function handleMerge(secondaryItemId: string) {
     if (!activeDetail) {
       return;
@@ -263,6 +296,22 @@ export function GovernancePage() {
     }
   }
 
+  async function handlePublish() {
+    try {
+      setDrawerSaving(true);
+      await api.post(`/knowledge/archive/${archiveId}/publish`, {
+        version_label: versionLabel.trim(),
+        publisher: publisher.trim(),
+      });
+      await loadPublication();
+      setActionError(null);
+    } catch (loadError) {
+      setActionError(loadError instanceof Error ? loadError.message : "发布知识版本失败");
+    } finally {
+      setDrawerSaving(false);
+    }
+  }
+
   return (
     <ValidationWorkspace
       title="知识审核发布"
@@ -271,6 +320,7 @@ export function GovernancePage() {
         { title: "候选总数", value: candidates.length },
         { title: "当前筛出", value: filteredCandidates.length },
         { title: "已选中", value: selectedRowKeys.length },
+        { title: "当前版本", value: publicationOverview?.current_version?.version_label ?? "未发布" },
       ]}
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
@@ -278,6 +328,43 @@ export function GovernancePage() {
           <Typography.Paragraph type="secondary">
             支持改名、改类、别名编辑、单项通过、驳回、批量通过和同类知识合并。
           </Typography.Paragraph>
+        </div>
+
+        <div>
+          <Typography.Title level={5}>发布当前已通过知识</Typography.Title>
+          <Space direction="vertical" size={12} style={{ display: "flex" }}>
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="当前发布版本">
+                {publicationOverview?.current_version?.version_label ?? "尚未发布"}
+              </Descriptions.Item>
+              <Descriptions.Item label="发布人">
+                {publicationOverview?.current_version?.publisher ?? "无"}
+              </Descriptions.Item>
+              <Descriptions.Item label="工作集实体数">
+                {publicationOverview?.working_summary.entity_count ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label="工作集流程数">
+                {publicationOverview?.working_summary.process_count ?? 0}
+              </Descriptions.Item>
+            </Descriptions>
+            <Space wrap>
+              <Input
+                placeholder="版本标签，例如 v1"
+                value={versionLabel}
+                onChange={(event) => setVersionLabel(event.target.value)}
+                style={{ width: 220 }}
+              />
+              <Input
+                placeholder="发布人"
+                value={publisher}
+                onChange={(event) => setPublisher(event.target.value)}
+                style={{ width: 180 }}
+              />
+              <Button type="primary" loading={drawerSaving} onClick={handlePublish}>
+                发布当前已通过知识
+              </Button>
+            </Space>
+          </Space>
         </div>
 
         {error ? <Alert type="error" message="候选知识暂不可用" description={error} showIcon /> : null}
@@ -331,6 +418,9 @@ export function GovernancePage() {
             <Typography.Text type="secondary">当前筛出 {filteredCandidates.length} 项</Typography.Text>
             <Button type="primary" disabled={selectedRowKeys.length === 0} loading={drawerSaving} onClick={handleBatchApprove}>
               批量通过
+            </Button>
+            <Button loading={drawerSaving} onClick={handleApproveAllPending}>
+              全部通过待审核
             </Button>
           </Space>
         </Space>

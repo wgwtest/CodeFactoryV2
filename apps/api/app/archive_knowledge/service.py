@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.archive_knowledge.repository import JsonPublishedKnowledgeRepository
 from app.archive_knowledge.artifact_catalog import build_interpretation
+from app.config import settings
+from app.integrations.neo4j.client import Neo4jClient
+from app.integrations.neo4j.repository import Neo4jPublishedKnowledgeRepository
 
 ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("entities", "entity"),
@@ -14,8 +18,9 @@ VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
 
 
 class ArchiveKnowledgeService:
-    def __init__(self, output_root: str | Path) -> None:
+    def __init__(self, output_root: str | Path, published_repository=None) -> None:
         self.output_root = Path(output_root)
+        self.published_repository = published_repository or self._build_published_repository()
 
     def get_summary(self, archive_id: str) -> dict:
         payload = self._load_public(archive_id)
@@ -49,6 +54,7 @@ class ArchiveKnowledgeService:
                 for edge in edges
             ],
             "summary": payload["summary"],
+            "publication": payload.get("publication"),
         }
 
     def get_processes(self, archive_id: str) -> list[dict]:
@@ -165,6 +171,30 @@ class ArchiveKnowledgeService:
             key=lambda item: (-item["confidence"], -item["document_count"], item["canonical_name"]),
         )
 
+    def get_publication_overview(self, archive_id: str) -> dict:
+        working_payload = self._apply_visibility_filter(self._load_raw(archive_id))
+        return self.published_repository.get_publication_overview(
+            archive_id,
+            working_summary=working_payload["summary"],
+        )
+
+    def publish_snapshot(self, archive_id: str, *, version_label: str, publisher: str) -> dict:
+        payload = self._load_for_edit(archive_id)
+        published_payload = self._build_published_payload(payload)
+        if published_payload["summary"]["entity_count"] + published_payload["summary"]["event_count"] + published_payload["summary"]["process_count"] == 0:
+            raise ValueError("No approved knowledge items are available for publishing")
+
+        version = self.published_repository.publish(
+            archive_id,
+            payload=published_payload,
+            version_label=version_label,
+            publisher=publisher,
+        )
+        return {
+            "archive_id": archive_id,
+            **version,
+        }
+
     def search(self, archive_id: str, query: str) -> list[dict]:
         normalized = query.lower().strip()
         payload = self._load_public(archive_id)
@@ -280,8 +310,15 @@ class ArchiveKnowledgeService:
         return self._resolve_base_path(archive_id)
 
     def _load_public(self, archive_id: str) -> dict:
+        published_payload, publication = self.published_repository.load_latest(archive_id)
+        if published_payload is not None:
+            published_payload["publication"] = publication
+            return published_payload
+
         payload = self._load_raw(archive_id)
-        return self._apply_visibility_filter(payload)
+        visible_payload = self._apply_visibility_filter(payload)
+        visible_payload["publication"] = publication
+        return visible_payload
 
     def _load_raw(self, archive_id: str) -> dict:
         archive_path = self._resolve_read_path(archive_id)
@@ -367,6 +404,45 @@ class ArchiveKnowledgeService:
         ]
         filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
         return filtered
+
+    def _build_published_payload(self, payload: dict) -> dict:
+        filtered = {
+            "documents": [],
+            "relations": [],
+        }
+        visible_item_ids: set[str] = set()
+        visible_document_ids: set[str] = set()
+
+        for collection_name, _ in ITEM_COLLECTIONS:
+            visible_items = [
+                item
+                for item in payload.get(collection_name, [])
+                if item.get("review_status", "pending") == "approved"
+            ]
+            filtered[collection_name] = visible_items
+            visible_item_ids.update(item["id"] for item in visible_items)
+            for item in visible_items:
+                visible_document_ids.update(item.get("document_ids", []))
+
+        filtered["documents"] = [
+            document
+            for document in payload.get("documents", [])
+            if document["id"] in visible_document_ids
+        ]
+        filtered["relations"] = [
+            relation
+            for relation in payload.get("relations", [])
+            if relation.get("from") in visible_item_ids.union(visible_document_ids)
+            and relation.get("to") in visible_item_ids.union(visible_document_ids)
+        ]
+        filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
+        return filtered
+
+    def _build_published_repository(self):
+        if settings.published_knowledge_backend == "neo4j":  # pragma: no cover - optional backend
+            client = Neo4jClient(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
+            return Neo4jPublishedKnowledgeRepository(client)
+        return JsonPublishedKnowledgeRepository(self.output_root)
 
     def _rebuild_summary(self, payload: dict, *, visible_only: bool) -> dict:
         def _items(collection_name: str) -> list[dict]:

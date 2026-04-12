@@ -7,6 +7,7 @@ import type {
   ArchiveKnowledgeItemDetail,
   ArchiveKnowledgeProcess,
   ArchiveKnowledgeSummary,
+  ArchivePublicationOverview,
   ArchiveReviewCandidate,
 } from "./api";
 
@@ -46,4 +47,8 @@ export function getArchiveItemDetail(itemId: string, archiveId = DEFAULT_ARCHIVE
 
 export function getArchiveProcesses(archiveId = DEFAULT_ARCHIVE_ID) {
   return api.get<ArchiveKnowledgeProcess[]>(`${withArchiveId(archiveId)}/processes`);
+}
+
+export function getArchivePublication(archiveId = DEFAULT_ARCHIVE_ID) {
+  return api.get<ArchivePublicationOverview>(`${withArchiveId(archiveId)}/publication`);
 }
