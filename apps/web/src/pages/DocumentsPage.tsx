@@ -6,14 +6,13 @@ import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { api } from "../lib/api";
+import { getArchiveDocumentDetail, getArchiveDocuments, getArchiveSummary } from "../lib/archiveKnowledge";
 import type {
   ArchiveKnowledgeDocument,
   ArchiveKnowledgeDocumentDetail,
   ArchiveKnowledgeDocumentKnowledgeItem,
   ArchiveKnowledgeSummary,
 } from "../lib/api";
-
-const archiveId = "20161116-nas";
 
 const categoryLabels: Record<string, string> = {
   architecture_artifact: "架构工件",
@@ -51,8 +50,8 @@ export function DocumentsPage() {
     async function loadArchiveDocuments() {
       try {
         const [summaryResponse, documentsResponse] = await Promise.all([
-          api.get<ArchiveKnowledgeSummary>(`/knowledge/archive/${archiveId}/summary`),
-          api.get<ArchiveKnowledgeDocument[]>(`/knowledge/archive/${archiveId}/documents`),
+          getArchiveSummary(),
+          getArchiveDocuments(),
         ]);
         if (cancelled) {
           return;
@@ -78,7 +77,9 @@ export function DocumentsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedDocumentId) {
+    const documentId = selectedDocumentId;
+
+    if (!documentId) {
       setDocumentDetail(null);
       setDetailError(null);
       return;
@@ -87,12 +88,14 @@ export function DocumentsPage() {
     let cancelled = false;
 
     async function loadDocumentDetail() {
+      const activeDocumentId = documentId;
       try {
         setDetailLoading(true);
         setDocumentDetail(null);
-        const response = await api.get<ArchiveKnowledgeDocumentDetail>(
-          `/knowledge/archive/${archiveId}/documents/${selectedDocumentId}`,
-        );
+        if (activeDocumentId === null) {
+          return;
+        }
+        const response = await getArchiveDocumentDetail(activeDocumentId);
         if (cancelled) {
           return;
         }

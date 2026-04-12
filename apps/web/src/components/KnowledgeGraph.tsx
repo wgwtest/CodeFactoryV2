@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { Alert, Button, Descriptions, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
 
-import { api } from "../lib/api";
+import { getArchiveItemDetail } from "../lib/archiveKnowledge";
 import { EvidenceList } from "./EvidenceList";
 import { ValidationDrawer } from "./ValidationDrawer";
 import type {
@@ -31,7 +31,6 @@ const itemTypeLabels: Record<string, string> = {
 };
 
 type KnowledgeGraphProps = {
-  archiveId: string;
   entities: ArchiveKnowledgeEntity[];
   error: string | null;
   graph: ArchiveKnowledgeGraph | null;
@@ -39,7 +38,7 @@ type KnowledgeGraphProps = {
   summary: ArchiveKnowledgeSummary | null;
 };
 
-export function KnowledgeGraph({ archiveId, entities, error, graph, loading, summary }: KnowledgeGraphProps) {
+export function KnowledgeGraph({ entities, error, graph, loading, summary }: KnowledgeGraphProps) {
   const [searchValue, setSearchValue] = useState("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ArchiveKnowledgeItemDetail | null>(null);
@@ -48,7 +47,9 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
   const deferredSearchValue = useDeferredValue(searchValue);
 
   useEffect(() => {
-    if (!selectedEntityId) {
+    const entityId = selectedEntityId;
+
+    if (!entityId) {
       setDetail(null);
       setDetailError(null);
       return;
@@ -57,11 +58,13 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     let cancelled = false;
 
     async function loadDetail() {
+      const activeEntityId = entityId;
       try {
         setDetailLoading(true);
-        const response = await api.get<ArchiveKnowledgeItemDetail>(
-          `/knowledge/archive/${archiveId}/items/${selectedEntityId}`,
-        );
+        if (activeEntityId === null) {
+          return;
+        }
+        const response = await getArchiveItemDetail(activeEntityId);
         if (cancelled) {
           return;
         }
@@ -82,7 +85,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     return () => {
       cancelled = true;
     };
-  }, [archiveId, selectedEntityId]);
+  }, [selectedEntityId]);
 
   if (loading) {
     return (

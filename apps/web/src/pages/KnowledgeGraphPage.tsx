@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ArchiveKnowledgeEntity, ArchiveKnowledgeGraph, ArchiveKnowledgeSummary } from "../lib/api";
-import { api } from "../lib/api";
+import { getArchiveEntities, getArchiveGraph, getArchiveSummary } from "../lib/archiveKnowledge";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
-
-const archiveId = "20161116-nas";
 
 export function KnowledgeGraphPage() {
   const [loading, setLoading] = useState(true);
@@ -19,9 +17,9 @@ export function KnowledgeGraphPage() {
     async function loadArchiveKnowledge() {
       try {
         const [summaryResponse, graphResponse, entitiesResponse] = await Promise.all([
-          api.get<ArchiveKnowledgeSummary>(`/knowledge/archive/${archiveId}/summary`),
-          api.get<ArchiveKnowledgeGraph>(`/knowledge/archive/${archiveId}/graph`),
-          api.get<ArchiveKnowledgeEntity[]>(`/knowledge/archive/${archiveId}/entities`),
+          getArchiveSummary(),
+          getArchiveGraph(),
+          getArchiveEntities(),
         ]);
         if (cancelled) {
           return;
@@ -62,7 +60,7 @@ export function KnowledgeGraphPage() {
           : []
       }
     >
-      <KnowledgeGraph archiveId={archiveId} entities={entities} error={error} graph={graph} loading={loading} summary={summary} />
+      <KnowledgeGraph entities={entities} error={error} graph={graph} loading={loading} summary={summary} />
     </ValidationWorkspace>
   );
 }

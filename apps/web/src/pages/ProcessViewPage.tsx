@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ArchiveKnowledgeProcess } from "../lib/api";
-import { api } from "../lib/api";
+import { getArchiveProcesses } from "../lib/archiveKnowledge";
 import { ProcessFlow } from "../components/ProcessFlow";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
-
-const archiveId = "20161116-nas";
 
 export function ProcessViewPage() {
   const [loading, setLoading] = useState(true);
@@ -16,7 +14,7 @@ export function ProcessViewPage() {
 
     async function loadProcesses() {
       try {
-        const response = await api.get<ArchiveKnowledgeProcess[]>(`/knowledge/archive/${archiveId}/processes`);
+        const response = await getArchiveProcesses();
         if (cancelled) {
           return;
         }
