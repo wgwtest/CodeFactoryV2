@@ -130,6 +130,35 @@ export type ArchiveKnowledgeItemDetail = {
     item_type: string;
     relation_type: string;
   }>;
+  relationship_sections: Array<{
+    key: string;
+    title: string;
+    items: Array<{
+      id: string;
+      name: string;
+      item_type: string;
+      relation_type: string;
+      relation_label: string;
+      direction: string;
+      evidence: string | null;
+    }>;
+  }>;
+};
+
+export type ArchiveKnowledgeItemGraph = {
+  focus_item_id: string;
+  nodes: Array<{
+    id: string;
+    label: string;
+    item_type: string;
+    category: string;
+    is_focus: boolean;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    label: string;
+  }>;
 };
 
 export type ArchiveKnowledgeProcess = {

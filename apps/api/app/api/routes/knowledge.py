@@ -92,6 +92,18 @@ def get_archive_item_detail(
     return detail
 
 
+@router.get("/archive/{archive_id}/items/{item_id}/graph")
+def get_archive_item_graph(
+    archive_id: str,
+    item_id: str,
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    detail = service.get_item_graph(archive_id, item_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Archive item not found")
+    return detail
+
+
 @router.get("/archive/{archive_id}/documents")
 def get_archive_documents(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
     return service.get_documents(archive_id)

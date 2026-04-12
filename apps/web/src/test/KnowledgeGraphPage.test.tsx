@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -152,6 +152,40 @@ test("renders entity list and opens entity details", async () => {
           evidence: [{ document_id: "doc-1", excerpt: "OV-1" }],
           related_items: [
             { id: "entity-nas", name: "国家空域系统", item_type: "entity", relation_type: "supports" }
+          ],
+          relationship_sections: [
+            {
+              key: "outgoing_describes",
+              title: "它描述的对象",
+              items: [
+                {
+                  id: "entity-nas",
+                  name: "国家空域系统",
+                  item_type: "entity",
+                  relation_type: "describes",
+                  relation_label: "描述",
+                  direction: "outgoing",
+                  evidence: "OV-1 描述国家空域系统高层运行概念。"
+                }
+              ]
+            }
+          ]
+        }
+      });
+    }
+
+    if (url.endsWith("/items/entity-ov1/graph")) {
+      return Promise.resolve({
+        data: {
+          focus_item_id: "entity-ov1",
+          nodes: [
+            { id: "entity-ov1", label: "OV-1", item_type: "entity", category: "architecture_artifact", is_focus: true },
+            { id: "entity-nas", label: "国家空域系统", item_type: "entity", category: "system_or_service", is_focus: false },
+            { id: "process-service-interoperability", label: "服务互操作流程", item_type: "process", category: "domain_process", is_focus: false }
+          ],
+          edges: [
+            { source: "entity-nas", target: "entity-ov1", label: "supports" },
+            { source: "entity-ov1", target: "process-service-interoperability", label: "supports" }
           ]
         }
       });
@@ -166,7 +200,16 @@ test("renders entity list and opens entity details", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("当前发布版本：v1")).toBeInTheDocument();
+  expect(await screen.findByText("档案知识总览")).toBeInTheDocument();
+  expect(await screen.findByText("版本：v1")).toBeInTheDocument();
+  expect(await screen.findByText("节点：2")).toBeInTheDocument();
+  expect(await screen.findByText("关系：1")).toBeInTheDocument();
+  expect(await screen.findByRole("radio", { name: "列表视图" })).toBeChecked();
+  expect(await screen.findByRole("radio", { name: "图谱视图" })).toBeInTheDocument();
+  expect(screen.getAllByText(/^文档$/)).toHaveLength(1);
+  expect(screen.getAllByText(/^实体$/)).toHaveLength(1);
+  expect(screen.getAllByText(/^事件$/)).toHaveLength(1);
+  expect(screen.getAllByText(/^流程$/)).toHaveLength(1);
   expect(await screen.findByText("实体列表")).toBeInTheDocument();
   expect(await screen.findByText("国家空域系统")).toBeInTheDocument();
   expect(await screen.findByText("OV-1")).toBeInTheDocument();
@@ -175,10 +218,20 @@ test("renders entity list and opens entity details", async () => {
   fireEvent.change(screen.getByPlaceholderText("搜索实体名称或别名"), { target: { value: "OV-1" } });
   expect(await screen.findByDisplayValue("OV-1")).toBeInTheDocument();
 
+  fireEvent.click(screen.getByRole("radio", { name: "图谱视图" }));
+  expect(await screen.findByText("全局拓扑图")).toBeInTheDocument();
+  expect(await screen.findByText("命中节点：2")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("radio", { name: "列表视图" }));
+  expect(await screen.findByText("实体列表")).toBeInTheDocument();
+
   fireEvent.click(await screen.findByRole("button", { name: "查看详情" }));
 
   expect(await screen.findByText("实体详情")).toBeInTheDocument();
   expect(await screen.findByText("这是什么")).toBeInTheDocument();
+  expect(await screen.findByText("业务关系结构")).toBeInTheDocument();
+  expect(await screen.findByText("它描述的对象")).toBeInTheDocument();
+  expect(await screen.findByText("关系邻域")).toBeInTheDocument();
   expect(
     (
       await screen.findAllByText("OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。")
@@ -187,5 +240,8 @@ test("renders entity list and opens entity details", async () => {
   expect(await screen.findByText("High-Level Operational Concept Graphic")).toBeInTheDocument();
   expect((await screen.findAllByText("远期顶层运行概念图")).length).toBeGreaterThan(0);
   expect(await screen.findByText("NAS AV-1")).toBeInTheDocument();
-  expect(await screen.findByText("国家空域系统")).toBeInTheDocument();
+  expect((await screen.findAllByText("国家空域系统")).length).toBeGreaterThan(0);
+  await waitFor(() =>
+    expect(getMock).toHaveBeenCalledWith("/knowledge/archive/20161116-nas/items/entity-ov1/graph")
+  );
 });
