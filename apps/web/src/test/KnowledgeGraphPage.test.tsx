@@ -15,6 +15,44 @@ vi.mock("../lib/api", () => ({
 
 test("renders entity list and opens entity details", async () => {
   getMock.mockImplementation((url: string) => {
+    if (url.endsWith("/publication")) {
+      return Promise.resolve({
+        data: {
+          archive_id: "20161116-nas",
+          current_version: {
+            version_label: "v1",
+            publisher: "architect",
+            published_at: "2026-04-12T00:00:00Z",
+            summary: {
+              document_count: 65,
+              entity_count: 586,
+              event_count: 4,
+              process_count: 6
+            }
+          },
+          versions: [
+            {
+              version_label: "v1",
+              publisher: "architect",
+              published_at: "2026-04-12T00:00:00Z",
+              summary: {
+                document_count: 65,
+                entity_count: 586,
+                event_count: 4,
+                process_count: 6
+              }
+            }
+          ],
+          working_summary: {
+            document_count: 65,
+            entity_count: 586,
+            event_count: 4,
+            process_count: 6
+          }
+        }
+      });
+    }
+
     if (url.endsWith("/summary")) {
       return Promise.resolve({
         data: {
@@ -128,6 +166,7 @@ test("renders entity list and opens entity details", async () => {
     </MemoryRouter>,
   );
 
+  expect(await screen.findByText("当前发布版本：v1")).toBeInTheDocument();
   expect(await screen.findByText("实体列表")).toBeInTheDocument();
   expect(await screen.findByText("国家空域系统")).toBeInTheDocument();
   expect(await screen.findByText("OV-1")).toBeInTheDocument();

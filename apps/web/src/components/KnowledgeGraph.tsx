@@ -1,7 +1,9 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Drawer, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Button, Descriptions, Empty, Input, List, Row, Space, Spin, Statistic, Table, Tag, Typography } from "antd";
 
-import { api } from "../lib/api";
+import { getArchiveItemDetail } from "../lib/archiveKnowledge";
+import { EvidenceList } from "./EvidenceList";
+import { ValidationDrawer } from "./ValidationDrawer";
 import type {
   ArchiveKnowledgeEntity,
   ArchiveKnowledgeGraph,
@@ -29,7 +31,6 @@ const itemTypeLabels: Record<string, string> = {
 };
 
 type KnowledgeGraphProps = {
-  archiveId: string;
   entities: ArchiveKnowledgeEntity[];
   error: string | null;
   graph: ArchiveKnowledgeGraph | null;
@@ -37,7 +38,7 @@ type KnowledgeGraphProps = {
   summary: ArchiveKnowledgeSummary | null;
 };
 
-export function KnowledgeGraph({ archiveId, entities, error, graph, loading, summary }: KnowledgeGraphProps) {
+export function KnowledgeGraph({ entities, error, graph, loading, summary }: KnowledgeGraphProps) {
   const [searchValue, setSearchValue] = useState("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ArchiveKnowledgeItemDetail | null>(null);
@@ -46,7 +47,9 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
   const deferredSearchValue = useDeferredValue(searchValue);
 
   useEffect(() => {
-    if (!selectedEntityId) {
+    const entityId = selectedEntityId;
+
+    if (!entityId) {
       setDetail(null);
       setDetailError(null);
       return;
@@ -55,11 +58,13 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     let cancelled = false;
 
     async function loadDetail() {
+      const activeEntityId = entityId;
       try {
         setDetailLoading(true);
-        const response = await api.get<ArchiveKnowledgeItemDetail>(
-          `/knowledge/archive/${archiveId}/items/${selectedEntityId}`,
-        );
+        if (activeEntityId === null) {
+          return;
+        }
+        const response = await getArchiveItemDetail(activeEntityId);
         if (cancelled) {
           return;
         }
@@ -80,7 +85,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     return () => {
       cancelled = true;
     };
-  }, [archiveId, selectedEntityId]);
+  }, [selectedEntityId]);
 
   if (loading) {
     return (
@@ -174,17 +179,17 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
         />
       </Space>
 
-      <Drawer title="实体详情" open={selectedEntityId !== null} onClose={() => setSelectedEntityId(null)} width={640}>
-        {detailLoading ? (
-          <Space direction="vertical" size={8} style={{ display: "flex" }}>
-            <Spin />
-            <Typography.Text type="secondary">正在加载实体详情...</Typography.Text>
-          </Space>
-        ) : null}
-
-        {detailError ? <Alert type="error" message="实体详情暂不可用" description={detailError} showIcon /> : null}
-
-        {!detailLoading && !detailError && detail ? (
+      <ValidationDrawer
+        title="实体详情"
+        open={selectedEntityId !== null}
+        onClose={() => setSelectedEntityId(null)}
+        width={640}
+        loading={detailLoading}
+        loadingText="正在加载实体详情..."
+        error={detailError}
+        errorMessage="实体详情暂不可用"
+      >
+        {detail ? (
           <Space direction="vertical" size={16} style={{ display: "flex" }}>
             <div>
               <Typography.Title level={4} style={{ marginTop: 0 }}>
@@ -215,24 +220,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
               <Descriptions.Item label="别名">{detail.aliases.join(" / ") || "无"}</Descriptions.Item>
             </Descriptions>
 
-            <div>
-              <Typography.Title level={5}>证据摘录</Typography.Title>
-              <List
-                bordered
-                dataSource={detail.evidence}
-                locale={{ emptyText: "暂无证据摘录" }}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Space direction="vertical" size={4}>
-                      <Typography.Text>{item.excerpt || "无摘录"}</Typography.Text>
-                      {item.document_title ? (
-                        <Typography.Text type="secondary">{item.document_title}</Typography.Text>
-                      ) : null}
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            </div>
+            <EvidenceList title="证据摘录" items={detail.evidence} />
 
             <div>
               <Typography.Title level={5}>关联文档</Typography.Title>
@@ -272,7 +260,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
             </div>
           </Space>
         ) : null}
-      </Drawer>
+      </ValidationDrawer>
     </Space>
   );
 }

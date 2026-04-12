@@ -15,6 +15,10 @@ vi.mock("../lib/api", () => ({
 
 test("renders documents page on /documents route", async () => {
   getMock.mockImplementation((url: string) => {
+    if (url === "/documents") {
+      return Promise.resolve({ data: [] });
+    }
+
     if (url.endsWith("/summary")) {
       return Promise.resolve({
         data: {
@@ -27,7 +31,7 @@ test("renders documents page on /documents route", async () => {
       });
     }
 
-    if (url.endsWith("/documents")) {
+    if (url.includes("/knowledge/archive/") && url.endsWith("/documents")) {
       return Promise.resolve({
         data: [
           {
@@ -55,5 +59,5 @@ test("renders documents page on /documents route", async () => {
   );
 
   expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
-  expect(await screen.findByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).toBeInTheDocument();
+  expect((await screen.findAllByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).length).toBeGreaterThan(0);
 });

@@ -6,6 +6,54 @@ export const api = axios.create({
 
 export type ArchiveReviewStatus = "pending" | "approved" | "rejected";
 
+export type DocumentParseRun = {
+  id: string;
+  status: string;
+  parser_name: string;
+  parser_version?: string;
+  failure_reason?: string | null;
+  segment_count?: number;
+  created_at?: string;
+};
+
+export type DocumentSegmentPreview = {
+  id: string;
+  block_type: string;
+  heading: string;
+  content: string;
+  anchor: Record<string, string | number>;
+};
+
+export type DocumentVersionDetail = {
+  id: string;
+  version_number: number;
+  file_name: string;
+  mime_type: string;
+  status: string;
+  created_at: string;
+  latest_parse_run: DocumentParseRun | null;
+  parse_runs: DocumentParseRun[];
+  segments_preview: DocumentSegmentPreview[];
+};
+
+export type IntakeDocumentSummary = {
+  id: string;
+  title: string;
+  source_name: string;
+  document_key: string;
+  version_count: number;
+  latest_version: DocumentVersionDetail | null;
+};
+
+export type IntakeDocumentDetail = {
+  id: string;
+  title: string;
+  source_name: string;
+  document_key: string;
+  latest_version: DocumentVersionDetail | null;
+  versions: DocumentVersionDetail[];
+};
+
 export type ArchiveKnowledgeSummary = {
   archive_id: string;
   document_count: number;
@@ -32,6 +80,7 @@ export type ArchiveKnowledgeGraph = {
   nodes: ArchiveKnowledgeNode[];
   edges: ArchiveKnowledgeEdge[];
   summary: ArchiveKnowledgeSummary;
+  publication?: ArchivePublicationVersion | null;
 };
 
 export type ArchiveKnowledgeInterpretation = {
@@ -148,4 +197,28 @@ export type ArchiveKnowledgeBatchApproveInput = {
 export type ArchiveKnowledgeMergeInput = {
   primary_item_id: string;
   secondary_item_id: string;
+};
+
+export type ArchivePublicationVersion = {
+  version_label: string;
+  publisher: string;
+  published_at: string | null;
+  summary: {
+    document_count: number;
+    entity_count: number;
+    event_count: number;
+    process_count: number;
+  };
+};
+
+export type ArchivePublicationOverview = {
+  archive_id: string;
+  current_version: ArchivePublicationVersion | null;
+  versions: ArchivePublicationVersion[];
+  working_summary: {
+    document_count: number;
+    entity_count: number;
+    event_count: number;
+    process_count: number;
+  };
 };

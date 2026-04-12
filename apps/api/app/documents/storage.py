@@ -12,3 +12,6 @@ class LocalStorage:
         target = self.root / key
         target.write_bytes(content)
         return key
+
+    def resolve(self, storage_key: str) -> Path:
+        return self.root / storage_key
