@@ -2,3 +2,6 @@
 __pycache__/
 .pytest_cache/
 node_modules/
+.superpowers/
+.worktrees/
+20161116体系结构文献翻译汇总/
