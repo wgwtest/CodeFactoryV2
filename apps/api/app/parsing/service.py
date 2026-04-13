@@ -7,17 +7,11 @@ from tempfile import TemporaryDirectory
 from sqlalchemy import delete, func, select
 
 from app.db.models.document import DocumentSegment, DocumentVersion, ParseRun
+from app.parsing.models import ParsedDocument, ParsedSegment
 from app.parsing.parsers.doc_converter import convert_doc_to_docx
-from app.parsing.parsers.docx_parser import parse_docx
-from app.parsing.parsers.pdf_parser import parse_pdf
-
-
-@dataclass
-class ParsedSegment:
-    heading: str
-    content: str
-    anchor: dict[str, int | str]
-    block_type: str = "section"
+from app.parsing.parsers.docx_parser import parse_docx_segments
+from app.parsing.parsers.pdf_parser import parse_pdf_segments
+from app.parsing.parsers.spreadsheet_parser import parse_spreadsheet_segments
 
 
 class ParsingService:
@@ -50,23 +44,21 @@ class ParsingService:
         if version is None:
             raise ValueError(f"Document version not found: {document_version_id}")
 
-        adapter = self._resolve_adapter(version.file_name)
         parse_run = ParseRun(
             document_version_id=version.id,
             status="running",
-            parser_name=adapter["name"] if adapter else "unmatched",
-            parser_version="v2",
+            parser_name="dispatching",
+            parser_version="v3",
         )
         self.session.add(parse_run)
         self.session.flush()
 
         try:
-            if adapter is None:
-                raise ValueError(f"Unsupported document type: {Path(version.file_name).suffix.lower() or '<none>'}")
-
-            segments = adapter["parse"](self.storage.resolve(version.storage_key))
+            parsed_document = self.parse_file(self.storage.resolve(version.storage_key), version.file_name)
+            parse_run.parser_name = parsed_document.parser_name
+            parse_run.parser_version = parsed_document.parser_version
             self.session.execute(delete(DocumentSegment).where(DocumentSegment.parse_run_id == parse_run.id))
-            for index, segment in enumerate(segments, start=1):
+            for index, segment in enumerate(parsed_document.segments, start=1):
                 self.session.add(
                     DocumentSegment(
                         parse_run_id=parse_run.id,
@@ -89,6 +81,14 @@ class ParsingService:
         self.session.commit()
         return parse_run
 
+    def parse_file(self, file_path: Path, file_name: str | None = None) -> ParsedDocument:
+        resolved_name = file_name or file_path.name
+        adapter = self._resolve_adapter(resolved_name)
+        if adapter is None:
+            raise ValueError(f"Unsupported document type: {Path(resolved_name).suffix.lower() or '<none>'}")
+
+        return adapter["parse"](file_path)
+
     def _resolve_adapter(self, file_name: str):
         suffix = Path(file_name).suffix.lower()
         adapters = {
@@ -97,44 +97,31 @@ class ParsingService:
             ".docx": {"name": "docx", "parse": self._parse_docx},
             ".pdf": {"name": "pdf", "parse": self._parse_pdf},
             ".doc": {"name": "doc", "parse": self._parse_doc},
+            ".xlsx": {"name": "spreadsheet", "parse": self._parse_spreadsheet},
+            ".xls": {"name": "spreadsheet", "parse": self._parse_spreadsheet},
         }
         return adapters.get(suffix)
 
-    def _parse_plain_text(self, file_path: Path) -> list[ParsedSegment]:
-        return self.parse_text(file_path.name, file_path.read_text(encoding="utf-8", errors="ignore"))
+    def _parse_plain_text(self, file_path: Path) -> ParsedDocument:
+        return ParsedDocument(
+            parser_name="plain_text",
+            parser_version="v3",
+            segments=self.parse_text(file_path.name, file_path.read_text(encoding="utf-8", errors="ignore")),
+        )
 
-    def _parse_docx(self, file_path: Path) -> list[ParsedSegment]:
-        lines = parse_docx(str(file_path))
-        return self._segments_from_lines(lines)
+    def _parse_docx(self, file_path: Path) -> ParsedDocument:
+        return parse_docx_segments(str(file_path))
 
-    def _parse_doc(self, file_path: Path) -> list[ParsedSegment]:
+    def _parse_doc(self, file_path: Path) -> ParsedDocument:
         with TemporaryDirectory() as output_dir:
             converted_path = Path(convert_doc_to_docx(str(file_path), output_dir))
             return self._parse_docx(converted_path)
 
-    def _parse_pdf(self, file_path: Path) -> list[ParsedSegment]:
-        segments: list[ParsedSegment] = []
-        for page_number, page_text in parse_pdf(str(file_path)):
-            blocks = [block.strip() for block in page_text.split("\n\n") if block.strip()]
-            for index, block in enumerate(blocks, start=1):
-                lines = [line.strip() for line in block.splitlines() if line.strip()]
-                if not lines:
-                    continue
-                heading = lines[0]
-                content = " ".join(lines[1:]) or heading
-                segments.append(
-                    ParsedSegment(
-                        heading=heading[:255],
-                        content=content,
-                        anchor={
-                            "page": page_number,
-                            "section": heading[:255],
-                            "line_start": index * 2 - 1,
-                            "line_end": index * 2,
-                        },
-                    )
-                )
-        return segments
+    def _parse_pdf(self, file_path: Path) -> ParsedDocument:
+        return parse_pdf_segments(str(file_path))
+
+    def _parse_spreadsheet(self, file_path: Path) -> ParsedDocument:
+        return parse_spreadsheet_segments(str(file_path))
 
     def _segments_from_lines(self, lines: list[str]) -> list[ParsedSegment]:
         segments: list[ParsedSegment] = []

@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import type { ArchiveKnowledgeProcess } from "../lib/api";
-import { getArchiveProcesses } from "../lib/archiveKnowledge";
+
 import { ProcessFlow } from "../components/ProcessFlow";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { useArchiveContext } from "../context/ArchiveContext";
+import { getArchiveProcesses } from "../lib/archiveKnowledge";
+import type { ArchiveKnowledgeProcess } from "../lib/api";
 
 export function ProcessViewPage() {
+  const { activeArchive, activeArchiveId } = useArchiveContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processes, setProcesses] = useState<ArchiveKnowledgeProcess[]>([]);
@@ -13,8 +16,14 @@ export function ProcessViewPage() {
     let cancelled = false;
 
     async function loadProcesses() {
+      if (!activeArchiveId) {
+        setProcesses([]);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const response = await getArchiveProcesses();
+        const response = await getArchiveProcesses(activeArchiveId);
         if (cancelled) {
           return;
         }
@@ -35,15 +44,15 @@ export function ProcessViewPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeArchiveId]);
 
   return (
     <ValidationWorkspace
       title="流程视图"
-      description="查看从 NAS 档案资料中归纳出的流程知识，包括互操作、治理和路线图规划等流程。"
+      description={`查看已发布流程清单，并下钻流程证据、关联对象、业务关系结构与关系邻域。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
       stats={[{ title: "流程总数", value: processes.length }]}
     >
-      <ProcessFlow error={error} loading={loading} processes={processes} />
+      <ProcessFlow archiveId={activeArchiveId} error={error} loading={loading} processes={processes} />
     </ValidationWorkspace>
   );
 }

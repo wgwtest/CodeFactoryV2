@@ -5,6 +5,7 @@ import { DocumentUploadForm } from "../components/DocumentUploadForm";
 import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { useArchiveContext } from "../context/ArchiveContext";
 import { api } from "../lib/api";
 import { getArchiveDocumentDetail, getArchiveDocuments, getArchiveSummary } from "../lib/archiveKnowledge";
 import type {
@@ -35,6 +36,7 @@ const knowledgeSections: Array<{ key: "entity" | "event" | "process"; title: str
 ];
 
 export function DocumentsPage() {
+  const { activeArchive, activeArchiveId } = useArchiveContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
@@ -54,10 +56,19 @@ export function DocumentsPage() {
   const deferredSearchValue = useDeferredValue(searchValue);
 
   async function loadArchiveDocuments(cancelled?: { current: boolean }) {
+    if (!activeArchiveId) {
+      if (!cancelled?.current) {
+        setSummary(null);
+        setDocuments([]);
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const [summaryResponse, documentsResponse] = await Promise.all([
-        getArchiveSummary(),
-        getArchiveDocuments(),
+        getArchiveSummary(activeArchiveId),
+        getArchiveDocuments(activeArchiveId),
       ]);
       if (cancelled?.current) {
         return;
@@ -105,7 +116,7 @@ export function DocumentsPage() {
     return () => {
       cancelled.current = true;
     };
-  }, []);
+  }, [activeArchiveId]);
 
   useEffect(() => {
     const documentId = selectedIntakeDocumentId;
@@ -147,7 +158,7 @@ export function DocumentsPage() {
   useEffect(() => {
     const documentId = selectedDocumentId;
 
-    if (!documentId) {
+    if (!documentId || !activeArchiveId) {
       setDocumentDetail(null);
       setDetailError(null);
       return;
@@ -157,13 +168,14 @@ export function DocumentsPage() {
 
     async function loadDocumentDetail() {
       const activeDocumentId = documentId;
+      const currentArchiveId = activeArchiveId;
       try {
         setDetailLoading(true);
         setDocumentDetail(null);
-        if (activeDocumentId === null) {
+        if (activeDocumentId === null || currentArchiveId === null) {
           return;
         }
-        const response = await getArchiveDocumentDetail(activeDocumentId);
+        const response = await getArchiveDocumentDetail(activeDocumentId, currentArchiveId);
         if (cancelled) {
           return;
         }
@@ -184,7 +196,7 @@ export function DocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDocumentId]);
+  }, [activeArchiveId, selectedDocumentId]);
 
   const normalizedQuery = deferredSearchValue.trim().toLowerCase();
   const filteredDocuments = documents.filter((item) => {
@@ -204,7 +216,12 @@ export function DocumentsPage() {
   return (
     <ValidationWorkspace
       title="上传源文档"
-      description="导入政策、手册或规程类资料，形成可追溯的文档版本，作为后续解析、抽取和治理的基础。"
+      description={
+        <>
+          导入政策、手册或规程类资料，形成可追溯的文档版本，作为后续解析、抽取和治理的基础。
+          {activeArchive ? ` 当前查看知识库：${activeArchive.name}。` : ""}
+        </>
+      }
       stats={
         summary
           ? [

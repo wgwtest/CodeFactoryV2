@@ -1,0 +1,532 @@
+{
+  "document_count": 75,
+  "llm_used_count": 75,
+  "llm_skipped_count": 0,
+  "documents": [
+    {
+      "title": "10002713_NAS-EA-TV-1-2-v5.1-062714",
+      "file_path": "2014-09-24-FAA NAS EA/10002713_NAS-EA-TV-1-2-v5.1-062714.pdf",
+      "llm_used": true,
+      "candidate_count": 142,
+      "relation_count": 22
+    },
+    {
+      "title": "10002715_NAS-EA-TV-1-2-v5.1-062714",
+      "file_path": "2014-09-24-FAA NAS EA/10002715_NAS-EA-TV-1-2-v5.1-062714.pdf",
+      "llm_used": true,
+      "candidate_count": 141,
+      "relation_count": 22
+    },
+    {
+      "title": "2007 NASEAF_Volume_I-v2_0",
+      "file_path": "2014-09-24-FAA NAS EA/2007 NASEAF_Volume_I-v2_0.pdf",
+      "llm_used": true,
+      "candidate_count": 66,
+      "relation_count": 7
+    },
+    {
+      "title": "2007 NASEAF_Volume_II-v2_0-2",
+      "file_path": "2014-09-24-FAA NAS EA/2007 NASEAF_Volume_II-v2_0-2.pdf",
+      "llm_used": true,
+      "candidate_count": 67,
+      "relation_count": 15
+    },
+    {
+      "title": "2007 NASEAF_Volume_III-v2_0",
+      "file_path": "2014-09-24-FAA NAS EA/2007 NASEAF_Volume_III-v2_0.pdf",
+      "llm_used": true,
+      "candidate_count": 71,
+      "relation_count": 34
+    },
+    {
+      "title": "20070423_nasea_swim_architecture__av_1_sig",
+      "file_path": "2014-09-24-FAA NAS EA/20070423_nasea_swim_architecture__av_1_sig.pdf",
+      "llm_used": true,
+      "candidate_count": 23,
+      "relation_count": 8
+    },
+    {
+      "title": "2012 NAS Integrated Systems Engineering Framework (NAS ISEF) - Appendix A",
+      "file_path": "2014-09-24-FAA NAS EA/2012 NAS Integrated Systems Engineering Framework (NAS ISEF) - Appendix A.pdf",
+      "llm_used": true,
+      "candidate_count": 70,
+      "relation_count": 50
+    },
+    {
+      "title": "2012 NAS Integrated Systems Engineering Framework (NAS ISEF) - Appendix B",
+      "file_path": "2014-09-24-FAA NAS EA/2012 NAS Integrated Systems Engineering Framework (NAS ISEF) - Appendix B.pdf",
+      "llm_used": true,
+      "candidate_count": 44,
+      "relation_count": 12
+    },
+    {
+      "title": "2012 NAS Integrated Systems Engineering Framework (NAS ISEF)",
+      "file_path": "2014-09-24-FAA NAS EA/2012 NAS Integrated Systems Engineering Framework (NAS ISEF).pdf",
+      "llm_used": true,
+      "candidate_count": 43,
+      "relation_count": 8
+    },
+    {
+      "title": "10002022_NAS-EA-OV-1-As-Is-V1.0-091311",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002022_NAS-EA-OV-1-As-Is-V1.0-091311.pdf",
+      "llm_used": true,
+      "candidate_count": 6,
+      "relation_count": 3
+    },
+    {
+      "title": "10002024_NAS-EA-OV-2-As-Is-V1.0-091311",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002024_NAS-EA-OV-2-As-Is-V1.0-091311.pdf",
+      "llm_used": true,
+      "candidate_count": 5,
+      "relation_count": 3
+    },
+    {
+      "title": "10002025_NAS-EA-OV-5-As-Is-v1.0-012910",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002025_NAS-EA-OV-5-As-Is-v1.0-012910.pdf",
+      "llm_used": true,
+      "candidate_count": 12,
+      "relation_count": 9
+    },
+    {
+      "title": "10002026_NAS-EA-OV-6c-As-Is-v1.0-012910",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002026_NAS-EA-OV-6c-As-Is-v1.0-012910.pdf",
+      "llm_used": true,
+      "candidate_count": 25,
+      "relation_count": 8
+    },
+    {
+      "title": "10002106_NAS-EA-OV-1(SD)-As-Is-V1.0-091311",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002106_NAS-EA-OV-1(SD)-As-Is-V1.0-091311.pdf",
+      "llm_used": true,
+      "candidate_count": 30,
+      "relation_count": 8
+    },
+    {
+      "title": "10002107_NAS-EA-OV-2(SD)-As-Is-V1.0-091311",
+      "file_path": "2014-09-24-FAA NAS EA/As is/10002107_NAS-EA-OV-2(SD)-As-Is-V1.0-091311.pdf",
+      "llm_used": true,
+      "candidate_count": 37,
+      "relation_count": 11
+    },
+    {
+      "title": "10002304_NAS-EA-SV-5-Far-Term-v2.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002304_NAS-EA-SV-5-Far-Term-v2.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 15,
+      "relation_count": 11
+    },
+    {
+      "title": "10002305_NAS-EA-SV-5-Far-Term-v2.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002305_NAS-EA-SV-5-Far-Term-v2.0-122012.xls",
+      "llm_used": true,
+      "candidate_count": 13,
+      "relation_count": 4
+    },
+    {
+      "title": "10002306_NAS-EA-SV-6-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002306_NAS-EA-SV-6-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 20,
+      "relation_count": 18
+    },
+    {
+      "title": "10002307_NAS-EA-SV-6-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002307_NAS-EA-SV-6-Far-Term-v3.0-122012.xlsx",
+      "llm_used": true,
+      "candidate_count": 13,
+      "relation_count": 7
+    },
+    {
+      "title": "10002308_NAS-EA-AV-1-Far-Term-v5.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002308_NAS-EA-AV-1-Far-Term-v5.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 59,
+      "relation_count": 35
+    },
+    {
+      "title": "10002309_NAS-EA-AV-2-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002309_NAS-EA-AV-2-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 36,
+      "relation_count": 26
+    },
+    {
+      "title": "10002310_NAS-EA-AV-2-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002310_NAS-EA-AV-2-Far-Term-v3.0-122012.xls",
+      "llm_used": true,
+      "candidate_count": 28,
+      "relation_count": 7
+    },
+    {
+      "title": "10002329_NAS-EA-OV-1-Far-Term-v2.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002329_NAS-EA-OV-1-Far-Term-v2.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 31,
+      "relation_count": 13
+    },
+    {
+      "title": "10002330_NAS-EA-OV-2-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002330_NAS-EA-OV-2-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 25,
+      "relation_count": 15
+    },
+    {
+      "title": "10002331_NAS-EA-OV-3-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002331_NAS-EA-OV-3-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 24,
+      "relation_count": 14
+    },
+    {
+      "title": "10002332_NAS-EA-OV-3-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002332_NAS-EA-OV-3-Far-Term-v3.0-122012.xls",
+      "llm_used": true,
+      "candidate_count": 16,
+      "relation_count": 12
+    },
+    {
+      "title": "10002333_NAS-EA-SV-1-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002333_NAS-EA-SV-1-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 37,
+      "relation_count": 24
+    },
+    {
+      "title": "10002335_NAS-EA-SV-2-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002335_NAS-EA-SV-2-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 24,
+      "relation_count": 12
+    },
+    {
+      "title": "10002336_NAS-EA-SV-4-Far-Term-v3.0-122012",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002336_NAS-EA-SV-4-Far-Term-v3.0-122012.pdf",
+      "llm_used": true,
+      "candidate_count": 24,
+      "relation_count": 11
+    },
+    {
+      "title": "10002714_NAS-EA-TV-1-2-v5.1-062714",
+      "file_path": "2014-09-24-FAA NAS EA/FAR Term/10002714_NAS-EA-TV-1-2-v5.1-062714.pdf",
+      "llm_used": true,
+      "candidate_count": 144,
+      "relation_count": 25
+    },
+    {
+      "title": "10002581_NAS-EA-AV-1-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002581_NAS-EA-AV-1-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 50,
+      "relation_count": 14
+    },
+    {
+      "title": "10002582_NAS-EA-AV-2-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002582_NAS-EA-AV-2-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 13,
+      "relation_count": 10
+    },
+    {
+      "title": "10002583_NAS-EA-AV-2-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002583_NAS-EA-AV-2-Mid-Term-v3.0-022814.xls",
+      "llm_used": true,
+      "candidate_count": 68,
+      "relation_count": 42
+    },
+    {
+      "title": "10002584_NAS-EA-OV-1-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002584_NAS-EA-OV-1-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 29,
+      "relation_count": 13
+    },
+    {
+      "title": "10002585_NAS-EA-OV-2-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002585_NAS-EA-OV-2-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 18,
+      "relation_count": 19
+    },
+    {
+      "title": "10002586_NAS-EA-OV-3-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002586_NAS-EA-OV-3-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 20,
+      "relation_count": 16
+    },
+    {
+      "title": "10002589_NAS-EA-OV-7-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002589_NAS-EA-OV-7-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 16,
+      "relation_count": 10
+    },
+    {
+      "title": "10002590_NAS-EA-SV-1-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002590_NAS-EA-SV-1-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 57,
+      "relation_count": 20
+    },
+    {
+      "title": "10002591_NAS-EA-SV-5-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002591_NAS-EA-SV-5-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 11,
+      "relation_count": 7
+    },
+    {
+      "title": "10002592_NAS-EA-SV-5-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002592_NAS-EA-SV-5-Mid-Term-v3.0-022814.xls",
+      "llm_used": true,
+      "candidate_count": 16,
+      "relation_count": 14
+    },
+    {
+      "title": "10002593_NAS-EA-SV-6-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002593_NAS-EA-SV-6-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 14,
+      "relation_count": 12
+    },
+    {
+      "title": "10002594_NAS-EA-SV-6-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002594_NAS-EA-SV-6-Mid-Term-v3.0-022814.xls",
+      "llm_used": true,
+      "candidate_count": 19,
+      "relation_count": 24
+    },
+    {
+      "title": "10002596_NAS-EA-SV-4-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002596_NAS-EA-SV-4-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 13,
+      "relation_count": 8
+    },
+    {
+      "title": "10002597_NAS-EA-SV-2-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002597_NAS-EA-SV-2-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 46,
+      "relation_count": 14
+    },
+    {
+      "title": "10002660_NAS-EA-OV-5-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002660_NAS-EA-OV-5-Mid-Term-v3.0-022814.pdf",
+      "llm_used": true,
+      "candidate_count": 27,
+      "relation_count": 22
+    },
+    {
+      "title": "10002680_NAS-EA-OV-3-Mid-Term-v3.0-022814",
+      "file_path": "2014-09-24-FAA NAS EA/Mid Term/10002680_NAS-EA-OV-3-Mid-Term-v3.0-022814.xls",
+      "llm_used": true,
+      "candidate_count": 10,
+      "relation_count": 6
+    },
+    {
+      "title": "NAS_Requirements_Document_2012",
+      "file_path": "2014-09-24-FAA NAS EA/NAS_Requirements_Document_2012.pdf",
+      "llm_used": true,
+      "candidate_count": 46,
+      "relation_count": 25
+    },
+    {
+      "title": "NAS_SR-1000-Rev_B_V3.2.2_Final-2008",
+      "file_path": "2014-09-24-FAA NAS EA/NAS_SR-1000-Rev_B_V3.2.2_Final-2008.pdf",
+      "llm_used": true,
+      "candidate_count": 32,
+      "relation_count": 23
+    },
+    {
+      "title": "Service_Roadmaps_v6_0pdf",
+      "file_path": "2014-09-24-FAA NAS EA/Service_Roadmaps_v6_0pdf.pdf",
+      "llm_used": true,
+      "candidate_count": 19,
+      "relation_count": 5
+    },
+    {
+      "title": "10002022_NAS-EA-OV-1-As-Is-V1.0-091311",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/As Is/10002022_NAS-EA-OV-1-As-Is-V1.0-091311.docx",
+      "llm_used": true,
+      "candidate_count": 10,
+      "relation_count": 5
+    },
+    {
+      "title": "10002024_NAS-EA-OV-2-As-Is-V1.0-091311",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/As Is/10002024_NAS-EA-OV-2-As-Is-V1.0-091311.docx",
+      "llm_used": true,
+      "candidate_count": 15,
+      "relation_count": 25
+    },
+    {
+      "title": "10002025_NAS-EA-OV-5-As-Is-v1.0-012910",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/As Is/10002025_NAS-EA-OV-5-As-Is-v1.0-012910.docx",
+      "llm_used": true,
+      "candidate_count": 18,
+      "relation_count": 10
+    },
+    {
+      "title": "10002107_NAS-EA-OV-1(SD)-As-Is-V1.0-091311",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/As Is/10002107_NAS-EA-OV-1(SD)-As-Is-V1.0-091311.docx",
+      "llm_used": true,
+      "candidate_count": 24,
+      "relation_count": 11
+    },
+    {
+      "title": "10002107_NAS-EA-OV-2(SD)-As-Is-V1.0-091311",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/As Is/10002107_NAS-EA-OV-2(SD)-As-Is-V1.0-091311.docx",
+      "llm_used": true,
+      "candidate_count": 31,
+      "relation_count": 13
+    },
+    {
+      "title": "AV-1",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/AV-1.docx",
+      "llm_used": true,
+      "candidate_count": 55,
+      "relation_count": 24
+    },
+    {
+      "title": "AV-2",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/AV-2.docx",
+      "llm_used": true,
+      "candidate_count": 46,
+      "relation_count": 22
+    },
+    {
+      "title": "OV-1",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/OV-1.docx",
+      "llm_used": true,
+      "candidate_count": 39,
+      "relation_count": 19
+    },
+    {
+      "title": "OV-2",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/OV-2.docx",
+      "llm_used": true,
+      "candidate_count": 30,
+      "relation_count": 19
+    },
+    {
+      "title": "SV-1",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/SV-1.docx",
+      "llm_used": true,
+      "candidate_count": 66,
+      "relation_count": 14
+    },
+    {
+      "title": "SV-2",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/SV-2.docx",
+      "llm_used": true,
+      "candidate_count": 26,
+      "relation_count": 15
+    },
+    {
+      "title": "SV-4",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Far Term/SV-4.docx",
+      "llm_used": true,
+      "candidate_count": 39,
+      "relation_count": 29
+    },
+    {
+      "title": "10002581_NAS-EA-AV-1-Mid-Term-v3.0-022814",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/10002581_NAS-EA-AV-1-Mid-Term-v3.0-022814.docx",
+      "llm_used": true,
+      "candidate_count": 57,
+      "relation_count": 12
+    },
+    {
+      "title": "10002584_NAS-EA-OV-1-Mid-Term-v3.0-022814-OV-1",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/10002584_NAS-EA-OV-1-Mid-Term-v3.0-022814-OV-1.docx",
+      "llm_used": true,
+      "candidate_count": 34,
+      "relation_count": 8
+    },
+    {
+      "title": "10002585_NAS-EA-OV-2-Mid-Term-v3.0-022814-OV-2",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/10002585_NAS-EA-OV-2-Mid-Term-v3.0-022814-OV-2.docx",
+      "llm_used": true,
+      "candidate_count": 29,
+      "relation_count": 28
+    },
+    {
+      "title": "10002589_NAS-EA-OV-7-Mid-Term-v3.0-022814",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/10002589_NAS-EA-OV-7-Mid-Term-v3.0-022814.docx",
+      "llm_used": true,
+      "candidate_count": 16,
+      "relation_count": 7
+    },
+    {
+      "title": "10002660_NAS-EA-OV-5-Mid-Term-v3.0-022814",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/10002660_NAS-EA-OV-5-Mid-Term-v3.0-022814.docx",
+      "llm_used": true,
+      "candidate_count": 26,
+      "relation_count": 14
+    },
+    {
+      "title": "SV-1翻译",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/SV-1翻译.docx",
+      "llm_used": true,
+      "candidate_count": 63,
+      "relation_count": 6
+    },
+    {
+      "title": "SV-2翻译",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/SV-2翻译.docx",
+      "llm_used": true,
+      "candidate_count": 51,
+      "relation_count": 4
+    },
+    {
+      "title": "SV-4翻译",
+      "file_path": "20161116-chinese/[3]NAS体系结构产品/Mid Term/SV-4翻译.docx",
+      "llm_used": true,
+      "candidate_count": 25,
+      "relation_count": 16
+    },
+    {
+      "title": "NAS_Requirements_Document_2013（1-42）已完整校核",
+      "file_path": "20161116-chinese/[4]需求文件/2014-NAS-RD-2013(前51页)-p/NAS_Requirements_Document_2013（1-42）已完整校核.doc",
+      "llm_used": true,
+      "candidate_count": 37,
+      "relation_count": 3
+    },
+    {
+      "title": "NAS_Requirements_Document_2025_Final_with_Signatures翻译（整理）",
+      "file_path": "20161116-chinese/[4]需求文件/2014-NAS-RD-2025/NAS_Requirements_Document_2025_Final_with_Signatures翻译（整理）.docx",
+      "llm_used": true,
+      "candidate_count": 42,
+      "relation_count": 4
+    },
+    {
+      "title": "2005-翻译",
+      "file_path": "20161116-chinese/[7]总体论证报告类/2005 FAA Stronger Architecture Program Needed to Guide Systems Modernization Effort/2005-翻译.docx",
+      "llm_used": true,
+      "candidate_count": 14,
+      "relation_count": 2
+    },
+    {
+      "title": "2007 ",
+      "file_path": "20161116-chinese/[7]总体论证报告类/2007 Air Traffic Control—Complete and Enforced Architecture Needed for FAA Systems Modernization/2007 .docx",
+      "llm_used": true,
+      "candidate_count": 50,
+      "relation_count": 0
+    },
+    {
+      "title": "2008论文翻译",
+      "file_path": "20161116-chinese/[7]总体论证报告类/2008 Feasibility Studies on the Integration of Military Ground and Aircraft Systems in the SESAR Concept and Architecture/2008论文翻译.docx",
+      "llm_used": true,
+      "candidate_count": 21,
+      "relation_count": 2
+    },
+    {
+      "title": "ICAO_KPA_GPI_NAS_OI_09_03_10_pdf_v4.0翻译",
+      "file_path": "20161116-chinese/[7]总体论证报告类/ICAO_KPA_GPI_NAS_OI_09_03_10_pdf_v4.0翻译/ICAO_KPA_GPI_NAS_OI_09_03_10_pdf_v4.0翻译.docx",
+      "llm_used": true,
+      "candidate_count": 10,
+      "relation_count": 4
+    }
+  ]
+}

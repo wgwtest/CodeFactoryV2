@@ -2,6 +2,14 @@
 
 First shippable vertical slice for the Software Factory knowledge warehouse. This workspace ingests `PDF/DOC/DOCX`, stores versioned source material, extracts candidate knowledge, supports review and publish workflows, and exposes graph and process exploration views.
 
+## Development policy
+- This project must not use `git worktree` as the default development mode.
+- All daily development, verification, and service startup should run from the repository root workspace.
+- If historical docs mention paths under `.worktrees/`, treat them as obsolete execution context rather than the current project rule.
+- Local runtime data under `.data/` is part of the active root workspace context and must not be split across separate worktrees.
+
+中文说明见：[docs/development-policy.md](docs/development-policy.md)
+
 ## First release capabilities
 - Upload and version source documents.
 - Parse structured evidence segments from uploaded files.
@@ -15,8 +23,9 @@ First shippable vertical slice for the Software Factory knowledge warehouse. Thi
 2. `docker compose up -d`
 3. `uv sync`
 4. `corepack pnpm install`
-5. `uv run uvicorn app.main:app --reload --app-dir apps/api`
-6. `corepack pnpm --dir apps/web dev --host 127.0.0.1 --port 5173`
+5. Do not create or use `.worktrees/*` for this project.
+6. `uv run uvicorn app.main:app --reload --app-dir apps/api`
+7. `corepack pnpm --dir apps/web dev --host 127.0.0.1 --port 5173`
 
 ## Verification commands
 - `uv run pytest apps/api/tests -q`

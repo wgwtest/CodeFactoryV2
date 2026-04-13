@@ -18,6 +18,7 @@ import { CandidateReviewTable } from "../components/CandidateReviewTable";
 import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { useArchiveContext } from "../context/ArchiveContext";
 import { api } from "../lib/api";
 import { getArchivePublication } from "../lib/archiveKnowledge";
 import type {
@@ -30,8 +31,6 @@ import type {
   ArchiveReviewCandidate,
   ArchiveReviewStatus,
 } from "../lib/api";
-
-const archiveId = "20161116-nas";
 
 const itemTypeLabels: Record<string, string> = {
   entity: "实体",
@@ -63,6 +62,7 @@ type ItemTypeFilter = "all" | "entity" | "event" | "process";
 type ReviewStatusFilter = "all" | ArchiveReviewStatus;
 
 export function GovernancePage() {
+  const { activeArchive, activeArchiveId } = useArchiveContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -83,12 +83,20 @@ export function GovernancePage() {
   const [publisher, setPublisher] = useState("architect");
 
   async function loadCandidates() {
-    const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`);
+    if (!activeArchiveId) {
+      setCandidates([]);
+      return;
+    }
+    const response = await api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${activeArchiveId}/review-candidates`);
     setCandidates(response.data);
   }
 
   async function loadPublication() {
-    const response = await getArchivePublication(archiveId);
+    if (!activeArchiveId) {
+      setPublicationOverview(null);
+      return;
+    }
+    const response = await getArchivePublication(activeArchiveId);
     setPublicationOverview(response.data);
   }
 
@@ -96,10 +104,16 @@ export function GovernancePage() {
     let cancelled = false;
 
     async function loadInitialCandidates() {
+      if (!activeArchiveId) {
+        setCandidates([]);
+        setPublicationOverview(null);
+        setLoading(false);
+        return;
+      }
       try {
         const [candidateResponse, publicationResponse] = await Promise.all([
-          api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${archiveId}/review-candidates`),
-          getArchivePublication(archiveId),
+          api.get<ArchiveReviewCandidate[]>(`/knowledge/archive/${activeArchiveId}/review-candidates`),
+          getArchivePublication(activeArchiveId),
         ]);
         if (cancelled) {
           return;
@@ -122,10 +136,10 @@ export function GovernancePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeArchiveId]);
 
   useEffect(() => {
-    if (!activeItemId) {
+    if (!activeItemId || !activeArchiveId) {
       setActiveDetail(null);
       return;
     }
@@ -136,7 +150,7 @@ export function GovernancePage() {
       try {
         setDetailLoading(true);
         const response = await api.get<ArchiveKnowledgeItemDetail>(
-          `/knowledge/archive/${archiveId}/items/${activeItemId}`,
+          `/knowledge/archive/${activeArchiveId}/items/${activeItemId}`,
         );
         if (cancelled) {
           return;
@@ -161,7 +175,7 @@ export function GovernancePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeItemId]);
+  }, [activeArchiveId, activeItemId]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredCandidates = candidates.filter((item) => {
@@ -186,7 +200,7 @@ export function GovernancePage() {
   });
 
   async function handleApplyChanges() {
-    if (!activeDetail) {
+    if (!activeDetail || !activeArchiveId) {
       return;
     }
 
@@ -198,7 +212,7 @@ export function GovernancePage() {
         aliases: parseAliasInput(draftAliases),
       };
       const response = await api.patch<ArchiveKnowledgeItemDetail>(
-        `/knowledge/archive/${archiveId}/items/${activeDetail.id}`,
+        `/knowledge/archive/${activeArchiveId}/items/${activeDetail.id}`,
         payload,
       );
       setActiveDetail(response.data);
@@ -213,11 +227,14 @@ export function GovernancePage() {
   }
 
   async function handleReview(itemId: string, reviewStatus: ArchiveReviewStatus) {
+    if (!activeArchiveId) {
+      return;
+    }
     try {
       setDrawerSaving(true);
       const payload: ArchiveKnowledgeItemReviewInput = { review_status: reviewStatus };
       const response = await api.post<ArchiveKnowledgeItemDetail>(
-        `/knowledge/archive/${archiveId}/items/${itemId}/review`,
+        `/knowledge/archive/${activeArchiveId}/items/${itemId}/review`,
         payload,
       );
       if (activeDetail && activeDetail.id === itemId) {
@@ -233,12 +250,15 @@ export function GovernancePage() {
   }
 
   async function handleBatchApprove() {
+    if (!activeArchiveId) {
+      return;
+    }
     try {
       setDrawerSaving(true);
       const payload: ArchiveKnowledgeBatchApproveInput = {
         item_ids: selectedRowKeys.map((item) => String(item)),
       };
-      await api.post(`/knowledge/archive/${archiveId}/reviews/batch-approve`, payload);
+      await api.post(`/knowledge/archive/${activeArchiveId}/reviews/batch-approve`, payload);
       setSelectedRowKeys([]);
       await loadCandidates();
       setActionError(null);
@@ -250,6 +270,9 @@ export function GovernancePage() {
   }
 
   async function handleApproveAllPending() {
+    if (!activeArchiveId) {
+      return;
+    }
     try {
       setDrawerSaving(true);
       const payload: ArchiveKnowledgeBatchApproveInput = {
@@ -257,7 +280,7 @@ export function GovernancePage() {
           .filter((item) => item.review_status === "pending")
           .map((item) => item.id),
       };
-      await api.post(`/knowledge/archive/${archiveId}/reviews/batch-approve`, payload);
+      await api.post(`/knowledge/archive/${activeArchiveId}/reviews/batch-approve`, payload);
       setSelectedRowKeys([]);
       await loadCandidates();
       setActionError(null);
@@ -269,7 +292,7 @@ export function GovernancePage() {
   }
 
   async function handleMerge(secondaryItemId: string) {
-    if (!activeDetail) {
+    if (!activeDetail || !activeArchiveId) {
       return;
     }
 
@@ -280,7 +303,7 @@ export function GovernancePage() {
         secondary_item_id: secondaryItemId,
       };
       const response = await api.post<ArchiveKnowledgeItemDetail>(
-        `/knowledge/archive/${archiveId}/items/merge`,
+        `/knowledge/archive/${activeArchiveId}/items/merge`,
         payload,
       );
       setActiveDetail(response.data);
@@ -297,9 +320,12 @@ export function GovernancePage() {
   }
 
   async function handlePublish() {
+    if (!activeArchiveId) {
+      return;
+    }
     try {
       setDrawerSaving(true);
-      await api.post(`/knowledge/archive/${archiveId}/publish`, {
+      await api.post(`/knowledge/archive/${activeArchiveId}/publish`, {
         version_label: versionLabel.trim(),
         publisher: publisher.trim(),
       });
@@ -315,7 +341,7 @@ export function GovernancePage() {
   return (
     <ValidationWorkspace
       title="知识审核发布"
-      description="审核机器抽取出的候选知识，并将修正直接应用到当前知识库。"
+      description={`审核机器抽取出的候选知识，并将修正直接应用到当前知识库。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
       stats={[
         { title: "候选总数", value: candidates.length },
         { title: "当前筛出", value: filteredCandidates.length },

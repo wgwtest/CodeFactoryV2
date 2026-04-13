@@ -3,6 +3,7 @@ import type {
   ArchiveKnowledgeDocument,
   ArchiveKnowledgeDocumentDetail,
   ArchiveKnowledgeEntity,
+  ArchiveKnowledgeItemGraph,
   ArchiveKnowledgeGraph,
   ArchiveKnowledgeItemDetail,
   ArchiveKnowledgeProcess,
@@ -43,6 +44,10 @@ export function getArchiveEntities(archiveId = DEFAULT_ARCHIVE_ID) {
 
 export function getArchiveItemDetail(itemId: string, archiveId = DEFAULT_ARCHIVE_ID) {
   return api.get<ArchiveKnowledgeItemDetail>(`${withArchiveId(archiveId)}/items/${itemId}`);
+}
+
+export function getArchiveItemGraph(itemId: string, archiveId = DEFAULT_ARCHIVE_ID) {
+  return api.get<ArchiveKnowledgeItemGraph>(`${withArchiveId(archiveId)}/items/${itemId}/graph`);
 }
 
 export function getArchiveProcesses(archiveId = DEFAULT_ARCHIVE_ID) {

@@ -121,6 +121,7 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
     search = client.get("/api/knowledge/archive/20161116-nas/search?query=NAS")
     entities = client.get("/api/knowledge/archive/20161116-nas/entities")
     item_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1")
+    item_graph = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1/graph")
     document_detail = client.get("/api/knowledge/archive/20161116-nas/documents/doc-1")
     missing_document_detail = client.get("/api/knowledge/archive/20161116-nas/documents/missing")
     documents = client.get("/api/knowledge/archive/20161116-nas/documents")
@@ -225,7 +226,39 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
                 "relation_type": "supports",
             },
         ],
+        "relationship_sections": [
+            {
+                "key": "other",
+                "title": "其他直接关联",
+                "items": [
+                    {
+                        "id": "entity-nas",
+                        "name": "国家空域系统",
+                        "item_type": "entity",
+                        "relation_type": "supports",
+                        "relation_label": "supports",
+                        "direction": "incoming",
+                        "evidence": None,
+                    },
+                    {
+                        "id": "process-service-interoperability",
+                        "name": "服务互操作流程",
+                        "item_type": "process",
+                        "relation_type": "supports",
+                        "relation_label": "supports",
+                        "direction": "outgoing",
+                        "evidence": None,
+                    },
+                ],
+            }
+        ],
     }
+
+    assert item_graph.status_code == 200
+    assert item_graph.json()["focus_item_id"] == "entity-ov1"
+    assert any(node["id"] == "entity-ov1" and node["is_focus"] for node in item_graph.json()["nodes"])
+    assert any(node["id"] == "entity-nas" for node in item_graph.json()["nodes"])
+    assert {"source": "entity-nas", "target": "entity-ov1", "label": "supports"} in item_graph.json()["edges"]
 
     assert document_detail.status_code == 200
     assert document_detail.json()["document"] == {
@@ -250,7 +283,6 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
     assert ov1_detail["evidence"] == [
         {"document_id": "doc-1", "document_title": "NAS AV-1", "excerpt": "OV-1 excerpt"},
     ]
-
     assert missing_document_detail.status_code == 404
     assert missing_document_detail.json() == {"detail": "Archive document not found"}
 
@@ -280,6 +312,167 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
         "evidence_document_title": "NAS AV-1",
     }
 
+
+def test_archive_item_detail_groups_business_relationships(tmp_path) -> None:
+    archive_file = tmp_path / "20161116-nas-knowledge.json"
+    archive_file.write_text(
+        """
+{
+  "summary": {
+    "document_count": 1,
+    "entity_count": 4,
+    "event_count": 0,
+    "process_count": 1
+  },
+  "documents": [
+    {
+      "id": "doc-1",
+      "title": "NAS OV-2",
+      "path": "archive/NAS OV-2.docx",
+      "file_type": "docx",
+      "source_archive": "20161116-nas",
+      "character_count": 4200
+    }
+  ],
+  "entities": [
+    {
+      "id": "entity-nas",
+      "name": "国家空域系统",
+      "category": "system_or_service",
+      "aliases": ["NAS"],
+      "document_ids": ["doc-1"],
+      "evidence": [{"document_id": "doc-1", "excerpt": "国家空域系统"}]
+    },
+    {
+      "id": "entity-ov2",
+      "name": "OV-2",
+      "category": "architecture_artifact",
+      "aliases": [],
+      "document_ids": ["doc-1"],
+      "evidence": [{"document_id": "doc-1", "excerpt": "OV-2"}]
+    },
+    {
+      "id": "entity-tower",
+      "name": "机场塔台管制",
+      "category": "operational_node",
+      "aliases": ["ATCT"],
+      "document_ids": ["doc-1"],
+      "evidence": [{"document_id": "doc-1", "excerpt": "机场塔台管制"}]
+    },
+    {
+      "id": "entity-faa",
+      "name": "联邦航空管理局",
+      "category": "organization",
+      "aliases": ["FAA"],
+      "document_ids": ["doc-1"],
+      "evidence": [{"document_id": "doc-1", "excerpt": "联邦航空管理局"}]
+    }
+  ],
+  "events": [],
+  "processes": [
+    {
+      "id": "process-transfer",
+      "name": "管制移交",
+      "category": "domain_process",
+      "aliases": [],
+      "document_ids": ["doc-1"],
+      "evidence": [{"document_id": "doc-1", "excerpt": "管制移交"}]
+    }
+  ],
+  "relations": [
+    {"type": "describes", "from": "entity-ov2", "to": "entity-nas", "evidence": "OV-2 描述国家空域系统"},
+    {"type": "owned_by", "from": "entity-ov2", "to": "entity-faa", "evidence": "OV-2 由 FAA 发布"},
+    {"type": "part_of", "from": "entity-tower", "to": "entity-nas", "evidence": "机场塔台管制属于国家空域系统"},
+    {"type": "part_of", "from": "process-transfer", "to": "entity-nas", "evidence": "管制移交属于国家空域系统"}
+  ]
+}
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    app = create_app()
+    app.dependency_overrides[get_archive_knowledge_service] = lambda: ArchiveKnowledgeService(tmp_path)
+    client = TestClient(app)
+
+    nas_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-nas")
+    ov2_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov2")
+
+    assert nas_detail.status_code == 200
+    assert nas_detail.json()["relationship_sections"] == [
+        {
+            "key": "incoming_part_of",
+            "title": "包含的对象与流程",
+            "items": [
+                {
+                    "id": "entity-tower",
+                    "name": "机场塔台管制",
+                    "item_type": "entity",
+                    "relation_type": "part_of",
+                    "relation_label": "包含",
+                    "direction": "incoming",
+                    "evidence": "机场塔台管制属于国家空域系统",
+                },
+                {
+                    "id": "process-transfer",
+                    "name": "管制移交",
+                    "item_type": "process",
+                    "relation_type": "part_of",
+                    "relation_label": "包含",
+                    "direction": "incoming",
+                    "evidence": "管制移交属于国家空域系统",
+                },
+            ],
+        },
+        {
+            "key": "incoming_describes",
+            "title": "描述它的架构产物",
+            "items": [
+                {
+                    "id": "entity-ov2",
+                    "name": "OV-2",
+                    "item_type": "entity",
+                    "relation_type": "describes",
+                    "relation_label": "被描述于",
+                    "direction": "incoming",
+                    "evidence": "OV-2 描述国家空域系统",
+                }
+            ],
+        },
+    ]
+
+    assert ov2_detail.status_code == 200
+    assert ov2_detail.json()["relationship_sections"] == [
+        {
+            "key": "outgoing_describes",
+            "title": "它描述的对象",
+            "items": [
+                {
+                    "id": "entity-nas",
+                    "name": "国家空域系统",
+                    "item_type": "entity",
+                    "relation_type": "describes",
+                    "relation_label": "描述",
+                    "direction": "outgoing",
+                    "evidence": "OV-2 描述国家空域系统",
+                }
+            ],
+        },
+        {
+            "key": "outgoing_owned_by",
+            "title": "责任方/发布方",
+            "items": [
+                {
+                    "id": "entity-faa",
+                    "name": "联邦航空管理局",
+                    "item_type": "entity",
+                    "relation_type": "owned_by",
+                    "relation_label": "责任方",
+                    "direction": "outgoing",
+                    "evidence": "OV-2 由 FAA 发布",
+                }
+            ],
+        },
+    ]
 
 def test_archive_review_mutations_create_curated_knowledge_and_update_public_views(tmp_path) -> None:
     archive_file = tmp_path / "20161116-nas-knowledge.json"

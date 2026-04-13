@@ -5,3 +5,11 @@ node_modules/
 .superpowers/
 .worktrees/
 20161116体系结构文献翻译汇总/
+DataSource/
+apps/web/dist/
+.data/application_modeling/
+.data/source_archives/
+.data/knowledge_output/archive-registry.json
+.data/knowledge_output/MJ-V1-*
+.data/knowledge_output/ui-test-kb-*
+graphify-out/cache/

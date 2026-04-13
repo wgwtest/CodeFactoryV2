@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from hashlib import md5
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.extraction.service import ExtractionService
+    from app.parsing.models import ParsedSegment
 
 
 ACRONYM_PATTERN = re.compile(
@@ -94,13 +99,21 @@ class SourceDocument:
     file_type: str
     source_archive: str
     text: str
+    parser_name: str | None = None
+    segment_count: int = 0
+    segments: list["ParsedSegment"] | None = None
 
 
-def build_knowledge_index(documents: list[SourceDocument]) -> dict:
+def build_knowledge_index(
+    documents: list[SourceDocument],
+    extraction_service: "ExtractionService | None" = None,
+) -> dict:
     nodes: dict[tuple[str, str], dict] = {}
     relations: list[dict[str, str]] = []
     relation_keys: set[tuple[str, str, str]] = set()
     document_rows: list[dict[str, str | int]] = []
+    known_item_ids_by_name: dict[str, str] = {}
+    known_item_ids_by_alias: dict[str, str] = {}
 
     for document in documents:
         doc_id = _document_id(document.path)
@@ -115,49 +128,55 @@ def build_knowledge_index(documents: list[SourceDocument]) -> dict:
             }
         )
 
-        lines = [line.strip() for line in document.text.splitlines() if line.strip()]
-        interactions = _extract_operational_interactions(lines)
+        batch = _extract_document_knowledge(document, doc_id, extraction_service)
+        local_item_ids_by_name: dict[str, str] = {}
+        local_item_ids_by_alias: dict[str, str] = {}
 
-        doc_entities = _extract_entities(document, lines, interactions)
-        doc_events = _extract_events(document, lines)
-        doc_processes = _extract_processes(document, lines)
-
-        entity_ids_by_name: dict[str, str] = {}
-        entity_ids_by_alias: dict[str, str] = {}
-        for item in doc_entities:
-            node_id = _merge_node(nodes, "entity", item, doc_id)
-            entity_ids_by_name[item["name"]] = node_id
-            entity_ids_by_alias[_slug(item["name"])] = node_id
+        for candidate in batch.candidates:
+            item_kind = _normalize_item_kind(candidate.item_type)
+            item = {
+                "name": candidate.canonical_name,
+                "category": candidate.payload.get("category", _default_category(item_kind)),
+                "aliases": candidate.payload.get("aliases", []),
+                "evidence": candidate.payload.get("evidence") or document.title,
+            }
+            node_id = _merge_node(nodes, item_kind, item, doc_id)
+            local_item_ids_by_name[item["name"]] = node_id
+            local_item_ids_by_alias[_slug(item["name"])] = node_id
+            known_item_ids_by_name[item["name"]] = node_id
+            known_item_ids_by_alias[_slug(item["name"])] = node_id
             for alias in item.get("aliases", []):
-                entity_ids_by_alias.setdefault(_slug(alias), node_id)
+                alias_slug = _slug(alias)
+                local_item_ids_by_alias.setdefault(alias_slug, node_id)
+                known_item_ids_by_alias.setdefault(alias_slug, node_id)
             _add_relation(relations, relation_keys, "document_mentions", doc_id, node_id)
 
-        event_ids: list[str] = []
-        for item in doc_events:
-            node_id = _merge_node(nodes, "event", item, doc_id)
-            event_ids.append(node_id)
-            _add_relation(relations, relation_keys, "document_scoped_by", doc_id, node_id)
-
-        for item in doc_processes:
-            node_id = _merge_node(nodes, "process", item, doc_id)
-            _add_relation(relations, relation_keys, "document_mentions", doc_id, node_id)
-            for event_id in event_ids:
-                _add_relation(relations, relation_keys, "process_scoped_by", node_id, event_id)
-
-        for interaction in interactions:
-            source_id = _resolve_entity_id(interaction["source_name"], entity_ids_by_name, entity_ids_by_alias)
-            target_id = _resolve_entity_id(interaction["target_name"], entity_ids_by_name, entity_ids_by_alias)
-            if source_id and target_id and source_id != target_id:
-                _add_relation(relations, relation_keys, "operational_exchange", source_id, target_id)
-
-            for exchange in interaction["exchanges"]:
-                exchange_id = _resolve_entity_id(exchange["name"], entity_ids_by_name, entity_ids_by_alias)
-                if exchange_id is None:
-                    continue
-                if source_id:
-                    _add_relation(relations, relation_keys, "participates_in_exchange", source_id, exchange_id)
-                if target_id:
-                    _add_relation(relations, relation_keys, "participates_in_exchange", target_id, exchange_id)
+        for relation in batch.relations:
+            source_id = _resolve_item_id(
+                relation.source_name,
+                local_item_ids_by_name,
+                local_item_ids_by_alias,
+                known_item_ids_by_name,
+                known_item_ids_by_alias,
+            )
+            target_id = _resolve_item_id(
+                relation.target_name,
+                local_item_ids_by_name,
+                local_item_ids_by_alias,
+                known_item_ids_by_name,
+                known_item_ids_by_alias,
+            )
+            if source_id is None or target_id is None or source_id == target_id:
+                continue
+            _add_relation(
+                relations,
+                relation_keys,
+                relation.relation_type,
+                source_id,
+                target_id,
+                confidence=relation.confidence,
+                evidence=relation.payload.get("evidence"),
+            )
 
     entities = _finalize_nodes(nodes, "entity")
     events = _finalize_nodes(nodes, "event")
@@ -174,13 +193,64 @@ def build_knowledge_index(documents: list[SourceDocument]) -> dict:
             "entity_count": len(entities),
             "event_count": len(events),
             "process_count": len(processes),
+            "relation_count": len(relations),
         },
     }
+
+
+def _extract_document_knowledge(
+    document: SourceDocument,
+    doc_id: str,
+    extraction_service: "ExtractionService | None",
+):
+    from app.extraction.rules import extract_document_batch
+
+    if extraction_service is None:
+        from app.extraction.service import ExtractionService
+
+        extraction_service = ExtractionService()
+
+    segments = document.segments or _segments_from_text(document.text)
+    if not segments:
+        return extract_document_batch(document_id=doc_id, document=document, segments=[])
+
+    return extraction_service.extract_document(
+        document_id=doc_id,
+        title=document.title,
+        file_path=document.path,
+        segments=segments,
+    )
 
 
 def _extract_entities(document: SourceDocument, lines: list[str], interactions: list[dict]) -> list[dict]:
     text = "\n".join(lines)
     found: dict[str, dict] = {}
+
+    if (
+        "国家空域系统" in document.title
+        or "NAS" in document.title.upper()
+        or "国家空域系统" in text[:1000]
+        or "NAS" in document.path.upper()
+    ):
+        found.setdefault(
+            "国家空域系统",
+            {
+                "name": "国家空域系统",
+                "category": "system_or_service",
+                "aliases": ["NAS"],
+                "evidence": document.title,
+            },
+        )
+    if "联邦航空管理局" in text[:1000] or "FAA" in text[:1000].upper():
+        found.setdefault(
+            "联邦航空管理局",
+            {
+                "name": "联邦航空管理局",
+                "category": "organization",
+                "aliases": ["FAA"],
+                "evidence": document.title,
+            },
+        )
 
     for code in sorted({match.upper() for match in ARTIFACT_PATTERN.findall(f"{document.title}\n{text[:3000]}")}):
         found[code] = {
@@ -273,11 +343,33 @@ def _extract_events(document: SourceDocument, lines: list[str]) -> list[dict]:
 def _extract_processes(document: SourceDocument, lines: list[str]) -> list[dict]:
     search_space = f"{document.title}\n" + "\n".join(lines[:240])
     lowered = search_space.lower()
-    processes = []
+    found: dict[str, dict] = {}
     for name, patterns in PROCESS_RULES.items():
         if any(pattern in lowered for pattern in patterns):
-            processes.append({"name": name, "category": "domain_process", "aliases": [], "evidence": document.title})
-    return processes
+            found[name] = {"name": name, "category": "domain_process", "aliases": [], "evidence": document.title}
+
+    if "ov-5" in lowered or "运行活动模型" in search_space:
+        for line in lines[:1600]:
+            cells = _split_table_row(line)
+            if len(cells) < 2 or _is_table_divider(cells):
+                continue
+
+            english_name = _clean_phrase(cells[0])
+            chinese_name = _clean_phrase(cells[1])
+            if not _looks_like_activity_name(english_name, chinese_name):
+                continue
+
+            found.setdefault(
+                chinese_name,
+                {
+                    "name": chinese_name,
+                    "category": "domain_process",
+                    "aliases": [english_name] if english_name and english_name != chinese_name else [],
+                    "evidence": line,
+                },
+            )
+
+    return list(found.values())
 
 
 def _extract_operational_interactions(lines: list[str]) -> list[dict]:
@@ -411,22 +503,86 @@ def _finalize_nodes(nodes: dict[tuple[str, str], dict], kind: str) -> list[dict]
     return sorted(finalized, key=lambda item: (-len(item["document_ids"]), item["name"]))
 
 
+def _default_category(item_kind: str) -> str:
+    return {
+        "entity": "domain_concept",
+        "event": "timeline_event",
+        "process": "domain_process",
+    }.get(item_kind, "domain_concept")
+
+
+def _normalize_item_kind(item_type: str) -> str:
+    if item_type in {"entity", "event", "process"}:
+        return item_type
+    return "entity"
+
+
+def _resolve_item_id(
+    name: str,
+    local_item_ids_by_name: dict[str, str],
+    local_item_ids_by_alias: dict[str, str],
+    known_item_ids_by_name: dict[str, str],
+    known_item_ids_by_alias: dict[str, str],
+) -> str | None:
+    return (
+        local_item_ids_by_name.get(name)
+        or local_item_ids_by_alias.get(_slug(name))
+        or known_item_ids_by_name.get(name)
+        or known_item_ids_by_alias.get(_slug(name))
+    )
+
+
 def _add_relation(
     relations: list[dict[str, str]],
     relation_keys: set[tuple[str, str, str]],
     relation_type: str,
     from_id: str,
     to_id: str,
+    *,
+    confidence: float | None = None,
+    evidence: str | None = None,
 ) -> None:
     key = (relation_type, from_id, to_id)
     if key in relation_keys:
+        if confidence is None and evidence is None:
+            return
+        for relation in relations:
+            if relation["type"] != relation_type or relation["from"] != from_id or relation["to"] != to_id:
+                continue
+            if confidence is not None:
+                relation["confidence"] = max(confidence, float(relation.get("confidence", 0)))
+            if evidence and not relation.get("evidence"):
+                relation["evidence"] = evidence
         return
     relation_keys.add(key)
-    relations.append({"type": relation_type, "from": from_id, "to": to_id})
+    relation: dict[str, str | float] = {"type": relation_type, "from": from_id, "to": to_id}
+    if confidence is not None:
+        relation["confidence"] = confidence
+    if evidence:
+        relation["evidence"] = evidence
+    relations.append(relation)
 
 
 def _resolve_entity_id(name: str, entity_ids_by_name: dict[str, str], entity_ids_by_alias: dict[str, str]) -> str | None:
     return entity_ids_by_name.get(name) or entity_ids_by_alias.get(_slug(name))
+
+
+def _segments_from_text(text: str) -> list["ParsedSegment"]:
+    from app.parsing.models import ParsedSegment
+
+    segments: list[ParsedSegment] = []
+    for index, line in enumerate((line.strip() for line in text.splitlines()), start=1):
+        if not line:
+            continue
+        segments.append(
+            ParsedSegment(
+                heading=line[:255],
+                content=line,
+                anchor={"page": 1, "section": line[:255], "line_start": index, "line_end": index},
+                block_type="table_row" if line.startswith("|") else "paragraph",
+            )
+        )
+    return segments
 
 
 def _classify_entity(name: str, acronym: str) -> str:
@@ -496,3 +652,25 @@ def _dedupe_list(values: list[str]) -> list[str]:
         seen.add(value)
         deduped.append(value)
     return deduped
+
+
+def _looks_like_activity_name(english_name: str, chinese_name: str) -> bool:
+    if not _valid_phrase(chinese_name):
+        return False
+    upper = english_name.upper()
+    activity_tokens = (
+        "MANAGE",
+        "PLAN",
+        "CONTROL",
+        "ADVISE",
+        "ALLOCATE",
+        "DEVELOP",
+        "TRACK",
+        "SEPARATE",
+        "SYNCHRONIZE",
+        "TRANSFER",
+        "PROVIDE",
+        "MONITOR",
+        "REQUEST",
+    )
+    return any(token in upper for token in activity_tokens)

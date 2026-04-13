@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api"
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
 });
 
 export type ArchiveReviewStatus = "pending" | "approved" | "rejected";
@@ -60,6 +60,32 @@ export type ArchiveKnowledgeSummary = {
   entity_count: number;
   event_count: number;
   process_count: number;
+};
+
+export type KnowledgeArchiveArtifacts = {
+  base_exists: boolean;
+  curated_exists: boolean;
+  publication_exists: boolean;
+};
+
+export type KnowledgeArchive = {
+  archive_id: string;
+  name: string;
+  source_dir: string;
+  extract_root: string;
+  is_active: boolean;
+  status: "empty" | "extracting" | "ready" | "error";
+  last_built_at: string | null;
+  last_error: string | null;
+  summary: ArchiveKnowledgeSummary | null;
+  artifacts: KnowledgeArchiveArtifacts;
+};
+
+export type CreateKnowledgeArchiveInput = {
+  archive_id: string;
+  name: string;
+  source_dir: string;
+  extract_root?: string;
 };
 
 export type ArchiveKnowledgeNode = {
@@ -129,6 +155,35 @@ export type ArchiveKnowledgeItemDetail = {
     name: string;
     item_type: string;
     relation_type: string;
+  }>;
+  relationship_sections: Array<{
+    key: string;
+    title: string;
+    items: Array<{
+      id: string;
+      name: string;
+      item_type: string;
+      relation_type: string;
+      relation_label: string;
+      direction: string;
+      evidence: string | null;
+    }>;
+  }>;
+};
+
+export type ArchiveKnowledgeItemGraph = {
+  focus_item_id: string;
+  nodes: Array<{
+    id: string;
+    label: string;
+    item_type: string;
+    category: string;
+    is_focus: boolean;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    label: string;
   }>;
 };
 
@@ -221,4 +276,241 @@ export type ArchivePublicationOverview = {
     event_count: number;
     process_count: number;
   };
+};
+
+export type RequirementFormalElement = {
+  id: string;
+  name: string;
+  item_type: "entity" | "process";
+  category: string | null;
+  aliases: string[];
+  document_count: number;
+  summary: string;
+  source_archive_id: string;
+};
+
+export type RequirementApplication = {
+  name: string;
+  domain: string;
+  summary: string;
+  target_users: string[];
+};
+
+export type RequirementObject = {
+  id: string;
+  name: string;
+  object_kind: "business" | "supporting";
+  source_kind: "formal" | "temporary";
+  category: string | null;
+  aliases: string[];
+  summary: string | null;
+  description: string | null;
+  source_archive_id: string | null;
+  source_item_type: "entity" | "process" | null;
+  source_item_id: string | null;
+};
+
+export type RequirementProcess = {
+  id: string;
+  name: string;
+  process_kind: "lifecycle" | "collaboration";
+  source_kind: "formal" | "temporary";
+  description: string | null;
+  participant_object_ids: string[];
+  source_archive_id: string | null;
+  source_item_type: "process" | null;
+  source_item_id: string | null;
+};
+
+export type RequirementRule = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type RequirementMetric = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type RequirementConstraint = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+};
+
+export type RequirementSpecPayload = {
+  application: RequirementApplication;
+  objects: RequirementObject[];
+  processes: RequirementProcess[];
+  rules: RequirementRule[];
+  metrics: RequirementMetric[];
+  non_functional_constraints: RequirementConstraint[];
+};
+
+export type RequirementSpecSummary = {
+  id: string;
+  application_name: string;
+  domain_name: string;
+  status: string;
+  archive_id: string;
+  object_count: number;
+  formal_object_count: number;
+  temporary_object_count: number;
+  process_count: number;
+  updated_at: string;
+};
+
+export type RequirementSpecDetail = RequirementSpecSummary & {
+  created_at: string;
+  payload: RequirementSpecPayload;
+};
+
+export type RequirementSpecWriteInput = {
+  archive_id?: string;
+  status: "draft" | "reviewing" | "ready";
+  payload: RequirementSpecPayload;
+};
+
+export type RequirementStep = "goal" | "audience" | "flow" | "object_event" | "structure";
+export type RequirementDraftStatus = "draft" | "completed";
+export type RequirementRecommendationSource = "recommended_common" | "recommended_domain" | "manual";
+
+export type RequirementRecommendation = {
+  id: string;
+  name: string;
+  description: string;
+  source: RequirementRecommendationSource;
+  tags: string[];
+  related_knowledge_id?: string | null;
+};
+
+export type ApplicationRequirementGoal = {
+  problem_statement: string;
+  target_outcome: string;
+  success_criteria: string[];
+};
+
+export type ApplicationRequirementAudience = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type ApplicationRequirementRole = {
+  id: string;
+  name: string;
+  audience_id: string;
+  responsibility_summary: string;
+};
+
+export type ApplicationRequirementBusinessFlow = {
+  id: string;
+  name: string;
+  scope: string;
+  priority: string;
+  participants: string[];
+};
+
+export type ApplicationRequirementBusinessObject = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type ApplicationRequirementEvent = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type ApplicationRequirementWorkspace = {
+  id: string;
+  name: string;
+};
+
+export type ApplicationRequirementPage = {
+  id: string;
+  name: string;
+  page_type: string;
+};
+
+export type ApplicationRequirementPermissionIntent = {
+  role_id: string;
+  access_scope: string;
+};
+
+export type ApplicationRequirementStructure = {
+  workspaces: ApplicationRequirementWorkspace[];
+  pages: ApplicationRequirementPage[];
+  permission_intents: ApplicationRequirementPermissionIntent[];
+};
+
+export type ApplicationRequirementKnowledgeReference = {
+  source_type: string;
+  source_id: string;
+  source_name: string;
+};
+
+export type ApplicationRequirementManualAddition = {
+  target_type: string;
+  name: string;
+};
+
+export type ApplicationRequirementModel = {
+  archive_id: string;
+  application_name: string;
+  application_goal: ApplicationRequirementGoal;
+  audiences: ApplicationRequirementAudience[];
+  roles: ApplicationRequirementRole[];
+  business_flows: ApplicationRequirementBusinessFlow[];
+  business_objects: ApplicationRequirementBusinessObject[];
+  key_events: ApplicationRequirementEvent[];
+  application_structure: ApplicationRequirementStructure;
+  knowledge_references: ApplicationRequirementKnowledgeReference[];
+  manual_additions: ApplicationRequirementManualAddition[];
+};
+
+export type ApplicationRequirementDraft = ApplicationRequirementModel & {
+  draft_id: string;
+  status: RequirementDraftStatus;
+  current_step: RequirementStep;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationRequirementDraftEnvelope = {
+  draft: ApplicationRequirementDraft;
+  recommendations: Record<RequirementStep, RequirementRecommendation[]>;
+};
+
+export type ApplicationRequirementDraftCreateInput = {
+  archive_id: string;
+};
+
+export type ApplicationRequirementDraftUpdateInput = Partial<
+  Pick<
+    ApplicationRequirementDraft,
+    | "current_step"
+    | "application_name"
+    | "application_goal"
+    | "audiences"
+    | "roles"
+    | "business_flows"
+    | "business_objects"
+    | "key_events"
+    | "application_structure"
+    | "knowledge_references"
+    | "manual_additions"
+  >
+>;
+
+export type ApplicationRequirementDraftExport = {
+  draft_id: string;
+  model: ApplicationRequirementModel;
+  json_text: string;
+  yaml_text: string;
+  markdown: string;
 };

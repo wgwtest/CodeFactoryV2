@@ -1,0 +1,11 @@
+# Keep the graph focused on source code and stable project docs.
+node_modules/
+.venv/
+.pytest_cache/
+graphify-out/cache/
+.data/
+docs/
+fixtures/
+apps/api/tests/
+apps/web/src/test/
+apps/web/e2e/

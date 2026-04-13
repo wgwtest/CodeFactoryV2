@@ -15,6 +15,36 @@ ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("processes", "process"),
 )
 VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+RELATION_SECTION_DEFINITIONS = {
+    ("part_of", "incoming"): ("incoming_part_of", "包含的对象与流程", "包含"),
+    ("part_of", "outgoing"): ("outgoing_part_of", "所属上位对象", "属于"),
+    ("describes", "incoming"): ("incoming_describes", "描述它的架构产物", "被描述于"),
+    ("describes", "outgoing"): ("outgoing_describes", "它描述的对象", "描述"),
+    ("owned_by", "incoming"): ("incoming_owned_by", "负责的对象", "负责"),
+    ("owned_by", "outgoing"): ("outgoing_owned_by", "责任方/发布方", "责任方"),
+    ("operational_exchange", "incoming"): ("exchange_neighbors", "交换协同对象", "交换协同"),
+    ("operational_exchange", "outgoing"): ("exchange_neighbors", "交换协同对象", "交换协同"),
+    ("participates_in_exchange", "incoming"): ("incoming_exchange_participation", "参与该交换的对象", "参与方"),
+    ("participates_in_exchange", "outgoing"): ("outgoing_exchange_participation", "参与的信息交换", "参与交换"),
+    ("scoped_by", "incoming"): ("incoming_scoped_by", "受其约束的对象", "约束对象"),
+    ("scoped_by", "outgoing"): ("outgoing_scoped_by", "相关阶段/约束", "受约束于"),
+    ("process_scoped_by", "incoming"): ("incoming_scoped_by", "受其约束的对象", "约束对象"),
+    ("process_scoped_by", "outgoing"): ("outgoing_scoped_by", "相关阶段/约束", "受约束于"),
+}
+RELATION_SECTION_ORDER = [
+    "incoming_part_of",
+    "outgoing_part_of",
+    "incoming_describes",
+    "outgoing_describes",
+    "outgoing_owned_by",
+    "incoming_owned_by",
+    "exchange_neighbors",
+    "outgoing_exchange_participation",
+    "incoming_exchange_participation",
+    "outgoing_scoped_by",
+    "incoming_scoped_by",
+    "other",
+]
 
 
 class ArchiveKnowledgeService:
@@ -76,6 +106,21 @@ class ArchiveKnowledgeService:
         ]
         return sorted(entities, key=lambda item: (-item["document_count"], item["name"]))
 
+    def get_events(self, archive_id: str) -> list[dict]:
+        payload = self._load_public(archive_id)
+        events = [
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "category": item.get("category"),
+                "aliases": item.get("aliases", []),
+                "document_count": len(item.get("document_ids", [])),
+                "interpretation": build_interpretation(item["name"], item.get("category", "timeline_event")),
+            }
+            for item in payload.get("events", [])
+        ]
+        return sorted(events, key=lambda item: (-item["document_count"], item["name"]))
+
     def get_item_detail(self, archive_id: str, item_id: str) -> dict | None:
         payload = self._load_raw(archive_id)
         item_info = self._find_item_info(payload, item_id)
@@ -87,6 +132,7 @@ class ArchiveKnowledgeService:
         documents = self._build_item_documents(item, document_index)
         evidence = self._build_item_evidence(item, document_index)
         related_items = self._build_related_items(payload, item_id)
+        relationship_sections = self._build_relationship_sections(payload, item_id)
 
         return {
             "id": item["id"],
@@ -100,6 +146,68 @@ class ArchiveKnowledgeService:
             "documents": documents,
             "evidence": evidence,
             "related_items": related_items,
+            "relationship_sections": relationship_sections,
+        }
+
+    def get_item_graph(self, archive_id: str, item_id: str) -> dict | None:
+        payload = self._load_public(archive_id)
+        item_info = self._find_item_info(payload, item_id)
+        if item_info is None:
+            return None
+
+        _, item_type, _, item = item_info
+        nodes = {
+            item["id"]: {
+                "id": item["id"],
+                "label": item["name"],
+                "item_type": item_type,
+                "category": item.get("category"),
+                "is_focus": True,
+            }
+        }
+        edges = []
+        seen_edges: set[tuple[str, str, str]] = set()
+
+        for relation in payload.get("relations", []):
+            if relation.get("from") == item_id:
+                related_item_id = relation.get("to")
+            elif relation.get("to") == item_id:
+                related_item_id = relation.get("from")
+            else:
+                continue
+
+            related_info = self._find_item_info(payload, related_item_id)
+            if related_info is None:
+                continue
+
+            _, related_type, _, related_item = related_info
+            nodes.setdefault(
+                related_item["id"],
+                {
+                    "id": related_item["id"],
+                    "label": related_item["name"],
+                    "item_type": related_type,
+                    "category": related_item.get("category"),
+                    "is_focus": False,
+                },
+            )
+
+            edge_key = (relation["from"], relation["to"], relation["type"])
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            edges.append(
+                {
+                    "source": relation["from"],
+                    "target": relation["to"],
+                    "label": relation["type"],
+                }
+            )
+
+        return {
+            "focus_item_id": item_id,
+            "nodes": list(nodes.values()),
+            "edges": edges,
         }
 
     def get_document_detail(self, archive_id: str, document_id: str) -> dict | None:
@@ -594,6 +702,67 @@ class ArchiveKnowledgeService:
             )
 
         return related_items
+
+    def _build_relationship_sections(self, payload: dict, item_id: str) -> list[dict]:
+        sections: dict[str, dict] = {}
+        item_type_order = {"entity": 0, "event": 1, "process": 2}
+
+        for relation in payload.get("relations", []):
+            if relation.get("type") == "document_mentions":
+                continue
+
+            if relation.get("from") == item_id:
+                related_item_id = relation.get("to")
+                direction = "outgoing"
+            elif relation.get("to") == item_id:
+                related_item_id = relation.get("from")
+                direction = "incoming"
+            else:
+                continue
+
+            related_info = self._find_item_info(payload, related_item_id)
+            if related_info is None:
+                continue
+
+            _, related_type, _, related_item = related_info
+            section_key, section_title, relation_label = RELATION_SECTION_DEFINITIONS.get(
+                (relation["type"], direction),
+                ("other", "其他直接关联", relation["type"]),
+            )
+            section = sections.setdefault(section_key, {"key": section_key, "title": section_title, "items": []})
+            section["items"].append(
+                {
+                    "id": related_item["id"],
+                    "name": related_item["name"],
+                    "item_type": related_type,
+                    "relation_type": relation["type"],
+                    "relation_label": relation_label,
+                    "direction": direction,
+                    "evidence": relation.get("evidence"),
+                }
+            )
+
+        ordered_sections = []
+        for section_key in RELATION_SECTION_ORDER:
+            section = sections.get(section_key)
+            if section is None:
+                continue
+            section["items"] = sorted(
+                section["items"],
+                key=lambda item: (item_type_order.get(item["item_type"], 99), item["name"]),
+            )
+            ordered_sections.append(section)
+
+        for section_key, section in sections.items():
+            if section_key in RELATION_SECTION_ORDER:
+                continue
+            section["items"] = sorted(
+                section["items"],
+                key=lambda item: (item_type_order.get(item["item_type"], 99), item["name"]),
+            )
+            ordered_sections.append(section)
+
+        return ordered_sections
 
     @staticmethod
     def _normalize_review_status(value: str | None) -> str:
