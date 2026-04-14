@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Checkbox, Segmented, Select, Space, Tag, Typography } from "antd";
+import { Button, Card, Checkbox, Segmented, Select, Space, Tag, Typography } from "antd";
 
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
@@ -28,6 +28,30 @@ const itemTypeOptions = [
   { label: "事件", value: "event" },
   { label: "流程", value: "process" },
 ] as const;
+
+const SOURCE_DOCUMENT_TITLE_PREVIEW_LENGTH = 24;
+
+function shortenDocumentTitle(title: string) {
+  if (title.length <= SOURCE_DOCUMENT_TITLE_PREVIEW_LENGTH) {
+    return title;
+  }
+
+  return `${title.slice(0, SOURCE_DOCUMENT_TITLE_PREVIEW_LENGTH - 3)}...`;
+}
+
+function formatSelectedDocumentSummary(documents: ArchiveKnowledgeDocument[], selectedDocumentIds: string[]) {
+  if (selectedDocumentIds.length === 0) {
+    return "全部素材文档";
+  }
+
+  if (selectedDocumentIds.length === 1) {
+    const selectedDocument = documents.find((document) => document.id === selectedDocumentIds[0]);
+    const title = selectedDocument ? selectedDocument.title : selectedDocumentIds[0];
+    return `已选 1 份：${shortenDocumentTitle(title)}`;
+  }
+
+  return `已选 ${selectedDocumentIds.length} / ${documents.length} 份`;
+}
 
 export function KnowledgeGraphPage() {
   const { activeArchive, activeArchiveId } = useArchiveContext();
@@ -141,6 +165,18 @@ export function KnowledgeGraphPage() {
       cancelled = true;
     };
   }, [activeArchiveId, selectedDocumentIds]);
+
+  const allDocumentIds = documents.map((document) => document.id);
+  const selectedDocumentSummary = formatSelectedDocumentSummary(documents, selectedDocumentIds);
+  const allDocumentsSelected = documents.length > 0 && selectedDocumentIds.length === documents.length;
+
+  function handleSelectAllDocuments() {
+    setSelectedDocumentIds(allDocumentIds);
+  }
+
+  function handleClearSelectedDocuments() {
+    setSelectedDocumentIds([]);
+  }
 
   return (
     <ValidationWorkspace
@@ -290,15 +326,61 @@ export function KnowledgeGraphPage() {
                 <Select
                   data-testid="knowledge-source-documents-select"
                   mode="multiple"
-                  allowClear
                   showSearch
                   value={selectedDocumentIds}
                   loading={documentsLoading}
                   placeholder="全部素材文档"
                   style={{ minWidth: 320, flex: 1 }}
-                  maxTagCount="responsive"
+                  maxTagCount={0}
+                  maxTagPlaceholder={() => selectedDocumentSummary}
                   optionFilterProp="label"
                   onChange={(values) => setSelectedDocumentIds(values)}
+                  popupRender={(menu) => (
+                    <div>
+                      <div
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          padding: "8px 12px 6px",
+                          borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+                        }}
+                      >
+                        <Space size={12}>
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ padding: 0, height: "auto" }}
+                            disabled={documents.length === 0 || allDocumentsSelected}
+                            onClick={handleSelectAllDocuments}
+                          >
+                            全选
+                          </Button>
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ padding: 0, height: "auto" }}
+                            disabled={selectedDocumentIds.length === 0}
+                            onClick={handleClearSelectedDocuments}
+                          >
+                            清空
+                          </Button>
+                        </Space>
+
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {selectedDocumentIds.length === 0
+                            ? `全部 ${documents.length} 份`
+                            : `已选 ${selectedDocumentIds.length} / ${documents.length} 份`}
+                        </Typography.Text>
+                      </div>
+                      {menu}
+                    </div>
+                  )}
                   options={documents.map((document) => ({
                     label: document.title,
                     value: document.id,

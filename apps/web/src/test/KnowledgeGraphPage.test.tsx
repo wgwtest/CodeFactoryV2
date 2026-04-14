@@ -607,10 +607,28 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
   }
 
   fireEvent.mouseDown(sourceDocumentSelector);
+  expect(await screen.findByRole("button", { name: "全选" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "清空" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "全选" }));
+  expect(await screen.findByText("当前来源：已选 2 / 2 份")).toBeInTheDocument();
+  expect(sourceDocumentSelect).toHaveTextContent("已选 2 / 2 份");
+
+  fireEvent.click(screen.getByRole("button", { name: "清空" }));
+  expect(await screen.findByText("当前来源：全部 2 份")).toBeInTheDocument();
+  expect(sourceDocumentSelect).toHaveTextContent("全部素材文档");
+
+  fireEvent.mouseDown(sourceDocumentSelector);
   fireEvent.click(await screen.findByText("NAS AV-1"));
 
   expect(await screen.findByText("当前来源：已选 1 / 2 份")).toBeInTheDocument();
+  expect(sourceDocumentSelect).toHaveTextContent("已选 1 份：NAS AV-1");
+  expect(sourceDocumentSelect.querySelector(".ant-select-clear")).toBeNull();
   await waitFor(() => expect(screen.queryByText("OV-1 运行概念图")).not.toBeInTheDocument());
+
+  fireEvent.mouseDown(sourceDocumentSelector);
+  expect(screen.getByText("当前来源：已选 1 / 2 份")).toBeInTheDocument();
+  expect(sourceDocumentSelect).toHaveTextContent("已选 1 份：NAS AV-1");
 
   fireEvent.click(screen.getByRole("checkbox", { name: "实体" }));
   expect(screen.getByRole("checkbox", { name: "实体" })).not.toBeChecked();
