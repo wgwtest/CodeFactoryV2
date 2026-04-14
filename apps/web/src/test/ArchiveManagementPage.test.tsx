@@ -81,3 +81,16 @@ test("disables other archive actions while one extraction is running", async () 
     expect(refreshArchivesMock).toHaveBeenCalled();
   });
 });
+
+test("renders archive creation form and extraction logic explanation side by side", async () => {
+  render(<ArchiveManagementPage />);
+
+  expect(await screen.findByText("新增知识库")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
+  expect(screen.getByText("正式抽取逻辑")).toBeInTheDocument();
+  expect(screen.getByText("结构化分块 -> 分块抽取 -> 全局归并 -> 治理/发布")).toBeInTheDocument();
+  expect(screen.getByText("原始候选")).toBeInTheDocument();
+  expect(screen.getByText("治理工作态")).toBeInTheDocument();
+  expect(screen.getByText("发布态")).toBeInTheDocument();
+  expect(screen.getByText("当前仍属于受限模式")).toBeInTheDocument();
+});
