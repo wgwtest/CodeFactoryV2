@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from app.config import settings
@@ -15,6 +16,9 @@ from app.parsing.models import ParsedSegment
 
 
 class ExtractionService:
+    def __init__(self, *, formal_extraction_mode: bool = False) -> None:
+        self.formal_extraction_mode = formal_extraction_mode
+
     def extract(self, segments: list[ParsedSegment]):
         return self.extract_document(
             document_id="ad-hoc-document",
@@ -58,7 +62,7 @@ class ExtractionService:
         base_batch: ExtractionBatch,
     ) -> ExtractionBatch | None:
         del document_id
-        if not settings.llm_enrichment_enabled:
+        if not (self.formal_extraction_mode or settings.llm_enrichment_enabled):
             return None
 
         prompt = self._build_llm_prompt(title=title, file_path=file_path, segments=segments, base_batch=base_batch)
@@ -66,7 +70,9 @@ class ExtractionService:
         try:
             structured_llm, llm_metadata = build_structured_llm(output_schema=StructuredExtractionResponse)
             response = structured_llm.complete(prompt)
-        except Exception:
+        except Exception as exc:
+            if self.formal_extraction_mode:
+                raise ValueError(f"正式知识库抽取要求使用结构化大模型抽取，但当前调用失败：{exc}") from exc
             return None
 
         result = getattr(response, "raw", response)
@@ -79,8 +85,13 @@ class ExtractionService:
                     result = StructuredExtractionResponse.model_validate(payload)
                 else:
                     result = StructuredExtractionResponse.model_validate_json(payload)
-            except Exception:
+            except Exception as exc:
+                if self.formal_extraction_mode:
+                    raise ValueError(f"正式知识库抽取要求结构化大模型返回可解析结果，但当前响应无法通过 schema 校验：{exc}") from exc
                 return None
+
+        if self.formal_extraction_mode and (not llm_metadata.get("provider") or not llm_metadata.get("model")):
+            raise ValueError("正式知识库抽取要求记录实际使用的大模型供应商与模型名称，但当前元数据缺失")
 
         return ExtractionBatch(
             document_id=base_batch.document_id,
@@ -235,6 +246,13 @@ class ExtractionService:
 
     @staticmethod
     def _select_llm_segments(segments: list[ParsedSegment]) -> list[ParsedSegment]:
+        if not segments:
+            return []
+
+        indexed_segments = list(enumerate(segments))
+        limit = settings.llm_enrichment_segment_limit
+        window_count = min(limit, len(indexed_segments))
+
         selected: list[ParsedSegment] = []
         selected_ids: set[int] = set()
         total_chars = 0
@@ -253,11 +271,90 @@ class ExtractionService:
             selected_ids.add(key)
             total_chars += candidate_size
 
-        for segment in segments[: settings.llm_enrichment_segment_limit]:
+        for _, segment in ExtractionService._pick_window_candidates(indexed_segments, window_count):
             try_add(segment)
 
-        for segment in segments:
-            if segment.block_type == "table_row":
-                try_add(segment)
+        remaining = sorted(
+            indexed_segments,
+            key=lambda item: (
+                -ExtractionService._segment_priority(item[1]),
+                item[0],
+            ),
+        )
+        for _, segment in remaining:
+            try_add(segment)
 
+        selected.sort(key=lambda segment: next(index for index, item in indexed_segments if item is segment))
         return selected
+
+    @staticmethod
+    def _pick_window_candidates(
+        indexed_segments: list[tuple[int, ParsedSegment]], window_count: int
+    ) -> list[tuple[int, ParsedSegment]]:
+        if window_count <= 0:
+            return []
+
+        candidates: list[tuple[int, ParsedSegment]] = []
+        total = len(indexed_segments)
+        for slot in range(window_count):
+            start = int(slot * total / window_count)
+            end = max(start + 1, int((slot + 1) * total / window_count))
+            window = indexed_segments[start:end]
+            if slot == 0:
+                candidates.append(window[0])
+                continue
+            if slot == window_count - 1:
+                candidates.append(window[-1])
+                continue
+            best = max(
+                window,
+                key=lambda item: (
+                    ExtractionService._segment_priority(item[1]),
+                    len(item[1].content),
+                    -item[0],
+                ),
+            )
+            candidates.append(best)
+        return candidates
+
+    @staticmethod
+    def _segment_priority(segment: ParsedSegment) -> int:
+        content = segment.content.strip()
+        heading = segment.heading.strip()
+        score = 0
+
+        if segment.block_type == "table_row":
+            score += 4
+        elif segment.block_type == "paragraph":
+            score += 1
+
+        score += min(len(content) // 180, 4)
+
+        if ExtractionService._looks_relation_dense(content):
+            score += 2
+        if ExtractionService._looks_low_signal(heading, content):
+            score -= 4
+
+        return score
+
+    @staticmethod
+    def _looks_relation_dense(content: str) -> bool:
+        hints = ("|", "->", "=>", "关系", "流程", "节点", "交换", "输入", "输出", "接口", "I/O")
+        return any(hint in content for hint in hints)
+
+    @staticmethod
+    def _looks_low_signal(heading: str, content: str) -> bool:
+        normalized_heading = heading.strip().lower()
+        normalized_content = content.strip().lower()
+        if len(content.strip()) < 24:
+            return True
+        if normalized_heading in {"contents", "page", "table of contents"}:
+            return True
+        if "distribution restriction" in normalized_content and len(content) < 200:
+            return True
+
+        tokens = re.findall(r"\S+", content)
+        single_letter_tokens = re.findall(r"\b[A-Za-z]\b", content)
+        if tokens and len(single_letter_tokens) / len(tokens) > 0.45:
+            return True
+        return False

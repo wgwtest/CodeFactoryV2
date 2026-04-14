@@ -23,6 +23,7 @@ class ArchiveExtractionService:
             source_dir=source_dir,
             extract_root=extract_root,
             output_root=self.output_root,
+            formal_extraction_mode=True,
         )
         return {
             "archive_id": result.archive_id,
@@ -32,5 +33,6 @@ class ArchiveExtractionService:
             "curated_path": str(result.curated_path),
             "markdown_path": str(result.markdown_path),
             "parsed_documents_path": str(result.parsed_documents_path),
+            "extraction_report_path": str(result.extraction_report_path),
             "summary": result.summary,
         }

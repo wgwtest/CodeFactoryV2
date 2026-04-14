@@ -15,9 +15,10 @@ from app.parsing.parsers.spreadsheet_parser import parse_spreadsheet_segments
 
 
 class ParsingService:
-    def __init__(self, session=None, storage=None) -> None:
+    def __init__(self, session=None, storage=None, *, formal_extraction_mode: bool = False) -> None:
         self.session = session
         self.storage = storage
+        self.formal_extraction_mode = formal_extraction_mode
 
     def parse_text(self, file_name: str, content: str) -> list[ParsedSegment]:
         del file_name
@@ -110,7 +111,7 @@ class ParsingService:
         )
 
     def _parse_docx(self, file_path: Path) -> ParsedDocument:
-        return parse_docx_segments(str(file_path))
+        return parse_docx_segments(str(file_path), formal_extraction_mode=self.formal_extraction_mode)
 
     def _parse_doc(self, file_path: Path) -> ParsedDocument:
         with TemporaryDirectory() as output_dir:
@@ -118,7 +119,7 @@ class ParsingService:
             return self._parse_docx(converted_path)
 
     def _parse_pdf(self, file_path: Path) -> ParsedDocument:
-        return parse_pdf_segments(str(file_path))
+        return parse_pdf_segments(str(file_path), formal_extraction_mode=self.formal_extraction_mode)
 
     def _parse_spreadsheet(self, file_path: Path) -> ParsedDocument:
         return parse_spreadsheet_segments(str(file_path))

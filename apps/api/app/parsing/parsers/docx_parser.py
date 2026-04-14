@@ -15,16 +15,20 @@ def parse_docx(file_path: str) -> list[str]:
     return [segment.content for segment in parse_docx_segments(file_path).segments]
 
 
-def parse_docx_segments(file_path: str) -> ParsedDocument:
+def parse_docx_segments(file_path: str, *, formal_extraction_mode: bool = False) -> ParsedDocument:
     converter = _build_docling_converter()
     if converter is not None:
         parsed = _parse_docx_with_docling(file_path, converter)
         if parsed.segments:
             return parsed
+    if formal_extraction_mode:
+        raise ValueError(f"正式知识库抽取要求 DOC/DOCX 使用 Docling 解析，但当前文件未能通过 Docling 成功解析：{file_path}")
 
     parsed = _parse_docx_with_unstructured(file_path)
     if parsed.segments:
         return parsed
+    if formal_extraction_mode:
+        raise ValueError(f"正式知识库抽取禁止 DOC/DOCX 解析降级到非 Docling 解析器：{file_path}")
 
     return _parse_docx_with_python_docx(file_path)
 

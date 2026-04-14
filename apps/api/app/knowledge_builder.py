@@ -107,6 +107,7 @@ class SourceDocument:
 def build_knowledge_index(
     documents: list[SourceDocument],
     extraction_service: "ExtractionService | None" = None,
+    diagnostics_collector: list[dict] | None = None,
 ) -> dict:
     nodes: dict[tuple[str, str], dict] = {}
     relations: list[dict[str, str]] = []
@@ -129,6 +130,24 @@ def build_knowledge_index(
         )
 
         batch = _extract_document_knowledge(document, doc_id, extraction_service)
+        if diagnostics_collector is not None:
+            diagnostics_collector.append(
+                {
+                    "document_id": doc_id,
+                    "title": document.title,
+                    "file_path": document.path,
+                    "file_type": document.file_type,
+                    "parser_name": document.parser_name,
+                    "segment_count": document.segment_count or len(document.segments or []),
+                    "strategy": batch.strategy,
+                    "candidate_count": len(batch.candidates),
+                    "relation_count": len(batch.relations),
+                    "llm_enrichment_used": bool(batch.metadata.get("llm_enrichment_used")),
+                    "llm_provider": batch.metadata.get("llm_provider"),
+                    "llm_model": batch.metadata.get("llm_model"),
+                    "llm_base_url": batch.metadata.get("llm_base_url"),
+                }
+            )
         local_item_ids_by_name: dict[str, str] = {}
         local_item_ids_by_alias: dict[str, str] = {}
 

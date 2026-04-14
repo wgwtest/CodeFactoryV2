@@ -232,3 +232,21 @@ def test_build_llm_supports_deepseek_metadata() -> None:
     assert llm.metadata.is_chat_model is True
     assert llm.metadata.is_function_calling_model is True
     assert llm.pydantic_program_mode == PydanticProgramMode.LLM
+
+
+def test_select_llm_segments_spreads_across_long_document() -> None:
+    segments = [
+        ParsedSegment(
+            heading=f"第{i}页标题",
+            content=f"第{i}页领域知识说明，包含实体、事件、流程与关系。",
+            anchor={"page": i, "section": f"第{i}页标题", "line_start": 1, "line_end": 1},
+        )
+        for i in range(1, 61)
+    ]
+
+    selected = ExtractionService._select_llm_segments(segments)
+    selected_pages = [int(segment.anchor["page"]) for segment in selected]
+
+    assert len(selected) <= settings.llm_enrichment_segment_limit
+    assert 1 in selected_pages
+    assert 60 in selected_pages

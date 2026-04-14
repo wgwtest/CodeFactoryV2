@@ -24,6 +24,7 @@ class ArchiveBuildResult:
     curated_path: Path
     markdown_path: Path
     parsed_documents_path: Path
+    extraction_report_path: Path
     summary: dict
 
 
@@ -34,6 +35,7 @@ def build_archive_knowledge(
     source_dir: Path,
     extract_root: Path,
     output_root: Path,
+    formal_extraction_mode: bool = False,
 ) -> ArchiveBuildResult:
     source_dir = source_dir.expanduser().resolve()
     extract_root = extract_root.expanduser().resolve()
@@ -44,17 +46,25 @@ def build_archive_knowledge(
 
     extract_archives(source_dir, extract_root)
     document_roots = resolve_document_roots(source_dir, extract_root)
-    documents = collect_documents(document_roots)
+    documents = collect_documents(document_roots, formal_extraction_mode=formal_extraction_mode)
     if not documents:
         raise ValueError(f"目录中未发现可解析文档: {source_dir}")
 
-    knowledge = build_knowledge_index(documents, extraction_service=ExtractionService())
+    extraction_diagnostics: list[dict] = []
+    knowledge = build_knowledge_index(
+        documents,
+        extraction_service=ExtractionService(formal_extraction_mode=formal_extraction_mode),
+        diagnostics_collector=extraction_diagnostics,
+    )
+    if formal_extraction_mode:
+        _validate_formal_extraction_run(documents, extraction_diagnostics)
 
     output_root.mkdir(parents=True, exist_ok=True)
     json_path = output_root / f"{archive_id}-knowledge.json"
     curated_path = output_root / f"{archive_id}-knowledge-curated.json"
     markdown_path = output_root / f"{archive_id}-knowledge.md"
     parsed_documents_path = output_root / f"{archive_id}-parsed-documents.json"
+    extraction_report_path = output_root / f"{archive_id}-extraction-report.json"
     json_path.write_text(json.dumps(knowledge, ensure_ascii=False, indent=2), encoding="utf-8")
     curated_path.write_text(
         json.dumps(
@@ -87,6 +97,20 @@ def build_archive_knowledge(
         ),
         encoding="utf-8",
     )
+    extraction_report_path.write_text(
+        json.dumps(
+            {
+                "archive_id": archive_id,
+                "archive_name": archive_name,
+                "strict_mode": formal_extraction_mode,
+                "summary": knowledge["summary"],
+                "documents": extraction_diagnostics,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     return ArchiveBuildResult(
         archive_id=archive_id,
@@ -97,6 +121,7 @@ def build_archive_knowledge(
         curated_path=curated_path,
         markdown_path=markdown_path,
         parsed_documents_path=parsed_documents_path,
+        extraction_report_path=extraction_report_path,
         summary=knowledge["summary"],
     )
 
@@ -128,10 +153,10 @@ def extract_archives(source_dir: Path, extract_root: Path) -> None:
             break
 
 
-def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]:
+def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[SourceDocument]:
     roots = [document_roots] if isinstance(document_roots, Path) else list(document_roots)
     documents_by_digest: dict[str, tuple[int, SourceDocument]] = {}
-    parsing_service = ParsingService()
+    parsing_service = ParsingService(formal_extraction_mode=formal_extraction_mode)
 
     for priority, root in enumerate(roots):
         if not root.exists():
@@ -144,15 +169,24 @@ def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]
             suffix = path.suffix.lower()
             if suffix not in SUPPORTED_SUFFIXES:
                 continue
+            if formal_extraction_mode and suffix in {".xlsx", ".xls"}:
+                raise ValueError(f"正式知识库抽取当前不允许使用非 Docling 的表格解析链路：{path}")
 
             try:
                 parsed = parsing_service.parse_file(path)
             except Exception as exc:
+                if formal_extraction_mode:
+                    raise ValueError(f"正式知识库抽取失败：{path} ({exc})") from exc
                 print(f"SKIP unreadable file: {path} ({exc})")
                 continue
 
+            if formal_extraction_mode and suffix in {".pdf", ".doc", ".docx"} and parsed.parser_name not in {"docling_pdf", "docling_docx"}:
+                raise ValueError(f"正式知识库抽取要求使用 Docling 解析，但文件实际使用了解析器 {parsed.parser_name}：{path}")
+
             text = "\n".join(segment.content for segment in parsed.segments)
             if not text.strip():
+                if formal_extraction_mode:
+                    raise ValueError(f"正式知识库抽取失败：Docling 未能从文件中解析出有效文本：{path}")
                 continue
 
             relative_path = path.relative_to(root)
@@ -174,6 +208,21 @@ def collect_documents(document_roots: Path | list[Path]) -> list[SourceDocument]
                 documents_by_digest[digest] = (priority, document)
 
     return sorted((item[1] for item in documents_by_digest.values()), key=lambda document: document.path)
+
+
+def _validate_formal_extraction_run(documents: list[SourceDocument], extraction_diagnostics: list[dict]) -> None:
+    if len(extraction_diagnostics) != len(documents):
+        raise ValueError("正式知识库抽取失败：抽取执行报告与文档数量不一致")
+
+    for document, diagnostic in zip(documents, extraction_diagnostics, strict=True):
+        if document.file_type in {"pdf", "doc", "docx"} and diagnostic.get("parser_name") not in {"docling_pdf", "docling_docx"}:
+            raise ValueError(
+                f"正式知识库抽取要求使用 Docling 解析，但执行报告记录的解析器不符合要求：{document.path}"
+            )
+        if not diagnostic.get("llm_enrichment_used"):
+            raise ValueError(f"正式知识库抽取要求使用结构化大模型抽取，但文档未启用大模型增强：{document.path}")
+        if not diagnostic.get("llm_provider") or not diagnostic.get("llm_model"):
+            raise ValueError(f"正式知识库抽取要求记录实际使用的大模型信息，但当前文档缺少记录：{document.path}")
 
 
 def extract_text(path: Path) -> str:

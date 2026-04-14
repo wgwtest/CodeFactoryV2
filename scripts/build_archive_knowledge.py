@@ -24,11 +24,13 @@ def main() -> None:
         source_dir=DEFAULT_ARCHIVE_DIR,
         extract_root=EXTRACT_ROOT,
         output_root=OUTPUT_ROOT,
+        formal_extraction_mode=True,
     )
     print(f"Wrote {result.json_path}")
     print(f"Wrote {result.curated_path}")
     print(f"Wrote {result.markdown_path}")
     print(f"Wrote {result.parsed_documents_path}")
+    print(f"Wrote {result.extraction_report_path}")
     print(json.dumps(result.summary, ensure_ascii=False, indent=2))
 
 
