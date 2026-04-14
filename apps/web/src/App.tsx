@@ -7,7 +7,6 @@ import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
-import { ProcessViewPage } from "./pages/ProcessViewPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 
 const items = [
@@ -15,7 +14,6 @@ const items = [
   { key: "/", label: <Link to="/">文档导入</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
-  { key: "/processes", label: <Link to="/processes">流程视图</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
@@ -60,7 +58,6 @@ export default function App() {
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
-          <Route path="/processes" element={<ProcessViewPage />} />
           <Route path="/requirements" element={<RequirementsPage />} />
           <Route path="/modeling" element={<ApplicationModelerPage />} />
         </Routes>

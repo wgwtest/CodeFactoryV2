@@ -6,9 +6,9 @@ import { buildVisibleGraph } from "../components/knowledgeTopology";
 const graph: ArchiveKnowledgeGraph = {
   archive_id: "demo",
   nodes: [
-    { id: "a", label: "国家空域系统", type: "system_or_service", document_count: 3 },
-    { id: "b", label: "OV-1", type: "architecture_artifact", document_count: 2 },
-    { id: "c", label: "孤立节点", type: "domain_concept", document_count: 1 },
+    { id: "a", label: "国家空域系统", type: "system_or_service", item_type: "entity", document_count: 3 },
+    { id: "b", label: "OV-1", type: "architecture_artifact", item_type: "entity", document_count: 2 },
+    { id: "c", label: "孤立节点", type: "domain_concept", item_type: "entity", document_count: 1 },
   ],
   edges: [{ source: "a", target: "b", label: "describes" }],
   summary: {
@@ -73,7 +73,8 @@ const entities: ArchiveKnowledgeEntity[] = [
 
 describe("buildVisibleGraph", () => {
   test("hides isolated nodes in default topology view", () => {
-    const visible = buildVisibleGraph(graph, entities, "");
+    const aliasesById = new Map(entities.map((item) => [item.id, item.aliases]));
+    const visible = buildVisibleGraph(graph, aliasesById, ["entity"], "");
 
     expect(visible.nodes.map((node) => node.id)).toEqual(["a", "b"]);
     expect(visible.edges).toHaveLength(1);
@@ -81,7 +82,8 @@ describe("buildVisibleGraph", () => {
   });
 
   test("keeps isolated match visible when query hits it", () => {
-    const visible = buildVisibleGraph(graph, entities, "single");
+    const aliasesById = new Map(entities.map((item) => [item.id, item.aliases]));
+    const visible = buildVisibleGraph(graph, aliasesById, ["entity"], "single");
 
     expect(visible.nodes.map((node) => node.id)).toEqual(["c"]);
     expect(visible.edges).toHaveLength(0);

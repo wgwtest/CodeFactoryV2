@@ -92,6 +92,7 @@ export type ArchiveKnowledgeNode = {
   id: string;
   label: string;
   type: string;
+  item_type: string;
   document_count: number;
 };
 
@@ -124,6 +125,18 @@ export type ArchiveKnowledgeEntity = {
   name: string;
   category: string;
   aliases: string[];
+  document_count: number;
+  interpretation: ArchiveKnowledgeInterpretation;
+};
+
+export type ArchiveKnowledgeEvent = {
+  id: string;
+  item_type: "event";
+  name: string;
+  category: string;
+  aliases: string[];
+  document_ids: string[];
+  evidence: Array<{ document_id: string; excerpt: string }>;
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
 };
@@ -189,10 +202,14 @@ export type ArchiveKnowledgeItemGraph = {
 
 export type ArchiveKnowledgeProcess = {
   id: string;
+  item_type: "process";
   name: string;
   category: string;
+  aliases: string[];
   document_ids: string[];
   evidence: Array<{ document_id: string; excerpt: string }>;
+  document_count: number;
+  interpretation: ArchiveKnowledgeInterpretation;
 };
 
 export type ArchiveKnowledgeDocument = {

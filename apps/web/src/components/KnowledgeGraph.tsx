@@ -1,5 +1,5 @@
-import { useDeferredValue, useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Empty, Input, List, Segmented, Space, Spin, Table, Tag, Typography } from "antd";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Alert, Button, Card, Descriptions, Empty, Input, List, Space, Spin, Table, Tag, Typography } from "antd";
 
 import { getArchiveItemDetail, getArchiveItemGraph } from "../lib/archiveKnowledge";
 import { EvidenceList } from "./EvidenceList";
@@ -8,9 +8,12 @@ import { KnowledgeTopologyGraph } from "./KnowledgeTopologyGraph";
 import { ValidationDrawer } from "./ValidationDrawer";
 import type {
   ArchiveKnowledgeEntity,
-  ArchiveKnowledgeItemGraph,
+  ArchiveKnowledgeEvent,
   ArchiveKnowledgeGraph,
+  ArchiveKnowledgeInterpretation,
   ArchiveKnowledgeItemDetail,
+  ArchiveKnowledgeItemGraph,
+  ArchiveKnowledgeProcess,
   ArchiveKnowledgeSummary,
 } from "../lib/api";
 
@@ -45,29 +48,95 @@ const relationTypeLabels: Record<string, string> = {
   process_scoped_by: "阶段约束",
 };
 
+type KnowledgeBrowserItem = {
+  id: string;
+  item_type: "entity" | "event" | "process";
+  name: string;
+  category: string;
+  aliases: string[];
+  document_count: number;
+  interpretation: ArchiveKnowledgeInterpretation;
+};
+
 type KnowledgeGraphProps = {
   archiveId: string | null;
   entities: ArchiveKnowledgeEntity[];
+  events: ArchiveKnowledgeEvent[];
+  processes: ArchiveKnowledgeProcess[];
   error: string | null;
   graph: ArchiveKnowledgeGraph | null;
   loading: boolean;
+  selectedItemTypes: Array<"entity" | "event" | "process">;
   summary: ArchiveKnowledgeSummary | null;
+  viewMode: "list" | "graph";
 };
 
-export function KnowledgeGraph({ archiveId, entities, error, graph, loading, summary }: KnowledgeGraphProps) {
+export function KnowledgeGraph({
+  archiveId,
+  entities,
+  events,
+  processes,
+  error,
+  graph,
+  loading,
+  selectedItemTypes,
+  summary,
+  viewMode,
+}: KnowledgeGraphProps) {
   const [searchValue, setSearchValue] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ArchiveKnowledgeItemDetail | null>(null);
   const [itemGraph, setItemGraph] = useState<ArchiveKnowledgeItemGraph | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const deferredSearchValue = useDeferredValue(searchValue);
 
-  useEffect(() => {
-    const entityId = selectedEntityId;
+  const allItems = useMemo<KnowledgeBrowserItem[]>(
+    () => [
+      ...entities.map((item) => ({ ...item, item_type: "entity" as const })),
+      ...events,
+      ...processes,
+    ],
+    [entities, events, processes],
+  );
 
-    if (!entityId || !archiveId) {
+  const aliasesById = useMemo(
+    () => new Map(allItems.map((item) => [item.id, item.aliases])),
+    [allItems],
+  );
+
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = deferredSearchValue.trim().toLowerCase();
+    return allItems.filter((item) => {
+      if (!selectedItemTypes.includes(item.item_type)) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
+      const haystack = [
+        item.name,
+        ...item.aliases,
+        item.interpretation.display_name ?? "",
+        item.interpretation.standard_name ?? "",
+        item.interpretation.summary,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [allItems, deferredSearchValue, selectedItemTypes]);
+
+  useEffect(() => {
+    if (selectedItemId && !allItems.some((item) => item.id === selectedItemId)) {
+      setSelectedItemId(null);
+    }
+  }, [allItems, selectedItemId]);
+
+  useEffect(() => {
+    const itemId = selectedItemId;
+
+    if (!itemId || !archiveId) {
       setDetail(null);
       setItemGraph(null);
       setDetailError(null);
@@ -77,16 +146,16 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     let cancelled = false;
 
     async function loadDetail() {
-      const activeEntityId = entityId;
+      const activeItemId = itemId;
       const currentArchiveId = archiveId;
       try {
         setDetailLoading(true);
-        if (activeEntityId === null || currentArchiveId === null) {
+        if (activeItemId === null || currentArchiveId === null) {
           return;
         }
         const [detailResponse, graphResponse] = await Promise.all([
-          getArchiveItemDetail(activeEntityId, currentArchiveId),
-          getArchiveItemGraph(activeEntityId, currentArchiveId),
+          getArchiveItemDetail(activeItemId, currentArchiveId),
+          getArchiveItemGraph(activeItemId, currentArchiveId),
         ]);
         if (cancelled) {
           return;
@@ -96,7 +165,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
         setDetailError(null);
       } catch (loadError) {
         if (!cancelled) {
-          setDetailError(loadError instanceof Error ? loadError.message : "加载实体详情失败");
+          setDetailError(loadError instanceof Error ? loadError.message : "加载知识详情失败");
         }
       } finally {
         if (!cancelled) {
@@ -109,7 +178,7 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
     return () => {
       cancelled = true;
     };
-  }, [archiveId, selectedEntityId]);
+  }, [archiveId, selectedItemId]);
 
   if (loading) {
     return (
@@ -127,15 +196,6 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
   if (!summary || !graph) {
     return <Empty description="暂无档案知识" />;
   }
-
-  const normalizedQuery = deferredSearchValue.trim().toLowerCase();
-  const filteredEntities = entities.filter((item) => {
-    if (!normalizedQuery) {
-      return true;
-    }
-    const haystack = [item.name, ...item.aliases].join(" ").toLowerCase();
-    return haystack.includes(normalizedQuery);
-  });
 
   return (
     <Space direction="vertical" size={24} style={{ display: "flex" }}>
@@ -156,12 +216,12 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
           >
             <Space direction="vertical" size={6} style={{ display: "flex" }}>
               <Typography.Title level={4} style={{ margin: 0 }}>
-                {viewMode === "list" ? "实体列表" : "实体图谱"}
+                {viewMode === "list" ? "知识列表" : "知识图谱"}
               </Typography.Title>
               <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
                 {viewMode === "list"
-                  ? `当前共收录 ${summary.entity_count.toLocaleString("zh-CN")} 个实体，支持按名称或别名筛选，再下钻查看证据、关系结构和邻域。`
-                  : "切到图谱视图后，可从全局关系拓扑中直接点选节点，并继续使用抽屉查看完整知识详情。"}
+                  ? "列表视图会根据上方类型筛选实时收敛范围，并继续支持查看详情、证据、关系结构和邻域。"
+                  : "图谱视图会在当前类型筛选范围内绘制知识关系，并保留搜索命中节点及其一度关联。"}
               </Typography.Paragraph>
             </Space>
             <Space wrap size={[8, 8]}>
@@ -169,52 +229,56 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
                 color="blue"
                 style={{ borderRadius: 999, paddingInline: 12, lineHeight: "28px", marginInlineEnd: 0 }}
               >
-                {viewMode === "list" ? `当前显示：${filteredEntities.length}` : `图谱节点：${graph.nodes.length}`}
+                {viewMode === "list" ? `当前显示：${filteredItems.length}` : `当前类型：${selectedItemTypes.length}`}
               </Tag>
               <Tag style={{ borderRadius: 999, paddingInline: 12, lineHeight: "28px", marginInlineEnd: 0 }}>
-                关系数：{graph.edges.length}
+                总关系数：{graph.edges.length}
               </Tag>
-              <Segmented
-                options={[
-                  { label: "列表视图", value: "list" },
-                  { label: "图谱视图", value: "graph" },
-                ]}
-                value={viewMode}
-                onChange={(value) => setViewMode(value as "list" | "graph")}
-              />
             </Space>
           </div>
 
           <Input.Search
             allowClear
-            placeholder="搜索实体名称或别名"
+            placeholder="搜索名称、别名或释义"
             size="large"
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             style={{ maxWidth: 420 }}
           />
 
-          {viewMode === "list" ? (
+          {selectedItemTypes.length === 0 ? (
+            <Empty description="请至少选择一种知识类型" />
+          ) : viewMode === "list" ? (
             <Table
               rowKey="id"
-              dataSource={filteredEntities}
+              dataSource={filteredItems}
               size="middle"
               pagination={{ pageSize: 10 }}
-              locale={{ emptyText: "暂无匹配实体" }}
+              locale={{ emptyText: "暂无匹配知识" }}
               columns={[
                 { title: "名称", dataIndex: "name" },
                 {
+                  title: "类型",
+                  dataIndex: "item_type",
+                  width: 90,
+                  render: (value: string) => <Tag>{itemTypeLabels[value] ?? value}</Tag>,
+                },
+                {
                   title: "类别",
                   dataIndex: "category",
+                  width: 120,
                   render: (value: string) => <Tag>{typeLabels[value] ?? value}</Tag>,
                 },
                 {
                   title: "释义",
-                  render: (_: unknown, record: ArchiveKnowledgeEntity) => (
+                  render: (_: unknown, record: KnowledgeBrowserItem) => (
                     <Space direction="vertical" size={2} style={{ display: "flex" }}>
-                      <Typography.Text strong>
-                        {record.interpretation.display_name ?? record.interpretation.standard_name ?? "待补充"}
-                      </Typography.Text>
+                      {record.interpretation.display_name &&
+                      record.interpretation.display_name !== record.name ? (
+                        <Typography.Text strong>{record.interpretation.display_name}</Typography.Text>
+                      ) : record.interpretation.standard_name ? (
+                        <Typography.Text strong>{record.interpretation.standard_name}</Typography.Text>
+                      ) : null}
                       <Typography.Text type="secondary">{record.interpretation.summary}</Typography.Text>
                     </Space>
                   ),
@@ -227,12 +291,14 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
                 {
                   title: "覆盖文档",
                   dataIndex: "document_count",
+                  width: 100,
                   render: (value: number) => `${value} 份文档`,
                 },
                 {
                   title: "操作",
-                  render: (_: unknown, record: ArchiveKnowledgeEntity) => (
-                    <Button type="link" onClick={() => setSelectedEntityId(record.id)}>
+                  width: 100,
+                  render: (_: unknown, record: KnowledgeBrowserItem) => (
+                    <Button type="link" onClick={() => setSelectedItemId(record.id)}>
                       查看详情
                     </Button>
                   ),
@@ -241,25 +307,26 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
             />
           ) : (
             <KnowledgeTopologyGraph
-              entities={entities}
+              aliasesById={aliasesById}
               graph={graph}
               query={deferredSearchValue}
-              selectedEntityId={selectedEntityId}
-              onSelectEntity={setSelectedEntityId}
+              selectedItemId={selectedItemId}
+              selectedItemTypes={selectedItemTypes}
+              onSelectItem={setSelectedItemId}
             />
           )}
         </Space>
       </Card>
 
       <ValidationDrawer
-        title="实体详情"
-        open={selectedEntityId !== null}
-        onClose={() => setSelectedEntityId(null)}
+        title="知识详情"
+        open={selectedItemId !== null}
+        onClose={() => setSelectedItemId(null)}
         width={640}
         loading={detailLoading}
-        loadingText="正在加载实体详情..."
+        loadingText="正在加载知识详情..."
         error={detailError}
-        errorMessage="实体详情暂不可用"
+        errorMessage="知识详情暂不可用"
       >
         {detail ? (
           <Space direction="vertical" size={16} style={{ display: "flex" }}>
@@ -279,12 +346,16 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label="知识类型">{detail.interpretation.kind_label}</Descriptions.Item>
                 <Descriptions.Item label="工件族">
-                  {detail.interpretation.family_label ? `${detail.interpretation.family_label} (${detail.interpretation.family_code})` : "无"}
+                  {detail.interpretation.family_label
+                    ? `${detail.interpretation.family_label} (${detail.interpretation.family_code})`
+                    : "无"}
                 </Descriptions.Item>
                 <Descriptions.Item label="中文释义">{detail.interpretation.display_name ?? "无"}</Descriptions.Item>
                 <Descriptions.Item label="标准名称">{detail.interpretation.standard_name ?? "无"}</Descriptions.Item>
                 <Descriptions.Item label="解释">{detail.interpretation.summary}</Descriptions.Item>
-                <Descriptions.Item label="通常产出方式">{detail.interpretation.producer_hint ?? "当前未识别"}</Descriptions.Item>
+                <Descriptions.Item label="通常产出方式">
+                  {detail.interpretation.producer_hint ?? "当前未识别"}
+                </Descriptions.Item>
               </Descriptions>
             </div>
 
@@ -335,7 +406,9 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
                                 <Tag color="blue">{item.relation_label}</Tag>
                                 <Typography.Text>{item.name}</Typography.Text>
                               </Space>
-                              {item.evidence ? <Typography.Text type="secondary">{item.evidence}</Typography.Text> : null}
+                              {item.evidence ? (
+                                <Typography.Text type="secondary">{item.evidence}</Typography.Text>
+                              ) : null}
                             </Space>
                           </List.Item>
                         )}
@@ -357,7 +430,9 @@ export function KnowledgeGraph({ archiveId, entities, error, graph, loading, sum
                     <Space>
                       <Tag>{itemTypeLabels[item.item_type] ?? item.item_type}</Tag>
                       <Typography.Text>{item.name}</Typography.Text>
-                      <Typography.Text type="secondary">{relationTypeLabels[item.relation_type] ?? item.relation_type}</Typography.Text>
+                      <Typography.Text type="secondary">
+                        {relationTypeLabels[item.relation_type] ?? item.relation_type}
+                      </Typography.Text>
                     </Space>
                   </List.Item>
                 )}

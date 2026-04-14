@@ -118,6 +118,7 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
     summary = client.get("/api/knowledge/archive/20161116-nas/summary")
     graph = client.get("/api/knowledge/archive/20161116-nas/graph")
     processes = client.get("/api/knowledge/archive/20161116-nas/processes")
+    events = client.get("/api/knowledge/archive/20161116-nas/events")
     search = client.get("/api/knowledge/archive/20161116-nas/search?query=NAS")
     entities = client.get("/api/knowledge/archive/20161116-nas/entities")
     item_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1")
@@ -133,10 +134,17 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
 
     assert graph.status_code == 200
     assert any(node["label"] == "国家空域系统" for node in graph.json()["nodes"])
+    assert any(node["id"] == "entity-nas" and node["item_type"] == "entity" for node in graph.json()["nodes"])
+    assert any(node["id"] == "event-far-term" and node["item_type"] == "event" for node in graph.json()["nodes"])
     assert any(edge["label"] == "process_scoped_by" for edge in graph.json()["edges"])
 
     assert processes.status_code == 200
     assert processes.json()[0]["name"] == "服务互操作流程"
+    assert processes.json()[0]["item_type"] == "process"
+
+    assert events.status_code == 200
+    assert events.json()[0]["name"] == "远期目标（Far Term）"
+    assert events.json()[0]["item_type"] == "event"
 
     assert search.status_code == 200
     assert search.json()[0]["name"] == "国家空域系统"

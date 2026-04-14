@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef } from "react";
 import { Card, Empty, Space, Tag, Typography } from "antd";
 import cytoscape from "cytoscape";
 
-import type { ArchiveKnowledgeEntity, ArchiveKnowledgeGraph } from "../lib/api";
+import type { ArchiveKnowledgeGraph } from "../lib/api";
 import { buildVisibleGraph, getTopologyLayout } from "./knowledgeTopology";
 
 type KnowledgeTopologyGraphProps = {
-  entities: ArchiveKnowledgeEntity[];
+  aliasesById: Map<string, string[]>;
   graph: ArchiveKnowledgeGraph;
   query: string;
-  selectedEntityId: string | null;
-  onSelectEntity: (id: string) => void;
+  selectedItemId: string | null;
+  selectedItemTypes: string[];
+  onSelectItem: (id: string) => void;
 };
 
 const categoryPalette: Record<string, { fill: string; border: string; label: string }> = {
@@ -36,15 +37,19 @@ const relationLabels: Record<string, string> = {
 };
 
 export function KnowledgeTopologyGraph({
-  entities,
+  aliasesById,
   graph,
   query,
-  selectedEntityId,
-  onSelectEntity,
+  selectedItemId,
+  selectedItemTypes,
+  onSelectItem,
 }: KnowledgeTopologyGraphProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const visibleGraph = useMemo(() => buildVisibleGraph(graph, entities, query), [entities, graph, query]);
+  const visibleGraph = useMemo(
+    () => buildVisibleGraph(graph, aliasesById, selectedItemTypes, query),
+    [aliasesById, graph, query, selectedItemTypes],
+  );
   const supportsCanvas = canRenderCanvas();
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export function KnowledgeTopologyGraph({
     });
 
     cy.on("tap", "node", (event) => {
-      onSelectEntity(event.target.id());
+      onSelectItem(event.target.id());
     });
 
     cyRef.current = cy;
@@ -149,7 +154,7 @@ export function KnowledgeTopologyGraph({
       }
       cy.destroy();
     };
-  }, [onSelectEntity, supportsCanvas, visibleGraph]);
+  }, [onSelectItem, supportsCanvas, visibleGraph]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -159,11 +164,11 @@ export function KnowledgeTopologyGraph({
 
     cy.batch(() => {
       cy.nodes().removeClass("is-selected");
-      if (selectedEntityId) {
-        cy.$id(selectedEntityId).addClass("is-selected");
+      if (selectedItemId) {
+        cy.$id(selectedItemId).addClass("is-selected");
       }
     });
-  }, [selectedEntityId]);
+  }, [selectedItemId]);
 
   if (visibleGraph.nodes.length === 0) {
     return (

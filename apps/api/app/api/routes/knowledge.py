@@ -80,6 +80,11 @@ def get_archive_entities(archive_id: str, service: ArchiveKnowledgeService = Dep
     return service.get_entities(archive_id)
 
 
+@router.get("/archive/{archive_id}/events")
+def get_archive_events(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
+    return service.get_events(archive_id)
+
+
 @router.get("/archive/{archive_id}/items/{item_id}")
 def get_archive_item_detail(
     archive_id: str,

@@ -5,6 +5,7 @@ import {
   getArchiveDocumentDetail,
   getArchiveDocuments,
   getArchiveEntities,
+  getArchiveEvents,
   getArchiveGraph,
   getArchiveItemDetail,
   getArchiveProcesses,
@@ -30,6 +31,7 @@ describe("archive knowledge client", () => {
     await getArchiveReviewCandidates();
     await getArchiveGraph();
     await getArchiveEntities();
+    await getArchiveEvents();
     await getArchiveItemDetail("item-1");
     await getArchiveProcesses();
 
@@ -40,7 +42,8 @@ describe("archive knowledge client", () => {
     expect(getMock).toHaveBeenNthCalledWith(4, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/review-candidates`);
     expect(getMock).toHaveBeenNthCalledWith(5, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/graph`);
     expect(getMock).toHaveBeenNthCalledWith(6, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/entities`);
-    expect(getMock).toHaveBeenNthCalledWith(7, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/items/item-1`);
-    expect(getMock).toHaveBeenNthCalledWith(8, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/processes`);
+    expect(getMock).toHaveBeenNthCalledWith(7, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/events`);
+    expect(getMock).toHaveBeenNthCalledWith(8, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/items/item-1`);
+    expect(getMock).toHaveBeenNthCalledWith(9, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/processes`);
   });
 });

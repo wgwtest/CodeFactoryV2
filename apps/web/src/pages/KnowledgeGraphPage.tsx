@@ -1,16 +1,31 @@
 import { useEffect, useState } from "react";
-import { Card, Tag, Typography } from "antd";
+import { Card, Checkbox, Segmented, Space, Tag, Typography } from "antd";
 
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { useArchiveContext } from "../context/ArchiveContext";
-import { getArchiveEntities, getArchiveGraph, getArchivePublication, getArchiveSummary } from "../lib/archiveKnowledge";
+import {
+  getArchiveEntities,
+  getArchiveEvents,
+  getArchiveGraph,
+  getArchiveProcesses,
+  getArchivePublication,
+  getArchiveSummary,
+} from "../lib/archiveKnowledge";
 import type {
   ArchiveKnowledgeEntity,
+  ArchiveKnowledgeEvent,
   ArchiveKnowledgeGraph,
+  ArchiveKnowledgeProcess,
   ArchiveKnowledgeSummary,
   ArchivePublicationOverview,
 } from "../lib/api";
+
+const itemTypeOptions = [
+  { label: "实体", value: "entity" },
+  { label: "事件", value: "event" },
+  { label: "流程", value: "process" },
+] as const;
 
 export function KnowledgeGraphPage() {
   const { activeArchive, activeArchiveId } = useArchiveContext();
@@ -19,7 +34,15 @@ export function KnowledgeGraphPage() {
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
   const [graph, setGraph] = useState<ArchiveKnowledgeGraph | null>(null);
   const [entities, setEntities] = useState<ArchiveKnowledgeEntity[]>([]);
+  const [events, setEvents] = useState<ArchiveKnowledgeEvent[]>([]);
+  const [processes, setProcesses] = useState<ArchiveKnowledgeProcess[]>([]);
   const [publicationOverview, setPublicationOverview] = useState<ArchivePublicationOverview | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
+  const [selectedItemTypes, setSelectedItemTypes] = useState<Array<"entity" | "event" | "process">>([
+    "entity",
+    "event",
+    "process",
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,24 +52,31 @@ export function KnowledgeGraphPage() {
         setSummary(null);
         setGraph(null);
         setEntities([]);
+        setEvents([]);
+        setProcesses([]);
         setPublicationOverview(null);
         setLoading(false);
         return;
       }
 
       try {
-        const [summaryResponse, graphResponse, entitiesResponse, publicationResponse] = await Promise.all([
-          getArchiveSummary(activeArchiveId),
-          getArchiveGraph(activeArchiveId),
-          getArchiveEntities(activeArchiveId),
-          getArchivePublication(activeArchiveId),
-        ]);
+        const [summaryResponse, graphResponse, entitiesResponse, eventsResponse, processesResponse, publicationResponse] =
+          await Promise.all([
+            getArchiveSummary(activeArchiveId),
+            getArchiveGraph(activeArchiveId),
+            getArchiveEntities(activeArchiveId),
+            getArchiveEvents(activeArchiveId),
+            getArchiveProcesses(activeArchiveId),
+            getArchivePublication(activeArchiveId),
+          ]);
         if (cancelled) {
           return;
         }
         setSummary(summaryResponse.data);
         setGraph(graphResponse.data);
         setEntities(entitiesResponse.data);
+        setEvents(eventsResponse.data);
+        setProcesses(processesResponse.data);
         setPublicationOverview(publicationResponse.data);
         setError(null);
       } catch (loadError) {
@@ -69,7 +99,7 @@ export function KnowledgeGraphPage() {
   return (
     <ValidationWorkspace
       title="知识图谱"
-      description={`浏览已发布知识中的实体、架构产物和关联关系。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
+      description={`浏览已发布知识中的实体、事件、流程及其关联关系。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
     >
       {summary ? (
         <Card
@@ -83,100 +113,137 @@ export function KnowledgeGraphPage() {
           }}
           styles={{ body: { padding: "10px 14px" } }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "nowrap",
-              overflowX: "auto",
-              paddingBottom: 2,
-            }}
-          >
+          <Space direction="vertical" size={10} style={{ display: "flex" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                justifyContent: "space-between",
+                gap: 12,
                 flexWrap: "nowrap",
-                flexShrink: 0,
-                minWidth: "max-content",
+                overflowX: "auto",
+                paddingBottom: 2,
               }}
             >
-              <Tag
-                color="processing"
+              <div
                 style={{
-                  borderRadius: 9999,
-                  paddingInline: 10,
-                  lineHeight: "22px",
-                  marginInlineEnd: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "nowrap",
+                  flexShrink: 0,
+                  minWidth: "max-content",
                 }}
               >
-                已发布知识仓
-              </Tag>
-              <Typography.Title level={5} style={{ margin: 0, whiteSpace: "nowrap" }}>
-                档案知识总览
-              </Typography.Title>
-              <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                版本：{publicationOverview?.current_version?.version_label ?? "未发布"}
-              </Tag>
-              <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                节点：{graph?.nodes.length ?? 0}
-              </Tag>
-              <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                关系：{graph?.edges.length ?? 0}
-              </Tag>
+                <Tag
+                  color="processing"
+                  style={{
+                    borderRadius: 9999,
+                    paddingInline: 10,
+                    lineHeight: "22px",
+                    marginInlineEnd: 0,
+                  }}
+                >
+                  已发布知识仓
+                </Tag>
+                <Typography.Title level={5} style={{ margin: 0, whiteSpace: "nowrap" }}>
+                  档案知识总览
+                </Typography.Title>
+                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
+                  版本：{publicationOverview?.current_version?.version_label ?? "未发布"}
+                </Tag>
+                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
+                  节点：{graph?.nodes.length ?? 0}
+                </Tag>
+                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
+                  关系：{graph?.edges.length ?? 0}
+                </Tag>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "nowrap",
+                  flexShrink: 0,
+                  minWidth: "max-content",
+                }}
+              >
+                {[
+                  { title: "文档", value: summary.document_count, accent: "#0f766e", tone: "rgba(20, 184, 166, 0.08)" },
+                  { title: "实体", value: summary.entity_count, accent: "#1d4ed8", tone: "rgba(59, 130, 246, 0.10)" },
+                  { title: "事件", value: summary.event_count, accent: "#b45309", tone: "rgba(245, 158, 11, 0.12)" },
+                  { title: "流程", value: summary.process_count, accent: "#7c3aed", tone: "rgba(139, 92, 246, 0.10)" },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    style={{
+                      borderRadius: 9999,
+                      padding: "5px 10px",
+                      background: item.tone,
+                      border: "1px solid rgba(148, 163, 184, 0.16)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Typography.Text style={{ color: item.accent, fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>
+                      {item.title}
+                    </Typography.Text>
+                    <Typography.Text style={{ color: "#0f172a", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
+                      {item.value.toLocaleString("zh-CN")}
+                    </Typography.Text>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                flexWrap: "nowrap",
-                flexShrink: 0,
-                minWidth: "max-content",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
               }}
             >
-              {[
-                { title: "文档", value: summary.document_count, accent: "#0f766e", tone: "rgba(20, 184, 166, 0.08)" },
-                { title: "实体", value: summary.entity_count, accent: "#1d4ed8", tone: "rgba(59, 130, 246, 0.10)" },
-                { title: "事件", value: summary.event_count, accent: "#b45309", tone: "rgba(245, 158, 11, 0.12)" },
-                { title: "流程", value: summary.process_count, accent: "#7c3aed", tone: "rgba(139, 92, 246, 0.10)" },
-              ].map((item) => (
-                <div
-                  key={item.title}
-                  style={{
-                    borderRadius: 9999,
-                    padding: "5px 10px",
-                    background: item.tone,
-                    border: "1px solid rgba(148, 163, 184, 0.16)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Typography.Text style={{ color: item.accent, fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>
-                    {item.title}
-                  </Typography.Text>
-                  <Typography.Text style={{ color: "#0f172a", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
-                    {item.value.toLocaleString("zh-CN")}
-                  </Typography.Text>
-                </div>
-              ))}
+              <Space wrap size={[12, 8]}>
+                <Typography.Text type="secondary">类型筛选</Typography.Text>
+                <Checkbox.Group
+                  options={itemTypeOptions.map((item) => ({ label: item.label, value: item.value }))}
+                  value={selectedItemTypes}
+                  onChange={(values) => setSelectedItemTypes(values as Array<"entity" | "event" | "process">)}
+                />
+              </Space>
+
+              <Space wrap size={[12, 8]}>
+                <Typography.Text type="secondary">视图选择</Typography.Text>
+                <Segmented
+                  options={[
+                    { label: "列表视图", value: "list" },
+                    { label: "图谱视图", value: "graph" },
+                  ]}
+                  value={viewMode}
+                  onChange={(value) => setViewMode(value as "list" | "graph")}
+                />
+              </Space>
             </div>
-          </div>
+          </Space>
         </Card>
       ) : null}
 
       <KnowledgeGraph
         archiveId={activeArchiveId}
         entities={entities}
+        events={events}
+        processes={processes}
         error={error}
         graph={graph}
         loading={loading}
+        selectedItemTypes={selectedItemTypes}
         summary={summary}
+        viewMode={viewMode}
       />
     </ValidationWorkspace>
   );

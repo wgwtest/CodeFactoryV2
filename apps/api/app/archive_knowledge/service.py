@@ -66,6 +66,7 @@ class ArchiveKnowledgeService:
                         "id": item["id"],
                         "label": item["name"],
                         "type": item.get("category", node_type),
+                        "item_type": node_type,
                         "document_count": len(item.get("document_ids", [])),
                     }
                 )
@@ -89,7 +90,21 @@ class ArchiveKnowledgeService:
 
     def get_processes(self, archive_id: str) -> list[dict]:
         payload = self._load_public(archive_id)
-        return payload.get("processes", [])
+        processes = [
+            {
+                "id": item["id"],
+                "item_type": "process",
+                "name": item["name"],
+                "category": item.get("category"),
+                "aliases": item.get("aliases", []),
+                "document_ids": item.get("document_ids", []),
+                "document_count": len(item.get("document_ids", [])),
+                "evidence": item.get("evidence", []),
+                "interpretation": build_interpretation(item["name"], item.get("category", "domain_process")),
+            }
+            for item in payload.get("processes", [])
+        ]
+        return sorted(processes, key=lambda item: (-item["document_count"], item["name"]))
 
     def get_entities(self, archive_id: str) -> list[dict]:
         payload = self._load_public(archive_id)
@@ -111,9 +126,12 @@ class ArchiveKnowledgeService:
         events = [
             {
                 "id": item["id"],
+                "item_type": "event",
                 "name": item["name"],
                 "category": item.get("category"),
                 "aliases": item.get("aliases", []),
+                "document_ids": item.get("document_ids", []),
+                "evidence": item.get("evidence", []),
                 "document_count": len(item.get("document_ids", [])),
                 "interpretation": build_interpretation(item["name"], item.get("category", "timeline_event")),
             }

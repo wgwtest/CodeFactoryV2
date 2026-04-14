@@ -1,4 +1,4 @@
-import type { ArchiveKnowledgeEntity, ArchiveKnowledgeGraph } from "../lib/api";
+import type { ArchiveKnowledgeGraph } from "../lib/api";
 
 type VisibleGraph = {
   nodes: ArchiveKnowledgeGraph["nodes"];
@@ -30,27 +30,43 @@ type CytoscapeLayout =
 
 export function buildVisibleGraph(
   graph: ArchiveKnowledgeGraph,
-  entities: ArchiveKnowledgeEntity[],
-  query: string,
+  aliasesById: Map<string, string[]>,
+  selectedItemTypes: string[],
+  query = "",
 ): VisibleGraph {
   const normalizedQuery = query.trim().toLowerCase();
-  const degreeById = buildDegreeIndex(graph);
+
+  if (selectedItemTypes.length === 0) {
+    return {
+      nodes: [],
+      edges: [],
+      hiddenIsolatedCount: 0,
+      queryMode: Boolean(normalizedQuery),
+    };
+  }
+
+  const selectedTypeSet = new Set(selectedItemTypes);
+  const candidateNodes = graph.nodes.filter((node) => selectedTypeSet.has(node.item_type));
+  const candidateNodeIds = new Set(candidateNodes.map((node) => node.id));
+  const candidateEdges = graph.edges.filter(
+    (edge) => candidateNodeIds.has(edge.source) && candidateNodeIds.has(edge.target),
+  );
+  const degreeById = buildDegreeIndex({ nodes: candidateNodes, edges: candidateEdges });
 
   if (!normalizedQuery) {
-    const nodes = graph.nodes.filter((node) => (degreeById.get(node.id) ?? 0) > 0);
+    const nodes = candidateNodes.filter((node) => (degreeById.get(node.id) ?? 0) > 0);
     const visibleNodeIds = new Set(nodes.map((node) => node.id));
 
     return {
       nodes,
-      edges: graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
-      hiddenIsolatedCount: graph.nodes.length - nodes.length,
+      edges: candidateEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
+      hiddenIsolatedCount: candidateNodes.length - nodes.length,
       queryMode: false,
     };
   }
 
-  const aliasesById = new Map(entities.map((entity) => [entity.id, entity.aliases]));
   const matchedNodeIds = new Set(
-    graph.nodes
+    candidateNodes
       .filter((node) => {
         const haystack = [node.label, ...(aliasesById.get(node.id) ?? [])].join(" ").toLowerCase();
         return haystack.includes(normalizedQuery);
@@ -68,7 +84,7 @@ export function buildVisibleGraph(
   }
 
   const visibleNodeIds = new Set<string>(matchedNodeIds);
-  graph.edges.forEach((edge) => {
+  candidateEdges.forEach((edge) => {
     if (matchedNodeIds.has(edge.source) || matchedNodeIds.has(edge.target)) {
       visibleNodeIds.add(edge.source);
       visibleNodeIds.add(edge.target);
@@ -76,8 +92,8 @@ export function buildVisibleGraph(
   });
 
   return {
-    nodes: graph.nodes.filter((node) => visibleNodeIds.has(node.id)),
-    edges: graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
+    nodes: candidateNodes.filter((node) => visibleNodeIds.has(node.id)),
+    edges: candidateEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
     hiddenIsolatedCount: 0,
     queryMode: true,
   };
