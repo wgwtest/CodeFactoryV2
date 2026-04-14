@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     llm_enrichment_enabled: bool = False
     llm_enrichment_segment_limit: int = 24
     llm_enrichment_char_limit: int = 16000
+    formal_chunk_segment_threshold: int = 120
+    formal_chunk_char_threshold: int = 50000
+    formal_chunk_char_limit: int = 32000
 
     model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), env_prefix="KW_")
 

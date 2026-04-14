@@ -146,6 +146,13 @@ def build_knowledge_index(
                     "llm_provider": batch.metadata.get("llm_provider"),
                     "llm_model": batch.metadata.get("llm_model"),
                     "llm_base_url": batch.metadata.get("llm_base_url"),
+                    "chunking_used": bool(batch.metadata.get("chunking_used")),
+                    "chunk_count": batch.metadata.get("chunk_count"),
+                    "chunk_char_limit": batch.metadata.get("chunk_char_limit"),
+                    "chunk_candidate_count_total": batch.metadata.get("chunk_candidate_count_total"),
+                    "chunk_relation_count_total": batch.metadata.get("chunk_relation_count_total"),
+                    "merged_candidate_count": batch.metadata.get("merged_candidate_count"),
+                    "merged_relation_count": batch.metadata.get("merged_relation_count"),
                 }
             )
         local_item_ids_by_name: dict[str, str] = {}

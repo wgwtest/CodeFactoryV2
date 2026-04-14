@@ -21,6 +21,13 @@ class ExtractedRelation(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class DocumentSourceRef(BaseModel):
+    chunk_id: str
+    chunk_heading: str
+    segment_ids: list[str] = Field(default_factory=list)
+    anchors: list[dict] = Field(default_factory=list)
+
+
 class ExtractionBatch(BaseModel):
     document_id: str
     title: str

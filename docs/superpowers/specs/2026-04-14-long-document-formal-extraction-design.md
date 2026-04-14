@@ -137,6 +137,16 @@
 2. 表格类分段优先单独成块，避免被普通段落稀释。
 3. 超长块按字符或 token 上限继续切分。
 4. 块必须保持顺序稳定，便于后续解释和排障。
+5. 对 `Docling PDF` 场景，需要先识别“语义标题”与“正文首句标题”，避免把正文首句误当成独立标题导致“一段一块”。
+6. 分块边界采用“软边界”策略：遇到新的小标题时，如果当前块仍过短，则允许继续合并，优先形成更完整的语义块。
+
+当前工程默认参数：
+
+- `formal_chunk_char_limit = 32000`
+- `formal_chunk_segment_threshold = 120`
+- `formal_chunk_char_threshold = 50000`
+
+在 `FM_6-02_Signal_Support_to_Operations_CitizenMilitem.pdf` 上，当前默认规则已从 `385` 个段落收敛到约 `16` 个正式抽取块。
 
 ### 3. 块级抽取编排器
 

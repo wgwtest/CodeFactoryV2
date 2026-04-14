@@ -1,11 +1,36 @@
+import pytest
+
 from app.config import settings
 from app.extraction.service import ExtractionService
 from app.extraction.schema import ExtractedCandidate, ExtractedRelation, ExtractionBatch
+from app.knowledge_builder import SourceDocument, build_knowledge_index
 from app.parsing.models import ParsedSegment
 
 
 def _set_setting(name: str, value) -> None:
     object.__setattr__(settings, name, value)
+
+
+@pytest.fixture(autouse=True)
+def _reset_extraction_settings():
+    snapshot = {
+        "llm_enrichment_enabled": settings.llm_enrichment_enabled,
+        "formal_chunk_segment_threshold": settings.formal_chunk_segment_threshold,
+        "formal_chunk_char_threshold": settings.formal_chunk_char_threshold,
+        "formal_chunk_char_limit": settings.formal_chunk_char_limit,
+        "llm_provider": settings.llm_provider,
+        "llm_api_key": settings.llm_api_key,
+        "llm_base_url": settings.llm_base_url,
+        "llm_model": settings.llm_model,
+        "openai_api_key": settings.openai_api_key,
+    }
+    _set_setting("llm_enrichment_enabled", False)
+    _set_setting("formal_chunk_segment_threshold", 120)
+    _set_setting("formal_chunk_char_threshold", 50000)
+    _set_setting("formal_chunk_char_limit", 12000)
+    yield
+    for name, value in snapshot.items():
+        _set_setting(name, value)
 
 
 def test_extractor_builds_nas_artifact_operational_relationships() -> None:
@@ -86,8 +111,8 @@ def test_extractor_merges_llm_enrichment_when_enabled(monkeypatch) -> None:
         )
     ]
 
-    def fake_llm_enrichment(self, *, document_id, title, file_path, segments, base_batch):
-        del self, document_id, title, file_path, segments, base_batch
+    def fake_llm_enrichment(self, *, document_id, title, file_path, segments, base_batch, structured_llm_bundle):
+        del self, document_id, title, file_path, segments, base_batch, structured_llm_bundle
         return ExtractionBatch(
             document_id="doc-1",
             title="运行协调说明",
@@ -250,3 +275,197 @@ def test_select_llm_segments_spreads_across_long_document() -> None:
     assert len(selected) <= settings.llm_enrichment_segment_limit
     assert 1 in selected_pages
     assert 60 in selected_pages
+
+
+def test_formal_extraction_uses_chunked_path_for_long_document(monkeypatch) -> None:
+    _set_setting("formal_chunk_segment_threshold", 3)
+    _set_setting("formal_chunk_char_threshold", 100000)
+
+    segments = [
+        ParsedSegment(
+            heading=f"第{i}章",
+            content="领域内容 " * 40,
+            anchor={"page": i, "section": f"第{i}章", "line_start": 1, "line_end": 6},
+            block_type="paragraph",
+        )
+        for i in range(1, 5)
+    ]
+
+    calls = {"chunked": 0, "standard": 0}
+
+    def fake_chunked(self, **kwargs):
+        del self, kwargs
+        calls["chunked"] += 1
+        return ExtractionBatch(
+            document_id="doc-1",
+            title="长文档",
+            candidates=[],
+            relations=[],
+            metadata={"chunking_used": True, "chunk_count": 2},
+        )
+
+    def fake_standard(self, **kwargs):
+        del self, kwargs
+        calls["standard"] += 1
+        return ExtractionBatch(document_id="doc-1", title="长文档", candidates=[], relations=[], metadata={})
+
+    monkeypatch.setattr(ExtractionService, "_extract_with_chunks", fake_chunked)
+    monkeypatch.setattr(ExtractionService, "_extract_standard_document", fake_standard)
+
+    batch = ExtractionService(formal_extraction_mode=True).extract_document(
+        document_id="doc-1",
+        title="长文档",
+        file_path="runtime/long.pdf",
+        segments=segments,
+    )
+
+    assert calls == {"chunked": 1, "standard": 0}
+    assert batch.metadata["chunking_used"] is True
+
+
+def test_chunked_formal_extraction_records_source_refs(monkeypatch) -> None:
+    _set_setting("formal_chunk_segment_threshold", 2)
+    _set_setting("formal_chunk_char_threshold", 10)
+    _set_setting("formal_chunk_char_limit", 200)
+
+    segments = [
+        ParsedSegment(
+            heading="第一章",
+            content="信号支援体系说明 " * 20,
+            anchor={"page": 1, "section": "第一章", "line_start": 1, "line_end": 8},
+            block_type="paragraph",
+        ),
+        ParsedSegment(
+            heading="第二章",
+            content="信号支援体系补充 " * 20,
+            anchor={"page": 2, "section": "第二章", "line_start": 1, "line_end": 8},
+            block_type="paragraph",
+        ),
+    ]
+
+    def fake_extract_chunk_batch(self, *, document_id, title, file_path, source_document, chunk, structured_llm_bundle):
+        del self, document_id, title, file_path, source_document, structured_llm_bundle
+        source_ref = {
+            "chunk_id": chunk.chunk_id,
+            "chunk_heading": chunk.heading,
+            "segment_ids": chunk.segment_ids,
+            "anchors": chunk.anchors,
+        }
+        return ExtractionBatch(
+            document_id="doc-1",
+            title="信号支援",
+            strategy="schema_rules+llm",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="信号支援",
+                    confidence=0.9,
+                    payload={
+                        "category": "domain_concept",
+                        "aliases": [chunk.heading],
+                        "evidence": f"{chunk.heading} 证据",
+                        "source_refs": [source_ref],
+                    },
+                )
+            ],
+            relations=[
+                ExtractedRelation(
+                    relation_type="part_of",
+                    source_name="信号支援",
+                    target_name="通信体系",
+                    confidence=0.88,
+                    payload={"evidence": f"{chunk.heading} 关系证据", "source_refs": [source_ref]},
+                )
+            ],
+            metadata={
+                "chunk_id": chunk.chunk_id,
+                "llm_enrichment_used": True,
+                "llm_provider": "deepseek",
+                "llm_model": "deepseek-chat",
+                "llm_base_url": "https://api.deepseek.com/v1",
+            },
+        )
+
+    monkeypatch.setattr(ExtractionService, "_build_structured_llm_bundle", lambda self: ("fake-llm", {}))
+    monkeypatch.setattr(ExtractionService, "_extract_chunk_batch", fake_extract_chunk_batch)
+
+    batch = ExtractionService(formal_extraction_mode=True).extract_document(
+        document_id="doc-1",
+        title="信号支援",
+        file_path="runtime/fm.pdf",
+        segments=segments,
+    )
+
+    candidate = next(item for item in batch.candidates if item.canonical_name == "信号支援")
+    relation = next(item for item in batch.relations if item.source_name == "信号支援")
+
+    assert len(candidate.payload["source_refs"]) == 2
+    assert candidate.payload["source_refs"][0]["chunk_id"] == "chunk-001"
+    assert candidate.payload["evidence_list"] == ["第一章 证据", "第二章 证据"]
+    assert relation.payload["evidence_list"] == ["第一章 关系证据", "第二章 关系证据"]
+    assert batch.metadata["chunking_used"] is True
+    assert batch.metadata["chunk_count"] == 2
+    assert batch.metadata["chunk_candidate_count_total"] == 2
+    assert batch.metadata["merged_candidate_count"] == 1
+    assert batch.metadata["llm_provider"] == "deepseek"
+
+
+def test_build_knowledge_index_collects_chunking_diagnostics() -> None:
+    diagnostics: list[dict] = []
+
+    class FakeExtractionService:
+        def extract_document(self, *, document_id, title, file_path, segments):
+            del document_id, title, file_path, segments
+            return ExtractionBatch(
+                document_id="doc-1",
+                title="长文档",
+                candidates=[
+                    ExtractedCandidate(
+                        item_type="entity",
+                        canonical_name="信号支援",
+                        payload={"category": "domain_concept", "evidence": "章节证据"},
+                    )
+                ],
+                relations=[],
+                metadata={
+                    "llm_enrichment_used": True,
+                    "llm_provider": "deepseek",
+                    "llm_model": "deepseek-chat",
+                    "chunking_used": True,
+                    "chunk_count": 3,
+                    "chunk_char_limit": 12000,
+                    "chunk_candidate_count_total": 9,
+                    "chunk_relation_count_total": 4,
+                    "merged_candidate_count": 5,
+                    "merged_relation_count": 2,
+                },
+            )
+
+    build_knowledge_index(
+        [
+            SourceDocument(
+                path="docs/fm-6-02.pdf",
+                title="FM 6-02",
+                file_type="pdf",
+                source_archive="doctrine",
+                text="信号支援",
+                parser_name="docling_pdf",
+                segment_count=1,
+                segments=[
+                    ParsedSegment(
+                        heading="第一章",
+                        content="信号支援",
+                        anchor={"page": 1, "section": "第一章", "line_start": 1, "line_end": 1},
+                        block_type="paragraph",
+                    )
+                ],
+            )
+        ],
+        extraction_service=FakeExtractionService(),
+        diagnostics_collector=diagnostics,
+    )
+
+    assert diagnostics[0]["chunking_used"] is True
+    assert diagnostics[0]["chunk_count"] == 3
+    assert diagnostics[0]["chunk_candidate_count_total"] == 9
+    assert diagnostics[0]["merged_relation_count"] == 2
