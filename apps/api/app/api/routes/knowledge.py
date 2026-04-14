@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.archive_knowledge.service import ArchiveKnowledgeService
@@ -45,6 +45,13 @@ def get_archive_knowledge_service() -> ArchiveKnowledgeService:
     return ArchiveKnowledgeService(settings.knowledge_output_root)
 
 
+def parse_document_ids(document_ids: str | None) -> list[str] | None:
+    if document_ids is None:
+        return None
+    values = [value.strip() for value in document_ids.split(",") if value.strip()]
+    return values or None
+
+
 @router.get("/graph")
 def get_graph(version_label: str, service: QueryService = Depends(get_query_service)):
     return service.get_graph(version_label)
@@ -61,37 +68,58 @@ def search_knowledge(version_label: str, query: str, service: QueryService = Dep
 
 
 @router.get("/archive/{archive_id}/summary")
-def get_archive_summary(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
-    return service.get_summary(archive_id)
+def get_archive_summary(
+    archive_id: str,
+    document_ids: str | None = Query(default=None),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_summary(archive_id, parse_document_ids(document_ids))
 
 
 @router.get("/archive/{archive_id}/graph")
-def get_archive_graph(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
-    return service.get_graph(archive_id)
+def get_archive_graph(
+    archive_id: str,
+    document_ids: str | None = Query(default=None),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_graph(archive_id, parse_document_ids(document_ids))
 
 
 @router.get("/archive/{archive_id}/processes")
-def get_archive_processes(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
-    return service.get_processes(archive_id)
+def get_archive_processes(
+    archive_id: str,
+    document_ids: str | None = Query(default=None),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_processes(archive_id, parse_document_ids(document_ids))
 
 
 @router.get("/archive/{archive_id}/entities")
-def get_archive_entities(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
-    return service.get_entities(archive_id)
+def get_archive_entities(
+    archive_id: str,
+    document_ids: str | None = Query(default=None),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_entities(archive_id, parse_document_ids(document_ids))
 
 
 @router.get("/archive/{archive_id}/events")
-def get_archive_events(archive_id: str, service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service)):
-    return service.get_events(archive_id)
+def get_archive_events(
+    archive_id: str,
+    document_ids: str | None = Query(default=None),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+):
+    return service.get_events(archive_id, parse_document_ids(document_ids))
 
 
 @router.get("/archive/{archive_id}/items/{item_id}")
 def get_archive_item_detail(
     archive_id: str,
     item_id: str,
+    document_ids: str | None = Query(default=None),
     service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
 ):
-    detail = service.get_item_detail(archive_id, item_id)
+    detail = service.get_item_detail(archive_id, item_id, parse_document_ids(document_ids))
     if detail is None:
         raise HTTPException(status_code=404, detail="Archive item not found")
     return detail
@@ -101,9 +129,10 @@ def get_archive_item_detail(
 def get_archive_item_graph(
     archive_id: str,
     item_id: str,
+    document_ids: str | None = Query(default=None),
     service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
 ):
-    detail = service.get_item_graph(archive_id, item_id)
+    detail = service.get_item_graph(archive_id, item_id, parse_document_ids(document_ids))
     if detail is None:
         raise HTTPException(status_code=404, detail="Archive item not found")
     return detail

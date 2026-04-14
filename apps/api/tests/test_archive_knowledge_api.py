@@ -116,13 +116,20 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
     client = TestClient(app)
 
     summary = client.get("/api/knowledge/archive/20161116-nas/summary")
+    filtered_summary = client.get("/api/knowledge/archive/20161116-nas/summary?document_ids=doc-2")
     graph = client.get("/api/knowledge/archive/20161116-nas/graph")
+    filtered_graph = client.get("/api/knowledge/archive/20161116-nas/graph?document_ids=doc-2")
     processes = client.get("/api/knowledge/archive/20161116-nas/processes")
+    filtered_processes = client.get("/api/knowledge/archive/20161116-nas/processes?document_ids=doc-2")
     events = client.get("/api/knowledge/archive/20161116-nas/events")
+    filtered_events = client.get("/api/knowledge/archive/20161116-nas/events?document_ids=doc-2")
     search = client.get("/api/knowledge/archive/20161116-nas/search?query=NAS")
     entities = client.get("/api/knowledge/archive/20161116-nas/entities")
+    filtered_entities = client.get("/api/knowledge/archive/20161116-nas/entities?document_ids=doc-2")
     item_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1")
+    filtered_item_detail = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1?document_ids=doc-2")
     item_graph = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1/graph")
+    filtered_item_graph = client.get("/api/knowledge/archive/20161116-nas/items/entity-ov1/graph?document_ids=doc-2")
     document_detail = client.get("/api/knowledge/archive/20161116-nas/documents/doc-1")
     missing_document_detail = client.get("/api/knowledge/archive/20161116-nas/documents/missing")
     documents = client.get("/api/knowledge/archive/20161116-nas/documents")
@@ -131,20 +138,40 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
     assert summary.status_code == 200
     assert summary.json()["document_count"] == 2
     assert summary.json()["entity_count"] == 3
+    assert filtered_summary.status_code == 200
+    assert filtered_summary.json() == {
+        "archive_id": "20161116-nas",
+        "document_count": 1,
+        "entity_count": 2,
+        "event_count": 1,
+        "process_count": 0,
+    }
 
     assert graph.status_code == 200
     assert any(node["label"] == "国家空域系统" for node in graph.json()["nodes"])
     assert any(node["id"] == "entity-nas" and node["item_type"] == "entity" for node in graph.json()["nodes"])
     assert any(node["id"] == "event-far-term" and node["item_type"] == "event" for node in graph.json()["nodes"])
     assert any(edge["label"] == "process_scoped_by" for edge in graph.json()["edges"])
+    assert filtered_graph.status_code == 200
+    assert {node["id"] for node in filtered_graph.json()["nodes"]} == {
+        "entity-ov1",
+        "entity-ov1-duplicate",
+        "event-far-term",
+    }
+    assert filtered_graph.json()["edges"] == []
 
     assert processes.status_code == 200
     assert processes.json()[0]["name"] == "服务互操作流程"
     assert processes.json()[0]["item_type"] == "process"
+    assert filtered_processes.status_code == 200
+    assert filtered_processes.json() == []
 
     assert events.status_code == 200
     assert events.json()[0]["name"] == "远期目标（Far Term）"
     assert events.json()[0]["item_type"] == "event"
+    assert filtered_events.status_code == 200
+    assert filtered_events.json()[0]["document_count"] == 1
+    assert filtered_events.json()[0]["document_ids"] == ["doc-2"]
 
     assert search.status_code == 200
     assert search.json()[0]["name"] == "国家空域系统"
@@ -198,6 +225,9 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
             "producer_hint": None,
         },
     }
+    assert filtered_entities.status_code == 200
+    assert [item["id"] for item in filtered_entities.json()] == ["entity-ov1", "entity-ov1-duplicate"]
+    assert filtered_entities.json()[0]["document_count"] == 1
 
     assert item_detail.status_code == 200
     assert item_detail.json() == {
@@ -261,12 +291,53 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
             }
         ],
     }
+    assert filtered_item_detail.status_code == 200
+    assert filtered_item_detail.json() == {
+        "id": "entity-ov1",
+        "name": "OV-1",
+        "item_type": "entity",
+        "category": "architecture_artifact",
+        "aliases": ["远期顶层运行概念图"],
+        "document_count": 1,
+        "review_status": "pending",
+        "interpretation": {
+            "kind_label": "架构工件",
+            "family_code": "OV",
+            "family_label": "运行视图",
+            "display_name": "高层运行概念图",
+            "standard_name": "High-Level Operational Concept Graphic",
+            "summary": "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
+            "producer_hint": "当前档案未识别明确责任方；按工件类型推断，通常由体系架构或运行活动分析产出。",
+        },
+        "documents": [
+            {"id": "doc-2", "title": "NAS Roadmap", "file_type": "docx", "source_archive": "20161116-nas"},
+        ],
+        "evidence": [
+            {"document_id": "doc-2", "document_title": "NAS Roadmap", "excerpt": "Roadmap OV-1 excerpt"},
+        ],
+        "related_items": [],
+        "relationship_sections": [],
+    }
 
     assert item_graph.status_code == 200
     assert item_graph.json()["focus_item_id"] == "entity-ov1"
     assert any(node["id"] == "entity-ov1" and node["is_focus"] for node in item_graph.json()["nodes"])
     assert any(node["id"] == "entity-nas" for node in item_graph.json()["nodes"])
     assert {"source": "entity-nas", "target": "entity-ov1", "label": "supports"} in item_graph.json()["edges"]
+    assert filtered_item_graph.status_code == 200
+    assert filtered_item_graph.json() == {
+        "focus_item_id": "entity-ov1",
+        "nodes": [
+            {
+                "id": "entity-ov1",
+                "label": "OV-1",
+                "item_type": "entity",
+                "category": "architecture_artifact",
+                "is_focus": True,
+            }
+        ],
+        "edges": [],
+    }
 
     assert document_detail.status_code == 200
     assert document_detail.json()["document"] == {

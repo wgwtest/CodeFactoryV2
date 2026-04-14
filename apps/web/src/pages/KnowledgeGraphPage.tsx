@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Card, Checkbox, Segmented, Space, Tag, Typography } from "antd";
+import { Card, Checkbox, Segmented, Select, Space, Tag, Typography } from "antd";
 
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { useArchiveContext } from "../context/ArchiveContext";
 import {
+  getArchiveDocuments,
   getArchiveEntities,
   getArchiveEvents,
   getArchiveGraph,
@@ -13,6 +14,7 @@ import {
   getArchiveSummary,
 } from "../lib/archiveKnowledge";
 import type {
+  ArchiveKnowledgeDocument,
   ArchiveKnowledgeEntity,
   ArchiveKnowledgeEvent,
   ArchiveKnowledgeGraph,
@@ -33,16 +35,57 @@ export function KnowledgeGraphPage() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
   const [graph, setGraph] = useState<ArchiveKnowledgeGraph | null>(null);
+  const [documents, setDocuments] = useState<ArchiveKnowledgeDocument[]>([]);
   const [entities, setEntities] = useState<ArchiveKnowledgeEntity[]>([]);
   const [events, setEvents] = useState<ArchiveKnowledgeEvent[]>([]);
   const [processes, setProcesses] = useState<ArchiveKnowledgeProcess[]>([]);
   const [publicationOverview, setPublicationOverview] = useState<ArchivePublicationOverview | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [selectedItemTypes, setSelectedItemTypes] = useState<Array<"entity" | "event" | "process">>([
     "entity",
     "event",
     "process",
   ]);
+
+  useEffect(() => {
+    setSelectedDocumentIds([]);
+  }, [activeArchiveId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadArchiveDocuments() {
+      if (!activeArchiveId) {
+        setDocuments([]);
+        setDocumentsLoading(false);
+        return;
+      }
+
+      try {
+        setDocumentsLoading(true);
+        const response = await getArchiveDocuments(activeArchiveId);
+        if (cancelled) {
+          return;
+        }
+        setDocuments(response.data);
+      } catch {
+        if (!cancelled) {
+          setDocuments([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setDocumentsLoading(false);
+        }
+      }
+    }
+
+    void loadArchiveDocuments();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArchiveId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +94,7 @@ export function KnowledgeGraphPage() {
       if (!activeArchiveId) {
         setSummary(null);
         setGraph(null);
+        setDocuments([]);
         setEntities([]);
         setEvents([]);
         setProcesses([]);
@@ -60,13 +104,15 @@ export function KnowledgeGraphPage() {
       }
 
       try {
+        setLoading(true);
+        const sourceFilter = selectedDocumentIds.length > 0 ? { documentIds: selectedDocumentIds } : undefined;
         const [summaryResponse, graphResponse, entitiesResponse, eventsResponse, processesResponse, publicationResponse] =
           await Promise.all([
-            getArchiveSummary(activeArchiveId),
-            getArchiveGraph(activeArchiveId),
-            getArchiveEntities(activeArchiveId),
-            getArchiveEvents(activeArchiveId),
-            getArchiveProcesses(activeArchiveId),
+            getArchiveSummary(activeArchiveId, sourceFilter),
+            getArchiveGraph(activeArchiveId, sourceFilter),
+            getArchiveEntities(activeArchiveId, sourceFilter),
+            getArchiveEvents(activeArchiveId, sourceFilter),
+            getArchiveProcesses(activeArchiveId, sourceFilter),
             getArchivePublication(activeArchiveId),
           ]);
         if (cancelled) {
@@ -94,7 +140,7 @@ export function KnowledgeGraphPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeArchiveId]);
+  }, [activeArchiveId, selectedDocumentIds]);
 
   return (
     <ValidationWorkspace
@@ -229,6 +275,43 @@ export function KnowledgeGraphPage() {
                 />
               </Space>
             </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <Space wrap size={[12, 8]} style={{ flex: 1, minWidth: 280 }}>
+                <Typography.Text type="secondary">来源文档</Typography.Text>
+                <Select
+                  data-testid="knowledge-source-documents-select"
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  value={selectedDocumentIds}
+                  loading={documentsLoading}
+                  placeholder="全部素材文档"
+                  style={{ minWidth: 320, flex: 1 }}
+                  maxTagCount="responsive"
+                  optionFilterProp="label"
+                  onChange={(values) => setSelectedDocumentIds(values)}
+                  options={documents.map((document) => ({
+                    label: document.title,
+                    value: document.id,
+                  }))}
+                />
+              </Space>
+
+              <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
+                {selectedDocumentIds.length === 0
+                  ? `当前来源：全部 ${documents.length} 份`
+                  : `当前来源：已选 ${selectedDocumentIds.length} / ${documents.length} 份`}
+              </Tag>
+            </div>
           </Space>
         </Card>
       ) : null}
@@ -241,6 +324,7 @@ export function KnowledgeGraphPage() {
         error={error}
         graph={graph}
         loading={loading}
+        selectedDocumentIds={selectedDocumentIds}
         selectedItemTypes={selectedItemTypes}
         summary={summary}
         viewMode={viewMode}

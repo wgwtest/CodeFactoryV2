@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   DEFAULT_ARCHIVE_ID,
@@ -22,6 +22,10 @@ vi.mock("../lib/api", () => ({
 }));
 
 describe("archive knowledge client", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
   test("uses the default archive id for standard archive knowledge queries", async () => {
     getMock.mockResolvedValue({ data: {} });
 
@@ -45,5 +49,35 @@ describe("archive knowledge client", () => {
     expect(getMock).toHaveBeenNthCalledWith(7, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/events`);
     expect(getMock).toHaveBeenNthCalledWith(8, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/items/item-1`);
     expect(getMock).toHaveBeenNthCalledWith(9, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/processes`);
+  });
+
+  test("passes selected source documents as knowledge query params", async () => {
+    getMock.mockResolvedValue({ data: {} });
+
+    await getArchiveSummary(DEFAULT_ARCHIVE_ID, { documentIds: ["doc-1", "doc-2"] });
+    await getArchiveGraph(DEFAULT_ARCHIVE_ID, { documentIds: ["doc-1"] });
+    await getArchiveEntities(DEFAULT_ARCHIVE_ID, { documentIds: ["doc-1"] });
+    await getArchiveEvents(DEFAULT_ARCHIVE_ID, { documentIds: ["doc-2"] });
+    await getArchiveProcesses(DEFAULT_ARCHIVE_ID, { documentIds: ["doc-2"] });
+    await getArchiveItemDetail("item-1", DEFAULT_ARCHIVE_ID, { documentIds: ["doc-1"] });
+
+    expect(getMock).toHaveBeenNthCalledWith(1, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/summary`, {
+      params: { document_ids: "doc-1,doc-2" },
+    });
+    expect(getMock).toHaveBeenNthCalledWith(2, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/graph`, {
+      params: { document_ids: "doc-1" },
+    });
+    expect(getMock).toHaveBeenNthCalledWith(3, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/entities`, {
+      params: { document_ids: "doc-1" },
+    });
+    expect(getMock).toHaveBeenNthCalledWith(4, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/events`, {
+      params: { document_ids: "doc-2" },
+    });
+    expect(getMock).toHaveBeenNthCalledWith(5, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/processes`, {
+      params: { document_ids: "doc-2" },
+    });
+    expect(getMock).toHaveBeenNthCalledWith(6, `/knowledge/archive/${DEFAULT_ARCHIVE_ID}/items/item-1`, {
+      params: { document_ids: "doc-1" },
+    });
   });
 });

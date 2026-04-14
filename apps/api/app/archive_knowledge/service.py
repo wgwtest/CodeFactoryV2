@@ -52,12 +52,12 @@ class ArchiveKnowledgeService:
         self.output_root = Path(output_root)
         self.published_repository = published_repository or self._build_published_repository()
 
-    def get_summary(self, archive_id: str) -> dict:
-        payload = self._load_public(archive_id)
+    def get_summary(self, archive_id: str, document_ids: list[str] | None = None) -> dict:
+        payload = self._load_public(archive_id, document_ids)
         return {"archive_id": archive_id, **payload["summary"]}
 
-    def get_graph(self, archive_id: str) -> dict:
-        payload = self._load_public(archive_id)
+    def get_graph(self, archive_id: str, document_ids: list[str] | None = None) -> dict:
+        payload = self._load_public(archive_id, document_ids)
         nodes = []
         for collection_name, node_type in ITEM_COLLECTIONS:
             for item in payload.get(collection_name, []):
@@ -88,8 +88,8 @@ class ArchiveKnowledgeService:
             "publication": payload.get("publication"),
         }
 
-    def get_processes(self, archive_id: str) -> list[dict]:
-        payload = self._load_public(archive_id)
+    def get_processes(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
+        payload = self._load_public(archive_id, document_ids)
         processes = [
             {
                 "id": item["id"],
@@ -106,8 +106,8 @@ class ArchiveKnowledgeService:
         ]
         return sorted(processes, key=lambda item: (-item["document_count"], item["name"]))
 
-    def get_entities(self, archive_id: str) -> list[dict]:
-        payload = self._load_public(archive_id)
+    def get_entities(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
+        payload = self._load_public(archive_id, document_ids)
         entities = [
             {
                 "id": item["id"],
@@ -121,8 +121,8 @@ class ArchiveKnowledgeService:
         ]
         return sorted(entities, key=lambda item: (-item["document_count"], item["name"]))
 
-    def get_events(self, archive_id: str) -> list[dict]:
-        payload = self._load_public(archive_id)
+    def get_events(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
+        payload = self._load_public(archive_id, document_ids)
         events = [
             {
                 "id": item["id"],
@@ -139,36 +139,15 @@ class ArchiveKnowledgeService:
         ]
         return sorted(events, key=lambda item: (-item["document_count"], item["name"]))
 
-    def get_item_detail(self, archive_id: str, item_id: str) -> dict | None:
-        payload = self._load_raw(archive_id)
+    def get_item_detail(self, archive_id: str, item_id: str, document_ids: list[str] | None = None) -> dict | None:
+        payload = self._load_public(archive_id, document_ids)
         item_info = self._find_item_info(payload, item_id)
         if item_info is None:
             return None
+        return self._build_item_detail_response(payload, item_info)
 
-        _, item_type, _, item = item_info
-        document_index = self._build_document_index(payload)
-        documents = self._build_item_documents(item, document_index)
-        evidence = self._build_item_evidence(item, document_index)
-        related_items = self._build_related_items(payload, item_id)
-        relationship_sections = self._build_relationship_sections(payload, item_id)
-
-        return {
-            "id": item["id"],
-            "name": item["name"],
-            "item_type": item_type,
-            "category": item.get("category"),
-            "aliases": item.get("aliases", []),
-            "review_status": item.get("review_status", "pending"),
-            "document_count": len(item.get("document_ids", [])),
-            "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
-            "documents": documents,
-            "evidence": evidence,
-            "related_items": related_items,
-            "relationship_sections": relationship_sections,
-        }
-
-    def get_item_graph(self, archive_id: str, item_id: str) -> dict | None:
-        payload = self._load_public(archive_id)
+    def get_item_graph(self, archive_id: str, item_id: str, document_ids: list[str] | None = None) -> dict | None:
+        payload = self._load_public(archive_id, document_ids)
         item_info = self._find_item_info(payload, item_id)
         if item_info is None:
             return None
@@ -352,7 +331,11 @@ class ArchiveKnowledgeService:
         item["category"] = category.strip()
         item["aliases"] = self._normalize_aliases(item["name"], aliases)
         self._save_payload(archive_id, payload)
-        return self.get_item_detail(archive_id, item_id)
+        refreshed_payload = self._load_raw(archive_id)
+        refreshed_item_info = self._find_item_info(refreshed_payload, item_id)
+        if refreshed_item_info is None:
+            return None
+        return self._build_item_detail_response(refreshed_payload, refreshed_item_info)
 
     def set_review_status(self, archive_id: str, item_id: str, review_status: str) -> dict | None:
         payload = self._load_for_edit(archive_id)
@@ -363,7 +346,11 @@ class ArchiveKnowledgeService:
         _, _, _, item = item_info
         item["review_status"] = self._normalize_review_status(review_status)
         self._save_payload(archive_id, payload)
-        return self.get_item_detail(archive_id, item_id)
+        refreshed_payload = self._load_raw(archive_id)
+        refreshed_item_info = self._find_item_info(refreshed_payload, item_id)
+        if refreshed_item_info is None:
+            return None
+        return self._build_item_detail_response(refreshed_payload, refreshed_item_info)
 
     def batch_approve(self, archive_id: str, item_ids: list[str]) -> dict:
         payload = self._load_for_edit(archive_id)
@@ -421,7 +408,11 @@ class ArchiveKnowledgeService:
             raise ValueError("Merge target collection mismatch")
 
         self._save_payload(archive_id, payload)
-        return self.get_item_detail(archive_id, primary_item_id)
+        refreshed_payload = self._load_raw(archive_id)
+        refreshed_item_info = self._find_item_info(refreshed_payload, primary_item_id)
+        if refreshed_item_info is None:
+            return None
+        return self._build_item_detail_response(refreshed_payload, refreshed_item_info)
 
     def _resolve_base_path(self, archive_id: str) -> Path:
         return self.output_root / f"{archive_id}-knowledge.json"
@@ -435,16 +426,16 @@ class ArchiveKnowledgeService:
             return curated_path
         return self._resolve_base_path(archive_id)
 
-    def _load_public(self, archive_id: str) -> dict:
+    def _load_public(self, archive_id: str, document_ids: list[str] | None = None) -> dict:
         published_payload, publication = self.published_repository.load_latest(archive_id)
         if published_payload is not None:
-            published_payload["publication"] = publication
-            return published_payload
+            payload = published_payload
+        else:
+            payload = self._apply_visibility_filter(self._load_raw(archive_id))
 
-        payload = self._load_raw(archive_id)
-        visible_payload = self._apply_visibility_filter(payload)
-        visible_payload["publication"] = publication
-        return visible_payload
+        filtered_payload = self._apply_document_filter(payload, document_ids)
+        filtered_payload["publication"] = publication
+        return filtered_payload
 
     def _load_raw(self, archive_id: str) -> dict:
         archive_path = self._resolve_read_path(archive_id)
@@ -505,6 +496,21 @@ class ArchiveKnowledgeService:
                 item["review_status"] = self._normalize_review_status(item.get("review_status"))
                 item["aliases"] = self._normalize_aliases(item["name"], item.get("aliases", []))
 
+    @staticmethod
+    def _normalize_document_ids(document_ids: list[str] | None) -> list[str]:
+        if not document_ids:
+            return []
+
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        for document_id in document_ids:
+            normalized_document_id = document_id.strip()
+            if not normalized_document_id or normalized_document_id in seen:
+                continue
+            seen.add(normalized_document_id)
+            normalized_ids.append(normalized_document_id)
+        return normalized_ids
+
     def _apply_visibility_filter(self, payload: dict) -> dict:
         filtered = {
             "documents": payload.get("documents", []),
@@ -527,6 +533,51 @@ class ArchiveKnowledgeService:
             for relation in payload.get("relations", [])
             if relation.get("from") in visible_item_ids.union(visible_document_ids)
             and relation.get("to") in visible_item_ids.union(visible_document_ids)
+        ]
+        filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
+        return filtered
+
+    def _apply_document_filter(self, payload: dict, document_ids: list[str] | None) -> dict:
+        normalized_document_ids = self._normalize_document_ids(document_ids)
+        if not normalized_document_ids:
+            return payload
+
+        visible_document_ids = set(normalized_document_ids)
+        filtered = {
+            "documents": [
+                document for document in payload.get("documents", []) if document.get("id") in visible_document_ids
+            ],
+            "relations": [],
+        }
+        visible_item_ids: set[str] = set()
+
+        for collection_name, _ in ITEM_COLLECTIONS:
+            visible_items = []
+            for item in payload.get(collection_name, []):
+                item_document_ids = [
+                    document_id for document_id in item.get("document_ids", []) if document_id in visible_document_ids
+                ]
+                item_evidence = [
+                    evidence
+                    for evidence in item.get("evidence", [])
+                    if evidence.get("document_id") in visible_document_ids
+                ]
+                if not item_document_ids and not item_evidence:
+                    continue
+
+                visible_item = dict(item)
+                visible_item["document_ids"] = item_document_ids
+                visible_item["evidence"] = item_evidence
+                visible_items.append(visible_item)
+                visible_item_ids.add(visible_item["id"])
+
+            filtered[collection_name] = visible_items
+
+        visible_relation_targets = visible_item_ids.union(visible_document_ids)
+        filtered["relations"] = [
+            relation
+            for relation in payload.get("relations", [])
+            if relation.get("from") in visible_relation_targets and relation.get("to") in visible_relation_targets
         ]
         filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
         return filtered
@@ -686,6 +737,33 @@ class ArchiveKnowledgeService:
                 }
             )
         return evidence
+
+    def _build_item_detail_response(
+        self,
+        payload: dict,
+        item_info: tuple[str, str, int, dict],
+    ) -> dict:
+        _, item_type, _, item = item_info
+        document_index = self._build_document_index(payload)
+        documents = self._build_item_documents(item, document_index)
+        evidence = self._build_item_evidence(item, document_index)
+        related_items = self._build_related_items(payload, item["id"])
+        relationship_sections = self._build_relationship_sections(payload, item["id"])
+
+        return {
+            "id": item["id"],
+            "name": item["name"],
+            "item_type": item_type,
+            "category": item.get("category"),
+            "aliases": item.get("aliases", []),
+            "review_status": item.get("review_status", "pending"),
+            "document_count": len(item.get("document_ids", [])),
+            "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+            "documents": documents,
+            "evidence": evidence,
+            "related_items": related_items,
+            "relationship_sections": relationship_sections,
+        }
 
     def _build_related_items(self, payload: dict, item_id: str) -> list[dict]:
         related_items = []

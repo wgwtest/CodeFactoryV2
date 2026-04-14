@@ -66,6 +66,7 @@ type KnowledgeGraphProps = {
   error: string | null;
   graph: ArchiveKnowledgeGraph | null;
   loading: boolean;
+  selectedDocumentIds: string[];
   selectedItemTypes: Array<"entity" | "event" | "process">;
   summary: ArchiveKnowledgeSummary | null;
   viewMode: "list" | "graph";
@@ -79,6 +80,7 @@ export function KnowledgeGraph({
   error,
   graph,
   loading,
+  selectedDocumentIds,
   selectedItemTypes,
   summary,
   viewMode,
@@ -154,8 +156,12 @@ export function KnowledgeGraph({
           return;
         }
         const [detailResponse, graphResponse] = await Promise.all([
-          getArchiveItemDetail(activeItemId, currentArchiveId),
-          getArchiveItemGraph(activeItemId, currentArchiveId),
+          getArchiveItemDetail(activeItemId, currentArchiveId, {
+            documentIds: selectedDocumentIds,
+          }),
+          getArchiveItemGraph(activeItemId, currentArchiveId, {
+            documentIds: selectedDocumentIds,
+          }),
         ]);
         if (cancelled) {
           return;
@@ -178,7 +184,7 @@ export function KnowledgeGraph({
     return () => {
       cancelled = true;
     };
-  }, [archiveId, selectedItemId]);
+  }, [archiveId, selectedDocumentIds, selectedItemId]);
 
   if (loading) {
     return (
