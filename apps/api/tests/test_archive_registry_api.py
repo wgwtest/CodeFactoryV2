@@ -228,3 +228,157 @@ def test_archive_extract_rejects_parallel_requests(tmp_path) -> None:
 
     assert response.status_code == 409
     assert response.json() == {"detail": "当前已有知识库正在抽取中：another-kb，请等待完成后再试"}
+
+
+def test_archive_document_formalize_route_returns_incremental_result(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    expected_source_dir = source_dir
+
+    archive_path = tmp_path / "20161116-nas-knowledge.json"
+    _write_archive(
+        archive_path,
+        document_title="Legacy NAS",
+        entity_name="国家空域系统",
+        entity_count=1,
+    )
+
+    app = create_app()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+
+    class StubExtractionService(ArchiveExtractionService):
+        def formalize_document(
+            self,
+            archive_id: str,
+            *,
+            document_id: str,
+            source_dir: Path,
+            extract_root: Path,
+            archive_name: str | None = None,
+        ) -> dict:
+            assert archive_id == "20161116-nas"
+            assert document_id == "doc-1"
+            assert source_dir == expected_source_dir
+            assert extract_root == tmp_path / "legacy-extract"
+            assert archive_name == "默认 NAS 知识库"
+            return {
+                "archive_id": archive_id,
+                "document_id": document_id,
+                "mode": "incremental_merge",
+                "summary": {
+                    "document_count": 1,
+                    "entity_count": 2,
+                    "event_count": 0,
+                    "process_count": 0,
+                },
+                "document": {
+                    "id": document_id,
+                    "title": "Legacy NAS",
+                    "file_type": "docx",
+                    "source_archive": "测试档案",
+                    "character_count": 1200,
+                    "entity_count": 2,
+                    "event_count": 0,
+                    "process_count": 0,
+                    "knowledge_item_count": 2,
+                },
+            }
+
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    app.dependency_overrides[get_archive_extraction_service] = lambda: StubExtractionService(tmp_path)
+    app.dependency_overrides[get_archive_extraction_coordinator] = lambda: ArchiveExtractionCoordinator()
+    client = TestClient(app)
+
+    response = client.post("/api/archives/20161116-nas/documents/doc-1/formalize")
+
+    assert response.status_code == 200
+    assert response.json()["archive_id"] == "20161116-nas"
+    assert response.json()["document_id"] == "doc-1"
+    assert response.json()["mode"] == "incremental_merge"
+    assert response.json()["summary"]["entity_count"] == 2
+
+
+def test_archive_document_remove_route_returns_incremental_result(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    expected_source_dir = source_dir
+
+    archive_path = tmp_path / "20161116-nas-knowledge.json"
+    _write_archive(
+        archive_path,
+        document_title="Legacy NAS",
+        entity_name="国家空域系统",
+        entity_count=1,
+    )
+
+    app = create_app()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+
+    class StubExtractionService(ArchiveExtractionService):
+        def remove_document(
+            self,
+            archive_id: str,
+            *,
+            document_id: str,
+            source_dir: Path,
+            extract_root: Path,
+            archive_name: str | None = None,
+        ) -> dict:
+            assert archive_id == "20161116-nas"
+            assert document_id == "doc-1"
+            assert source_dir == expected_source_dir
+            assert extract_root == tmp_path / "legacy-extract"
+            assert archive_name == "默认 NAS 知识库"
+            return {
+                "archive_id": archive_id,
+                "document_id": document_id,
+                "action": "remove",
+                "mode": "incremental_remove",
+                "document_included": False,
+                "summary": {
+                    "document_count": 0,
+                    "entity_count": 0,
+                    "event_count": 0,
+                    "process_count": 0,
+                },
+                "document": {
+                    "id": document_id,
+                    "title": "Legacy NAS",
+                    "file_type": "docx",
+                    "source_archive": "测试档案",
+                    "character_count": 1200,
+                    "entity_count": 1,
+                    "event_count": 0,
+                    "process_count": 0,
+                    "knowledge_item_count": 1,
+                    "included_in_archive": False,
+                },
+            }
+
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    app.dependency_overrides[get_archive_extraction_service] = lambda: StubExtractionService(tmp_path)
+    app.dependency_overrides[get_archive_extraction_coordinator] = lambda: ArchiveExtractionCoordinator()
+    client = TestClient(app)
+
+    response = client.post("/api/archives/20161116-nas/documents/doc-1/remove")
+
+    assert response.status_code == 200
+    assert response.json()["archive_id"] == "20161116-nas"
+    assert response.json()["document_id"] == "doc-1"
+    assert response.json()["action"] == "remove"
+    assert response.json()["mode"] == "incremental_remove"
+    assert response.json()["document_included"] is False

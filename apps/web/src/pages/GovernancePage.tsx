@@ -18,6 +18,7 @@ import { CandidateReviewTable } from "../components/CandidateReviewTable";
 import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
 import { api } from "../lib/api";
 import { getArchivePublication } from "../lib/archiveKnowledge";
@@ -198,6 +199,12 @@ export function GovernancePage() {
     }
     return item.id !== activeDetail.id && item.item_type === activeDetail.item_type;
   });
+  const reviewStatusSummaryLabel =
+    reviewStatusFilter === "pending"
+      ? "只看待审核"
+      : reviewStatusFilter === "all"
+        ? "全部"
+        : reviewStatusLabels[reviewStatusFilter];
 
   async function handleApplyChanges() {
     if (!activeDetail || !activeArchiveId) {
@@ -342,14 +349,27 @@ export function GovernancePage() {
     <ValidationWorkspace
       title="知识审核发布"
       description={`审核机器抽取出的候选知识，并将修正直接应用到当前知识库。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
-      stats={[
-        { title: "候选总数", value: candidates.length },
-        { title: "当前筛出", value: filteredCandidates.length },
-        { title: "已选中", value: selectedRowKeys.length },
-        { title: "当前版本", value: publicationOverview?.current_version?.version_label ?? "未发布" },
-      ]}
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
+        <WorkspaceOverviewStrip
+          badgeLabel="审核发布"
+          badgeColor="gold"
+          title="审核发布总览"
+          tags={[
+            { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
+            {
+              label: `发布状态：${publicationOverview?.current_version ? "已发布" : "未发布"}`,
+              color: publicationOverview?.current_version ? "success" : "default",
+            },
+            { label: `当前筛选：${reviewStatusSummaryLabel}` },
+          ]}
+          metrics={[
+            { title: "候选总数", value: candidates.length },
+            { title: "当前筛出", value: filteredCandidates.length },
+            { title: "已选中", value: selectedRowKeys.length },
+            { title: "当前版本", value: publicationOverview?.current_version?.version_label ?? "未发布" },
+          ]}
+        />
         <div>
           <Typography.Paragraph type="secondary">
             支持改名、改类、别名编辑、单项通过、驳回、批量通过和同类知识合并。

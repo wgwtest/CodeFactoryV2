@@ -582,6 +582,7 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
     </MemoryRouter>,
   );
 
+  expect(await screen.findByTestId("workspace-overview-strip")).toBeInTheDocument();
   expect(await screen.findByText("档案知识总览")).toBeInTheDocument();
   expect(await screen.findByText("版本：v1")).toBeInTheDocument();
   expect(await screen.findByText("节点：5")).toBeInTheDocument();

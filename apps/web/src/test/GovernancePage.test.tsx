@@ -205,6 +205,8 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
 
   render(<GovernancePage />);
 
+  expect(await screen.findByTestId("workspace-overview-strip")).toBeInTheDocument();
+  expect(screen.getByText("审核发布总览")).toBeInTheDocument();
   expect(await screen.findByText("知识审核发布")).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "发布当前已通过知识" })).toBeInTheDocument();
   expect(screen.getByPlaceholderText("搜索名称或别名")).toBeInTheDocument();

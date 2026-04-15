@@ -102,6 +102,7 @@ class SourceDocument:
     parser_name: str | None = None
     segment_count: int = 0
     segments: list["ParsedSegment"] | None = None
+    source_file_path: str | None = None
 
 
 def build_knowledge_index(

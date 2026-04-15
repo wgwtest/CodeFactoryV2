@@ -6,12 +6,21 @@ from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
 
+from app.archive_knowledge.document_artifacts import (
+    DocumentArtifactRepository,
+    aggregate_document_contributions,
+    build_document_contribution,
+    build_extraction_report_payload,
+    build_parsed_documents_payload,
+)
 from app.archive_knowledge.rebuild import reconcile_curated_payload
 from app.extraction.service import ExtractionService
-from app.knowledge_builder import SourceDocument, build_knowledge_index
+from app.knowledge_builder import SourceDocument, build_knowledge_index as runtime_build_knowledge_index
 from app.parsing.service import ParsingService
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
+build_knowledge_index = runtime_build_knowledge_index
+_ORIGINAL_BUILD_KNOWLEDGE_INDEX = runtime_build_knowledge_index
 
 
 @dataclass(slots=True)
@@ -50,79 +59,44 @@ def build_archive_knowledge(
     if not documents:
         raise ValueError(f"目录中未发现可解析文档: {source_dir}")
 
-    extraction_diagnostics: list[dict] = []
-    knowledge = build_knowledge_index(
-        documents,
-        extraction_service=ExtractionService(formal_extraction_mode=formal_extraction_mode),
-        diagnostics_collector=extraction_diagnostics,
-    )
+    if build_knowledge_index is not _ORIGINAL_BUILD_KNOWLEDGE_INDEX:
+        extraction_diagnostics: list[dict] = []
+        knowledge = build_knowledge_index(
+            documents,
+            extraction_service=ExtractionService(formal_extraction_mode=formal_extraction_mode),
+            diagnostics_collector=extraction_diagnostics,
+        )
+        if formal_extraction_mode:
+            _validate_formal_extraction_run(documents, extraction_diagnostics)
+        return persist_legacy_archive_outputs(
+            archive_id=archive_id,
+            archive_name=archive_name,
+            source_dir=source_dir,
+            extract_root=extract_root,
+            output_root=output_root,
+            knowledge=knowledge,
+            documents=documents,
+            extraction_diagnostics=extraction_diagnostics,
+            formal_extraction_mode=formal_extraction_mode,
+        )
+
+    extraction_service = ExtractionService(formal_extraction_mode=formal_extraction_mode)
+    contributions = [build_document_contribution(document, extraction_service) for document in documents]
+    extraction_diagnostics = _build_extraction_diagnostics(contributions)
     if formal_extraction_mode:
         _validate_formal_extraction_run(documents, extraction_diagnostics)
 
-    output_root.mkdir(parents=True, exist_ok=True)
-    json_path = output_root / f"{archive_id}-knowledge.json"
-    curated_path = output_root / f"{archive_id}-knowledge-curated.json"
-    markdown_path = output_root / f"{archive_id}-knowledge.md"
-    parsed_documents_path = output_root / f"{archive_id}-parsed-documents.json"
-    extraction_report_path = output_root / f"{archive_id}-extraction-report.json"
-    json_path.write_text(json.dumps(knowledge, ensure_ascii=False, indent=2), encoding="utf-8")
-    curated_path.write_text(
-        json.dumps(
-            reconcile_curated_payload(
-                knowledge,
-                _load_json(curated_path),
-            ),
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    markdown_path.write_text(render_summary(knowledge, archive_name=archive_name), encoding="utf-8")
-    parsed_documents_path.write_text(
-        json.dumps(
-            [
-                {
-                    "path": document.path,
-                    "title": document.title,
-                    "file_type": document.file_type,
-                    "source_archive": document.source_archive,
-                    "parser_name": document.parser_name,
-                    "segment_count": document.segment_count,
-                    "character_count": len(document.text),
-                }
-                for document in documents
-            ],
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    extraction_report_path.write_text(
-        json.dumps(
-            {
-                "archive_id": archive_id,
-                "archive_name": archive_name,
-                "strict_mode": formal_extraction_mode,
-                "summary": knowledge["summary"],
-                "documents": extraction_diagnostics,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    return ArchiveBuildResult(
+    DocumentArtifactRepository(output_root).replace_all(archive_id, contributions)
+    knowledge = aggregate_document_contributions(contributions)
+    return persist_archive_outputs(
         archive_id=archive_id,
         archive_name=archive_name,
         source_dir=source_dir,
         extract_root=extract_root,
-        json_path=json_path,
-        curated_path=curated_path,
-        markdown_path=markdown_path,
-        parsed_documents_path=parsed_documents_path,
-        extraction_report_path=extraction_report_path,
-        summary=knowledge["summary"],
+        output_root=output_root,
+        knowledge=knowledge,
+        contributions=contributions,
+        formal_extraction_mode=formal_extraction_mode,
     )
 
 
@@ -200,6 +174,7 @@ def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mo
                 parser_name=parsed.parser_name,
                 segment_count=len(parsed.segments),
                 segments=parsed.segments,
+                source_file_path=str(path),
             )
 
             digest = _file_digest(path)
@@ -276,3 +251,166 @@ def _load_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def persist_archive_outputs(
+    *,
+    archive_id: str,
+    archive_name: str,
+    source_dir: Path,
+    extract_root: Path,
+    output_root: Path,
+    knowledge: dict,
+    contributions: list[dict],
+    formal_extraction_mode: bool,
+) -> ArchiveBuildResult:
+    output_root.mkdir(parents=True, exist_ok=True)
+    json_path = output_root / f"{archive_id}-knowledge.json"
+    curated_path = output_root / f"{archive_id}-knowledge-curated.json"
+    markdown_path = output_root / f"{archive_id}-knowledge.md"
+    parsed_documents_path = output_root / f"{archive_id}-parsed-documents.json"
+    extraction_report_path = output_root / f"{archive_id}-extraction-report.json"
+
+    json_path.write_text(json.dumps(knowledge, ensure_ascii=False, indent=2), encoding="utf-8")
+    curated_path.write_text(
+        json.dumps(
+            reconcile_curated_payload(
+                knowledge,
+                _load_json(curated_path),
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    markdown_path.write_text(render_summary(knowledge, archive_name=archive_name), encoding="utf-8")
+    parsed_documents_path.write_text(
+        json.dumps(build_parsed_documents_payload(contributions), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    extraction_report_path.write_text(
+        json.dumps(
+            build_extraction_report_payload(
+                archive_id=archive_id,
+                archive_name=archive_name,
+                strict_mode=formal_extraction_mode,
+                contributions=contributions,
+                summary=knowledge["summary"],
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return ArchiveBuildResult(
+        archive_id=archive_id,
+        archive_name=archive_name,
+        source_dir=source_dir,
+        extract_root=extract_root,
+        json_path=json_path,
+        curated_path=curated_path,
+        markdown_path=markdown_path,
+        parsed_documents_path=parsed_documents_path,
+        extraction_report_path=extraction_report_path,
+        summary=knowledge["summary"],
+    )
+
+
+def _build_extraction_diagnostics(contributions: list[dict]) -> list[dict]:
+    diagnostics = []
+    for contribution in sorted(contributions, key=lambda item: item["document"]["path"]):
+        document = contribution["document"]
+        extraction = contribution.get("extraction", {})
+        diagnostics.append(
+            {
+                "document_id": document["id"],
+                "title": document["title"],
+                "file_path": document["path"],
+                "file_type": document["file_type"],
+                "parser_name": document.get("parser_name"),
+                "segment_count": document.get("segment_count", 0),
+                **extraction,
+            }
+        )
+    return diagnostics
+
+
+def persist_legacy_archive_outputs(
+    *,
+    archive_id: str,
+    archive_name: str,
+    source_dir: Path,
+    extract_root: Path,
+    output_root: Path,
+    knowledge: dict,
+    documents: list[SourceDocument],
+    extraction_diagnostics: list[dict],
+    formal_extraction_mode: bool,
+) -> ArchiveBuildResult:
+    output_root.mkdir(parents=True, exist_ok=True)
+    json_path = output_root / f"{archive_id}-knowledge.json"
+    curated_path = output_root / f"{archive_id}-knowledge-curated.json"
+    markdown_path = output_root / f"{archive_id}-knowledge.md"
+    parsed_documents_path = output_root / f"{archive_id}-parsed-documents.json"
+    extraction_report_path = output_root / f"{archive_id}-extraction-report.json"
+
+    json_path.write_text(json.dumps(knowledge, ensure_ascii=False, indent=2), encoding="utf-8")
+    curated_path.write_text(
+        json.dumps(
+            reconcile_curated_payload(
+                knowledge,
+                _load_json(curated_path),
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    markdown_path.write_text(render_summary(knowledge, archive_name=archive_name), encoding="utf-8")
+    parsed_documents_path.write_text(
+        json.dumps(
+            [
+                {
+                    "path": document.path,
+                    "title": document.title,
+                    "file_type": document.file_type,
+                    "source_archive": document.source_archive,
+                    "parser_name": document.parser_name,
+                    "segment_count": document.segment_count,
+                    "character_count": len(document.text),
+                }
+                for document in documents
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    extraction_report_path.write_text(
+        json.dumps(
+            {
+                "archive_id": archive_id,
+                "archive_name": archive_name,
+                "strict_mode": formal_extraction_mode,
+                "summary": knowledge["summary"],
+                "documents": extraction_diagnostics,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return ArchiveBuildResult(
+        archive_id=archive_id,
+        archive_name=archive_name,
+        source_dir=source_dir,
+        extract_root=extract_root,
+        json_path=json_path,
+        curated_path=curated_path,
+        markdown_path=markdown_path,
+        parsed_documents_path=parsed_documents_path,
+        extraction_report_path=extraction_report_path,
+        summary=knowledge["summary"],
+    )

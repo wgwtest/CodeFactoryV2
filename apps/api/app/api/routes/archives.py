@@ -112,3 +112,83 @@ def extract_archive(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         extraction_coordinator.finish(archive_id)
+
+
+@router.post("/{archive_id}/documents/{document_id}/formalize")
+def formalize_archive_document(
+    archive_id: str,
+    document_id: str,
+    registry_service: ArchiveRegistryService = Depends(get_archive_registry_service),
+    extraction_service: ArchiveExtractionService = Depends(get_archive_extraction_service),
+    extraction_coordinator: ArchiveExtractionCoordinator = Depends(get_archive_extraction_coordinator),
+):
+    archive = registry_service.get_archive(archive_id)
+    if archive is None:
+        raise HTTPException(status_code=404, detail="Archive not found")
+
+    if not extraction_coordinator.try_start(archive_id):
+        current_archive_id = extraction_coordinator.current_archive_id or "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"当前已有知识库正在抽取中：{current_archive_id}，请等待完成后再试",
+        )
+
+    registry_service.mark_extracting(archive_id)
+    try:
+        result = extraction_service.formalize_document(
+            archive_id,
+            document_id=document_id,
+            source_dir=Path(archive["source_dir"]),
+            extract_root=Path(archive["extract_root"]),
+            archive_name=archive["name"],
+        )
+        registry_service.mark_extracted(archive_id)
+        return result
+    except ValueError as exc:
+        registry_service.mark_error(archive_id, message=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        registry_service.mark_error(archive_id, message=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        extraction_coordinator.finish(archive_id)
+
+
+@router.post("/{archive_id}/documents/{document_id}/remove")
+def remove_archive_document(
+    archive_id: str,
+    document_id: str,
+    registry_service: ArchiveRegistryService = Depends(get_archive_registry_service),
+    extraction_service: ArchiveExtractionService = Depends(get_archive_extraction_service),
+    extraction_coordinator: ArchiveExtractionCoordinator = Depends(get_archive_extraction_coordinator),
+):
+    archive = registry_service.get_archive(archive_id)
+    if archive is None:
+        raise HTTPException(status_code=404, detail="Archive not found")
+
+    if not extraction_coordinator.try_start(archive_id):
+        current_archive_id = extraction_coordinator.current_archive_id or "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"当前已有知识库正在抽取中：{current_archive_id}，请等待完成后再试",
+        )
+
+    registry_service.mark_extracting(archive_id)
+    try:
+        result = extraction_service.remove_document(
+            archive_id,
+            document_id=document_id,
+            source_dir=Path(archive["source_dir"]),
+            extract_root=Path(archive["extract_root"]),
+            archive_name=archive["name"],
+        )
+        registry_service.mark_extracted(archive_id)
+        return result
+    except ValueError as exc:
+        registry_service.mark_error(archive_id, message=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        registry_service.mark_error(archive_id, message=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        extraction_coordinator.finish(archive_id)

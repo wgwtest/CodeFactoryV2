@@ -5,9 +5,11 @@ import { DocumentUploadForm } from "../components/DocumentUploadForm";
 import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
 import { api } from "../lib/api";
 import { getArchiveDocumentDetail, getArchiveDocuments, getArchiveSummary } from "../lib/archiveKnowledge";
+import { formalizeArchiveDocument, removeArchiveDocument } from "../lib/archives";
 import type {
   ArchiveKnowledgeDocument,
   ArchiveKnowledgeDocumentDetail,
@@ -36,7 +38,7 @@ const knowledgeSections: Array<{ key: "entity" | "event" | "process"; title: str
 ];
 
 export function DocumentsPage() {
-  const { activeArchive, activeArchiveId } = useArchiveContext();
+  const { activeArchive, activeArchiveId, refreshArchives } = useArchiveContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
@@ -53,6 +55,8 @@ export function DocumentsPage() {
   const [documentDetail, setDocumentDetail] = useState<ArchiveKnowledgeDocumentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [documentMutation, setDocumentMutation] = useState<{ documentId: string; action: "include" | "remove" } | null>(null);
+  const [formalizeFeedback, setFormalizeFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const deferredSearchValue = useDeferredValue(searchValue);
 
   async function loadArchiveDocuments(cancelled?: { current: boolean }) {
@@ -212,6 +216,53 @@ export function DocumentsPage() {
     event: documentDetail?.knowledge_items.filter((item) => item.item_type === "event") ?? [],
     process: documentDetail?.knowledge_items.filter((item) => item.item_type === "process") ?? [],
   };
+  const currentMutationDocument = documentMutation
+    ? documents.find((item) => item.id === documentMutation.documentId) ?? null
+    : null;
+  const documentMutationStatus = documentMutation
+    ? documentMutation.action === "include"
+      ? "正在并入"
+      : "正在移出"
+    : "空闲";
+
+  async function runArchiveDocumentMutation(record: ArchiveKnowledgeDocument, action: "include" | "remove") {
+    if (!activeArchiveId || documentMutation !== null) {
+      return;
+    }
+
+    try {
+      setFormalizeFeedback(null);
+      setDocumentMutation({ documentId: record.id, action });
+      const response =
+        action === "include"
+          ? await formalizeArchiveDocument(activeArchiveId, record.id)
+          : await removeArchiveDocument(activeArchiveId, record.id);
+      await Promise.all([loadArchiveDocuments(), refreshArchives(activeArchiveId)]);
+
+      if (selectedDocumentId === record.id) {
+        const detailResponse = await getArchiveDocumentDetail(record.id, activeArchiveId);
+        setDocumentDetail(detailResponse.data);
+        setDetailError(null);
+      }
+
+      setFormalizeFeedback({
+        type: "success",
+        message: formatDocumentMutationSuccessMessage(record.title, response.data.action, response.data.mode),
+      });
+    } catch (mutationError) {
+      setFormalizeFeedback({
+        type: "error",
+        message:
+          mutationError instanceof Error
+            ? mutationError.message
+            : action === "include"
+              ? "文档正式并入失败"
+              : "文档正式移出失败",
+      });
+    } finally {
+      setDocumentMutation(null);
+    }
+  }
 
   return (
     <ValidationWorkspace
@@ -222,18 +273,28 @@ export function DocumentsPage() {
           {activeArchive ? ` 当前查看知识库：${activeArchive.name}。` : ""}
         </>
       }
-      stats={
-        summary
-          ? [
-              { title: "文档总数", value: summary.document_count },
-              { title: "实体", value: summary.entity_count },
-              { title: "事件", value: summary.event_count },
-              { title: "流程", value: summary.process_count },
-            ]
-          : []
-      }
     >
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
+        <WorkspaceOverviewStrip
+          badgeLabel="文档导入"
+          badgeColor="blue"
+          title="档案文档总览"
+          tags={[
+            { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
+            {
+              label: currentMutationDocument
+                ? `正式任务：${documentMutationStatus} · ${currentMutationDocument.title}`
+                : `正式任务：${documentMutationStatus}`,
+              color: documentMutation ? "processing" : "default",
+            },
+          ]}
+          metrics={[
+            { title: "文档", value: summary?.document_count ?? 0 },
+            { title: "实体", value: summary?.entity_count ?? 0 },
+            { title: "事件", value: summary?.event_count ?? 0 },
+            { title: "流程", value: summary?.process_count ?? 0 },
+          ]}
+        />
         <div>
           <DocumentUploadForm onUploaded={() => loadIntakeDocuments()} />
         </div>
@@ -371,6 +432,14 @@ export function DocumentsPage() {
         </div>
 
         {error ? <Alert type="error" message="档案文档暂不可用" description={error} showIcon /> : null}
+        {formalizeFeedback ? (
+          <Alert
+            type={formalizeFeedback.type}
+            message={formalizeFeedback.type === "success" ? "正式操作已完成" : "正式操作失败"}
+            description={formalizeFeedback.message}
+            showIcon
+          />
+        ) : null}
 
         <Space direction="vertical" size={12} style={{ display: "flex" }}>
           <Input.Search
@@ -410,11 +479,36 @@ export function DocumentsPage() {
               },
               {
                 title: "操作",
-                render: (_: unknown, record: ArchiveKnowledgeDocument) => (
-                  <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
-                    查看
-                  </Button>
-                ),
+                render: (_: unknown, record: ArchiveKnowledgeDocument) => {
+                  const isIncluded = record.included_in_archive !== false;
+                  const isMutating = documentMutation?.documentId === record.id;
+                  const mutationLabel =
+                    isMutating && documentMutation
+                      ? documentMutation.action === "include"
+                        ? "正在并入"
+                        : "正在移出"
+                      : isIncluded
+                        ? "已并入"
+                        : "未并入";
+                  const mutationColor = isMutating ? "processing" : isIncluded ? "green" : "default";
+
+                  return (
+                    <Space size={4} wrap>
+                      <Tag color={mutationColor}>{mutationLabel}</Tag>
+                      <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
+                        查看
+                      </Button>
+                      <Button
+                        type="link"
+                        onClick={() => void runArchiveDocumentMutation(record, isIncluded ? "remove" : "include")}
+                        loading={isMutating}
+                        disabled={documentMutation !== null}
+                      >
+                        {isIncluded ? "移出" : "正式并入"}
+                      </Button>
+                    </Space>
+                  );
+                },
               },
             ]}
           />
@@ -445,6 +539,11 @@ export function DocumentsPage() {
               <div>
                 <Typography.Title level={5}>文档概览</Typography.Title>
                 <Descriptions column={2} bordered size="small">
+                  <Descriptions.Item label="正式状态">
+                    <Tag color={documentDetail.document.included_in_archive !== false ? "green" : "default"}>
+                      {documentDetail.document.included_in_archive !== false ? "已并入" : "未并入"}
+                    </Tag>
+                  </Descriptions.Item>
                   <Descriptions.Item label="字符数">{documentDetail.document.character_count.toLocaleString("zh-CN")}</Descriptions.Item>
                   <Descriptions.Item label="知识总数">{documentDetail.document.knowledge_item_count}</Descriptions.Item>
                   <Descriptions.Item label="实体数">{documentDetail.document.entity_count}</Descriptions.Item>
@@ -480,6 +579,22 @@ function mapVersionStatus(status?: string) {
     return "待解析";
   }
   return status ?? "未知";
+}
+
+function formatDocumentMutationSuccessMessage(
+  title: string,
+  action: "include" | "remove",
+  mode: "incremental_merge" | "full_rebuild_bootstrap" | "incremental_remove" | "full_rebuild_bootstrap_remove",
+) {
+  if (action === "include") {
+    return mode === "full_rebuild_bootstrap"
+      ? `已完成“${title}”的正式产物仓初始化重建，当前知识库已完成全库重建。`
+      : `已完成“${title}”的单文档正式并入，当前知识库已重算。`;
+  }
+
+  return mode === "full_rebuild_bootstrap_remove"
+    ? `已完成“${title}”的正式产物仓初始化，并已将该文档正式移出当前知识库。`
+    : `已完成“${title}”的正式移出，当前知识库已重算。`;
 }
 
 type DocumentKnowledgeSectionProps = {

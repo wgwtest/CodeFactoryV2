@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Checkbox, Segmented, Select, Space, Tag, Typography } from "antd";
+import { Button, Checkbox, Segmented, Select, Space, Tag, Typography } from "antd";
 
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
 import {
   getArchiveDocuments,
@@ -184,107 +185,26 @@ export function KnowledgeGraphPage() {
       description={`浏览已发布知识中的实体、事件、流程及其关联关系。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
     >
       {summary ? (
-        <Card
-          variant="borderless"
-          style={{
-            borderRadius: 16,
-            overflow: "hidden",
-            background:
-              "linear-gradient(135deg, rgba(244,248,255,0.96) 0%, rgba(238,247,241,0.96) 52%, rgba(255,250,240,0.96) 100%)",
-            boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
-          }}
-          styles={{ body: { padding: "10px 14px" } }}
+        <WorkspaceOverviewStrip
+          badgeLabel="已发布知识仓"
+          title="档案知识总览"
+          tags={[
+            { label: `版本：${publicationOverview?.current_version?.version_label ?? "未发布"}` },
+            { label: `节点：${graph?.nodes.length ?? 0}` },
+            { label: `关系：${graph?.edges.length ?? 0}` },
+          ]}
+          metrics={[
+            { title: "文档", value: summary.document_count, accent: "#0f766e", tone: "rgba(20, 184, 166, 0.08)" },
+            { title: "实体", value: summary.entity_count, accent: "#1d4ed8", tone: "rgba(59, 130, 246, 0.10)" },
+            { title: "事件", value: summary.event_count, accent: "#b45309", tone: "rgba(245, 158, 11, 0.12)" },
+            { title: "流程", value: summary.process_count, accent: "#7c3aed", tone: "rgba(139, 92, 246, 0.10)" },
+          ]}
         >
           <Space direction="vertical" size={10} style={{ display: "flex" }}>
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "nowrap",
-                overflowX: "auto",
-                paddingBottom: 2,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "nowrap",
-                  flexShrink: 0,
-                  minWidth: "max-content",
-                }}
-              >
-                <Tag
-                  color="processing"
-                  style={{
-                    borderRadius: 9999,
-                    paddingInline: 10,
-                    lineHeight: "22px",
-                    marginInlineEnd: 0,
-                  }}
-                >
-                  已发布知识仓
-                </Tag>
-                <Typography.Title level={5} style={{ margin: 0, whiteSpace: "nowrap" }}>
-                  档案知识总览
-                </Typography.Title>
-                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                  版本：{publicationOverview?.current_version?.version_label ?? "未发布"}
-                </Tag>
-                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                  节点：{graph?.nodes.length ?? 0}
-                </Tag>
-                <Tag style={{ borderRadius: 9999, paddingInline: 10, lineHeight: "22px", marginInlineEnd: 0 }}>
-                  关系：{graph?.edges.length ?? 0}
-                </Tag>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "nowrap",
-                  flexShrink: 0,
-                  minWidth: "max-content",
-                }}
-              >
-                {[
-                  { title: "文档", value: summary.document_count, accent: "#0f766e", tone: "rgba(20, 184, 166, 0.08)" },
-                  { title: "实体", value: summary.entity_count, accent: "#1d4ed8", tone: "rgba(59, 130, 246, 0.10)" },
-                  { title: "事件", value: summary.event_count, accent: "#b45309", tone: "rgba(245, 158, 11, 0.12)" },
-                  { title: "流程", value: summary.process_count, accent: "#7c3aed", tone: "rgba(139, 92, 246, 0.10)" },
-                ].map((item) => (
-                  <div
-                    key={item.title}
-                    style={{
-                      borderRadius: 9999,
-                      padding: "5px 10px",
-                      background: item.tone,
-                      border: "1px solid rgba(148, 163, 184, 0.16)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Typography.Text style={{ color: item.accent, fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>
-                      {item.title}
-                    </Typography.Text>
-                    <Typography.Text style={{ color: "#0f172a", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>
-                      {item.value.toLocaleString("zh-CN")}
-                    </Typography.Text>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 justifyContent: "space-between",
                 gap: 12,
                 flexWrap: "wrap",
@@ -395,7 +315,7 @@ export function KnowledgeGraphPage() {
               </Tag>
             </div>
           </Space>
-        </Card>
+        </WorkspaceOverviewStrip>
       ) : null}
 
       <KnowledgeGraph

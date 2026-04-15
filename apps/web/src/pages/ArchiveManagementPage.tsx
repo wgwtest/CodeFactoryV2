@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Alert, Button, Card, Col, Form, Input, Row, Space, Table, Tag, Typography } from "antd";
 
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
+import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
 import { createKnowledgeArchive, extractKnowledgeArchive } from "../lib/archives";
 import type { CreateKnowledgeArchiveInput, KnowledgeArchive } from "../lib/api";
@@ -121,18 +122,31 @@ export function ArchiveManagementPage() {
   const errorCount = archives.filter((item) => item.status === "error").length;
   const isExtracting = busyAction === "extract" && busyArchiveId !== null;
   const activeBusyArchive = archives.find((item) => item.archive_id === busyArchiveId) ?? null;
+  const activeArchiveRecord = archives.find((item) => item.archive_id === activeArchiveId) ?? null;
+  const activeArchiveStatusLabel = activeArchiveRecord ? statusMeta[activeArchiveRecord.status].label : "未选择";
+  const archiveRunStatus = isExtracting ? `抽取中：${activeBusyArchive?.name ?? busyArchiveId}` : "空闲";
 
   return (
     <ValidationWorkspace
       title="知识库管理"
       description="为每个知识库绑定独立的本地资料目录，分别抽取、分别存储，再按需切换到文档、治理、图谱和建模页面继续工作。"
-      stats={[
-        { title: "知识库数量", value: archives.length },
-        { title: "可用知识库", value: readyCount },
-        { title: "异常知识库", value: errorCount },
-        { title: "当前知识库", value: activeArchive?.name ?? "未选择" },
-      ]}
     >
+      <WorkspaceOverviewStrip
+        badgeLabel="知识库管理"
+        badgeColor="cyan"
+        title="知识库运行总览"
+        tags={[
+          { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
+          { label: `当前状态：${activeArchiveStatusLabel}` },
+          { label: `抽取任务：${archiveRunStatus}`, color: isExtracting ? "processing" : "default" },
+        ]}
+        metrics={[
+          { title: "知识库数量", value: archives.length },
+          { title: "可用知识库", value: readyCount },
+          { title: "异常知识库", value: errorCount },
+          { title: "当前知识库", value: activeArchive?.name ?? "未选择" },
+        ]}
+      />
       {error ? <Alert showIcon type="error" message="知识库列表暂不可用" description={error} /> : null}
       {actionError ? <Alert showIcon type="error" message="知识库操作失败" description={actionError} /> : null}
       {isExtracting ? (

@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { CreateKnowledgeArchiveInput, KnowledgeArchive } from "./api";
+import type { ArchiveDocumentFormalizeResult, CreateKnowledgeArchiveInput, KnowledgeArchive } from "./api";
 
 export function getKnowledgeArchives() {
   return api.get<KnowledgeArchive[]>("/archives");
@@ -15,4 +15,12 @@ export function activateKnowledgeArchive(archiveId: string) {
 
 export function extractKnowledgeArchive(archiveId: string) {
   return api.post<KnowledgeArchive>(`/archives/${archiveId}/extract`);
+}
+
+export function formalizeArchiveDocument(archiveId: string, documentId: string) {
+  return api.post<ArchiveDocumentFormalizeResult>(`/archives/${archiveId}/documents/${documentId}/formalize`);
+}
+
+export function removeArchiveDocument(archiveId: string, documentId: string) {
+  return api.post<ArchiveDocumentFormalizeResult>(`/archives/${archiveId}/documents/${documentId}/remove`);
 }

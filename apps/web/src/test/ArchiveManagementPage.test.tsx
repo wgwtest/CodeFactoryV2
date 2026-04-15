@@ -85,6 +85,8 @@ test("disables other archive actions while one extraction is running", async () 
 test("renders archive creation form and extraction logic explanation side by side", async () => {
   render(<ArchiveManagementPage />);
 
+  expect(await screen.findByTestId("workspace-overview-strip")).toBeInTheDocument();
+  expect(screen.getByText("知识库运行总览")).toBeInTheDocument();
   expect(await screen.findByText("新增知识库")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
   expect(screen.getByText("正式抽取逻辑")).toBeInTheDocument();

@@ -88,6 +88,20 @@ export type CreateKnowledgeArchiveInput = {
   extract_root?: string;
 };
 
+export type ArchiveDocumentFormalizeResult = {
+  archive_id: string;
+  document_id: string;
+  action: "include" | "remove";
+  mode:
+    | "incremental_merge"
+    | "full_rebuild_bootstrap"
+    | "incremental_remove"
+    | "full_rebuild_bootstrap_remove";
+  document_included: boolean;
+  summary: ArchiveKnowledgeSummary;
+  document: ArchiveKnowledgeDocument | null;
+};
+
 export type ArchiveKnowledgeNode = {
   id: string;
   label: string;
@@ -218,6 +232,7 @@ export type ArchiveKnowledgeDocument = {
   file_type: string;
   source_archive: string;
   character_count: number;
+  included_in_archive: boolean;
   entity_count: number;
   event_count: number;
   process_count: number;

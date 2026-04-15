@@ -1,15 +1,22 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { DocumentsPage } from "../pages/DocumentsPage";
 
 const getMock = vi.fn();
+const formalizeArchiveDocumentMock = vi.fn();
+const removeArchiveDocumentMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args)
   }
+}));
+
+vi.mock("../lib/archives", () => ({
+  formalizeArchiveDocument: (...args: unknown[]) => formalizeArchiveDocumentMock(...args),
+  removeArchiveDocument: (...args: unknown[]) => removeArchiveDocumentMock(...args),
 }));
 
 test("renders searchable archive documents and opens document knowledge drawer", async () => {
@@ -185,7 +192,8 @@ test("renders searchable archive documents and opens document knowledge drawer",
             entity_count: 2,
             event_count: 1,
             process_count: 1,
-            knowledge_item_count: 4
+            knowledge_item_count: 4,
+            included_in_archive: true,
           },
           {
             id: "doc-2",
@@ -196,7 +204,8 @@ test("renders searchable archive documents and opens document knowledge drawer",
             entity_count: 1,
             event_count: 0,
             process_count: 0,
-            knowledge_item_count: 1
+            knowledge_item_count: 1,
+            included_in_archive: false,
           }
         ]
       });
@@ -207,6 +216,8 @@ test("renders searchable archive documents and opens document knowledge drawer",
 
   render(<DocumentsPage />);
 
+  expect(await screen.findByTestId("workspace-overview-strip")).toBeInTheDocument();
+  expect(screen.getByText("档案文档总览")).toBeInTheDocument();
   expect(await screen.findByText("接入解析验证")).toBeInTheDocument();
   expect(await screen.findByText("Incident Policy")).toBeInTheDocument();
   expect(await screen.findByText("已解析")).toBeInTheDocument();
@@ -220,6 +231,8 @@ test("renders searchable archive documents and opens document knowledge drawer",
   expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
   expect(await screen.findByText("NAS AV-1")).toBeInTheDocument();
   expect(await screen.findByText("NAS Roadmap")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "移出" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "正式并入" })).toBeInTheDocument();
 
   fireEvent.change(screen.getByPlaceholderText("搜索文档标题、来源或类型"), { target: { value: "NAS AV-1" } });
 
@@ -237,4 +250,250 @@ test("renders searchable archive documents and opens document knowledge drawer",
     await screen.findByText("OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。")
   ).toBeInTheDocument();
   expect(await screen.findByText("OV-1 excerpt")).toBeInTheDocument();
+});
+
+test("formalizes an archive document and shows incremental rebuild feedback", async () => {
+  const formalizeController: { finish?: (value: unknown) => void } = {};
+  formalizeArchiveDocumentMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        formalizeController.finish = resolve as (value: unknown) => void;
+      }),
+  );
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/documents") {
+      return Promise.resolve({ data: [] });
+    }
+
+    if (url.endsWith("/summary")) {
+      return Promise.resolve({
+        data: {
+          archive_id: "20161116-nas",
+          document_count: 2,
+          entity_count: 10,
+          event_count: 1,
+          process_count: 1,
+        },
+      });
+    }
+
+    if (url.includes("/knowledge/archive/") && url.endsWith("/documents")) {
+      return Promise.resolve({
+        data: [
+          {
+            id: "doc-1",
+            title: "NAS AV-1",
+            file_type: "pdf",
+            source_archive: "20161116 档案",
+            character_count: 1200,
+            entity_count: 2,
+            event_count: 1,
+            process_count: 1,
+            knowledge_item_count: 4,
+            included_in_archive: false,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith("/documents/doc-1")) {
+      return Promise.resolve({
+        data: {
+          document: {
+            id: "doc-1",
+            title: "NAS AV-1",
+            file_type: "pdf",
+            source_archive: "20161116 档案",
+            character_count: 1200,
+            entity_count: 3,
+            event_count: 1,
+            process_count: 1,
+            knowledge_item_count: 5,
+          },
+          knowledge_items: [],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(<DocumentsPage />);
+
+  const formalizeButton = await screen.findByRole("button", { name: "正式并入" });
+  fireEvent.click(formalizeButton);
+
+  await waitFor(() => {
+    expect(formalizeArchiveDocumentMock).toHaveBeenCalledWith("20161116-nas", "doc-1");
+    expect(formalizeButton).toBeDisabled();
+  });
+
+  const finishFormalize = formalizeController.finish;
+  if (!finishFormalize) {
+    throw new Error("formalize resolver missing");
+  }
+  finishFormalize({
+    data: {
+      archive_id: "20161116-nas",
+      document_id: "doc-1",
+      action: "include",
+      mode: "incremental_merge",
+      document_included: true,
+      summary: {
+        archive_id: "20161116-nas",
+        document_count: 2,
+        entity_count: 10,
+        event_count: 1,
+        process_count: 1,
+      },
+      document: {
+        id: "doc-1",
+        title: "NAS AV-1",
+        file_type: "pdf",
+        source_archive: "20161116 档案",
+        character_count: 1200,
+        entity_count: 3,
+        event_count: 1,
+        process_count: 1,
+        knowledge_item_count: 5,
+        included_in_archive: true,
+      },
+    },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("已完成“NAS AV-1”的单文档正式并入，当前知识库已重算。")).toBeInTheDocument();
+  });
+});
+
+test("removes an included archive document and disables all archive toggle actions while pending", async () => {
+  const removeController: { finish?: (value: unknown) => void } = {};
+  removeArchiveDocumentMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        removeController.finish = resolve as (value: unknown) => void;
+      }),
+  );
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/documents") {
+      return Promise.resolve({ data: [] });
+    }
+
+    if (url.endsWith("/summary")) {
+      return Promise.resolve({
+        data: {
+          archive_id: "20161116-nas",
+          document_count: 2,
+          entity_count: 10,
+          event_count: 1,
+          process_count: 1,
+        },
+      });
+    }
+
+    if (url.includes("/knowledge/archive/") && url.endsWith("/documents")) {
+      return Promise.resolve({
+        data: [
+          {
+            id: "doc-1",
+            title: "NAS AV-1",
+            file_type: "pdf",
+            source_archive: "20161116 档案",
+            character_count: 1200,
+            entity_count: 2,
+            event_count: 1,
+            process_count: 1,
+            knowledge_item_count: 4,
+            included_in_archive: true,
+          },
+          {
+            id: "doc-2",
+            title: "NAS Roadmap",
+            file_type: "docx",
+            source_archive: "20161116 路线图",
+            character_count: 800,
+            entity_count: 1,
+            event_count: 0,
+            process_count: 0,
+            knowledge_item_count: 1,
+            included_in_archive: false,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith("/documents/doc-1")) {
+      return Promise.resolve({
+        data: {
+          document: {
+            id: "doc-1",
+            title: "NAS AV-1",
+            file_type: "pdf",
+            source_archive: "20161116 档案",
+            character_count: 1200,
+            entity_count: 2,
+            event_count: 1,
+            process_count: 1,
+            knowledge_item_count: 4,
+            included_in_archive: false,
+          },
+          knowledge_items: [],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(<DocumentsPage />);
+
+  const removeButton = await screen.findByRole("button", { name: "移出" });
+  const includeButton = await screen.findByRole("button", { name: "正式并入" });
+
+  fireEvent.click(removeButton);
+
+  await waitFor(() => {
+    expect(removeArchiveDocumentMock).toHaveBeenCalledWith("20161116-nas", "doc-1");
+    expect(includeButton).toBeDisabled();
+    expect(screen.getByText("正在移出")).toBeInTheDocument();
+  });
+
+  const finishRemove = removeController.finish;
+  if (!finishRemove) {
+    throw new Error("remove resolver missing");
+  }
+  finishRemove({
+    data: {
+      archive_id: "20161116-nas",
+      document_id: "doc-1",
+      action: "remove",
+      mode: "incremental_remove",
+      document_included: false,
+      summary: {
+        archive_id: "20161116-nas",
+        document_count: 1,
+        entity_count: 8,
+        event_count: 1,
+        process_count: 1,
+      },
+      document: {
+        id: "doc-1",
+        title: "NAS AV-1",
+        file_type: "pdf",
+        source_archive: "20161116 档案",
+        character_count: 1200,
+        entity_count: 2,
+        event_count: 1,
+        process_count: 1,
+        knowledge_item_count: 4,
+        included_in_archive: false,
+      },
+    },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("已完成“NAS AV-1”的正式移出，当前知识库已重算。")).toBeInTheDocument();
+  });
 });

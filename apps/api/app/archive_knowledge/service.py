@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
 from app.archive_knowledge.repository import JsonPublishedKnowledgeRepository
 from app.archive_knowledge.artifact_catalog import build_interpretation
 from app.config import settings
@@ -51,6 +52,7 @@ class ArchiveKnowledgeService:
     def __init__(self, output_root: str | Path, published_repository=None) -> None:
         self.output_root = Path(output_root)
         self.published_repository = published_repository or self._build_published_repository()
+        self.artifact_repository = DocumentArtifactRepository(self.output_root)
 
     def get_summary(self, archive_id: str, document_ids: list[str] | None = None) -> dict:
         payload = self._load_public(archive_id, document_ids)
@@ -208,6 +210,20 @@ class ArchiveKnowledgeService:
         }
 
     def get_document_detail(self, archive_id: str, document_id: str) -> dict | None:
+        if self.artifact_repository.has_manifest(archive_id):
+            document = self.artifact_repository.get_document_source_info(archive_id, document_id)
+            contribution = self.artifact_repository.load_document_contribution(archive_id, document_id)
+            if document is None or contribution is None:
+                return None
+
+            return {
+                "document": self._build_document_record(
+                    document,
+                    self._build_document_stats_from_contribution(contribution),
+                ),
+                "knowledge_items": self._build_document_knowledge_items_from_contribution(contribution, document),
+            }
+
         payload = self._load_public(archive_id)
         document_index = self._build_document_index(payload)
         document = document_index.get(document_id)
@@ -221,6 +237,20 @@ class ArchiveKnowledgeService:
         }
 
     def get_documents(self, archive_id: str) -> list[dict]:
+        if self.artifact_repository.has_manifest(archive_id):
+            documents = [
+                self._build_document_record(
+                    document,
+                    {
+                        "entity_count": document.get("entity_count", 0),
+                        "event_count": document.get("event_count", 0),
+                        "process_count": document.get("process_count", 0),
+                    },
+                )
+                for document in self.artifact_repository.list_documents(archive_id)
+            ]
+            return sorted(documents, key=lambda item: (-item["knowledge_item_count"], item["title"]))
+
         payload = self._load_public(archive_id)
         document_stats = self._build_document_stats(payload)
 
@@ -661,12 +691,14 @@ class ArchiveKnowledgeService:
     @classmethod
     def _build_document_record(cls, document: dict, stats: dict | None) -> dict:
         normalized_stats = stats or {"entity_count": 0, "event_count": 0, "process_count": 0}
+        document_id = document.get("id") or document.get("document_id")
         return {
-            "id": document["id"],
+            "id": document_id,
             "title": document["title"],
             "file_type": document["file_type"],
             "source_archive": cls._normalize_label(document["source_archive"]),
             "character_count": document["character_count"],
+            "included_in_archive": document.get("included_in_archive", True),
             **normalized_stats,
             "knowledge_item_count": (
                 normalized_stats["entity_count"]
@@ -701,6 +733,48 @@ class ArchiveKnowledgeService:
                             }
                             for evidence_item in item.get("evidence", [])
                             if evidence_item.get("document_id") == document_id
+                        ],
+                    }
+                )
+
+        return sorted(knowledge_items, key=lambda item: (item_type_order[item["item_type"]], item["id"]))
+
+    @classmethod
+    def _build_document_stats_from_contribution(cls, contribution: dict) -> dict[str, int]:
+        return {
+            "entity_count": len(contribution.get("entities", [])),
+            "event_count": len(contribution.get("events", [])),
+            "process_count": len(contribution.get("processes", [])),
+        }
+
+    @classmethod
+    def _build_document_knowledge_items_from_contribution(cls, contribution: dict, document: dict) -> list[dict]:
+        knowledge_items = []
+        item_type_order = {"entity": 0, "event": 1, "process": 2}
+        collection_map = {
+            "entities": "entity",
+            "events": "event",
+            "processes": "process",
+        }
+
+        for collection_name, item_type in collection_map.items():
+            for item in contribution.get(collection_name, []):
+                knowledge_items.append(
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "item_type": item_type,
+                        "category": item.get("category"),
+                        "aliases": item.get("aliases", []),
+                        "review_status": item.get("review_status", "pending"),
+                        "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+                        "evidence": [
+                            {
+                                "document_id": evidence_item.get("document_id"),
+                                "document_title": document["title"],
+                                "excerpt": evidence_item.get("excerpt", ""),
+                            }
+                            for evidence_item in item.get("evidence", [])
                         ],
                     }
                 )
