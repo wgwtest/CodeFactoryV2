@@ -410,6 +410,153 @@ def test_chunked_formal_extraction_records_source_refs(monkeypatch) -> None:
     assert batch.metadata["llm_provider"] == "deepseek"
 
 
+def test_chunked_formal_extraction_retries_with_smaller_subchunks_on_truncated_llm_json(monkeypatch) -> None:
+    _set_setting("formal_chunk_segment_threshold", 1)
+    _set_setting("formal_chunk_char_threshold", 10)
+    _set_setting("formal_chunk_char_limit", 200)
+
+    segments = [
+        ParsedSegment(
+            heading="第一章",
+            content="联合作战符号规则 " * 40,
+            anchor={"page": 1, "section": "第一章", "line_start": 1, "line_end": 20},
+            block_type="paragraph",
+        )
+    ]
+
+    seen_chunk_sizes: list[int] = []
+
+    def fake_extract_chunk_batch(self, *, document_id, title, file_path, source_document, chunk, structured_llm_bundle):
+        del self, document_id, title, file_path, source_document, structured_llm_bundle
+        seen_chunk_sizes.append(chunk.char_count)
+        if chunk.char_count > 100:
+            raise ValueError(
+                "正式知识库抽取要求使用结构化大模型抽取，但当前调用失败："
+                "1 validation error for StructuredExtractionResponse Invalid JSON: EOF while parsing a list"
+            )
+
+        return ExtractionBatch(
+            document_id="doc-1",
+            title="长文档",
+            strategy="schema_rules+llm",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name=f"子块-{chunk.chunk_id}",
+                    confidence=0.9,
+                    payload={"category": "domain_concept", "evidence": f"{chunk.chunk_id} 证据"},
+                )
+            ],
+            relations=[],
+            metadata={
+                "chunk_id": chunk.chunk_id,
+                "llm_enrichment_used": True,
+                "llm_provider": "deepseek",
+                "llm_model": "deepseek-chat",
+                "llm_base_url": "https://api.deepseek.com/v1",
+            },
+        )
+
+    monkeypatch.setattr(ExtractionService, "_build_structured_llm_bundle", lambda self: ("fake-llm", {}))
+    monkeypatch.setattr(ExtractionService, "_extract_chunk_batch", fake_extract_chunk_batch)
+
+    batch = ExtractionService(formal_extraction_mode=True).extract_document(
+        document_id="doc-1",
+        title="长文档",
+        file_path="runtime/long.pdf",
+        segments=segments,
+    )
+
+    assert any(size > 100 for size in seen_chunk_sizes)
+    assert any(size <= 100 for size in seen_chunk_sizes)
+    assert batch.metadata["chunking_used"] is True
+    assert batch.metadata["llm_enrichment_used"] is True
+    assert batch.metadata["chunk_count"] >= 2
+    assert len(batch.candidates) >= 2
+
+
+def test_llm_prompt_limits_dense_chunk_output_to_high_value_supplements() -> None:
+    prompt = ExtractionService(formal_extraction_mode=True)._build_llm_prompt(
+        title="MIL-STD-2525D",
+        file_path="runtime/mil-std.pdf",
+        segments=[
+            ParsedSegment(
+                heading="Symbol Set",
+                content="符号定义与分类条目 " * 20,
+                anchor={"page": 1, "section": "Symbol Set", "line_start": 1, "line_end": 10},
+                block_type="paragraph",
+            )
+        ],
+        base_batch=ExtractionBatch(document_id="doc-1", title="MIL-STD-2525D"),
+        scope_label="Symbol Set",
+        sample_segments=False,
+    )
+
+    assert "LLM 只负责对规则抽取结果做校正、高价值补充和去重" in prompt
+    assert "如果当前片段是术语表、符号表、条目清单或大表格，不要逐项穷举整个表" in prompt
+    assert "candidates 最多返回 24 条，relations 最多返回 16 条" in prompt
+
+
+def test_chunked_formal_extraction_retries_with_smaller_subchunks_on_llm_timeout(monkeypatch) -> None:
+    _set_setting("formal_chunk_segment_threshold", 1)
+    _set_setting("formal_chunk_char_threshold", 10)
+    _set_setting("formal_chunk_char_limit", 200)
+
+    segments = [
+        ParsedSegment(
+            heading="第一章",
+            content="超时重试块 " * 40,
+            anchor={"page": 1, "section": "第一章", "line_start": 1, "line_end": 20},
+            block_type="paragraph",
+        )
+    ]
+
+    seen_chunk_sizes: list[int] = []
+
+    def fake_extract_chunk_batch(self, *, document_id, title, file_path, source_document, chunk, structured_llm_bundle):
+        del self, document_id, title, file_path, source_document, structured_llm_bundle
+        seen_chunk_sizes.append(chunk.char_count)
+        if chunk.char_count > 100:
+            raise ValueError("正式知识库抽取要求使用结构化大模型抽取，但当前调用失败：Request timed out.")
+
+        return ExtractionBatch(
+            document_id="doc-1",
+            title="长文档",
+            strategy="schema_rules+llm",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name=f"超时子块-{chunk.chunk_id}",
+                    confidence=0.9,
+                    payload={"category": "domain_concept", "evidence": f"{chunk.chunk_id} 证据"},
+                )
+            ],
+            relations=[],
+            metadata={
+                "chunk_id": chunk.chunk_id,
+                "llm_enrichment_used": True,
+                "llm_provider": "deepseek",
+                "llm_model": "deepseek-chat",
+                "llm_base_url": "https://api.deepseek.com/v1",
+            },
+        )
+
+    monkeypatch.setattr(ExtractionService, "_build_structured_llm_bundle", lambda self: ("fake-llm", {}))
+    monkeypatch.setattr(ExtractionService, "_extract_chunk_batch", fake_extract_chunk_batch)
+
+    batch = ExtractionService(formal_extraction_mode=True).extract_document(
+        document_id="doc-1",
+        title="长文档",
+        file_path="runtime/long.pdf",
+        segments=segments,
+    )
+
+    assert any(size > 100 for size in seen_chunk_sizes)
+    assert any(size <= 100 for size in seen_chunk_sizes)
+    assert batch.metadata["chunking_used"] is True
+    assert len(batch.candidates) >= 2
+
+
 def test_build_knowledge_index_collects_chunking_diagnostics() -> None:
     diagnostics: list[dict] = []
 

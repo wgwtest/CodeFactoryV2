@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import md5
 
 from app.archive_knowledge.builder import build_archive_knowledge, persist_archive_outputs
 from app.archive_knowledge.document_artifacts import (
@@ -190,6 +191,7 @@ class ArchiveExtractionService:
             segment_count=len(parsed.segments),
             segments=parsed.segments,
             source_file_path=str(file_path),
+            source_digest=_file_digest(file_path),
         )
 
     def _rebuild_archive_from_artifacts(
@@ -214,3 +216,11 @@ class ArchiveExtractionService:
             contributions=all_contributions,
             formal_extraction_mode=True,
         )
+
+
+def _file_digest(path: Path) -> str:
+    hasher = md5()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()

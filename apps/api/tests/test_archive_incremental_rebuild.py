@@ -1,10 +1,14 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from app.archive_knowledge.builder import persist_archive_outputs
 from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
 from app.archive_knowledge.extraction import ArchiveExtractionService
 from app.extraction.schema import ExtractedCandidate, ExtractionBatch
+from app.knowledge_builder import SourceDocument, _document_id
 from app.parsing.models import ParsedDocument, ParsedSegment
 from app.archive_knowledge.rebuild import reconcile_curated_payload
 
@@ -535,3 +539,228 @@ def test_remove_document_rebuilds_archive_without_deleting_document_artifact(tmp
     assert [item["id"] for item in payload["documents"]] == ["doc-2"]
     assert payload["processes"][0]["name"] == "管制移交"
     assert DocumentArtifactRepository(tmp_path).load_document_contribution("kb", "doc-1") is not None
+
+
+def test_build_archive_knowledge_persists_completed_formal_documents_before_later_failure(tmp_path, monkeypatch):
+    from app.archive_knowledge import builder as archive_builder
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    extract_root = tmp_path / "extract"
+    output_root = tmp_path / "output"
+
+    documents = [
+        _build_discovered_document(source_dir, "alpha.docx", "Alpha", "alpha digest"),
+        _build_discovered_document(source_dir, "bravo.docx", "Bravo", "bravo digest"),
+        _build_discovered_document(source_dir, "charlie.docx", "Charlie", "charlie digest"),
+    ]
+    contributions = {
+        document.path: _build_document_contribution_payload(
+            _build_source_document(document),
+            entity_name=f"{document.title}实体",
+        )
+        for document in documents[:2]
+    }
+
+    monkeypatch.setattr(archive_builder, "extract_archives", lambda *args, **kwargs: None)
+    monkeypatch.setattr(archive_builder, "resolve_document_roots", lambda source, extract: [source])
+    monkeypatch.setattr(archive_builder, "discover_documents", lambda *args, **kwargs: documents)
+
+    def fake_parse_discovered_document(document, *, formal_extraction_mode):
+        assert formal_extraction_mode is True
+        state = DocumentArtifactRepository(output_root).load_build_state("kb")
+        assert state is not None
+        assert state["status"] == "running"
+        return _build_source_document(document)
+
+    monkeypatch.setattr(archive_builder, "parse_discovered_document", fake_parse_discovered_document)
+
+    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None):
+        del extraction_service, document_id
+        if document.path == documents[2].path:
+            raise ValueError("正式知识库抽取要求使用结构化大模型抽取，但当前调用失败：Request timed out.")
+        return contributions[document.path]
+
+    monkeypatch.setattr(archive_builder, "build_document_contribution", fake_build_document_contribution)
+
+    with pytest.raises(ValueError, match="Request timed out"):
+        archive_builder.build_archive_knowledge(
+            archive_id="kb",
+            archive_name="测试知识库",
+            source_dir=source_dir,
+            extract_root=extract_root,
+            output_root=output_root,
+            formal_extraction_mode=True,
+        )
+
+    repository = DocumentArtifactRepository(output_root)
+    stored_document_ids = [item["document_id"] for item in repository.list_documents("kb")]
+    assert stored_document_ids == [_document_id(documents[0].path), _document_id(documents[1].path)]
+
+    build_state = repository.load_build_state("kb")
+    assert build_state is not None
+    assert build_state["status"] == "failed"
+    assert build_state["completed_document_ids"] == stored_document_ids
+    assert build_state["failed_document_id"] == _document_id(documents[2].path)
+    assert build_state["pending_document_ids"] == [_document_id(documents[2].path)]
+    assert (output_root / "kb-knowledge.json").exists() is False
+
+
+def test_build_archive_knowledge_resumes_from_checkpoint_without_reextracting_completed_documents(tmp_path, monkeypatch):
+    from app.archive_knowledge import builder as archive_builder
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    extract_root = tmp_path / "extract"
+    output_root = tmp_path / "output"
+
+    documents = [
+        _build_discovered_document(source_dir, "alpha.docx", "Alpha", "alpha digest"),
+        _build_discovered_document(source_dir, "bravo.docx", "Bravo", "bravo digest"),
+        _build_discovered_document(source_dir, "charlie.docx", "Charlie", "charlie digest"),
+    ]
+    repository = DocumentArtifactRepository(output_root)
+    repository.upsert("kb", _build_document_contribution_payload(_build_source_document(documents[0]), entity_name="Alpha实体"))
+    repository.upsert("kb", _build_document_contribution_payload(_build_source_document(documents[1]), entity_name="Bravo实体"))
+    repository.save_build_state(
+        "kb",
+        {
+            "archive_id": "kb",
+            "status": "failed",
+            "mode": "formal",
+            "expected_document_count": 3,
+            "completed_document_ids": [_document_id(documents[0].path), _document_id(documents[1].path)],
+            "pending_document_ids": [_document_id(documents[2].path)],
+            "failed_document_id": _document_id(documents[2].path),
+            "documents": [
+                {
+                    "document_id": _document_id(document.path),
+                    "path": document.path,
+                    "title": document.title,
+                    "state": "completed" if index < 2 else "pending",
+                    "source_digest": document.source_digest,
+                }
+                for index, document in enumerate(documents)
+            ],
+        },
+    )
+
+    monkeypatch.setattr(archive_builder, "extract_archives", lambda *args, **kwargs: None)
+    monkeypatch.setattr(archive_builder, "resolve_document_roots", lambda source, extract: [source])
+    monkeypatch.setattr(archive_builder, "discover_documents", lambda *args, **kwargs: documents)
+
+    parsed_document_paths: list[str] = []
+    called_document_paths: list[str] = []
+
+    def fake_parse_discovered_document(document, *, formal_extraction_mode):
+        assert formal_extraction_mode is True
+        parsed_document_paths.append(document.path)
+        return _build_source_document(document)
+
+    monkeypatch.setattr(archive_builder, "parse_discovered_document", fake_parse_discovered_document)
+
+    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None):
+        del extraction_service, document_id
+        called_document_paths.append(document.path)
+        return _build_document_contribution_payload(document, entity_name=f"{document.title}实体")
+
+    monkeypatch.setattr(archive_builder, "build_document_contribution", fake_build_document_contribution)
+
+    result = archive_builder.build_archive_knowledge(
+        archive_id="kb",
+        archive_name="测试知识库",
+        source_dir=source_dir,
+        extract_root=extract_root,
+        output_root=output_root,
+        formal_extraction_mode=True,
+    )
+
+    assert parsed_document_paths == [documents[2].path]
+    assert called_document_paths == [documents[2].path]
+    assert result.summary == {
+        "document_count": 3,
+        "entity_count": 3,
+        "event_count": 0,
+        "process_count": 0,
+        "relation_count": 3,
+    }
+
+    build_state = repository.load_build_state("kb")
+    assert build_state is not None
+    assert build_state["status"] == "completed"
+    assert build_state["failed_document_id"] is None
+    assert build_state["pending_document_ids"] == []
+    assert build_state["completed_document_ids"] == [_document_id(document.path) for document in documents]
+
+
+def _build_discovered_document(source_dir: Path, relative_name: str, title: str, source_digest: str):
+    file_path = source_dir / relative_name
+    file_path.write_text(title, encoding="utf-8")
+    return SimpleNamespace(
+        path=f"docs/{relative_name}",
+        title=title,
+        file_type="docx",
+        source_archive="kb",
+        source_file_path=str(file_path),
+        source_digest=source_digest,
+    )
+
+
+def _build_source_document(document) -> SourceDocument:
+    return SourceDocument(
+        path=document.path,
+        title=document.title,
+        file_type="docx",
+        source_archive="kb",
+        text=f"{document.title} 内容",
+        parser_name="docling_docx",
+        segment_count=1,
+        segments=[
+            ParsedSegment(
+                heading=document.title,
+                content=f"{document.title} 内容",
+                anchor={"page": 1, "section": document.title, "line_start": 1, "line_end": 1},
+            )
+        ],
+        source_file_path=document.source_file_path,
+        source_digest=document.source_digest,
+    )
+
+
+def _build_document_contribution_payload(document: SourceDocument, *, entity_name: str) -> dict:
+    document_id = _document_id(document.path)
+    return {
+        "document": {
+            "id": document_id,
+            "path": document.path,
+            "title": document.title,
+            "file_type": document.file_type,
+            "source_archive": document.source_archive,
+            "character_count": len(document.text),
+            "parser_name": document.parser_name,
+            "segment_count": document.segment_count,
+            "source_file_path": document.source_file_path,
+            "source_digest": document.source_digest,
+        },
+        "entities": [
+            {
+                "id": f"entity-{entity_name}",
+                "name": entity_name,
+                "category": "system_or_service",
+                "aliases": [],
+                "document_ids": [document_id],
+                "evidence": [{"document_id": document_id, "excerpt": entity_name}],
+            }
+        ],
+        "events": [],
+        "processes": [],
+        "relations": [],
+        "extraction": {
+            "strategy": "schema_rules+llm",
+            "candidate_count": 1,
+            "relation_count": 0,
+            "llm_enrichment_used": True,
+            "llm_provider": "deepseek",
+            "llm_model": "deepseek-chat",
+        },
+    }

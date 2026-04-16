@@ -78,6 +78,7 @@ def build_document_contribution(
             "parser_name": document.parser_name,
             "segment_count": document.segment_count or len(document.segments or []),
             "source_file_path": document.source_file_path,
+            "source_digest": document.source_digest,
         },
         "entities": _finalize_collection(items_by_key, "entity"),
         "events": _finalize_collection(items_by_key, "event"),
@@ -259,6 +260,24 @@ class DocumentArtifactRepository:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         return self._normalize_manifest(manifest)
 
+    def load_build_state(self, archive_id: str) -> dict | None:
+        build_state_path = self._resolve_build_state_path(archive_id)
+        if not build_state_path.exists():
+            return None
+        return json.loads(build_state_path.read_text(encoding="utf-8"))
+
+    def save_build_state(self, archive_id: str, build_state: dict) -> None:
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        payload = {
+            **build_state,
+            "archive_id": archive_id,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        self._resolve_build_state_path(archive_id).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     def list_documents(self, archive_id: str) -> list[dict]:
         manifest = self.load_manifest(archive_id)
         if manifest is None:
@@ -334,6 +353,25 @@ class DocumentArtifactRepository:
                 return document
         return None
 
+    def has_reusable_artifact(
+        self,
+        archive_id: str,
+        document_id: str,
+        *,
+        source_digest: str | None,
+    ) -> bool:
+        if not source_digest:
+            return False
+
+        document = self.get_document_source_info(archive_id, document_id)
+        if document is None:
+            return False
+        if document.get("source_digest") != source_digest:
+            return False
+
+        artifact_path = self._resolve_artifact_dir(archive_id) / document["artifact_file"]
+        return artifact_path.exists()
+
     def set_included_in_archive(self, archive_id: str, document_id: str, *, included_in_archive: bool) -> dict | None:
         manifest = self.load_manifest(archive_id)
         if manifest is None:
@@ -352,6 +390,24 @@ class DocumentArtifactRepository:
 
         self._write_manifest(archive_id, documents)
         return updated_document
+
+    def prune(self, archive_id: str, *, keep_document_ids: set[str]) -> None:
+        manifest = self.load_manifest(archive_id)
+        if manifest is None:
+            return
+
+        artifact_dir = self._resolve_artifact_dir(archive_id)
+        kept_documents: list[dict] = []
+        removed_any = False
+        for document in manifest.get("documents", []):
+            if document.get("document_id") in keep_document_ids:
+                kept_documents.append(document)
+                continue
+            removed_any = True
+            (artifact_dir / document["artifact_file"]).unlink(missing_ok=True)
+
+        if removed_any:
+            self._write_manifest(archive_id, kept_documents)
 
     def _write_manifest(self, archive_id: str, documents: list[dict]) -> None:
         self.output_root.mkdir(parents=True, exist_ok=True)
@@ -386,6 +442,7 @@ class DocumentArtifactRepository:
             "parser_name": document.get("parser_name"),
             "segment_count": document.get("segment_count", 0),
             "source_file_path": document.get("source_file_path"),
+            "source_digest": document.get("source_digest"),
             "artifact_file": artifact_path.name,
             "included_in_archive": included_in_archive,
             "entity_count": entity_count,
@@ -405,6 +462,9 @@ class DocumentArtifactRepository:
     def _resolve_manifest_path(self, archive_id: str) -> Path:
         return self.output_root / f"{archive_id}-document-artifacts.json"
 
+    def _resolve_build_state_path(self, archive_id: str) -> Path:
+        return self.output_root / f"{archive_id}-document-build-state.json"
+
     @staticmethod
     def _normalize_manifest(manifest: dict) -> dict:
         return {
@@ -422,6 +482,7 @@ class DocumentArtifactRepository:
         normalized.setdefault("entity_count", 0)
         normalized.setdefault("event_count", 0)
         normalized.setdefault("process_count", 0)
+        normalized.setdefault("source_digest", None)
         normalized.setdefault(
             "knowledge_item_count",
             normalized["entity_count"] + normalized["event_count"] + normalized["process_count"],

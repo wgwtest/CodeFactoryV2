@@ -110,8 +110,38 @@ class ExtractionService:
     ) -> ExtractionBatch:
         chunks = build_document_chunks(segments, max_chars=settings.formal_chunk_char_limit)
         structured_llm_bundle = self._build_structured_llm_bundle()
-        chunk_batches = [
-            self._extract_chunk_batch(
+        resolved_chunk_batches: list[tuple[DocumentChunk, ExtractionBatch]] = []
+        for chunk in chunks:
+            resolved_chunk_batches.extend(
+                self._extract_chunk_batch_with_retry(
+                    document_id=document_id,
+                    title=title,
+                    file_path=file_path,
+                    source_document=source_document,
+                    chunk=chunk,
+                    structured_llm_bundle=structured_llm_bundle,
+                )
+            )
+        return self._merge_chunk_batches(
+            document_id=document_id,
+            title=title,
+            chunks=[chunk for chunk, _batch in resolved_chunk_batches],
+            chunk_batches=[batch for _chunk, batch in resolved_chunk_batches],
+        )
+
+    def _extract_chunk_batch_with_retry(
+        self,
+        *,
+        document_id: str,
+        title: str,
+        file_path: str,
+        source_document: SourceDocument,
+        chunk: DocumentChunk,
+        structured_llm_bundle: tuple[Any, dict[str, str | None]] | None,
+        retry_depth: int = 0,
+    ) -> list[tuple[DocumentChunk, ExtractionBatch]]:
+        try:
+            batch = self._extract_chunk_batch(
                 document_id=document_id,
                 title=title,
                 file_path=file_path,
@@ -119,14 +149,72 @@ class ExtractionService:
                 chunk=chunk,
                 structured_llm_bundle=structured_llm_bundle,
             )
-            for chunk in chunks
-        ]
-        return self._merge_chunk_batches(
-            document_id=document_id,
-            title=title,
-            chunks=chunks,
-            chunk_batches=chunk_batches,
+            return [(chunk, batch)]
+        except ValueError as exc:
+            if not self._should_retry_chunk_split(exc=exc, chunk=chunk, retry_depth=retry_depth):
+                raise
+
+            retried_chunks = self._build_retry_chunks(chunk, retry_depth=retry_depth)
+            resolved_batches: list[tuple[DocumentChunk, ExtractionBatch]] = []
+            for retried_chunk in retried_chunks:
+                resolved_batches.extend(
+                    self._extract_chunk_batch_with_retry(
+                        document_id=document_id,
+                        title=title,
+                        file_path=file_path,
+                        source_document=source_document,
+                        chunk=retried_chunk,
+                        structured_llm_bundle=structured_llm_bundle,
+                        retry_depth=retry_depth + 1,
+                    )
+                )
+            return resolved_batches
+
+    def _should_retry_chunk_split(self, *, exc: ValueError, chunk: DocumentChunk, retry_depth: int) -> bool:
+        if not self.formal_extraction_mode:
+            return False
+        if retry_depth >= 6:
+            return False
+
+        error_message = str(exc)
+        retryable_markers = (
+            "Invalid JSON",
+            "json_invalid",
+            "EOF while parsing",
+            "schema 校验",
+            "响应无法通过 schema 校验",
+            "Request timed out",
+            "ReadTimeout",
         )
+        if not any(marker in error_message for marker in retryable_markers):
+            return False
+
+        return chunk.char_count > 80
+
+    def _build_retry_chunks(self, chunk: DocumentChunk, *, retry_depth: int) -> list[DocumentChunk]:
+        next_max_chars = max(80, chunk.char_count // 2)
+        if next_max_chars >= chunk.char_count:
+            raise ValueError("正式知识库抽取失败：无法继续缩小问题块，结构化大模型输出仍不可解析")
+
+        retry_chunks = build_document_chunks(chunk.segments, max_chars=next_max_chars)
+        if len(retry_chunks) <= 1 and retry_chunks[0].char_count >= chunk.char_count:
+            raise ValueError("正式知识库抽取失败：问题块无法被进一步细分，结构化大模型输出仍不可解析")
+
+        namespaced_chunks: list[DocumentChunk] = []
+        for retry_chunk in retry_chunks:
+            namespaced_chunks.append(
+                DocumentChunk(
+                    chunk_id=f"{chunk.chunk_id}.r{retry_depth + 1}-{retry_chunk.chunk_index + 1:03d}",
+                    chunk_index=retry_chunk.chunk_index,
+                    heading=retry_chunk.heading,
+                    segments=retry_chunk.segments,
+                    segment_ids=retry_chunk.segment_ids,
+                    char_count=retry_chunk.char_count,
+                    block_types=retry_chunk.block_types,
+                    anchors=retry_chunk.anchors,
+                )
+            )
+        return namespaced_chunks
 
     def _extract_chunk_batch(
         self,
@@ -434,6 +522,9 @@ class ExtractionService:
             "只保留文档中明确出现或能从同一段证据直接确认的内容，不要编造。\n"
             "关系类型仅允许：describes、owned_by、part_of、operational_exchange、participates_in_exchange、scoped_by、process_scoped_by。\n"
             "中文优先输出 canonical_name；若原文是英文且没有中文，再保留英文。evidence 请给出一句最能支撑该抽取结果的证据。\n\n"
+            "LLM 只负责对规则抽取结果做校正、高价值补充和去重，不要机械重复规则结果已经覆盖的大量条目。\n"
+            "如果当前片段是术语表、符号表、条目清单或大表格，不要逐项穷举整个表，只提取上层分类、关键概念、关键对象和最重要关系。\n"
+            "candidates 最多返回 24 条，relations 最多返回 16 条；优先返回跨段可复用、对建模有价值的内容。\n\n"
             f"文档标题：{title}\n"
             f"文件路径：{file_path}\n"
             f"抽取范围：{scope_label or '全文'}\n\n"

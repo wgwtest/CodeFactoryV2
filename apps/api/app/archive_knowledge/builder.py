@@ -15,7 +15,11 @@ from app.archive_knowledge.document_artifacts import (
 )
 from app.archive_knowledge.rebuild import reconcile_curated_payload
 from app.extraction.service import ExtractionService
-from app.knowledge_builder import SourceDocument, build_knowledge_index as runtime_build_knowledge_index
+from app.knowledge_builder import (
+    SourceDocument,
+    _document_id,
+    build_knowledge_index as runtime_build_knowledge_index,
+)
 from app.parsing.service import ParsingService
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
@@ -37,6 +41,16 @@ class ArchiveBuildResult:
     summary: dict
 
 
+@dataclass(slots=True)
+class DiscoveredDocument:
+    path: str
+    title: str
+    file_type: str
+    source_archive: str
+    source_file_path: str
+    source_digest: str
+
+
 def build_archive_knowledge(
     *,
     archive_id: str,
@@ -55,11 +69,11 @@ def build_archive_knowledge(
 
     extract_archives(source_dir, extract_root)
     document_roots = resolve_document_roots(source_dir, extract_root)
-    documents = collect_documents(document_roots, formal_extraction_mode=formal_extraction_mode)
-    if not documents:
-        raise ValueError(f"目录中未发现可解析文档: {source_dir}")
 
     if build_knowledge_index is not _ORIGINAL_BUILD_KNOWLEDGE_INDEX:
+        documents = collect_documents(document_roots, formal_extraction_mode=formal_extraction_mode)
+        if not documents:
+            raise ValueError(f"目录中未发现可解析文档: {source_dir}")
         extraction_diagnostics: list[dict] = []
         knowledge = build_knowledge_index(
             documents,
@@ -80,14 +94,51 @@ def build_archive_knowledge(
             formal_extraction_mode=formal_extraction_mode,
         )
 
-    extraction_service = ExtractionService(formal_extraction_mode=formal_extraction_mode)
-    contributions = [build_document_contribution(document, extraction_service) for document in documents]
-    extraction_diagnostics = _build_extraction_diagnostics(contributions)
     if formal_extraction_mode:
+        documents = discover_documents(document_roots, formal_extraction_mode=True)
+        if not documents:
+            raise ValueError(f"目录中未发现可解析文档: {source_dir}")
+        extraction_service = ExtractionService(formal_extraction_mode=True)
+        artifact_repository = DocumentArtifactRepository(output_root)
+        contributions = _build_formal_archive_contributions(
+            archive_id=archive_id,
+            archive_name=archive_name,
+            documents=documents,
+            extraction_service=extraction_service,
+            artifact_repository=artifact_repository,
+        )
+        extraction_diagnostics = _build_extraction_diagnostics(contributions)
         _validate_formal_extraction_run(documents, extraction_diagnostics)
-
-    DocumentArtifactRepository(output_root).replace_all(archive_id, contributions)
-    knowledge = aggregate_document_contributions(contributions)
+        artifact_repository.prune(
+            archive_id,
+            keep_document_ids={contribution["document"]["id"] for contribution in contributions},
+        )
+        contributions = artifact_repository.load_contributions(archive_id)
+        knowledge = aggregate_document_contributions(
+            artifact_repository.load_contributions(archive_id, included_only=True)
+        )
+        artifact_repository.save_build_state(
+            archive_id,
+            _build_archive_state(
+                archive_id=archive_id,
+                archive_name=archive_name,
+                documents=documents,
+                status="completed",
+                completed_document_ids=[contribution["document"]["id"] for contribution in contributions],
+                pending_document_ids=[],
+                failed_document_id=None,
+                failed_message=None,
+            ),
+        )
+    else:
+        documents = collect_documents(document_roots, formal_extraction_mode=False)
+        if not documents:
+            raise ValueError(f"目录中未发现可解析文档: {source_dir}")
+        extraction_service = ExtractionService(formal_extraction_mode=False)
+        contributions = [build_document_contribution(document, extraction_service) for document in documents]
+        extraction_diagnostics = _build_extraction_diagnostics(contributions)
+        DocumentArtifactRepository(output_root).replace_all(archive_id, contributions)
+        knowledge = aggregate_document_contributions(contributions)
     return persist_archive_outputs(
         archive_id=archive_id,
         archive_name=archive_name,
@@ -127,10 +178,9 @@ def extract_archives(source_dir: Path, extract_root: Path) -> None:
             break
 
 
-def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[SourceDocument]:
+def discover_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[DiscoveredDocument]:
     roots = [document_roots] if isinstance(document_roots, Path) else list(document_roots)
-    documents_by_digest: dict[str, tuple[int, SourceDocument]] = {}
-    parsing_service = ParsingService(formal_extraction_mode=formal_extraction_mode)
+    documents_by_digest: dict[str, tuple[int, DiscoveredDocument]] = {}
 
     for priority, root in enumerate(roots):
         if not root.exists():
@@ -146,38 +196,17 @@ def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mo
             if formal_extraction_mode and suffix in {".xlsx", ".xls"}:
                 raise ValueError(f"正式知识库抽取当前不允许使用非 Docling 的表格解析链路：{path}")
 
-            try:
-                parsed = parsing_service.parse_file(path)
-            except Exception as exc:
-                if formal_extraction_mode:
-                    raise ValueError(f"正式知识库抽取失败：{path} ({exc})") from exc
-                print(f"SKIP unreadable file: {path} ({exc})")
-                continue
-
-            if formal_extraction_mode and suffix in {".pdf", ".doc", ".docx"} and parsed.parser_name not in {"docling_pdf", "docling_docx"}:
-                raise ValueError(f"正式知识库抽取要求使用 Docling 解析，但文件实际使用了解析器 {parsed.parser_name}：{path}")
-
-            text = "\n".join(segment.content for segment in parsed.segments)
-            if not text.strip():
-                if formal_extraction_mode:
-                    raise ValueError(f"正式知识库抽取失败：Docling 未能从文件中解析出有效文本：{path}")
-                continue
-
+            digest = _file_digest(path)
             relative_path = path.relative_to(root)
             source_archive = relative_path.parts[0] if len(relative_path.parts) > 1 else root.name
-            document = SourceDocument(
+            document = DiscoveredDocument(
                 path=str(relative_path),
                 title=path.stem,
                 file_type=suffix.lstrip("."),
                 source_archive=source_archive,
-                text=text,
-                parser_name=parsed.parser_name,
-                segment_count=len(parsed.segments),
-                segments=parsed.segments,
                 source_file_path=str(path),
+                source_digest=digest,
             )
-
-            digest = _file_digest(path)
             existing = documents_by_digest.get(digest)
             if existing is None or priority < existing[0]:
                 documents_by_digest[digest] = (priority, document)
@@ -185,7 +214,62 @@ def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mo
     return sorted((item[1] for item in documents_by_digest.values()), key=lambda document: document.path)
 
 
-def _validate_formal_extraction_run(documents: list[SourceDocument], extraction_diagnostics: list[dict]) -> None:
+def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[SourceDocument]:
+    documents: list[SourceDocument] = []
+    for document in discover_documents(document_roots, formal_extraction_mode=formal_extraction_mode):
+        try:
+            documents.append(
+                parse_discovered_document(document, formal_extraction_mode=formal_extraction_mode)
+            )
+        except Exception as exc:
+            if formal_extraction_mode:
+                raise
+            print(f"SKIP unreadable file: {document.source_file_path} ({exc})")
+    return documents
+
+
+def parse_discovered_document(
+    document: DiscoveredDocument,
+    *,
+    formal_extraction_mode: bool = False,
+) -> SourceDocument:
+    file_path = Path(document.source_file_path)
+    parsing_service = ParsingService(formal_extraction_mode=formal_extraction_mode)
+    try:
+        parsed = parsing_service.parse_file(file_path)
+    except Exception as exc:
+        if formal_extraction_mode:
+            raise ValueError(f"正式知识库抽取失败：{file_path} ({exc})") from exc
+        raise
+
+    if (
+        formal_extraction_mode
+        and document.file_type in {"pdf", "doc", "docx"}
+        and parsed.parser_name not in {"docling_pdf", "docling_docx"}
+    ):
+        raise ValueError(f"正式知识库抽取要求使用 Docling 解析，但文件实际使用了解析器 {parsed.parser_name}：{file_path}")
+
+    text = "\n".join(segment.content for segment in parsed.segments)
+    if not text.strip():
+        if formal_extraction_mode:
+            raise ValueError(f"正式知识库抽取失败：Docling 未能从文件中解析出有效文本：{file_path}")
+        raise ValueError(f"文档解析后无有效文本：{file_path}")
+
+    return SourceDocument(
+        path=document.path,
+        title=document.title,
+        file_type=document.file_type,
+        source_archive=document.source_archive,
+        text=text,
+        parser_name=parsed.parser_name,
+        segment_count=len(parsed.segments),
+        segments=parsed.segments,
+        source_file_path=document.source_file_path,
+        source_digest=document.source_digest,
+    )
+
+
+def _validate_formal_extraction_run(documents: list[SourceDocument] | list[DiscoveredDocument], extraction_diagnostics: list[dict]) -> None:
     if len(extraction_diagnostics) != len(documents):
         raise ValueError("正式知识库抽取失败：抽取执行报告与文档数量不一致")
 
@@ -251,6 +335,140 @@ def _load_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _build_formal_archive_contributions(
+    *,
+    archive_id: str,
+    archive_name: str,
+    documents: list[DiscoveredDocument],
+    extraction_service: ExtractionService,
+    artifact_repository: DocumentArtifactRepository,
+) -> list[dict]:
+    completed_document_ids: list[str] = []
+    pending_document_ids = [_document_id(document.path) for document in documents]
+    contributions: list[dict] = []
+
+    artifact_repository.save_build_state(
+        archive_id,
+        _build_archive_state(
+            archive_id=archive_id,
+            archive_name=archive_name,
+            documents=documents,
+            status="running",
+            completed_document_ids=completed_document_ids,
+            pending_document_ids=pending_document_ids,
+            failed_document_id=None,
+            failed_message=None,
+        ),
+    )
+
+    for document in documents:
+        document_id = _document_id(document.path)
+        manifest_document = artifact_repository.get_document_source_info(archive_id, document_id)
+        included_in_archive = manifest_document.get("included_in_archive", True) if manifest_document else True
+
+        try:
+            if artifact_repository.has_reusable_artifact(
+                archive_id,
+                document_id,
+                source_digest=document.source_digest,
+            ):
+                contribution = artifact_repository.load_document_contribution(archive_id, document_id)
+                if contribution is None:
+                    raise FileNotFoundError(f"文档级正式产物缺失: {document_id}")
+            else:
+                parsed_document = parse_discovered_document(document, formal_extraction_mode=True)
+                contribution = build_document_contribution(parsed_document, extraction_service, document_id=document_id)
+                artifact_repository.upsert(
+                    archive_id,
+                    contribution,
+                    included_in_archive=included_in_archive,
+                )
+        except Exception as exc:
+            artifact_repository.save_build_state(
+                archive_id,
+                _build_archive_state(
+                    archive_id=archive_id,
+                    archive_name=archive_name,
+                    documents=documents,
+                    status="failed",
+                    completed_document_ids=completed_document_ids,
+                    pending_document_ids=[
+                        pending_id for pending_id in pending_document_ids if pending_id not in completed_document_ids
+                    ],
+                    failed_document_id=document_id,
+                    failed_message=str(exc),
+                ),
+            )
+            raise
+
+        contributions.append(contribution)
+        if document_id not in completed_document_ids:
+            completed_document_ids.append(document_id)
+        pending_document_ids = [pending_id for pending_id in pending_document_ids if pending_id != document_id]
+        artifact_repository.save_build_state(
+            archive_id,
+            _build_archive_state(
+                archive_id=archive_id,
+                archive_name=archive_name,
+                documents=documents,
+                status="running",
+                completed_document_ids=completed_document_ids,
+                pending_document_ids=pending_document_ids,
+                failed_document_id=None,
+                failed_message=None,
+            ),
+        )
+
+    return contributions
+
+
+def _build_archive_state(
+    *,
+    archive_id: str,
+    archive_name: str,
+    documents: list[DiscoveredDocument],
+    status: str,
+    completed_document_ids: list[str],
+    pending_document_ids: list[str],
+    failed_document_id: str | None,
+    failed_message: str | None,
+) -> dict:
+    completed_set = set(completed_document_ids)
+    pending_set = set(pending_document_ids)
+    return {
+        "archive_id": archive_id,
+        "archive_name": archive_name,
+        "mode": "formal",
+        "status": status,
+        "expected_document_count": len(documents),
+        "completed_document_ids": completed_document_ids,
+        "pending_document_ids": pending_document_ids,
+        "failed_document_id": failed_document_id,
+        "failed_message": failed_message,
+        "documents": [
+            {
+                "document_id": _document_id(document.path),
+                "path": document.path,
+                "title": document.title,
+                "file_type": document.file_type,
+                "source_archive": document.source_archive,
+                "source_file_path": document.source_file_path,
+                "source_digest": document.source_digest,
+                "state": (
+                    "failed"
+                    if _document_id(document.path) == failed_document_id
+                    else "completed"
+                    if _document_id(document.path) in completed_set
+                    else "pending"
+                    if _document_id(document.path) in pending_set
+                    else "pending"
+                ),
+            }
+            for document in documents
+        ],
+    }
 
 
 def persist_archive_outputs(
