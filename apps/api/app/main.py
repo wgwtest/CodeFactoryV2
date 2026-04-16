@@ -4,6 +4,7 @@ from app.api.routes.governance import router as governance_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.modeling import router as modeling_router
 from app.api.routes.requirements import router as requirements_router
+from app.api.routes.tool_hub import router as tool_hub_router
 from fastapi import FastAPI
 
 from app.api.routes.health import router as health_router
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_router, prefix=settings.api_prefix)
     app.include_router(modeling_router, prefix=settings.api_prefix)
     app.include_router(requirements_router, prefix=settings.api_prefix)
+    app.include_router(tool_hub_router, prefix=settings.api_prefix)
     return app
 
 

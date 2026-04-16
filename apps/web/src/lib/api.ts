@@ -531,3 +531,202 @@ export type ApplicationRequirementDraftExport = {
   yaml_text: string;
   markdown: string;
 };
+
+export type ToolStatus = "draft" | "active" | "archived";
+export type ToolVerificationStatus = "unverified" | "verified" | "warning" | "failed";
+
+export type ToolHubCatalogItem = {
+  id: string;
+  label: string;
+  description: string;
+};
+
+export type ToolVerification = {
+  status: ToolVerificationStatus;
+  last_verified_at?: string | null;
+  last_verified_result: string;
+  sample_case_ids: string[];
+};
+
+export type ToolDefinition = {
+  tool_id: string;
+  name: string;
+  slug: string;
+  status: ToolStatus;
+  summary: string;
+  problem_statement: string;
+  primary_category_id: string;
+  tags: string[];
+  applicable_stages: string[];
+  input_types: string[];
+  output_types: string[];
+  supported_sources: string[];
+  usage_notes: string;
+  keywords: string[];
+  verification: ToolVerification;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
+
+export type ToolListEnvelope = {
+  items: ToolDefinition[];
+};
+
+export type ToolHubSnapshotMeta = {
+  snapshot_id: string;
+  generated_at: string;
+  state_version: string;
+  source_contract_version?: string;
+};
+
+export type ToolHubReadEnvelope<T> = {
+  meta: ToolHubSnapshotMeta;
+  data: T;
+};
+
+export type ToolHubCatalogs = {
+  categories: ToolHubCatalogItem[];
+  stages: ToolHubCatalogItem[];
+  input_types: ToolHubCatalogItem[];
+  output_types: ToolHubCatalogItem[];
+  supported_sources: ToolHubCatalogItem[];
+  verification_statuses: ToolHubCatalogItem[];
+  tag_namespaces: ToolHubCatalogItem[];
+};
+
+export type ToolHubOverviewMetrics = {
+  tool_count: number;
+  verified_tool_count: number;
+  active_tool_count: number;
+  draft_tool_count: number;
+  archived_tool_count: number;
+  match_run_count: number;
+  evolution_run_count: number;
+  active_chain_count: number;
+  overlap_candidate_count: number;
+  pending_suggestion_count: number;
+  recent_success_rate: number;
+};
+
+export type ToolHubCoverageMatrix = {
+  stages: ToolHubCatalogItem[];
+  rows: Array<{
+    category_id: string;
+    category_label: string;
+    cells: Array<{
+      stage_id: string;
+      value: number;
+    }>;
+  }>;
+};
+
+export type ToolHubRiskSummaryItem = {
+  kind: "missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap";
+  title: string;
+  description: string;
+  severity: "info" | "warning" | "critical";
+};
+
+export type ToolHubRecentRunSummary = {
+  run_id: string;
+  run_type: "match" | "evolution";
+  title: string;
+  status: string;
+  created_at: string;
+  summary: string;
+};
+
+export type ToolHubRunMonitor = {
+  active_match_run_count: number;
+  active_evolution_run_count: number;
+  latest_match_run: ToolHubRecentRunSummary | null;
+  latest_evolution_run: ToolHubRecentRunSummary | null;
+  failing_run_count: number;
+  stale_run_count: number;
+};
+
+export type PendingSuggestionItem = {
+  finding_id: string;
+  source_run_id: string;
+  kind: "missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap";
+  title: string;
+  description: string;
+  severity: "info" | "warning" | "critical";
+  tool_ids: string[];
+};
+
+export type ToolMatchKnowledgeContext = {
+  archive_id?: string | null;
+  entity_ids: string[];
+  process_ids: string[];
+  snapshot_version?: string | null;
+};
+
+export type ToolMatchRequestInput = {
+  scenario_text: string;
+  target_stage: string;
+  required_input_types: string[];
+  expected_output_types: string[];
+  preferred_tags: string[];
+  knowledge_context: ToolMatchKnowledgeContext;
+};
+
+export type ToolMatchCandidate = {
+  tool_id: string;
+  name: string;
+  match_score: number;
+  matched_dimensions: string[];
+  reasons: string[];
+  gaps: string[];
+  verification_status: ToolVerificationStatus;
+};
+
+export type ToolMatchRun = {
+  run_id: string;
+  status: "completed";
+  created_at: string;
+  request: ToolMatchRequestInput;
+  candidates: ToolMatchCandidate[];
+  context_summary: string;
+};
+
+export type EvolutionFinding = {
+  finding_id: string;
+  kind: "missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap";
+  title: string;
+  description: string;
+  severity: "info" | "warning" | "critical";
+  tool_ids: string[];
+};
+
+export type EvolutionRun = {
+  run_id: string;
+  status: "completed";
+  created_at: string;
+  summary: {
+    tool_count: number;
+    finding_count: number;
+    missing_description_count: number;
+    taxonomy_issue_count: number;
+    overlap_risk_count: number;
+    coverage_gap_count: number;
+  };
+  findings: EvolutionFinding[];
+};
+
+export type EvolutionRunEnvelope = {
+  items: EvolutionRun[];
+};
+
+export type ToolHubOverview = {
+  metrics: ToolHubOverviewMetrics;
+  run_monitor: ToolHubRunMonitor;
+  coverage_matrix: ToolHubCoverageMatrix;
+  risk_summary: ToolHubRiskSummaryItem[];
+  pending_suggestions: PendingSuggestionItem[];
+  recent_match_runs: ToolHubRecentRunSummary[];
+  recent_evolution_runs: ToolHubRecentRunSummary[];
+  catalogs: ToolHubCatalogs;
+};

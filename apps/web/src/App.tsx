@@ -8,6 +8,7 @@ import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP4Page } from "./pages/XXP4Page";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
@@ -18,7 +19,7 @@ const items = [
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
 
-export default function App() {
+function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
   const selectedMenuKey = location.pathname === "/documents" ? "/" : location.pathname;
@@ -64,4 +65,18 @@ export default function App() {
       </Layout.Content>
     </Layout>
   );
+}
+
+export default function App() {
+  const location = useLocation();
+
+  if (location.pathname.startsWith("/xx-p4")) {
+    return (
+      <Routes>
+        <Route path="/xx-p4" element={<XXP4Page />} />
+      </Routes>
+    );
+  }
+
+  return <MainShell />;
 }
