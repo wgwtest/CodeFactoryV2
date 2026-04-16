@@ -8,7 +8,9 @@ import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP3SimPage } from "./pages/XXP3SimPage";
 import { XXP4Page } from "./pages/XXP4Page";
+import { XXP5SimPage } from "./pages/XXP5SimPage";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
@@ -70,10 +72,16 @@ function MainShell() {
 export default function App() {
   const location = useLocation();
 
-  if (location.pathname.startsWith("/xx-p4")) {
+  if (
+    location.pathname.startsWith("/xx-p3-sim") ||
+    location.pathname.startsWith("/xx-p4") ||
+    location.pathname.startsWith("/xx-p5-sim")
+  ) {
     return (
       <Routes>
+        <Route path="/xx-p3-sim" element={<XXP3SimPage />} />
         <Route path="/xx-p4" element={<XXP4Page />} />
+        <Route path="/xx-p5-sim" element={<XXP5SimPage />} />
       </Routes>
     );
   }

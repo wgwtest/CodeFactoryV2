@@ -7,8 +7,14 @@ from app.config import settings
 from app.tool_hub.models import (
     EvolutionRun,
     EvolutionRunReadEnvelope,
+    ItemProgressView,
     ToolDefinition,
     ToolDefinitionWrite,
+    ToolDemandItem,
+    ToolDemandSheetCreateRequest,
+    ToolDemandSheetDetail,
+    ToolDemandSheetEnvelope,
+    ToolFetchManifest,
     ToolHubOverviewReadEnvelope,
     ToolListReadEnvelope,
     ToolMatchRequest,
@@ -53,6 +59,14 @@ def create_tool_definition(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/tools/{tool_id}/fetch", response_model=ToolFetchManifest)
+def get_tool_fetch_manifest(tool_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    manifest = service.get_tool_fetch_manifest(tool_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return manifest
+
+
 @router.get("/tools/{tool_id}", response_model=ToolDefinition)
 def get_tool_definition(tool_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
     tool = service.get_tool(tool_id)
@@ -82,6 +96,52 @@ def create_match_run(
     service: ToolHubService = Depends(get_tool_hub_service),
 ):
     return service.run_match(payload)
+
+
+@router.post(
+    "/mock-generators/blue-force-demand-sheets",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ToolDemandSheetDetail,
+)
+def create_mock_blue_force_demand_sheet(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.create_mock_blue_force_demand_sheet()
+
+
+@router.post("/demand-sheets", status_code=status.HTTP_201_CREATED, response_model=ToolDemandSheetDetail)
+def create_demand_sheet(
+    payload: ToolDemandSheetCreateRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.create_demand_sheet(payload)
+
+
+@router.get("/demand-sheets", response_model=ToolDemandSheetEnvelope)
+def list_demand_sheets(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.list_demand_sheets()
+
+
+@router.get("/demand-sheets/{sheet_id}", response_model=ToolDemandSheetDetail)
+def get_demand_sheet(sheet_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    sheet = service.get_demand_sheet(sheet_id)
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Demand sheet not found")
+    return sheet
+
+
+@router.get("/demand-items/{item_id}", response_model=ToolDemandItem)
+def get_demand_item(item_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    item = service.get_demand_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Demand item not found")
+    return item
+
+
+@router.get("/demand-items/{item_id}/progress", response_model=ItemProgressView)
+def get_demand_item_progress(item_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    progress = service.get_demand_item_progress(item_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Demand item not found")
+    return progress
 
 
 @router.get("/evolution-runs", response_model=EvolutionRunReadEnvelope)

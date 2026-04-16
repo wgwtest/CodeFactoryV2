@@ -6,10 +6,12 @@ import { vi } from "vitest";
 import App from "../App";
 
 const getMock = vi.fn();
+const postMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
+    post: (...args: unknown[]) => postMock(...args),
   },
 }));
 
@@ -60,4 +62,15 @@ test("renders documents page on /documents route", async () => {
 
   expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
   expect((await screen.findAllByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).length).toBeGreaterThan(0);
+});
+
+test("renders xx simulator routes outside the main shell", async () => {
+  render(
+    <MemoryRouter initialEntries={["/xx-p3-sim"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 模拟发生器")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

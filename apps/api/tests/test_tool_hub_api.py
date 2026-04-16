@@ -88,24 +88,28 @@ def test_tool_hub_overview_and_tool_crud(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
 
     create_payload = {
-        "name": "流程验证器",
-        "slug": "process-validator",
+        "name": "审批规则校验器",
+        "slug": "approval-rule-validator",
         "status": "active",
-        "summary": "针对流程清单生成验证建议",
-        "problem_statement": "降低流程建模前期人工比对成本",
-        "primary_category_id": "application_modeling",
+        "summary": "针对审批路径和规则集生成校验建议",
+        "problem_statement": "降低审批方案设计阶段的人工比对成本",
+        "primary_domain_id": "workflow_approval",
+        "tool_form_id": "skill",
+        "runtime_platform_ids": ["agent_runtime"],
         "tags": [
-            "stage:modeling",
-            "capability:process-analysis",
-            "input:process-list",
-            "output:validation-report",
+            "domain:workflow_approval",
+            "form:skill",
+            "runtime:agent_runtime",
+            "lifecycle:solution_design",
+            "input:process_list",
+            "output:validation_report",
         ],
-        "applicable_stages": ["modeling"],
-        "input_types": ["process_list"],
+        "lifecycle_stage_ids": ["solution_design"],
+        "input_types": ["process_list", "rule_set"],
         "output_types": ["validation_report"],
         "supported_sources": ["manual_input", "frozen_snapshot"],
-        "usage_notes": "用于流程梳理前的快速筛查",
-        "keywords": ["流程", "验证"],
+        "usage_notes": "用于审批路径设计前的快速筛查",
+        "keywords": ["审批", "校验"],
         "verification": {
             "status": "verified",
             "last_verified_result": "样例通过",
@@ -117,7 +121,7 @@ def test_tool_hub_overview_and_tool_crud(tmp_path: Path) -> None:
     assert created.status_code == 201
     created_body = created.json()
     tool_id = created_body["tool_id"]
-    assert created_body["slug"] == "process-validator"
+    assert created_body["slug"] == "approval-rule-validator"
 
     listed = client.get("/api/tool-hub/tools")
     assert listed.status_code == 200
@@ -132,12 +136,12 @@ def test_tool_hub_overview_and_tool_crud(tmp_path: Path) -> None:
     assert overview_body["data"]["metrics"]["tool_count"] == 1
     assert overview_body["data"]["metrics"]["verified_tool_count"] == 1
     assert overview_body["data"]["metrics"]["active_tool_count"] == 1
-    assert overview_body["data"]["catalogs"]["categories"][0]["id"] == "knowledge_ingestion"
+    assert "case_management" in [item["id"] for item in overview_body["data"]["catalogs"]["domains"]]
     assert overview_snapshot_id == listed_snapshot_id
 
     detail = client.get(f"/api/tool-hub/tools/{tool_id}")
     assert detail.status_code == 200
-    assert detail.json()["name"] == "流程验证器"
+    assert detail.json()["name"] == "审批规则校验器"
 
     updated = client.put(
         f"/api/tool-hub/tools/{tool_id}",
@@ -159,24 +163,28 @@ def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
 
     tool_payloads = [
         {
-            "name": "流程验证器",
-            "slug": "process-validator",
+            "name": "审批规则校验器",
+            "slug": "approval-rule-validator",
             "status": "active",
-            "summary": "针对流程清单生成验证建议",
-            "problem_statement": "降低流程建模前期人工比对成本",
-            "primary_category_id": "application_modeling",
+            "summary": "针对审批路径和规则集生成验证建议",
+            "problem_statement": "降低审批方案设计阶段的人工比对成本",
+            "primary_domain_id": "workflow_approval",
+            "tool_form_id": "skill",
+            "runtime_platform_ids": ["agent_runtime"],
             "tags": [
-                "stage:modeling",
-                "capability:process-analysis",
-                "input:process-list",
-                "output:validation-report",
+                "domain:workflow_approval",
+                "form:skill",
+                "runtime:agent_runtime",
+                "lifecycle:solution_design",
+                "input:process_list",
+                "output:validation_report",
             ],
-            "applicable_stages": ["modeling"],
+            "lifecycle_stage_ids": ["solution_design", "verification_release"],
             "input_types": ["process_list"],
             "output_types": ["validation_report"],
             "supported_sources": ["manual_input", "frozen_snapshot"],
-            "usage_notes": "用于流程梳理前的快速筛查",
-            "keywords": ["流程", "验证"],
+            "usage_notes": "用于审批梳理前的快速筛查",
+            "keywords": ["审批", "校验"],
             "verification": {
                 "status": "verified",
                 "last_verified_result": "样例通过",
@@ -184,24 +192,28 @@ def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
             },
         },
         {
-            "name": "流程候选解释器",
-            "slug": "process-explainer",
+            "name": "审批路径解释器",
+            "slug": "approval-path-explainer",
             "status": "active",
-            "summary": "给出候选流程命中的解释理由",
+            "summary": "给出审批路径命中的解释理由",
             "problem_statement": "帮助用户理解匹配逻辑",
-            "primary_category_id": "validation_support",
+            "primary_domain_id": "workflow_approval",
+            "tool_form_id": "skill",
+            "runtime_platform_ids": ["agent_runtime"],
             "tags": [
-                "stage:modeling",
-                "capability:process-analysis",
-                "input:process-list",
-                "output:review-suggestion",
+                "domain:workflow_approval",
+                "form:skill",
+                "runtime:agent_runtime",
+                "lifecycle:solution_design",
+                "input:process_list",
+                "output:review_suggestion",
             ],
-            "applicable_stages": ["modeling"],
+            "lifecycle_stage_ids": ["solution_design"],
             "input_types": ["process_list"],
             "output_types": ["review_suggestion"],
             "supported_sources": ["manual_input"],
-            "usage_notes": "适合解释链路场景",
-            "keywords": ["流程", "解释"],
+            "usage_notes": "适合解释审批链路场景",
+            "keywords": ["审批", "解释"],
             "verification": {
                 "status": "warning",
                 "last_verified_result": "需要人工复核",
@@ -217,11 +229,14 @@ def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
     match_response = client.post(
         "/api/tool-hub/match-runs",
         json={
-            "scenario_text": "需要针对协同处置流程挑选流程分析和验证工具",
-            "target_stage": "modeling",
+            "scenario_text": "需要针对审批流程挑选规则分析和验证工具",
+            "target_domain_ids": ["workflow_approval"],
+            "lifecycle_stage_ids": ["solution_design"],
             "required_input_types": ["process_list"],
             "expected_output_types": ["validation_report"],
-            "preferred_tags": ["capability:process-analysis"],
+            "preferred_tool_forms": ["skill"],
+            "preferred_runtime_platforms": ["agent_runtime"],
+            "preferred_tags": ["domain:workflow_approval"],
             "knowledge_context": {
                 "archive_id": "20161116-nas",
                 "entity_ids": [],
@@ -234,7 +249,8 @@ def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
     match_body = match_response.json()
     assert match_body["candidates"][0]["tool_id"]
     assert match_body["candidates"][0]["match_score"] >= match_body["candidates"][1]["match_score"]
-    assert "stage" in match_body["candidates"][0]["matched_dimensions"]
+    assert "domain" in match_body["candidates"][0]["matched_dimensions"]
+    assert "lifecycle" in match_body["candidates"][0]["matched_dimensions"]
     assert match_body["request"]["knowledge_context"]["archive_id"] == "20161116-nas"
 
     evolution_response = client.post("/api/tool-hub/evolution-runs")
@@ -257,3 +273,29 @@ def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
 
     assert listed_runs.status_code == 200
     assert len(listed_runs_body["data"]["items"]) == 1
+
+
+def test_tool_hub_seeded_demo_data_is_not_rewritten_on_read(tmp_path: Path) -> None:
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    _write_archive(archive_root / "20161116-nas-knowledge.json")
+
+    service = ToolHubService(
+        root=tmp_path / "tool-hub",
+        archive_service=ArchiveKnowledgeService(archive_root),
+        seed_demo_data=True,
+    )
+
+    save_calls: list[str] = []
+    original_save_tool = service.repository.save_tool
+
+    def spy_save_tool(tool):
+        save_calls.append(tool.tool_id)
+        return original_save_tool(tool)
+
+    service.repository.save_tool = spy_save_tool  # type: ignore[method-assign]
+
+    envelope = service.list_tools()
+
+    assert len(envelope.data.items) >= 1
+    assert save_calls == []

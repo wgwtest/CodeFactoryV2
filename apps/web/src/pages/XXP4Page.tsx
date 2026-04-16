@@ -14,15 +14,17 @@ import { useArchiveContext } from "../context/ArchiveContext";
 import type {
   EvolutionRun,
   ToolDefinition,
+  ToolDemandSheet,
   ToolDefinitionWriteInput,
   ToolHubOverview,
-  ToolMatchRequestInput,
-  ToolMatchRun,
 } from "../lib/api";
 import {
+  createMockBlueForceDemandSheet,
   createEvolutionRun,
   createToolDefinition,
-  createToolMatchRun,
+  getDemandItemProgress,
+  getDemandSheet,
+  getDemandSheets,
   getEvolutionRuns,
   getToolDefinitions,
   getToolHubOverview,
@@ -35,38 +37,53 @@ export function XXP4Page() {
   const { activeArchive, activeArchiveId } = useArchiveContext();
   const [overview, setOverview] = useState<ToolHubOverview | null>(null);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
+  const [demandSheets, setDemandSheets] = useState<ToolDemandSheet[]>([]);
+  const [activeSheet, setActiveSheet] = useState<ToolDemandSheet | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [evolutionRuns, setEvolutionRuns] = useState<EvolutionRun[]>([]);
-  const [matchRun, setMatchRun] = useState<ToolMatchRun | null>(null);
   const [latestEvolutionRun, setLatestEvolutionRun] = useState<EvolutionRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState(false);
-  const [runningMatch, setRunningMatch] = useState(false);
+  const [creatingMockSheet, setCreatingMockSheet] = useState(false);
+  const [refreshingItemId, setRefreshingItemId] = useState<string | null>(null);
   const [runningEvolution, setRunningEvolution] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
-  async function loadPage(showLoading = false) {
+  async function loadPage(showLoading = false, preferredSheetId?: string | null, preferredItemId?: string | null) {
     if (showLoading) {
       setLoading(true);
     }
     try {
-      const [overviewResponse, toolsResponse, evolutionResponse] = await Promise.all([
+      const [overviewResponse, toolsResponse, evolutionResponse, demandSheetsResponse] = await Promise.all([
         getToolHubOverview(),
         getToolDefinitions(),
         getEvolutionRuns(),
+        getDemandSheets(),
       ]);
       const overviewEnvelope = overviewResponse.data;
       const toolsEnvelope = toolsResponse.data;
       const evolutionEnvelope = evolutionResponse.data;
+      const demandSheetEnvelope = demandSheetsResponse.data;
       const snapshotIds = [
         overviewEnvelope.meta.snapshot_id,
         toolsEnvelope.meta.snapshot_id,
         evolutionEnvelope.meta.snapshot_id,
       ];
       const hasSnapshotMismatch = new Set(snapshotIds).size > 1;
+      const currentActiveSheetId = preferredSheetId ?? activeSheet?.sheet_id ?? demandSheetEnvelope.items[0]?.sheet_id ?? null;
+      const activeSheetResponse = currentActiveSheetId ? await getDemandSheet(currentActiveSheetId) : null;
+      const activeSheetDetail = activeSheetResponse?.data ?? null;
+      const nextSelectedItemId =
+        preferredItemId && activeSheetDetail?.items?.some((item) => item.item_id === preferredItemId)
+          ? preferredItemId
+          : activeSheetDetail?.items?.[0]?.item_id ?? null;
       startTransition(() => {
         setOverview(overviewEnvelope.data);
         setTools(toolsEnvelope.data.items);
+        setDemandSheets(demandSheetEnvelope.items);
+        setActiveSheet(activeSheetDetail);
+        setSelectedItemId(nextSelectedItemId);
         setEvolutionRuns(evolutionEnvelope.data.items);
         setSnapshotWarning(hasSnapshotMismatch ? SNAPSHOT_WARNING_MESSAGE : null);
         setError(null);
@@ -84,22 +101,41 @@ export function XXP4Page() {
     void loadPage(true);
   }, []);
 
-  async function handleRunMatch(request: ToolMatchRequestInput) {
+  async function handleGenerateMockSheet() {
     try {
-      setRunningMatch(true);
-      const response = await createToolMatchRun({
-        ...request,
-        knowledge_context: {
-          ...request.knowledge_context,
-          archive_id: request.knowledge_context.archive_id ?? activeArchiveId ?? undefined,
-        },
-      });
-      setMatchRun(response.data);
-      await loadPage();
+      setCreatingMockSheet(true);
+      const response = await createMockBlueForceDemandSheet();
+      await loadPage(false, response.data.sheet_id, response.data.items?.[0]?.item_id ?? null);
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "运行工具匹配失败");
+      setError(runError instanceof Error ? runError.message : "生成模拟蓝军需求总单失败");
     } finally {
-      setRunningMatch(false);
+      setCreatingMockSheet(false);
+    }
+  }
+
+  async function handleSelectSheet(sheetId: string) {
+    try {
+      const response = await getDemandSheet(sheetId);
+      setActiveSheet(response.data);
+      setSelectedItemId(response.data.items?.[0]?.item_id ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "加载工具需求单失败");
+    }
+  }
+
+  async function handleRefreshItemProgress(itemId: string) {
+    if (!activeSheet) {
+      return;
+    }
+
+    try {
+      setRefreshingItemId(itemId);
+      await getDemandItemProgress(itemId);
+      await loadPage(false, activeSheet.sheet_id, itemId);
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : "刷新叶子项进度失败");
+    } finally {
+      setRefreshingItemId(null);
     }
   }
 
@@ -225,7 +261,7 @@ export function XXP4Page() {
                                 运行监视
                               </Typography.Title>
                               <Typography.Paragraph style={{ margin: "8px 0 0", color: "#475569" }}>
-                                跟踪输入工具链、自演进巡检与风险摘要，快速判断当前 P4 工作状态是否需要下钻处理。
+                                跟踪输入工序链、自演进巡检与风险摘要，快速判断当前 P4 工作状态是否需要下钻处理。
                               </Typography.Paragraph>
                             </div>
 
@@ -241,7 +277,7 @@ export function XXP4Page() {
                                     variant="borderless"
                                     style={{ background: "#ffffff", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                                   >
-                                    <Typography.Text type="secondary">输入工具链</Typography.Text>
+                                    <Typography.Text type="secondary">输入工序链</Typography.Text>
                                     <Typography.Title level={2} style={{ margin: "8px 0 10px" }}>
                                       {overview.recent_match_runs.length}
                                     </Typography.Title>
@@ -318,16 +354,21 @@ export function XXP4Page() {
                     "xx-p4-workspace-tab-input-chain",
                     "input",
                     "02",
-                    "输入工具链",
-                    "场景到匹配",
+                    "输入工序链",
+                    "总单到供给",
                   ),
                   children: (
                     <P4InputChainWorkspace
-                      catalogs={overview.catalogs}
-                      activeArchiveId={activeArchiveId}
-                      running={runningMatch}
-                      run={matchRun}
-                      onRun={handleRunMatch}
+                      sheets={demandSheets}
+                      activeSheet={activeSheet}
+                      selectedItemId={selectedItemId}
+                      creatingMockSheet={creatingMockSheet}
+                      refreshingItemId={refreshingItemId}
+                      error={error}
+                      onGenerateMockSheet={handleGenerateMockSheet}
+                      onSelectSheet={handleSelectSheet}
+                      onSelectItem={setSelectedItemId}
+                      onRefreshProgress={handleRefreshItemProgress}
                     />
                   ),
                 },

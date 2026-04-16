@@ -70,7 +70,7 @@
 总览层负责回答：
 
 - 当前一共有多少工具
-- 覆盖了哪些阶段与能力域
+- 覆盖了哪些业务域与工具形态
 - 当前是否存在明显重叠或空白
 - 最近工具链任务与巡检任务运行情况如何
 
@@ -80,7 +80,7 @@
 
 典型路径：
 
-`输入场景 -> 阶段定位 -> 约束补充 -> 工具匹配 -> 命中解释 -> 人工结论`
+`输入场景 -> 业务域/生命周期定位 -> 约束补充 -> 工具匹配 -> 命中解释 -> 人工结论`
 
 首版目标：
 
@@ -156,9 +156,9 @@
 
 第一版矩阵定义：
 
-- 横轴：`P4` 业务阶段
-- 纵轴：能力域或工具分类
-- 单元格值：当前工具覆盖数量或命中连接数
+- 横轴：工具形态
+- 纵轴：业务能力域
+- 单元格值：当前激活工具在“业务域 × 工具形态”上的覆盖数量
 
 第一版健康摘要至少解释：
 
@@ -201,7 +201,7 @@
 首版必须包括：
 
 - 场景输入表单
-- 阶段选择
+- 业务域与生命周期选择
 - 输入/输出约束选择
 - 匹配候选列表
 - 命中原因、缺口与验证状态说明
@@ -216,9 +216,9 @@
 首版只巡检以下 4 类问题：
 
 - 工具描述缺失
-- 标签/分类不规范
+- 标签/域模型不规范
 - 工具能力疑似重叠
-- 阶段/能力域覆盖不足
+- 业务域覆盖不足
 
 首版必须包括：
 
@@ -237,7 +237,7 @@
 
 - 工具列表
 - 创建/编辑/归档
-- 分类与标签维护
+- 业务域、形态、平台与标签维护
 - 验证状态查看
 - 样例记录关联
 
@@ -249,40 +249,58 @@
 
 ```yaml
 tool_id: tool_xxx
-name: 知识实体归一建议器
-slug: entity-normalization-advisor
+name: 审批规则校验器
+slug: approval-rule-validator
 status: active
-summary: 针对实体候选执行归一建议和风险提示
-problem_statement: 减少人工归并时的重复判断与漏判
-primary_category_id: knowledge_governance
+summary: 针对审批路径和规则集生成结构化校验结论
+problem_statement: 降低审批方案设计阶段的人工比对成本
+primary_domain_id: workflow_approval
+tool_form_id: skill
+runtime_platform_ids:
+  - agent_runtime
+  - backend_service
 tags:
-  - stage:governance
-  - capability:entity-normalization
-  - input:entity-list
-  - output:review-suggestion
+  - domain:workflow_approval
+  - form:skill
+  - runtime:agent_runtime
+  - lifecycle:solution_design
+  - input:process_list
+  - output:validation_report
   - risk:manual-review-required
-applicable_stages:
-  - governance
+lifecycle_stage_ids:
+  - solution_design
+  - verification_release
 input_types:
-  - entity_list
+  - process_list
+  - rule_set
 output_types:
-  - review_suggestion
+  - validation_report
+  - structured_json
 supported_sources:
-  - p1_readonly_api
   - frozen_snapshot
-usage_notes: 优先用于候选实体量较大的场景
+  - manual_input
+usage_notes: 优先用于审批链路设计前后的快速规则校验
 keywords:
-  - 实体归并
-  - 别名归一
+  - 审批
+  - 规则
 verification:
   status: verified
   last_verified_at: 2026-04-15T08:00:00Z
   last_verified_result: 通过基线样例验证
   sample_case_ids:
-    - sample-entity-review
+    - sample-approval-validation
 ```
 
-### 5.1 状态定义
+### 5.1 核心字段语义
+
+第一版把以下字段视为核心结构化字段，而不是只靠自由标签表达：
+
+- `primary_domain_id`：工具主要服务的业务能力域
+- `tool_form_id`：工具交付形态，例如 `skill / template / service_endpoint / static_library / dynamic_library`
+- `runtime_platform_ids`：工具运行平台或宿主环境
+- `lifecycle_stage_ids`：工具适用的项目/方案生命周期环节
+
+### 5.2 状态定义
 
 第一版工具状态固定为：
 
@@ -290,7 +308,7 @@ verification:
 - `active`
 - `archived`
 
-### 5.2 验证状态定义
+### 5.3 验证状态定义
 
 第一版验证状态固定为：
 
@@ -301,35 +319,37 @@ verification:
 
 ## 6. 分类与标签体系
 
-### 6.1 分类
+### 6.1 业务域与目录
 
-分类负责稳定导航和统计，不承担全部语义表达。
+第一版不再把“资料接入 / 知识处理 / 知识治理”之类的平台建设能力当成工具仓库主分类。
 
-第一版一级分类固定为：
+目录负责稳定导航和统计，不承担全部语义表达。第一版固定目录至少包括：
 
-- `knowledge_ingestion`
-- `knowledge_processing`
-- `knowledge_governance`
-- `knowledge_query`
-- `application_modeling`
-- `validation_support`
+- 业务域：`case_management / workflow_approval / scheduling_dispatch / alert_response / reporting_audit / master_data / cross_domain_shared`
+- 生命周期环节：`domain_discovery / solution_design / build_integration / verification_release / operation_optimization`
+- 工具形态：`skill / template / service_endpoint / package_bundle / static_library / dynamic_library`
+- 运行平台：`browser / backend_service / agent_runtime / container / local_cli / embedded_sdk`
 
 ### 6.2 标签
 
 标签负责灵活表达匹配语义，第一版采用命名空间前缀：
 
-- `stage:*`
-- `capability:*`
+- `domain:*`
+- `lifecycle:*`
+- `form:*`
+- `runtime:*`
 - `input:*`
 - `output:*`
 - `risk:*`
 
 示例：
 
-- `stage:extraction`
-- `capability:entity-normalization`
-- `input:entity-list`
-- `output:review-suggestion`
+- `domain:workflow_approval`
+- `lifecycle:solution_design`
+- `form:skill`
+- `runtime:agent_runtime`
+- `input:process_list`
+- `output:validation_report`
 - `risk:manual-review-required`
 
 ## 7. 匹配规则 MVP
@@ -339,14 +359,21 @@ verification:
 第一版匹配请求对象：`ToolMatchRequest`
 
 ```yaml
-scenario_text: 需要针对流程梳理场景快速判断哪些工具适合做结构化验证
-target_stage: modeling
+scenario_text: 需要针对审批流设计场景快速判断哪些工具适合做规则校验
+target_domain_ids:
+  - workflow_approval
+lifecycle_stage_ids:
+  - solution_design
 required_input_types:
   - process_list
 expected_output_types:
   - validation_report
+preferred_tool_forms:
+  - skill
+preferred_runtime_platforms:
+  - agent_runtime
 preferred_tags:
-  - capability:process-analysis
+  - domain:workflow_approval
 knowledge_context:
   archive_id: 20161116-nas
   entity_ids: []
@@ -359,11 +386,14 @@ knowledge_context:
 
 第一版匹配只做可解释规则打分：
 
-- 阶段命中：30
-- 输入类型命中：25
-- 输出类型命中：20
-- 标签/分类命中：15
-- 场景关键词命中：10
+- 业务域命中：25
+- 生命周期环节命中：20
+- 输入类型命中：15
+- 输出类型命中：10
+- 工具形态命中：10
+- 运行平台命中：10
+- 标签命中：5
+- 场景关键词命中：5
 
 总分上限 100。
 

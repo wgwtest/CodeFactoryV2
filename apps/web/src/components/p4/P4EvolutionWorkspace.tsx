@@ -35,7 +35,7 @@ export function P4EvolutionWorkspace({ runs, latestRun, running, onRun }: P4Evol
               type="info"
               showIcon
               message={`最近巡检：${activeRun.created_at}`}
-              description="巡检关注描述缺失、标签规范、能力重叠与覆盖空白。"
+              description="巡检关注描述缺失、域模型完整性、工具重叠与业务域覆盖空白。"
             />
             <List
               dataSource={activeRun.findings}
