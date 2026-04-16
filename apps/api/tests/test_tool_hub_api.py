@@ -1,0 +1,259 @@
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from app.api.routes.tool_hub import get_tool_hub_service
+from app.archive_knowledge.service import ArchiveKnowledgeService
+from app.main import create_app
+from app.tool_hub.service import ToolHubService
+
+
+def _assert_snapshot_meta(payload: dict) -> str:
+    assert "meta" in payload
+    assert "data" in payload
+    assert payload["meta"]["snapshot_id"]
+    assert payload["meta"]["generated_at"]
+    assert payload["meta"]["state_version"]
+    return payload["meta"]["snapshot_id"]
+
+
+def _write_archive(path: Path) -> None:
+    path.write_text(
+        """
+{
+  "summary": {
+    "document_count": 1,
+    "entity_count": 1,
+    "event_count": 0,
+    "process_count": 1
+  },
+  "documents": [
+    {
+      "id": "doc-1",
+      "title": "NAS AV-1",
+      "path": "archive/NAS AV-1.pdf",
+      "file_type": "pdf",
+      "source_archive": "20161116体系结构文献翻译汇总",
+      "character_count": 1200
+    }
+  ],
+  "entities": [
+    {
+      "id": "entity-nas",
+      "name": "国家空域系统",
+      "category": "system_or_service",
+      "aliases": ["NAS"],
+      "document_ids": ["doc-1"],
+      "evidence": [
+        {"document_id": "doc-1", "excerpt": "NAS excerpt"}
+      ]
+    }
+  ],
+  "events": [],
+  "processes": [
+    {
+      "id": "process-collaboration",
+      "name": "协同处置流程",
+      "category": "domain_process",
+      "aliases": [],
+      "document_ids": ["doc-1"],
+      "evidence": [
+        {"document_id": "doc-1", "excerpt": "Collaboration excerpt"}
+      ]
+    }
+  ],
+  "relations": []
+}
+        """.strip(),
+        encoding="utf-8",
+    )
+
+
+def _build_client(tmp_path: Path) -> TestClient:
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    _write_archive(archive_root / "20161116-nas-knowledge.json")
+
+    app = create_app()
+    service = ToolHubService(
+        root=tmp_path / "tool-hub",
+        archive_service=ArchiveKnowledgeService(archive_root),
+        seed_demo_data=False,
+    )
+    app.dependency_overrides[get_tool_hub_service] = lambda: service
+    return TestClient(app)
+
+
+def test_tool_hub_overview_and_tool_crud(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    create_payload = {
+        "name": "流程验证器",
+        "slug": "process-validator",
+        "status": "active",
+        "summary": "针对流程清单生成验证建议",
+        "problem_statement": "降低流程建模前期人工比对成本",
+        "primary_category_id": "application_modeling",
+        "tags": [
+            "stage:modeling",
+            "capability:process-analysis",
+            "input:process-list",
+            "output:validation-report",
+        ],
+        "applicable_stages": ["modeling"],
+        "input_types": ["process_list"],
+        "output_types": ["validation_report"],
+        "supported_sources": ["manual_input", "frozen_snapshot"],
+        "usage_notes": "用于流程梳理前的快速筛查",
+        "keywords": ["流程", "验证"],
+        "verification": {
+            "status": "verified",
+            "last_verified_result": "样例通过",
+            "sample_case_ids": ["sample-1"],
+        },
+    }
+
+    created = client.post("/api/tool-hub/tools", json=create_payload)
+    assert created.status_code == 201
+    created_body = created.json()
+    tool_id = created_body["tool_id"]
+    assert created_body["slug"] == "process-validator"
+
+    listed = client.get("/api/tool-hub/tools")
+    assert listed.status_code == 200
+    listed_body = listed.json()
+    listed_snapshot_id = _assert_snapshot_meta(listed_body)
+    assert len(listed_body["data"]["items"]) == 1
+
+    overview = client.get("/api/tool-hub/overview")
+    assert overview.status_code == 200
+    overview_body = overview.json()
+    overview_snapshot_id = _assert_snapshot_meta(overview_body)
+    assert overview_body["data"]["metrics"]["tool_count"] == 1
+    assert overview_body["data"]["metrics"]["verified_tool_count"] == 1
+    assert overview_body["data"]["metrics"]["active_tool_count"] == 1
+    assert overview_body["data"]["catalogs"]["categories"][0]["id"] == "knowledge_ingestion"
+    assert overview_snapshot_id == listed_snapshot_id
+
+    detail = client.get(f"/api/tool-hub/tools/{tool_id}")
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "流程验证器"
+
+    updated = client.put(
+        f"/api/tool-hub/tools/{tool_id}",
+        json={**create_payload, "summary": "针对流程清单输出结构化验证建议"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["summary"] == "针对流程清单输出结构化验证建议"
+
+    overview_after_update = client.get("/api/tool-hub/overview")
+    tools_after_update = client.get("/api/tool-hub/tools")
+    overview_after_update_body = overview_after_update.json()
+    tools_after_update_body = tools_after_update.json()
+    assert _assert_snapshot_meta(overview_after_update_body) == _assert_snapshot_meta(tools_after_update_body)
+    assert overview_after_update_body["data"]["metrics"]["tool_count"] == len(tools_after_update_body["data"]["items"])
+
+
+def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    tool_payloads = [
+        {
+            "name": "流程验证器",
+            "slug": "process-validator",
+            "status": "active",
+            "summary": "针对流程清单生成验证建议",
+            "problem_statement": "降低流程建模前期人工比对成本",
+            "primary_category_id": "application_modeling",
+            "tags": [
+                "stage:modeling",
+                "capability:process-analysis",
+                "input:process-list",
+                "output:validation-report",
+            ],
+            "applicable_stages": ["modeling"],
+            "input_types": ["process_list"],
+            "output_types": ["validation_report"],
+            "supported_sources": ["manual_input", "frozen_snapshot"],
+            "usage_notes": "用于流程梳理前的快速筛查",
+            "keywords": ["流程", "验证"],
+            "verification": {
+                "status": "verified",
+                "last_verified_result": "样例通过",
+                "sample_case_ids": ["sample-1"],
+            },
+        },
+        {
+            "name": "流程候选解释器",
+            "slug": "process-explainer",
+            "status": "active",
+            "summary": "给出候选流程命中的解释理由",
+            "problem_statement": "帮助用户理解匹配逻辑",
+            "primary_category_id": "validation_support",
+            "tags": [
+                "stage:modeling",
+                "capability:process-analysis",
+                "input:process-list",
+                "output:review-suggestion",
+            ],
+            "applicable_stages": ["modeling"],
+            "input_types": ["process_list"],
+            "output_types": ["review_suggestion"],
+            "supported_sources": ["manual_input"],
+            "usage_notes": "适合解释链路场景",
+            "keywords": ["流程", "解释"],
+            "verification": {
+                "status": "warning",
+                "last_verified_result": "需要人工复核",
+                "sample_case_ids": ["sample-2"],
+            },
+        },
+    ]
+
+    for payload in tool_payloads:
+        created = client.post("/api/tool-hub/tools", json=payload)
+        assert created.status_code == 201
+
+    match_response = client.post(
+        "/api/tool-hub/match-runs",
+        json={
+            "scenario_text": "需要针对协同处置流程挑选流程分析和验证工具",
+            "target_stage": "modeling",
+            "required_input_types": ["process_list"],
+            "expected_output_types": ["validation_report"],
+            "preferred_tags": ["capability:process-analysis"],
+            "knowledge_context": {
+                "archive_id": "20161116-nas",
+                "entity_ids": [],
+                "process_ids": ["process-collaboration"],
+                "snapshot_version": "v1",
+            },
+        },
+    )
+    assert match_response.status_code == 201
+    match_body = match_response.json()
+    assert match_body["candidates"][0]["tool_id"]
+    assert match_body["candidates"][0]["match_score"] >= match_body["candidates"][1]["match_score"]
+    assert "stage" in match_body["candidates"][0]["matched_dimensions"]
+    assert match_body["request"]["knowledge_context"]["archive_id"] == "20161116-nas"
+
+    evolution_response = client.post("/api/tool-hub/evolution-runs")
+    assert evolution_response.status_code == 201
+    evolution_body = evolution_response.json()
+    assert evolution_body["summary"]["tool_count"] == 2
+    assert evolution_body["summary"]["overlap_risk_count"] >= 1
+
+    overview = client.get("/api/tool-hub/overview")
+    tools = client.get("/api/tool-hub/tools")
+    listed_runs = client.get("/api/tool-hub/evolution-runs")
+    overview_body = overview.json()
+    tools_body = tools.json()
+    listed_runs_body = listed_runs.json()
+    overview_snapshot_id = _assert_snapshot_meta(overview_body)
+    tools_snapshot_id = _assert_snapshot_meta(tools_body)
+    listed_runs_snapshot_id = _assert_snapshot_meta(listed_runs_body)
+    assert overview_snapshot_id == tools_snapshot_id == listed_runs_snapshot_id
+    assert overview_body["data"]["metrics"]["tool_count"] == len(tools_body["data"]["items"])
+
+    assert listed_runs.status_code == 200
+    assert len(listed_runs_body["data"]["items"]) == 1
