@@ -68,6 +68,44 @@ export type KnowledgeArchiveArtifacts = {
   publication_exists: boolean;
 };
 
+export type KnowledgeArchiveBuildStateDocument = {
+  document_id: string;
+  path: string;
+  title: string;
+  file_type: string;
+  source_archive: string;
+  state: "pending" | "running" | "completed" | "failed";
+};
+
+export type KnowledgeArchiveBuildStateChunk = {
+  chunk_id: string | null;
+  position: number | null;
+  total: number | null;
+  heading: string | null;
+  char_count: number | null;
+  segment_count: number | null;
+  retry_depth: number | null;
+};
+
+export type KnowledgeArchiveBuildState = {
+  archive_id: string;
+  archive_name: string;
+  mode: string;
+  status: string;
+  started_at: string | null;
+  updated_at: string | null;
+  expected_document_count: number;
+  completed_document_ids: string[];
+  pending_document_ids: string[];
+  failed_document_id: string | null;
+  failed_message: string | null;
+  current_document_id: string | null;
+  current_document_title: string | null;
+  current_document_path: string | null;
+  current_chunk: KnowledgeArchiveBuildStateChunk | null;
+  documents: KnowledgeArchiveBuildStateDocument[];
+};
+
 export type KnowledgeArchive = {
   archive_id: string;
   name: string;
@@ -78,6 +116,7 @@ export type KnowledgeArchive = {
   last_built_at: string | null;
   last_error: string | null;
   summary: ArchiveKnowledgeSummary | null;
+  build_state: KnowledgeArchiveBuildState | null;
   artifacts: KnowledgeArchiveArtifacts;
 };
 
@@ -141,6 +180,7 @@ export type ArchiveKnowledgeEntity = {
   aliases: string[];
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
+  language_projection?: ArchiveKnowledgeLanguageProjection;
 };
 
 export type ArchiveKnowledgeEvent = {
@@ -153,12 +193,25 @@ export type ArchiveKnowledgeEvent = {
   evidence: Array<{ document_id: string; excerpt: string }>;
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
+  language_projection?: ArchiveKnowledgeLanguageProjection;
 };
 
 export type ArchiveKnowledgeEvidence = {
   document_id: string | null;
   document_title: string | null;
   excerpt: string;
+};
+
+export type ArchiveKnowledgeLanguageProjection = {
+  display_name_zh: string | null;
+  display_name_en: string | null;
+  acronym: string | null;
+  aliases_zh: string[];
+  aliases_en: string[];
+  description_zh: string | null;
+  evidence_summary_zh: string | null;
+  translation_status: "none" | "derived" | "generated" | "curated";
+  translation_confidence: number | null;
 };
 
 export type ArchiveKnowledgeItemDetail = {
@@ -170,6 +223,7 @@ export type ArchiveKnowledgeItemDetail = {
   review_status: ArchiveReviewStatus;
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
+  language_projection: ArchiveKnowledgeLanguageProjection;
   documents: Array<{
     id: string;
     title: string;
@@ -224,6 +278,7 @@ export type ArchiveKnowledgeProcess = {
   evidence: Array<{ document_id: string; excerpt: string }>;
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
+  language_projection?: ArchiveKnowledgeLanguageProjection;
 };
 
 export type ArchiveKnowledgeDocument = {

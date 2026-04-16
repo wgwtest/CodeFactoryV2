@@ -211,6 +211,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
               category: "system_or_service",
               aliases: ["NAS"],
               document_count: 1,
+              language_projection: {
+                display_name_zh: "国家空域系统",
+                display_name_en: "National Airspace System",
+                acronym: "NAS",
+                aliases_zh: [],
+                aliases_en: ["NAS"],
+                description_zh: "国家空域系统 是系统/服务类实体。",
+                evidence_summary_zh: null,
+                translation_status: "derived",
+                translation_confidence: 0.85,
+              },
               interpretation: {
                 kind_label: "系统/服务",
                 family_code: null,
@@ -227,6 +238,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
               category: "architecture_artifact",
               aliases: ["远期顶层运行概念图"],
               document_count: 1,
+              language_projection: {
+                display_name_zh: "高层运行概念图",
+                display_name_en: "High-Level Operational Concept Graphic",
+                acronym: "OV-1",
+                aliases_zh: ["远期顶层运行概念图"],
+                aliases_en: [],
+                description_zh: "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
+                evidence_summary_zh: null,
+                translation_status: "derived",
+                translation_confidence: 0.95,
+              },
               interpretation: {
                 kind_label: "架构工件",
                 family_code: "OV",
@@ -249,6 +271,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             category: "system_or_service",
             aliases: ["NAS"],
             document_count: 11,
+            language_projection: {
+              display_name_zh: "国家空域系统",
+              display_name_en: "National Airspace System",
+              acronym: "NAS",
+              aliases_zh: [],
+              aliases_en: ["NAS"],
+              description_zh: "国家空域系统 是系统/服务类实体。",
+              evidence_summary_zh: null,
+              translation_status: "derived",
+              translation_confidence: 0.85,
+            },
             interpretation: {
               kind_label: "系统/服务",
               family_code: null,
@@ -265,6 +298,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             category: "architecture_artifact",
             aliases: ["远期顶层运行概念图"],
             document_count: 10,
+            language_projection: {
+              display_name_zh: "高层运行概念图",
+              display_name_en: "High-Level Operational Concept Graphic",
+              acronym: "OV-1",
+              aliases_zh: ["远期顶层运行概念图"],
+              aliases_en: [],
+              description_zh: "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
+              evidence_summary_zh: null,
+              translation_status: "derived",
+              translation_confidence: 0.95,
+            },
             interpretation: {
               kind_label: "架构工件",
               family_code: "OV",
@@ -281,6 +325,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             category: "architecture_artifact",
             aliases: ["运行概念图"],
             document_count: 3,
+            language_projection: {
+              display_name_zh: "OV-1 运行概念图",
+              display_name_en: null,
+              acronym: null,
+              aliases_zh: ["运行概念图"],
+              aliases_en: [],
+              description_zh: "OV-1 运行概念图 是架构工件，用于描述业务运行概念、活动和信息交换需求。",
+              evidence_summary_zh: null,
+              translation_status: "derived",
+              translation_confidence: 0.75,
+            },
             interpretation: {
               kind_label: "架构工件",
               family_code: "OV",
@@ -306,6 +361,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
               category: "timeline_event",
               aliases: ["Far Term"],
               document_count: 1,
+              language_projection: {
+                display_name_zh: "远期目标",
+                display_name_en: "Far Term",
+                acronym: null,
+                aliases_zh: [],
+                aliases_en: ["Far Term"],
+                description_zh: "用于界定远期阶段目标和演进边界。",
+                evidence_summary_zh: null,
+                translation_status: "derived",
+                translation_confidence: 0.9,
+              },
               interpretation: {
                 kind_label: "时间事件",
                 family_code: null,
@@ -331,6 +397,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             category: "timeline_event",
             aliases: ["Far Term"],
             document_count: 6,
+            language_projection: {
+              display_name_zh: "远期目标",
+              display_name_en: "Far Term",
+              acronym: null,
+              aliases_zh: [],
+              aliases_en: ["Far Term"],
+              description_zh: "用于界定远期阶段目标和演进边界。",
+              evidence_summary_zh: null,
+              translation_status: "derived",
+              translation_confidence: 0.9,
+            },
             interpretation: {
               kind_label: "时间事件",
               family_code: null,
@@ -358,6 +435,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
               category: "domain_process",
               aliases: ["互操作流程"],
               document_count: 1,
+              language_projection: {
+                display_name_zh: "服务互操作流程",
+                display_name_en: null,
+                acronym: null,
+                aliases_zh: ["互操作流程"],
+                aliases_en: [],
+                description_zh: "用于串接服务协同、接口对齐与阶段发布的领域流程。",
+                evidence_summary_zh: null,
+                translation_status: "derived",
+                translation_confidence: 0.8,
+              },
               interpretation: {
                 kind_label: "流程",
                 family_code: null,
@@ -383,6 +471,17 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             category: "domain_process",
             aliases: ["互操作流程"],
             document_count: 5,
+            language_projection: {
+              display_name_zh: "服务互操作流程",
+              display_name_en: null,
+              acronym: null,
+              aliases_zh: ["互操作流程"],
+              aliases_en: [],
+              description_zh: "用于串接服务协同、接口对齐与阶段发布的领域流程。",
+              evidence_summary_zh: null,
+              translation_status: "derived",
+              translation_confidence: 0.8,
+            },
             interpretation: {
               kind_label: "流程",
               family_code: null,
@@ -462,20 +561,31 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
             aliases: ["远期顶层运行概念图"],
             review_status: "approved",
             document_count: 1,
-            interpretation: {
-              kind_label: "架构工件",
-              family_code: "OV",
-              family_label: "运行视图",
-              display_name: "高层运行概念图",
-              standard_name: "High-Level Operational Concept Graphic",
-              summary: "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
-              producer_hint: "当前档案未识别明确责任方；按工件类型推断，通常由体系架构或运行活动分析产出。",
-            },
-            documents: [
-              {
-                id: "doc-1",
-                title: "NAS AV-1",
-                file_type: "pdf",
+          interpretation: {
+            kind_label: "架构工件",
+            family_code: "OV",
+            family_label: "运行视图",
+            display_name: "高层运行概念图",
+            standard_name: "High-Level Operational Concept Graphic",
+            summary: "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
+            producer_hint: "当前档案未识别明确责任方；按工件类型推断，通常由体系架构或运行活动分析产出。",
+          },
+          language_projection: {
+            display_name_zh: "高层运行概念图",
+            display_name_en: "High-Level Operational Concept Graphic",
+            acronym: "OV-1",
+            aliases_zh: ["远期顶层运行概念图"],
+            aliases_en: [],
+            description_zh: "OV-1 是运行视图中的架构工件，用于展示高层运行概念和业务场景。",
+            evidence_summary_zh: null,
+            translation_status: "derived",
+            translation_confidence: 0.95,
+          },
+          documents: [
+            {
+              id: "doc-1",
+              title: "NAS AV-1",
+              file_type: "pdf",
                 source_archive: "20161116体系结构文献翻译汇总",
               },
             ],
@@ -596,10 +706,15 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
   expect(await screen.findByTestId("knowledge-source-documents-select")).toBeInTheDocument();
 
   expect(await screen.findByText("知识列表")).toBeInTheDocument();
-  expect(await screen.findByText("国家空域系统")).toBeInTheDocument();
-  expect(await screen.findByText("远期目标（Far Term）")).toBeInTheDocument();
-  expect(await screen.findByText("服务互操作流程")).toBeInTheDocument();
-  expect(await screen.findByText("OV-1 运行概念图")).toBeInTheDocument();
+  expect((await screen.findAllByText("国家空域系统")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("远期目标（Far Term）")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("服务互操作流程")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("OV-1 运行概念图")).length).toBeGreaterThan(0);
+  expect(await screen.findByText("投影")).toBeInTheDocument();
+  expect((await screen.findAllByText("derived")).length).toBeGreaterThan(0);
+  const headers = screen.getAllByRole("columnheader").map((node) => node.textContent?.trim());
+  expect(headers.indexOf("投影")).toBeGreaterThan(headers.indexOf("类别"));
+  expect(headers.indexOf("投影")).toBeLessThan(headers.indexOf("释义"));
 
   const sourceDocumentSelect = screen.getByTestId("knowledge-source-documents-select");
   const sourceDocumentSelector = sourceDocumentSelect.querySelector(".ant-select-selector");
@@ -625,7 +740,7 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
   expect(await screen.findByText("当前来源：已选 1 / 2 份")).toBeInTheDocument();
   expect(sourceDocumentSelect).toHaveTextContent("已选 1 份：NAS AV-1");
   expect(sourceDocumentSelect.querySelector(".ant-select-clear")).toBeNull();
-  await waitFor(() => expect(screen.queryByText("OV-1 运行概念图")).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryAllByText("OV-1 运行概念图")).toHaveLength(0));
 
   fireEvent.mouseDown(sourceDocumentSelector);
   expect(screen.getByText("当前来源：已选 1 / 2 份")).toBeInTheDocument();
@@ -633,14 +748,14 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
 
   fireEvent.click(screen.getByRole("checkbox", { name: "实体" }));
   expect(screen.getByRole("checkbox", { name: "实体" })).not.toBeChecked();
-  await waitFor(() => expect(screen.queryByText("国家空域系统")).not.toBeInTheDocument());
-  expect(await screen.findByText("远期目标（Far Term）")).toBeInTheDocument();
-  expect(await screen.findByText("服务互操作流程")).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryAllByText("国家空域系统")).toHaveLength(0));
+  expect((await screen.findAllByText("远期目标（Far Term）")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("服务互操作流程")).length).toBeGreaterThan(0);
 
   fireEvent.change(screen.getByPlaceholderText("搜索名称、别名或释义"), { target: { value: "互操作" } });
   expect(await screen.findByDisplayValue("互操作")).toBeInTheDocument();
-  expect(await screen.findByText("服务互操作流程")).toBeInTheDocument();
-  expect(screen.queryByText("远期目标（Far Term）")).not.toBeInTheDocument();
+  expect((await screen.findAllByText("服务互操作流程")).length).toBeGreaterThan(0);
+  expect(screen.queryAllByText("远期目标（Far Term）")).toHaveLength(0);
 
   fireEvent.click(screen.getByRole("checkbox", { name: "实体" }));
   fireEvent.change(screen.getByPlaceholderText("搜索名称、别名或释义"), { target: { value: "" } });
@@ -649,6 +764,10 @@ test("renders unified knowledge browser, filters by type, and reuses the common 
 
   expect(await screen.findByText("知识详情")).toBeInTheDocument();
   expect(await screen.findByText("这是什么")).toBeInTheDocument();
+  expect(await screen.findByText("双语投影")).toBeInTheDocument();
+  expect(await screen.findByText("中文化状态")).toBeInTheDocument();
+  expect((await screen.findAllByText("High-Level Operational Concept Graphic")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("derived")).length).toBeGreaterThan(0);
   expect(await screen.findByText("业务关系结构")).toBeInTheDocument();
   expect(await screen.findByText("关系邻域")).toBeInTheDocument();
   expect((await screen.findAllByText("NAS AV-1")).length).toBeGreaterThan(0);

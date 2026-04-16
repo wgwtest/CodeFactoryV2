@@ -173,6 +173,7 @@ class ArchiveRegistryService:
         curated_exists = self._resolve_curated_path(archive_id).exists()
         publication_exists = self._resolve_publication_path(archive_id).exists()
         summary = self._load_summary(archive_id)
+        build_state = self._load_build_state(archive_id)
 
         status = entry.get("status", "empty")
         if status not in {"error", "extracting"}:
@@ -188,6 +189,7 @@ class ArchiveRegistryService:
             "last_built_at": entry.get("last_built_at"),
             "last_error": entry.get("last_error"),
             "summary": summary,
+            "build_state": build_state,
             "artifacts": {
                 "base_exists": base_exists,
                 "curated_exists": curated_exists,
@@ -203,6 +205,40 @@ class ArchiveRegistryService:
             return None
         payload = json.loads(read_path.read_text(encoding="utf-8"))
         return payload.get("summary")
+
+    def _load_build_state(self, archive_id: str) -> dict | None:
+        path = self.output_root / f"{archive_id}-document-build-state.json"
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            "archive_id": payload.get("archive_id"),
+            "archive_name": payload.get("archive_name"),
+            "mode": payload.get("mode"),
+            "status": payload.get("status"),
+            "started_at": payload.get("started_at"),
+            "updated_at": payload.get("updated_at"),
+            "expected_document_count": payload.get("expected_document_count", 0),
+            "completed_document_ids": payload.get("completed_document_ids", []),
+            "pending_document_ids": payload.get("pending_document_ids", []),
+            "failed_document_id": payload.get("failed_document_id"),
+            "failed_message": payload.get("failed_message"),
+            "current_document_id": payload.get("current_document_id"),
+            "current_document_title": payload.get("current_document_title"),
+            "current_document_path": payload.get("current_document_path"),
+            "current_chunk": payload.get("current_chunk"),
+            "documents": [
+                {
+                    "document_id": item.get("document_id"),
+                    "path": item.get("path"),
+                    "title": item.get("title"),
+                    "file_type": item.get("file_type"),
+                    "source_archive": item.get("source_archive"),
+                    "state": item.get("state"),
+                }
+                for item in payload.get("documents", [])
+            ],
+        }
 
     def _normalize_directory(self, value: str | Path, *, field_name: str) -> Path:
         path = Path(value).expanduser().resolve()

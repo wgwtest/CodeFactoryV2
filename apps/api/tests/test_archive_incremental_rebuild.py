@@ -571,6 +571,11 @@ def test_build_archive_knowledge_persists_completed_formal_documents_before_late
         state = DocumentArtifactRepository(output_root).load_build_state("kb")
         assert state is not None
         assert state["status"] == "running"
+        assert state["current_document_id"] == _document_id(document.path)
+        assert state["current_document_title"] == document.title
+        assert state["current_document_path"] == document.path
+        current_row = next(item for item in state["documents"] if item["document_id"] == _document_id(document.path))
+        assert current_row["state"] == "running"
         return _build_source_document(document)
 
     monkeypatch.setattr(archive_builder, "parse_discovered_document", fake_parse_discovered_document)
@@ -603,7 +608,88 @@ def test_build_archive_knowledge_persists_completed_formal_documents_before_late
     assert build_state["completed_document_ids"] == stored_document_ids
     assert build_state["failed_document_id"] == _document_id(documents[2].path)
     assert build_state["pending_document_ids"] == [_document_id(documents[2].path)]
+    assert build_state["current_document_id"] == _document_id(documents[2].path)
     assert (output_root / "kb-knowledge.json").exists() is False
+
+
+def test_build_archive_knowledge_persists_current_chunk_progress_for_running_document(tmp_path, monkeypatch):
+    from app.archive_knowledge import builder as archive_builder
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    extract_root = tmp_path / "extract"
+    output_root = tmp_path / "output"
+
+    document = _build_discovered_document(source_dir, "alpha.docx", "Alpha", "alpha digest")
+    observed_chunk_state: dict | None = None
+
+    monkeypatch.setattr(archive_builder, "extract_archives", lambda *args, **kwargs: None)
+    monkeypatch.setattr(archive_builder, "resolve_document_roots", lambda source, extract: [source])
+    monkeypatch.setattr(archive_builder, "discover_documents", lambda *args, **kwargs: [document])
+    monkeypatch.setattr(
+        archive_builder,
+        "parse_discovered_document",
+        lambda discovered_document, *, formal_extraction_mode: _build_source_document(discovered_document),
+    )
+
+    def fake_extract_document(self, *, document_id, title, file_path, segments):
+        del title, file_path, segments
+        nonlocal observed_chunk_state
+        assert self.progress_callback is not None
+        self.progress_callback(
+            {
+                "chunk_id": "chunk-001",
+                "chunk_position": 1,
+                "chunk_total": 3,
+                "chunk_heading": "第一章",
+                "chunk_char_count": 256,
+                "chunk_segment_count": 4,
+                "retry_depth": 0,
+            }
+        )
+        observed_chunk_state = DocumentArtifactRepository(output_root).load_build_state("kb")
+        return ExtractionBatch(
+            document_id=document_id,
+            title="Alpha",
+            strategy="schema_rules+llm",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="Alpha实体",
+                    payload={"category": "system_or_service", "evidence": "Alpha实体"},
+                )
+            ],
+            relations=[],
+            metadata={"llm_enrichment_used": True, "llm_provider": "deepseek", "llm_model": "deepseek-chat"},
+        )
+
+    monkeypatch.setattr("app.extraction.service.ExtractionService.extract_document", fake_extract_document)
+
+    archive_builder.build_archive_knowledge(
+        archive_id="kb",
+        archive_name="测试知识库",
+        source_dir=source_dir,
+        extract_root=extract_root,
+        output_root=output_root,
+        formal_extraction_mode=True,
+    )
+
+    assert observed_chunk_state is not None
+    assert observed_chunk_state["current_document_id"] == _document_id(document.path)
+    assert observed_chunk_state["current_chunk"] == {
+        "chunk_id": "chunk-001",
+        "position": 1,
+        "total": 3,
+        "heading": "第一章",
+        "char_count": 256,
+        "segment_count": 4,
+        "retry_depth": 0,
+    }
+
+    build_state = DocumentArtifactRepository(output_root).load_build_state("kb")
+    assert build_state is not None
+    assert build_state["status"] == "completed"
+    assert build_state["current_chunk"] is None
 
 
 def test_build_archive_knowledge_resumes_from_checkpoint_without_reextracting_completed_documents(tmp_path, monkeypatch):

@@ -137,6 +137,7 @@ def test_archive_registry_and_extraction_keep_existing_archive_intact(tmp_path, 
                 "event_count": 0,
                 "process_count": 0,
             },
+            "build_state": None,
             "artifacts": {
                 "base_exists": True,
                 "curated_exists": False,
@@ -157,6 +158,7 @@ def test_archive_registry_and_extraction_keep_existing_archive_intact(tmp_path, 
     assert created.json()["archive_id"] == "domain-b"
     assert created.json()["status"] == "empty"
     assert created.json()["summary"] is None
+    assert created.json()["build_state"] is None
 
     extracted = client.post("/api/archives/domain-b/extract")
     assert extracted.status_code == 200
@@ -186,6 +188,98 @@ def test_archive_registry_and_extraction_keep_existing_archive_intact(tmp_path, 
     assert [item["archive_id"] for item in listed_after.json()] == ["20161116-nas", "domain-b"]
     assert listed_after.json()[0]["is_active"] is False
     assert listed_after.json()[1]["is_active"] is True
+
+
+def test_archive_registry_exposes_current_chunk_progress_in_build_state(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    archive_path = tmp_path / "20161116-nas-knowledge.json"
+    _write_archive(
+        archive_path,
+        document_title="Legacy NAS",
+        entity_name="国家空域系统",
+        entity_count=1,
+    )
+    build_state_path = tmp_path / "20161116-nas-document-build-state.json"
+    build_state_path.write_text(
+        json.dumps(
+            {
+                "archive_id": "20161116-nas",
+                "archive_name": "默认 NAS 知识库",
+                "mode": "formal",
+                "status": "running",
+                "started_at": "2026-04-16T10:00:00+00:00",
+                "updated_at": "2026-04-16T10:05:00+00:00",
+                "expected_document_count": 3,
+                "completed_document_ids": ["doc-1"],
+                "pending_document_ids": ["doc-3"],
+                "failed_document_id": None,
+                "failed_message": None,
+                "current_document_id": "doc-2",
+                "current_document_title": "FM 6-0",
+                "current_document_path": "runtime/FM_6-0.pdf",
+                "current_chunk": {
+                    "chunk_id": "chunk-007",
+                    "position": 7,
+                    "total": 19,
+                    "heading": "Command and staff relationships",
+                    "char_count": 4321,
+                    "segment_count": 8,
+                    "retry_depth": 1,
+                },
+                "documents": [
+                    {
+                        "document_id": "doc-1",
+                        "path": "runtime/ADRP.pdf",
+                        "title": "ADRP",
+                        "file_type": "pdf",
+                        "source_archive": "kb",
+                        "state": "completed",
+                    },
+                    {
+                        "document_id": "doc-2",
+                        "path": "runtime/FM_6-0.pdf",
+                        "title": "FM 6-0",
+                        "file_type": "pdf",
+                        "source_archive": "kb",
+                        "state": "running",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    app.dependency_overrides[get_archive_extraction_service] = lambda: ArchiveExtractionService(tmp_path)
+    app.dependency_overrides[get_archive_knowledge_service] = lambda: ArchiveKnowledgeService(tmp_path)
+    client = TestClient(app)
+
+    response = client.get("/api/archives")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["build_state"]["current_chunk"] == {
+        "chunk_id": "chunk-007",
+        "position": 7,
+        "total": 19,
+        "heading": "Command and staff relationships",
+        "char_count": 4321,
+        "segment_count": 8,
+        "retry_depth": 1,
+    }
 
 
 def test_archive_extract_rejects_parallel_requests(tmp_path) -> None:

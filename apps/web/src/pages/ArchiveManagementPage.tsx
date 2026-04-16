@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Alert, Button, Card, Col, Form, Input, Row, Space, Table, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { Alert, Button, Card, Col, Form, Input, Progress, Row, Space, Table, Tag, Typography } from "antd";
 
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
@@ -13,6 +13,18 @@ const statusMeta: Record<KnowledgeArchive["status"], { color: string; label: str
   ready: { color: "success", label: "可用" },
   error: { color: "error", label: "异常" },
 };
+
+const actionButtonStyle = {
+  minWidth: 96,
+  justifyContent: "center" as const,
+};
+
+const buildDocumentStateMeta = {
+  pending: { color: "default", label: "待处理" },
+  running: { color: "processing", label: "进行中" },
+  completed: { color: "success", label: "已完成" },
+  failed: { color: "error", label: "失败" },
+} as const;
 
 const extractionLogicLayers = [
   {
@@ -123,8 +135,47 @@ export function ArchiveManagementPage() {
   const isExtracting = busyAction === "extract" && busyArchiveId !== null;
   const activeBusyArchive = archives.find((item) => item.archive_id === busyArchiveId) ?? null;
   const activeArchiveRecord = archives.find((item) => item.archive_id === activeArchiveId) ?? null;
+  const activeBuildState = activeArchiveRecord?.build_state ?? null;
   const activeArchiveStatusLabel = activeArchiveRecord ? statusMeta[activeArchiveRecord.status].label : "未选择";
-  const archiveRunStatus = isExtracting ? `抽取中：${activeBusyArchive?.name ?? busyArchiveId}` : "空闲";
+  const extractingArchive =
+    activeBusyArchive ?? archives.find((item) => item.status === "extracting") ?? null;
+  const archiveRunStatus = extractingArchive
+    ? `抽取中：${extractingArchive.name}${extractingArchive.build_state?.current_document_title ? ` · ${extractingArchive.build_state.current_document_title}` : ""}`
+    : "空闲";
+  const runningDocument =
+    activeBuildState?.documents.find((item) => item.state === "running") ??
+    (activeBuildState?.current_document_id
+      ? activeBuildState.documents.find((item) => item.document_id === activeBuildState.current_document_id)
+      : null) ??
+    null;
+  const currentChunk = activeBuildState?.current_chunk ?? null;
+  const completedCount = activeBuildState?.completed_document_ids.length ?? 0;
+  const pendingCount = activeBuildState?.pending_document_ids.length ?? 0;
+  const failedCount = activeBuildState?.failed_document_id ? 1 : 0;
+  const runningCount = activeBuildState?.documents.filter((item) => item.state === "running").length ?? 0;
+  const progressPercent =
+    activeBuildState && activeBuildState.expected_document_count > 0
+      ? Math.round((completedCount / activeBuildState.expected_document_count) * 100)
+      : 0;
+  const shouldShowBuildProgress =
+    activeBuildState !== null &&
+    (activeArchiveRecord?.status === "extracting" ||
+      activeBuildState.status === "failed" ||
+      activeBuildState.status === "completed");
+
+  useEffect(() => {
+    if (activeArchiveRecord?.status !== "extracting") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshArchives(activeArchiveId);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [activeArchiveId, activeArchiveRecord?.status, refreshArchives]);
 
   return (
     <ValidationWorkspace
@@ -154,6 +205,13 @@ export function ArchiveManagementPage() {
           showIcon
           type="info"
           message={`正在抽取“${activeBusyArchive?.name ?? busyArchiveId}”，期间已禁止重复提交和并发抽取。`}
+        />
+      ) : null}
+      {!isExtracting && activeArchiveRecord?.status === "extracting" ? (
+        <Alert
+          showIcon
+          type="info"
+          message={`“${activeArchiveRecord.name}”正在后台抽取，页面会自动刷新进度。`}
         />
       ) : null}
 
@@ -313,6 +371,161 @@ export function ArchiveManagementPage() {
           </Col>
         </Row>
 
+        {shouldShowBuildProgress ? (
+          <Card title="抽取进度">
+            <Space direction="vertical" size={18} style={{ display: "flex" }}>
+              <Space wrap size={[12, 12]}>
+                <Tag color={activeBuildState.status === "failed" ? "error" : activeBuildState.status === "completed" ? "success" : "processing"}>
+                  {activeBuildState.status === "failed" ? "已失败" : activeBuildState.status === "completed" ? "已完成" : "运行中"}
+                </Tag>
+                <Typography.Text strong>{`已完成 ${completedCount} / ${activeBuildState.expected_document_count}`}</Typography.Text>
+                {activeBuildState.started_at ? (
+                  <Typography.Text type="secondary">{`开始时间：${new Date(activeBuildState.started_at).toLocaleString("zh-CN")}`}</Typography.Text>
+                ) : null}
+              </Space>
+
+              <Progress
+                percent={progressPercent}
+                status={activeBuildState.status === "failed" ? "exception" : activeBuildState.status === "completed" ? "success" : "active"}
+              />
+
+              <Row gutter={[12, 12]}>
+                <Col xs={12} md={6}>
+                  <div style={{ borderRadius: 14, background: "rgba(16, 185, 129, 0.10)", padding: "12px 14px" }}>
+                    <Typography.Text type="secondary">已完成</Typography.Text>
+                    <div>
+                      <Typography.Text strong style={{ fontSize: 20 }}>
+                        {completedCount}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={{ borderRadius: 14, background: "rgba(59, 130, 246, 0.10)", padding: "12px 14px" }}>
+                    <Typography.Text type="secondary">进行中</Typography.Text>
+                    <div>
+                      <Typography.Text strong style={{ fontSize: 20 }}>
+                        {runningCount}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={{ borderRadius: 14, background: "rgba(148, 163, 184, 0.10)", padding: "12px 14px" }}>
+                    <Typography.Text type="secondary">待处理</Typography.Text>
+                    <div>
+                      <Typography.Text strong style={{ fontSize: 20 }}>
+                        {pendingCount}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} md={6}>
+                  <div style={{ borderRadius: 14, background: "rgba(239, 68, 68, 0.10)", padding: "12px 14px" }}>
+                    <Typography.Text type="secondary">失败</Typography.Text>
+                    <div>
+                      <Typography.Text strong style={{ fontSize: 20 }}>
+                        {failedCount}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: "1px solid rgba(148, 163, 184, 0.16)",
+                  background: "linear-gradient(135deg, rgba(239,246,255,0.82) 0%, rgba(248,250,252,0.96) 100%)",
+                  padding: 16,
+                }}
+              >
+                <Typography.Text type="secondary">当前处理文档</Typography.Text>
+                <div style={{ marginTop: 6 }}>
+                  <Typography.Text strong>{runningDocument?.title ?? activeBuildState.current_document_title ?? "当前暂无进行中的文档"}</Typography.Text>
+                </div>
+                {runningDocument?.path ?? activeBuildState.current_document_path ? (
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+                    {runningDocument?.path ?? activeBuildState.current_document_path}
+                  </Typography.Paragraph>
+                ) : null}
+                {currentChunk ? (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 12,
+                      background: "rgba(255, 255, 255, 0.72)",
+                      border: "1px solid rgba(148, 163, 184, 0.16)",
+                      padding: 12,
+                    }}
+                  >
+                    <Space wrap size={[12, 8]}>
+                      <Typography.Text type="secondary">当前块</Typography.Text>
+                      <Typography.Text strong>{`${currentChunk.position ?? "-"} / ${currentChunk.total ?? "-"}`}</Typography.Text>
+                      {typeof currentChunk.retry_depth === "number" && currentChunk.retry_depth > 0 ? (
+                        <Tag color="gold">{`重试深度 ${currentChunk.retry_depth}`}</Tag>
+                      ) : null}
+                    </Space>
+                    {currentChunk.heading ? (
+                      <div style={{ marginTop: 8 }}>
+                        <Typography.Text strong>{currentChunk.heading}</Typography.Text>
+                      </div>
+                    ) : null}
+                    <Space wrap size={[12, 8]} style={{ marginTop: 8 }}>
+                      {typeof currentChunk.char_count === "number" ? (
+                        <Typography.Text type="secondary">{`块大小 ${currentChunk.char_count} 字符`}</Typography.Text>
+                      ) : null}
+                      {typeof currentChunk.segment_count === "number" ? (
+                        <Typography.Text type="secondary">{`分段数 ${currentChunk.segment_count}`}</Typography.Text>
+                      ) : null}
+                    </Space>
+                  </div>
+                ) : null}
+              </div>
+
+              {activeBuildState.failed_message ? (
+                <Alert showIcon type="error" message="抽取失败" description={activeBuildState.failed_message} />
+              ) : null}
+
+              <div>
+                <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 12 }}>
+                  文档执行状态
+                </Typography.Title>
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  {activeBuildState.documents.slice(0, 10).map((document) => (
+                    <div
+                      key={document.document_id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        borderRadius: 14,
+                        border: document.state === "running" ? "1px solid rgba(59, 130, 246, 0.28)" : "1px solid rgba(148, 163, 184, 0.16)",
+                        background: document.state === "running" ? "rgba(239, 246, 255, 0.92)" : "#fff",
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <Space direction="vertical" size={2} style={{ display: "flex", minWidth: 0 }}>
+                        <Typography.Text strong ellipsis style={{ maxWidth: 680 }}>
+                          {document.title}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" ellipsis style={{ maxWidth: 680 }}>
+                          {document.path}
+                        </Typography.Text>
+                      </Space>
+                      <Tag color={buildDocumentStateMeta[document.state].color}>{buildDocumentStateMeta[document.state].label}</Tag>
+                    </div>
+                  ))}
+                  {activeBuildState.documents.length > 10 ? (
+                    <Typography.Text type="secondary">{`其余 ${activeBuildState.documents.length - 10} 篇文档仍可按相同状态继续查看。`}</Typography.Text>
+                  ) : null}
+                </Space>
+              </div>
+            </Space>
+          </Card>
+        ) : null}
+
         <Card title="知识库列表">
           <Table
             rowKey="archive_id"
@@ -365,13 +578,15 @@ export function ArchiveManagementPage() {
                 render: (_value: unknown, record: KnowledgeArchive) => (
                   <Space wrap>
                     <Button
+                      style={actionButtonStyle}
                       onClick={() => void handleActivateArchive(record.archive_id)}
                       disabled={record.is_active || busyAction !== null}
                       loading={busyAction === "activate" && busyArchiveId === record.archive_id}
                     >
-                      {record.is_active ? "当前知识库" : "设为当前"}
+                      {record.is_active ? "当前在用" : "设为当前"}
                     </Button>
                     <Button
+                      style={actionButtonStyle}
                       type="primary"
                       ghost
                       onClick={() => void handleExtractArchive(record.archive_id)}

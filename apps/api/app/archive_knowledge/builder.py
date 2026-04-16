@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime
 from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
@@ -117,6 +118,7 @@ def build_archive_knowledge(
         knowledge = aggregate_document_contributions(
             artifact_repository.load_contributions(archive_id, included_only=True)
         )
+        build_state = artifact_repository.load_build_state(archive_id) or {}
         artifact_repository.save_build_state(
             archive_id,
             _build_archive_state(
@@ -128,6 +130,11 @@ def build_archive_knowledge(
                 pending_document_ids=[],
                 failed_document_id=None,
                 failed_message=None,
+                current_document_id=None,
+                current_document_title=None,
+                current_document_path=None,
+                started_at=build_state.get("started_at"),
+                current_chunk=None,
             ),
         )
     else:
@@ -345,6 +352,7 @@ def _build_formal_archive_contributions(
     extraction_service: ExtractionService,
     artifact_repository: DocumentArtifactRepository,
 ) -> list[dict]:
+    started_at = datetime.now(UTC).isoformat()
     completed_document_ids: list[str] = []
     pending_document_ids = [_document_id(document.path) for document in documents]
     contributions: list[dict] = []
@@ -360,6 +368,11 @@ def _build_formal_archive_contributions(
             pending_document_ids=pending_document_ids,
             failed_document_id=None,
             failed_message=None,
+            current_document_id=None,
+            current_document_title=None,
+            current_document_path=None,
+            started_at=started_at,
+            current_chunk=None,
         ),
     )
 
@@ -367,6 +380,44 @@ def _build_formal_archive_contributions(
         document_id = _document_id(document.path)
         manifest_document = artifact_repository.get_document_source_info(archive_id, document_id)
         included_in_archive = manifest_document.get("included_in_archive", True) if manifest_document else True
+        current_chunk: dict | None = None
+
+        def save_running_state(*, current_chunk_override: dict | None) -> None:
+            artifact_repository.save_build_state(
+                archive_id,
+                _build_archive_state(
+                    archive_id=archive_id,
+                    archive_name=archive_name,
+                    documents=documents,
+                    status="running",
+                    completed_document_ids=completed_document_ids,
+                    pending_document_ids=pending_document_ids,
+                    failed_document_id=None,
+                    failed_message=None,
+                    current_document_id=document_id,
+                    current_document_title=document.title,
+                    current_document_path=document.path,
+                    started_at=started_at,
+                    current_chunk=current_chunk_override,
+                ),
+            )
+
+        save_running_state(current_chunk_override=None)
+
+        def handle_chunk_progress(event: dict) -> None:
+            nonlocal current_chunk
+            current_chunk = {
+                "chunk_id": event.get("chunk_id"),
+                "position": event.get("chunk_position"),
+                "total": event.get("chunk_total"),
+                "heading": event.get("chunk_heading"),
+                "char_count": event.get("chunk_char_count"),
+                "segment_count": event.get("chunk_segment_count"),
+                "retry_depth": event.get("retry_depth", 0),
+            }
+            save_running_state(current_chunk_override=current_chunk)
+
+        extraction_service.progress_callback = handle_chunk_progress
 
         try:
             if artifact_repository.has_reusable_artifact(
@@ -399,9 +450,16 @@ def _build_formal_archive_contributions(
                     ],
                     failed_document_id=document_id,
                     failed_message=str(exc),
+                    current_document_id=document_id,
+                    current_document_title=document.title,
+                    current_document_path=document.path,
+                    started_at=started_at,
+                    current_chunk=current_chunk,
                 ),
             )
             raise
+        finally:
+            extraction_service.progress_callback = None
 
         contributions.append(contribution)
         if document_id not in completed_document_ids:
@@ -418,6 +476,11 @@ def _build_formal_archive_contributions(
                 pending_document_ids=pending_document_ids,
                 failed_document_id=None,
                 failed_message=None,
+                current_document_id=None,
+                current_document_title=None,
+                current_document_path=None,
+                started_at=started_at,
+                current_chunk=None,
             ),
         )
 
@@ -434,6 +497,11 @@ def _build_archive_state(
     pending_document_ids: list[str],
     failed_document_id: str | None,
     failed_message: str | None,
+    current_document_id: str | None,
+    current_document_title: str | None,
+    current_document_path: str | None,
+    started_at: str | None,
+    current_chunk: dict | None,
 ) -> dict:
     completed_set = set(completed_document_ids)
     pending_set = set(pending_document_ids)
@@ -442,11 +510,16 @@ def _build_archive_state(
         "archive_name": archive_name,
         "mode": "formal",
         "status": status,
+        "started_at": started_at,
         "expected_document_count": len(documents),
         "completed_document_ids": completed_document_ids,
         "pending_document_ids": pending_document_ids,
         "failed_document_id": failed_document_id,
         "failed_message": failed_message,
+        "current_document_id": current_document_id,
+        "current_document_title": current_document_title,
+        "current_document_path": current_document_path,
+        "current_chunk": current_chunk,
         "documents": [
             {
                 "document_id": _document_id(document.path),
@@ -459,6 +532,8 @@ def _build_archive_state(
                 "state": (
                     "failed"
                     if _document_id(document.path) == failed_document_id
+                    else "running"
+                    if _document_id(document.path) == current_document_id and status == "running"
                     else "completed"
                     if _document_id(document.path) in completed_set
                     else "pending"

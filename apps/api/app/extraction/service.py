@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.config import settings
 from app.extraction.chunking import DocumentChunk, build_document_chunks
@@ -18,8 +18,14 @@ from app.parsing.models import ParsedSegment
 
 
 class ExtractionService:
-    def __init__(self, *, formal_extraction_mode: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        formal_extraction_mode: bool = False,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self.formal_extraction_mode = formal_extraction_mode
+        self.progress_callback = progress_callback
 
     def extract(self, segments: list[ParsedSegment]):
         return self.extract_document(
@@ -111,7 +117,8 @@ class ExtractionService:
         chunks = build_document_chunks(segments, max_chars=settings.formal_chunk_char_limit)
         structured_llm_bundle = self._build_structured_llm_bundle()
         resolved_chunk_batches: list[tuple[DocumentChunk, ExtractionBatch]] = []
-        for chunk in chunks:
+        chunk_total = len(chunks)
+        for chunk_position, chunk in enumerate(chunks, start=1):
             resolved_chunk_batches.extend(
                 self._extract_chunk_batch_with_retry(
                     document_id=document_id,
@@ -120,6 +127,8 @@ class ExtractionService:
                     source_document=source_document,
                     chunk=chunk,
                     structured_llm_bundle=structured_llm_bundle,
+                    chunk_position=chunk_position,
+                    chunk_total=chunk_total,
                 )
             )
         return self._merge_chunk_batches(
@@ -138,8 +147,16 @@ class ExtractionService:
         source_document: SourceDocument,
         chunk: DocumentChunk,
         structured_llm_bundle: tuple[Any, dict[str, str | None]] | None,
+        chunk_position: int,
+        chunk_total: int,
         retry_depth: int = 0,
     ) -> list[tuple[DocumentChunk, ExtractionBatch]]:
+        self._emit_chunk_progress(
+            chunk=chunk,
+            chunk_position=chunk_position,
+            chunk_total=chunk_total,
+            retry_depth=retry_depth,
+        )
         try:
             batch = self._extract_chunk_batch(
                 document_id=document_id,
@@ -165,10 +182,34 @@ class ExtractionService:
                         source_document=source_document,
                         chunk=retried_chunk,
                         structured_llm_bundle=structured_llm_bundle,
+                        chunk_position=chunk_position,
+                        chunk_total=chunk_total,
                         retry_depth=retry_depth + 1,
                     )
                 )
             return resolved_batches
+
+    def _emit_chunk_progress(
+        self,
+        *,
+        chunk: DocumentChunk,
+        chunk_position: int,
+        chunk_total: int,
+        retry_depth: int,
+    ) -> None:
+        if self.progress_callback is None:
+            return
+        self.progress_callback(
+            {
+                "chunk_id": chunk.chunk_id,
+                "chunk_position": chunk_position,
+                "chunk_total": chunk_total,
+                "chunk_heading": chunk.heading,
+                "chunk_char_count": chunk.char_count,
+                "chunk_segment_count": len(chunk.segments),
+                "retry_depth": retry_depth,
+            }
+        )
 
     def _should_retry_chunk_split(self, *, exc: ValueError, chunk: DocumentChunk, retry_depth: int) -> bool:
         if not self.formal_extraction_mode:

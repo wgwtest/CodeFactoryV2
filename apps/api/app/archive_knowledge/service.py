@@ -6,6 +6,7 @@ from pathlib import Path
 from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
 from app.archive_knowledge.repository import JsonPublishedKnowledgeRepository
 from app.archive_knowledge.artifact_catalog import build_interpretation
+from app.archive_knowledge.language_projection import build_language_projection
 from app.config import settings
 from app.integrations.neo4j.client import Neo4jClient
 from app.integrations.neo4j.repository import Neo4jPublishedKnowledgeRepository
@@ -93,7 +94,8 @@ class ArchiveKnowledgeService:
     def get_processes(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
         payload = self._load_public(archive_id, document_ids)
         processes = [
-            {
+            self._with_language_projection(
+                {
                 "id": item["id"],
                 "item_type": "process",
                 "name": item["name"],
@@ -103,7 +105,8 @@ class ArchiveKnowledgeService:
                 "document_count": len(item.get("document_ids", [])),
                 "evidence": item.get("evidence", []),
                 "interpretation": build_interpretation(item["name"], item.get("category", "domain_process")),
-            }
+                }
+            )
             for item in payload.get("processes", [])
         ]
         return sorted(processes, key=lambda item: (-item["document_count"], item["name"]))
@@ -111,14 +114,16 @@ class ArchiveKnowledgeService:
     def get_entities(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
         payload = self._load_public(archive_id, document_ids)
         entities = [
-            {
+            self._with_language_projection(
+                {
                 "id": item["id"],
                 "name": item["name"],
                 "category": item.get("category"),
                 "aliases": item.get("aliases", []),
                 "document_count": len(item.get("document_ids", [])),
                 "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
-            }
+                }
+            )
             for item in payload.get("entities", [])
         ]
         return sorted(entities, key=lambda item: (-item["document_count"], item["name"]))
@@ -126,7 +131,8 @@ class ArchiveKnowledgeService:
     def get_events(self, archive_id: str, document_ids: list[str] | None = None) -> list[dict]:
         payload = self._load_public(archive_id, document_ids)
         events = [
-            {
+            self._with_language_projection(
+                {
                 "id": item["id"],
                 "item_type": "event",
                 "name": item["name"],
@@ -136,7 +142,8 @@ class ArchiveKnowledgeService:
                 "evidence": item.get("evidence", []),
                 "document_count": len(item.get("document_ids", [])),
                 "interpretation": build_interpretation(item["name"], item.get("category", "timeline_event")),
-            }
+                }
+            )
             for item in payload.get("events", [])
         ]
         return sorted(events, key=lambda item: (-item["document_count"], item["name"]))
@@ -823,6 +830,7 @@ class ArchiveKnowledgeService:
         evidence = self._build_item_evidence(item, document_index)
         related_items = self._build_related_items(payload, item["id"])
         relationship_sections = self._build_relationship_sections(payload, item["id"])
+        interpretation = build_interpretation(item["name"], item.get("category", "domain_concept"))
 
         return {
             "id": item["id"],
@@ -832,11 +840,29 @@ class ArchiveKnowledgeService:
             "aliases": item.get("aliases", []),
             "review_status": item.get("review_status", "pending"),
             "document_count": len(item.get("document_ids", [])),
-            "interpretation": build_interpretation(item["name"], item.get("category", "domain_concept")),
+            "interpretation": interpretation,
+            "language_projection": build_language_projection(
+                name=item["name"],
+                aliases=item.get("aliases", []),
+                interpretation=interpretation,
+                evidence=evidence,
+            ),
             "documents": documents,
             "evidence": evidence,
             "related_items": related_items,
             "relationship_sections": relationship_sections,
+        }
+
+    @staticmethod
+    def _with_language_projection(item: dict) -> dict:
+        return {
+            **item,
+            "language_projection": build_language_projection(
+                name=item["name"],
+                aliases=item.get("aliases", []),
+                interpretation=item["interpretation"],
+                evidence=item.get("evidence", []),
+            ),
         }
 
     def _build_related_items(self, payload: dict, item_id: str) -> list[dict]:

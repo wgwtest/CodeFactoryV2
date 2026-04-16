@@ -1,9 +1,17 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.config import settings
 from app.extraction.service import ExtractionService
-from app.extraction.schema import ExtractedCandidate, ExtractedRelation, ExtractionBatch
+from app.extraction.schema import (
+    ExtractedCandidate,
+    ExtractedRelation,
+    ExtractionBatch,
+    StructuredExtractionResponse,
+)
 from app.knowledge_builder import SourceDocument, build_knowledge_index
+from app.integrations import llm as llm_module
 from app.parsing.models import ParsedSegment
 
 
@@ -235,6 +243,222 @@ def test_extractor_uses_provider_adapter_without_legacy_openai_key(monkeypatch) 
     assert batch.metadata["llm_provider"] == "deepseek"
 
 
+def test_build_structured_llm_uses_json_mode_and_local_schema_validation(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+        def _create(self, **kwargs):
+            captured["request"] = kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=(
+                                '{"candidates":[{"item_type":"entity","canonical_name":"国家空域系统",'
+                                '"category":"system_or_service","aliases":["NAS"],'
+                                '"evidence":"国家空域系统（NAS）","confidence":0.95}],'
+                                '"relations":[{"relation_type":"owned_by","source_name":"国家空域系统",'
+                                '"target_name":"联邦航空管理局","evidence":"FAA负责NAS","confidence":0.9}],'
+                                '"notes":"json mode"}'
+                            )
+                        )
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(llm_module, "OpenAIClient", FakeClient)
+
+    structured_llm, metadata = llm_module.build_structured_llm(
+        output_schema=StructuredExtractionResponse,
+        provider="openai_compatible",
+        api_key="test-key",
+        model="gpt-4.1-mini",
+        base_url="https://codex.ysaikeji.cn/v1",
+        temperature=0,
+    )
+
+    response = structured_llm.complete("抽取这个片段中的实体和关系")
+
+    assert metadata == {
+        "provider": "openai_compatible",
+        "model": "gpt-4.1-mini",
+        "base_url": "https://codex.ysaikeji.cn/v1",
+    }
+    assert isinstance(response.raw, StructuredExtractionResponse)
+    assert response.raw.candidates[0].canonical_name == "国家空域系统"
+    assert response.raw.relations[0].relation_type == "owned_by"
+    assert captured["api_key"] == "test-key"
+    assert captured["base_url"] == "https://codex.ysaikeji.cn/v1"
+    assert captured["request"] == {
+        "model": "gpt-4.1-mini",
+        "messages": [
+            {"role": "system", "content": "Return valid json only that matches the requested schema."},
+            {"role": "user", "content": "抽取这个片段中的实体和关系"},
+        ],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+
+
+def test_build_structured_llm_normalizes_common_relation_alias_fields(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+            del api_key, base_url
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+        def _create(self, **kwargs):
+            del kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=(
+                                '{"candidates":[{"type":"entity","name":"国家空域系统",'
+                                '"category":"system_or_service","aliases":["NAS"],'
+                                '"evidence":"国家空域系统（NAS）","confidence":0.95}],'
+                                '"relations":[{"relation_type":"owned_by","from":"国家空域系统",'
+                                '"target":"联邦航空管理局","evidence":"FAA负责NAS","confidence":0.9}],'
+                                '"notes":"alias normalized"}'
+                            )
+                        )
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(llm_module, "OpenAIClient", FakeClient)
+
+    structured_llm, _metadata = llm_module.build_structured_llm(
+        output_schema=StructuredExtractionResponse,
+        provider="openai_compatible",
+        api_key="test-key",
+        model="gpt-4.1-mini",
+        base_url="https://codex.ysaikeji.cn/v1",
+        temperature=0,
+    )
+
+    response = structured_llm.complete("抽取这个片段中的实体和关系")
+
+    assert response.raw.candidates[0].item_type == "entity"
+    assert response.raw.candidates[0].canonical_name == "国家空域系统"
+    assert response.raw.relations[0].source_name == "国家空域系统"
+    assert response.raw.relations[0].target_name == "联邦航空管理局"
+
+
+def test_build_structured_llm_normalizes_head_tail_relation_alias_fields(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+            del api_key, base_url
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+        def _create(self, **kwargs):
+            del kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=(
+                                '{"candidates":[{"type":"process","name":"军事决策过程",'
+                                '"evidence":"Chapter 9 THE MILITARY DECISIONMAKING PROCESS"}],'
+                                '"relations":[{"relation_type":"part_of","head":"军事决策过程",'
+                                '"tail":"FM 6-0","evidence":"Chapter 9 THE MILITARY DECISIONMAKING PROCESS"}],'
+                                '"notes":"head tail normalized"}'
+                            )
+                        )
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(llm_module, "OpenAIClient", FakeClient)
+
+    structured_llm, _metadata = llm_module.build_structured_llm(
+        output_schema=StructuredExtractionResponse,
+        provider="openai_compatible",
+        api_key="test-key",
+        model="gpt-4.1-mini",
+        base_url="https://codex.ysaikeji.cn/v1",
+        temperature=0,
+    )
+
+    response = structured_llm.complete("抽取这个片段中的实体和关系")
+
+    assert response.raw.relations[0].source_name == "军事决策过程"
+    assert response.raw.relations[0].target_name == "FM 6-0"
+
+
+def test_build_structured_llm_fills_candidate_defaults_and_filters_invalid_relations(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+            del api_key, base_url
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+        def _create(self, **kwargs):
+            del kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=(
+                                '{"candidates":[{"canonical_name":"Army Knowledge Online","aliases":["AKO"]},'
+                                '{"canonical_name":"ADRP_1-02_Terms_and_Military_Symbols_BITS"}],'
+                                '"relations":[{"relation_type":"available_at","from":"Army Knowledge Online","to":"ADRP_1-02_Terms_and_Military_Symbols_BITS"}],'
+                                '"notes":"filtered"}'
+                            )
+                        )
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(llm_module, "OpenAIClient", FakeClient)
+
+    structured_llm, _metadata = llm_module.build_structured_llm(
+        output_schema=StructuredExtractionResponse,
+        provider="openai_compatible",
+        api_key="test-key",
+        model="gpt-4.1-mini",
+        base_url="https://codex.ysaikeji.cn/v1",
+        temperature=0,
+    )
+
+    response = structured_llm.complete("抽取这个片段中的实体和关系")
+
+    assert [item.item_type for item in response.raw.candidates] == ["entity", "entity"]
+    assert [item.category for item in response.raw.candidates] == ["domain_concept", "domain_concept"]
+    assert response.raw.relations == []
+
+
+def test_formal_extraction_reports_schema_validation_failure_from_json_mode(monkeypatch) -> None:
+    segments = [
+        ParsedSegment(
+            heading="标题",
+            content="国家空域系统运行协调说明",
+            anchor={"page": 1, "section": "标题", "line_start": 1, "line_end": 1},
+        )
+    ]
+
+    class FakeStructuredLLM:
+        def complete(self, prompt: str):
+            del prompt
+            raise ValueError("本地 schema 校验失败：1 validation error for StructuredExtractionResponse")
+
+    monkeypatch.setattr(
+        "app.extraction.service.build_structured_llm",
+        lambda *, output_schema: (FakeStructuredLLM(), {"provider": "openai_compatible", "model": "gpt-4.1-mini"}),
+    )
+
+    with pytest.raises(ValueError, match="schema 校验失败"):
+        ExtractionService(formal_extraction_mode=True).extract_document(
+            document_id="doc-1",
+            title="运行协调说明",
+            file_path="source/runtime/coordination.docx",
+            segments=segments,
+        )
+
+
 def test_build_llm_supports_deepseek_metadata() -> None:
     from app.integrations.llm import build_llm
     from llama_index.core.types import PydanticProgramMode
@@ -408,6 +632,75 @@ def test_chunked_formal_extraction_records_source_refs(monkeypatch) -> None:
     assert batch.metadata["chunk_candidate_count_total"] == 2
     assert batch.metadata["merged_candidate_count"] == 1
     assert batch.metadata["llm_provider"] == "deepseek"
+
+
+def test_chunked_formal_extraction_emits_chunk_progress_events(monkeypatch) -> None:
+    _set_setting("formal_chunk_segment_threshold", 2)
+    _set_setting("formal_chunk_char_threshold", 10)
+    _set_setting("formal_chunk_char_limit", 200)
+
+    segments = [
+        ParsedSegment(
+            heading="第一章",
+            content="指挥所组织说明 " * 20,
+            anchor={"page": 1, "section": "第一章", "line_start": 1, "line_end": 8},
+            block_type="paragraph",
+        ),
+        ParsedSegment(
+            heading="第二章",
+            content="参谋职责说明 " * 20,
+            anchor={"page": 2, "section": "第二章", "line_start": 1, "line_end": 8},
+            block_type="paragraph",
+        ),
+    ]
+
+    progress_events: list[dict] = []
+
+    def fake_extract_chunk_batch(self, *, document_id, title, file_path, source_document, chunk, structured_llm_bundle):
+        del self, document_id, title, file_path, source_document, structured_llm_bundle
+        return ExtractionBatch(
+            document_id="doc-1",
+            title="长文档",
+            strategy="schema_rules+llm",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name=f"块-{chunk.chunk_id}",
+                    confidence=0.9,
+                    payload={"category": "domain_concept", "evidence": f"{chunk.chunk_id} 证据"},
+                )
+            ],
+            relations=[],
+            metadata={
+                "chunk_id": chunk.chunk_id,
+                "llm_enrichment_used": True,
+                "llm_provider": "deepseek",
+                "llm_model": "deepseek-chat",
+                "llm_base_url": "https://api.deepseek.com/v1",
+            },
+        )
+
+    monkeypatch.setattr(ExtractionService, "_build_structured_llm_bundle", lambda self: ("fake-llm", {}))
+    monkeypatch.setattr(ExtractionService, "_extract_chunk_batch", fake_extract_chunk_batch)
+
+    ExtractionService(
+        formal_extraction_mode=True,
+        progress_callback=progress_events.append,
+    ).extract_document(
+        document_id="doc-1",
+        title="长文档",
+        file_path="runtime/long.pdf",
+        segments=segments,
+    )
+
+    assert len(progress_events) == 2
+    assert progress_events[0]["chunk_position"] == 1
+    assert progress_events[0]["chunk_total"] == 2
+    assert progress_events[0]["chunk_heading"] == "第一章"
+    assert progress_events[0]["retry_depth"] == 0
+    assert progress_events[1]["chunk_position"] == 2
+    assert progress_events[1]["chunk_total"] == 2
+    assert progress_events[1]["chunk_heading"] == "第二章"
 
 
 def test_chunked_formal_extraction_retries_with_smaller_subchunks_on_truncated_llm_json(monkeypatch) -> None:

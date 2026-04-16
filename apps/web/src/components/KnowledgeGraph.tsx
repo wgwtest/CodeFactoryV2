@@ -11,6 +11,7 @@ import type {
   ArchiveKnowledgeEvent,
   ArchiveKnowledgeGraph,
   ArchiveKnowledgeInterpretation,
+  ArchiveKnowledgeLanguageProjection,
   ArchiveKnowledgeItemDetail,
   ArchiveKnowledgeItemGraph,
   ArchiveKnowledgeProcess,
@@ -56,6 +57,7 @@ type KnowledgeBrowserItem = {
   aliases: string[];
   document_count: number;
   interpretation: ArchiveKnowledgeInterpretation;
+  language_projection?: ArchiveKnowledgeLanguageProjection;
 };
 
 type KnowledgeGraphProps = {
@@ -122,6 +124,12 @@ export function KnowledgeGraph({
         item.interpretation.display_name ?? "",
         item.interpretation.standard_name ?? "",
         item.interpretation.summary,
+        item.language_projection?.display_name_zh ?? "",
+        item.language_projection?.display_name_en ?? "",
+        item.language_projection?.acronym ?? "",
+        ...(item.language_projection?.aliases_zh ?? []),
+        ...(item.language_projection?.aliases_en ?? []),
+        item.language_projection?.description_zh ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -276,6 +284,29 @@ export function KnowledgeGraph({
                   render: (value: string) => <Tag>{typeLabels[value] ?? value}</Tag>,
                 },
                 {
+                  title: "投影",
+                  width: 220,
+                  render: (_: unknown, record: KnowledgeBrowserItem) => (
+                    <Space direction="vertical" size={2} style={{ display: "flex" }}>
+                      <Typography.Text strong>
+                        {record.language_projection?.display_name_zh ??
+                          record.interpretation.display_name ??
+                          record.name}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {[record.language_projection?.display_name_en, record.language_projection?.acronym]
+                          .filter(Boolean)
+                          .join(" / ") || "无"}
+                      </Typography.Text>
+                      {record.language_projection?.translation_status ? (
+                        <Tag color="blue" style={{ width: "fit-content", marginInlineEnd: 0 }}>
+                          {record.language_projection.translation_status}
+                        </Tag>
+                      ) : null}
+                    </Space>
+                  ),
+                },
+                {
                   title: "释义",
                   render: (_: unknown, record: KnowledgeBrowserItem) => (
                     <Space direction="vertical" size={2} style={{ display: "flex" }}>
@@ -368,6 +399,39 @@ export function KnowledgeGraph({
             <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="别名">{detail.aliases.join(" / ") || "无"}</Descriptions.Item>
             </Descriptions>
+
+            <div>
+              <Typography.Title level={5}>双语投影</Typography.Title>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label="中文主名">
+                  {detail.language_projection.display_name_zh ?? "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="英文原名">
+                  {detail.language_projection.display_name_en ?? "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="缩写">
+                  {detail.language_projection.acronym ?? "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="中文别名">
+                  {detail.language_projection.aliases_zh.join(" / ") || "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="英文别名">
+                  {detail.language_projection.aliases_en.join(" / ") || "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="中文化状态">
+                  {detail.language_projection.translation_status}
+                </Descriptions.Item>
+                <Descriptions.Item label="置信度">
+                  {detail.language_projection.translation_confidence ?? "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="中文解释">
+                  {detail.language_projection.description_zh ?? "无"}
+                </Descriptions.Item>
+                <Descriptions.Item label="中文证据摘要">
+                  {detail.language_projection.evidence_summary_zh ?? "无"}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
 
             <EvidenceList title="证据摘录" items={detail.evidence} />
 
