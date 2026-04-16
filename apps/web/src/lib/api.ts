@@ -800,3 +800,78 @@ export type ToolHubOverview = {
   recent_evolution_runs: ToolHubRecentRunSummary[];
   catalogs: ToolHubCatalogs;
 };
+
+export type P3OrderStatus =
+  | "pending_approval"
+  | "rejected"
+  | "approved_for_generation"
+  | "generating"
+  | "draft_ready"
+  | "in_revision"
+  | "pending_review"
+  | "changes_requested"
+  | "frozen"
+  | "package_ready"
+  | "pushed_to_p4";
+
+export type P3OrderSummary = {
+  order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  status: P3OrderStatus;
+  updated_at: string;
+};
+
+export type SoftwareDesignOverview = {
+  metrics: {
+    order_count: number;
+    pending_approval_count: number;
+    frozen_count: number;
+    package_ready_count: number;
+    pushed_count: number;
+  };
+  recent_orders: P3OrderSummary[];
+  recent_packages: Array<{
+    package_id: string;
+    order_id: string;
+    item_count: number;
+    push_status: string;
+  }>;
+};
+
+export type P3ReviewThread = {
+  thread_id: string;
+  topic: string;
+  anchor: string;
+  status: "open" | "resolved";
+  messages: string[];
+};
+
+export type P3WorkorderBatch = {
+  package_id?: string;
+  package_overview: {
+    architecture_recommendation: string;
+    interaction_mode: string;
+    deployment_hint?: string;
+    tool_recommendations?: string[];
+    design_notes?: string[];
+  };
+  items: Array<{ item_id: string; title: string }>;
+  push_status?: string;
+};
+
+export type P3OrderDetail = {
+  order_id: string;
+  status: P3OrderStatus;
+  requirement_spec_summary: {
+    application_name: string;
+    domain_name: string;
+    status: string;
+  };
+  design_description: {
+    sections: Array<{ id: string; title: string; summary: string; body?: string }>;
+    modules?: Array<{ module_id: string; name: string; objective: string }>;
+  } | null;
+  review_threads: P3ReviewThread[];
+  workorder_batch: P3WorkorderBatch | null;
+};

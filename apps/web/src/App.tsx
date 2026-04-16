@@ -8,6 +8,7 @@ import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP3Page } from "./pages/XXP3Page";
 import { XXP4Page } from "./pages/XXP4Page";
 
 const items = [
@@ -69,6 +70,14 @@ function MainShell() {
 
 export default function App() {
   const location = useLocation();
+
+  if (location.pathname.startsWith("/xx-p3")) {
+    return (
+      <Routes>
+        <Route path="/xx-p3" element={<XXP3Page />} />
+      </Routes>
+    );
+  }
 
   if (location.pathname.startsWith("/xx-p4")) {
     return (

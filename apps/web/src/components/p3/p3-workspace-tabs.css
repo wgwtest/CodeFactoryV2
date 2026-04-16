@@ -1,0 +1,27 @@
+.xx-p3-workspace-tabs > .ant-tabs-nav {
+  margin-bottom: 20px !important;
+}
+
+.xx-p3-workspace-tabs > .ant-tabs-nav::before {
+  display: none;
+}
+
+.xx-p3-workspace-tabs > .ant-tabs-nav .ant-tabs-nav-list {
+  gap: 12px;
+}
+
+.xx-p3-workspace-tabs > .ant-tabs-nav .ant-tabs-tab {
+  padding: 10px 14px !important;
+  border-radius: 999px;
+  border: 1px solid #d0d7de !important;
+  background: #ffffff;
+}
+
+.xx-p3-workspace-tabs > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
+  background: #edf6ff;
+  border-color: #0969da !important;
+}
+
+.xx-p3-workspace-tabs > .ant-tabs-nav .ant-tabs-ink-bar {
+  display: none;
+}

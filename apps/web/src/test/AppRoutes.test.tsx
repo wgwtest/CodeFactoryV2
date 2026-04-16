@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 
 import App from "../App";
 
@@ -12,6 +12,10 @@ vi.mock("../lib/api", () => ({
     get: (...args: unknown[]) => getMock(...args),
   },
 }));
+
+beforeEach(() => {
+  getMock.mockReset();
+});
 
 test("renders documents page on /documents route", async () => {
   getMock.mockImplementation((url: string) => {
@@ -60,4 +64,72 @@ test("renders documents page on /documents route", async () => {
 
   expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
   expect((await screen.findAllByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).length).toBeGreaterThan(0);
+});
+
+test("renders XX-P3 route outside the main shell", async () => {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design/overview") {
+      return Promise.resolve({
+        data: {
+          data: {
+            metrics: {
+              order_count: 1,
+              pending_approval_count: 1,
+              frozen_count: 0,
+              package_ready_count: 0,
+              pushed_count: 0,
+            },
+            recent_orders: [],
+            recent_packages: [],
+          },
+        },
+      });
+    }
+
+    if (url === "/software-design/orders") {
+      return Promise.resolve({
+        data: {
+          data: {
+            items: [
+              {
+                order_id: "p3-order-1",
+                application_name: "空域协同规划软件",
+                requirement_spec_id: "spec-1",
+                status: "pending_approval",
+                updated_at: "2026-04-17T10:00:00Z",
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    if (url === "/software-design/orders/p3-order-1") {
+      return Promise.resolve({
+        data: {
+          order_id: "p3-order-1",
+          requirement_spec_summary: {
+            application_name: "空域协同规划软件",
+            domain_name: "国家空域管理",
+            status: "ready",
+          },
+          status: "pending_approval",
+          design_description: null,
+          review_threads: [],
+          workorder_batch: null,
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p3"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("软件设计编制与模块工单下发系统")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
