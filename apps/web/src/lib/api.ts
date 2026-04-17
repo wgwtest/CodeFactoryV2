@@ -1050,3 +1050,132 @@ export type ItemProgressView = {
   last_message: string;
   updated_at: string;
 };
+
+export type P3OrderStatus =
+  | "pending_approval"
+  | "rejected"
+  | "approved_for_generation"
+  | "generating"
+  | "draft_ready"
+  | "in_revision"
+  | "pending_review"
+  | "changes_requested"
+  | "frozen"
+  | "package_ready"
+  | "pushed_to_p4";
+
+export type P3OrderSummary = {
+  order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  status: P3OrderStatus;
+  updated_at: string;
+};
+
+export type SoftwareDesignOverview = {
+  metrics: {
+    order_count: number;
+    pending_approval_count: number;
+    frozen_count: number;
+    package_ready_count: number;
+    pushed_count: number;
+  };
+  recent_orders: P3OrderSummary[];
+  recent_packages: Array<{
+    package_id: string;
+    order_id: string;
+    item_count: number;
+    push_status: string;
+  }>;
+};
+
+export type P3ReviewThread = {
+  thread_id: string;
+  topic: string;
+  anchor: string;
+  status: "open" | "resolved";
+  messages: string[];
+};
+
+export type P3WorkorderBatch = {
+  package_id?: string;
+  package_overview: {
+    architecture_recommendation: string;
+    interaction_mode: string;
+    deployment_hint?: string;
+    tool_recommendations?: string[];
+    design_notes?: string[];
+  };
+  items: Array<{ item_id: string; title: string }>;
+  push_status?: string;
+};
+
+export type P3OrderDetail = {
+  order_id: string;
+  status: P3OrderStatus;
+  requirement_spec_summary: {
+    application_name: string;
+    domain_name: string;
+    status: string;
+  };
+  design_description: {
+    sections: Array<{ id: string; title: string; summary: string; body?: string }>;
+    modules?: Array<{ module_id: string; name: string; objective: string }>;
+  } | null;
+  review_threads: P3ReviewThread[];
+  workorder_batch: P3WorkorderBatch | null;
+};
+
+export type P3ReferenceSection = {
+  section_id: string;
+  title: string;
+  summary: string;
+};
+
+export type P3ReferenceTemplate = {
+  template_id: string;
+  title: string;
+  source_doc_id: string;
+  document_type: "software_design_description";
+  version: string;
+  format: "pdf";
+  summary: string;
+  recommendation: string;
+  official_detail_url: string;
+  pdf_asset_name: string;
+  pdf_url: string | null;
+  sections: P3ReferenceSection[];
+};
+
+export type P3StandardReference = {
+  doc_id: string;
+  title: string;
+  category: string;
+  scope: string;
+  summary: string;
+  official_detail_url: string;
+  recommended_use: string;
+  tags: string[];
+  sections: P3ReferenceSection[];
+};
+
+export type P3TemplateStandardMapping = {
+  template_id: string;
+  doc_id: string;
+  rationale: string;
+  section_pairs: Array<{ template_section: string; standard_section: string }>;
+};
+
+export type P3ReferenceCenter = {
+  templates: P3ReferenceTemplate[];
+  standards: P3StandardReference[];
+  mappings: P3TemplateStandardMapping[];
+};
+
+export type P3StandardSearchResult = {
+  doc_id: string;
+  title: string;
+  matched_section: string;
+  excerpt: string;
+  official_detail_url: string;
+};

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     knowledge_output_root: str = ".data/knowledge_output"
     application_modeling_root: str = ".data/application_modeling"
     tool_hub_root: str = ".data/tool_hub"
+    software_design_root: str = ".data/software_design"
     default_archive_id: str = "20161116-nas"
     default_archive_name: str = "20161116 NAS 知识库"
     default_archive_source_dir: str = str(DEFAULT_ARCHIVE_SOURCE_DIR)
@@ -61,6 +62,7 @@ class Settings(BaseSettings):
         self.knowledge_output_root = _resolve_repo_path(self.knowledge_output_root)
         self.application_modeling_root = _resolve_repo_path(self.application_modeling_root)
         self.tool_hub_root = _resolve_repo_path(self.tool_hub_root)
+        self.software_design_root = _resolve_repo_path(self.software_design_root)
         self.default_archive_source_dir = _resolve_repo_path(self.default_archive_source_dir)
         self.default_archive_extract_root = _resolve_repo_path(self.default_archive_extract_root)
         self.archive_extract_root = _resolve_repo_path(self.archive_extract_root)
