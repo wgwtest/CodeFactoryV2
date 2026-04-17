@@ -191,9 +191,9 @@ export const defaultP6PortalLayout: Record<P6PortalNodeId, P6PortalPosition> = {
 };
 
 export const p6PortalLegendRoadmap = [
-  { id: "p6.2", label: "P6.2 登录接入", status: "占位" },
-  { id: "p6.3", label: "P6.3 权限与角色控制", status: "占位" },
-  { id: "p6.4", label: "P6.4 平台级入口与导航治理", status: "占位" },
+  { id: "p6.2", label: "登录接入", status: "占位" },
+  { id: "p6.3", label: "权限与角色控制", status: "占位" },
+  { id: "p6.4", label: "入口与导航治理", status: "占位" },
 ];
 
 export function readP6PortalLayout() {

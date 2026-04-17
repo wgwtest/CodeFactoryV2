@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import "@testing-library/jest-dom/vitest";
 import { beforeEach, expect, test } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -17,12 +18,23 @@ test("renders P6 portal blueprint outside MainShell on /portal route", async () 
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("P6.1 门户蓝图画布")).toBeInTheDocument();
+  expect(await screen.findByText("图例")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
   expect(screen.queryByText("固定五阶段蓝图")).not.toBeInTheDocument();
+  expect(screen.queryByText("P6 平台入口层")).not.toBeInTheDocument();
+  expect(screen.queryByText("P6.1 门户蓝图画布")).not.toBeInTheDocument();
   expect(screen.getByTestId("p6-portal-legend")).toBeInTheDocument();
-  expect(screen.getByText("P6.2 登录接入")).toBeInTheDocument();
-  expect(screen.getByText("P6.3 权限与角色控制")).toBeInTheDocument();
+  expect(screen.getByText("登录接入")).toBeInTheDocument();
+  expect(screen.getByText("权限与角色控制")).toBeInTheDocument();
+  expect(screen.getByText(/双击进入/)).toBeInTheDocument();
+});
+
+test("legend styles anchor it to the portal bottom-right corner", () => {
+  const css = readFileSync("src/pages/P6PortalPage.css", "utf8");
+
+  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*position:\s*absolute;/s);
+  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*right:\s*26px;/s);
+  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*bottom:\s*24px;/s);
 });
 
 test("clicking a module only highlights it and does not open a summary popup", async () => {
