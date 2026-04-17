@@ -203,3 +203,69 @@ class P3OrderDetail(BaseModel):
     design_description: SoftwareDesignDescription | None = None
     review_threads: list[ReviewThread] = Field(default_factory=list)
     workorder_batch: ModuleWorkorderBatchPackage | None = None
+
+
+class ReferenceSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    section_id: str
+    title: str
+    summary: str
+
+
+class ReferenceTemplate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str
+    title: str
+    source_doc_id: str
+    document_type: Literal["software_design_description"]
+    version: str
+    format: Literal["pdf"]
+    summary: str
+    recommendation: str
+    official_detail_url: str
+    pdf_asset_name: str
+    pdf_url: str | None = None
+    sections: list[ReferenceSection] = Field(default_factory=list)
+
+
+class StandardReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    doc_id: str
+    title: str
+    category: str
+    scope: str
+    summary: str
+    official_detail_url: str
+    recommended_use: str
+    tags: list[str] = Field(default_factory=list)
+    sections: list[ReferenceSection] = Field(default_factory=list)
+
+
+class TemplateStandardMapping(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str
+    doc_id: str
+    rationale: str
+    section_pairs: list[dict[str, str]] = Field(default_factory=list)
+
+
+class ReferenceCenter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    templates: list[ReferenceTemplate] = Field(default_factory=list)
+    standards: list[StandardReference] = Field(default_factory=list)
+    mappings: list[TemplateStandardMapping] = Field(default_factory=list)
+
+
+class StandardSearchResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    doc_id: str
+    title: str
+    matched_section: str
+    excerpt: str
+    official_detail_url: str

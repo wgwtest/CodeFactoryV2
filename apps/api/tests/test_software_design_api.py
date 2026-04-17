@@ -112,3 +112,65 @@ def test_software_design_order_lifecycle(tmp_path: Path) -> None:
     pushed = client.post(f"/api/software-design/orders/{order_id}/push-to-p4")
     assert pushed.status_code == 200
     assert pushed.json()["push_status"] == "pushed"
+
+
+def test_software_design_reference_center_exposes_templates_and_standard_search(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    center = client.get("/api/software-design/reference-center")
+    assert center.status_code == 200
+    assert len(center.json()["templates"]) >= 2
+    assert center.json()["templates"][0]["document_type"] == "software_design_description"
+    assert center.json()["templates"][0]["pdf_url"] is None
+    assert center.json()["standards"][0]["doc_id"].startswith("DI-IPSC-")
+
+    search = client.get("/api/software-design/standards/search", params={"q": "design description"})
+    assert search.status_code == 200
+    matched_ids = {item["doc_id"] for item in search.json()["items"]}
+    assert "DI-IPSC-82284" in matched_ids
+    assert "DI-IPSC-81435" in matched_ids
+
+
+def test_software_design_order_can_be_rejected(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    spec_id = _create_requirement_spec(client)
+
+    created = client.post(
+        "/api/software-design/orders",
+        json={
+            "requirement_spec_id": spec_id,
+            "requested_by": "架构组",
+            "notes": "暂不进入本轮设计。",
+        },
+    )
+    order_id = created.json()["order_id"]
+
+    rejected = client.post(f"/api/software-design/orders/{order_id}/reject")
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+
+
+def test_requirement_spec_can_only_create_one_p3_order(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    spec_id = _create_requirement_spec(client)
+
+    first = client.post(
+        "/api/software-design/orders",
+        json={
+            "requirement_spec_id": spec_id,
+            "requested_by": "架构组",
+            "notes": "首轮受理。",
+        },
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/api/software-design/orders",
+        json={
+            "requirement_spec_id": spec_id,
+            "requested_by": "架构组",
+            "notes": "重复提交。",
+        },
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == f"P3 order already exists for requirement spec {spec_id}"

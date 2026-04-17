@@ -1,5 +1,5 @@
 import { Layout, Menu, Select, Space, Typography } from "antd";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
@@ -7,13 +7,15 @@ import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP2SimPage } from "./pages/XXP2SimPage";
 import { XXP3Page } from "./pages/XXP3Page";
 import { XXP4Page } from "./pages/XXP4Page";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
-  { key: "/", label: <Link to="/">文档导入</Link> },
+  { key: "/documents", label: <Link to="/documents">文档导入</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
@@ -23,7 +25,8 @@ const items = [
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
-  const selectedMenuKey = location.pathname === "/documents" ? "/" : location.pathname;
+  const selectedMenuKey = location.pathname;
+  const defaultRoute = import.meta.env.VITE_DEFAULT_ROUTE ?? "/xx-p3";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -56,7 +59,7 @@ function MainShell() {
       <Layout.Content style={{ padding: 24 }}>
         <Routes>
           <Route path="/archives" element={<ArchiveManagementPage />} />
-          <Route path="/" element={<DocumentsPage />} />
+          <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
@@ -71,10 +74,19 @@ function MainShell() {
 export default function App() {
   const location = useLocation();
 
+  if (location.pathname.startsWith("/xx-p2-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p2-sim" element={<XXP2SimPage />} />
+      </Routes>
+    );
+  }
+
   if (location.pathname.startsWith("/xx-p3")) {
     return (
       <Routes>
         <Route path="/xx-p3" element={<XXP3Page />} />
+        <Route path="/xx-p3/templates/:templateId" element={<P3TemplateDetailPage />} />
       </Routes>
     );
   }

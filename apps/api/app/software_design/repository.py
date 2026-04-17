@@ -19,12 +19,14 @@ class SoftwareDesignRepository:
         self.review_threads_dir = self.root / "review_threads"
         self.packages_dir = self.root / "packages"
         self.pushes_dir = self.root / "pushes"
+        self.reference_assets_dir = self.root / "reference_assets"
         for directory in (
             self.orders_dir,
             self.baselines_dir,
             self.review_threads_dir,
             self.packages_dir,
             self.pushes_dir,
+            self.reference_assets_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -33,6 +35,12 @@ class SoftwareDesignRepository:
 
     def get_order(self, order_id: str) -> P3Order | None:
         return self._read_model(self.orders_dir / f"{order_id}.json", P3Order)
+
+    def get_order_by_requirement_spec_id(self, requirement_spec_id: str) -> P3Order | None:
+        for order in self.list_orders():
+            if order.requirement_spec_id == requirement_spec_id:
+                return order
+        return None
 
     def save_order(self, order: P3Order) -> P3Order:
         self._write_json(self.orders_dir / f"{order.order_id}.json", order.model_dump(mode="json"))

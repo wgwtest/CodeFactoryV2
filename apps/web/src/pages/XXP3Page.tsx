@@ -5,12 +5,24 @@ import { P3DesignWorkspace } from "../components/p3/P3DesignWorkspace";
 import { P3Hero } from "../components/p3/P3Hero";
 import { P3OrderContextPanel } from "../components/p3/P3OrderContextPanel";
 import { P3OrderQueue } from "../components/p3/P3OrderQueue";
+import { P3RequirementIntakePanel } from "../components/p3/P3RequirementIntakePanel";
 import { P3ReviewWorkspace } from "../components/p3/P3ReviewWorkspace";
+import { P3TemplateCenterWorkspace } from "../components/p3/P3TemplateCenterWorkspace";
 import { P3WorkorderBatchWorkspace } from "../components/p3/P3WorkorderBatchWorkspace";
 import { P3WorkspaceTabs } from "../components/p3/P3WorkspaceTabs";
-import type { P3OrderDetail, P3OrderSummary, P3WorkorderBatch, SoftwareDesignOverview } from "../lib/api";
+import type {
+  P3OrderDetail,
+  P3OrderSummary,
+  P3ReferenceCenter,
+  P3StandardSearchResult,
+  P3WorkorderBatch,
+  RequirementSpecSummary,
+  SoftwareDesignOverview,
+} from "../lib/api";
+import { getRequirementSpecs } from "../lib/requirements";
 import {
   approveSoftwareDesignOrder,
+  createSoftwareDesignOrder,
   createReviewThread,
   freezeSoftwareDesign,
   generateSoftwareDesignDraft,
@@ -18,16 +30,23 @@ import {
   getSoftwareDesignOrderDetail,
   getSoftwareDesignOrders,
   getSoftwareDesignOverview,
+  getSoftwareDesignReferenceCenter,
   pushWorkorderBatchToP4,
+  rejectSoftwareDesignOrder,
+  searchSoftwareDesignStandards,
 } from "../lib/softwareDesign";
 
 export function XXP3Page() {
   const [overview, setOverview] = useState<SoftwareDesignOverview | null>(null);
+  const [requirementSpecs, setRequirementSpecs] = useState<RequirementSpecSummary[]>([]);
   const [orders, setOrders] = useState<P3OrderSummary[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<P3OrderDetail | null>(null);
+  const [referenceCenter, setReferenceCenter] = useState<P3ReferenceCenter | null>(null);
+  const [standardSearchQuery, setStandardSearchQuery] = useState("design description");
+  const [standardSearchResults, setStandardSearchResults] = useState<P3StandardSearchResult[]>([]);
   const [workorderBatch, setWorkorderBatch] = useState<P3WorkorderBatch | null>(null);
-  const [activeWorkspace, setActiveWorkspace] = useState("overview");
+  const [activeWorkspace, setActiveWorkspace] = useState("reference");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const latestOrderRequestRef = useRef(0);
@@ -44,6 +63,10 @@ export function XXP3Page() {
     };
   }
 
+  async function refreshPageForOrder(orderId: string) {
+    await loadPage(false, orderId);
+  }
+
   async function loadOrderDetail(orderId: string, requestId = beginOrderRequest()) {
     const detailResponse = await getSoftwareDesignOrderDetail(orderId);
     if (requestId !== latestOrderRequestRef.current) {
@@ -54,28 +77,33 @@ export function XXP3Page() {
     setWorkorderBatch(detail.workorder_batch);
   }
 
-  async function loadPage(showLoading = false) {
+  async function loadPage(showLoading = false, preferredOrderId: string | null = null) {
     if (showLoading) {
       setLoading(true);
     }
     const requestId = beginOrderRequest();
     try {
-      const [overviewResponse, ordersResponse] = await Promise.all([
+      const [overviewResponse, requirementsResponse, ordersResponse, referenceCenterResponse] = await Promise.all([
         getSoftwareDesignOverview(),
+        getRequirementSpecs(),
         getSoftwareDesignOrders(),
+        getSoftwareDesignReferenceCenter(),
       ]);
       const orderItems = ordersResponse.data.data.items;
-      const initialOrderId = selectedOrderId ?? orderItems[0]?.order_id ?? null;
+      const initialOrderId = preferredOrderId ?? selectedOrderId ?? orderItems[0]?.order_id ?? null;
       const detailResponse = initialOrderId ? await getSoftwareDesignOrderDetail(initialOrderId) : null;
       if (requestId !== latestOrderRequestRef.current) {
         return;
       }
       const detail = detailResponse && initialOrderId ? normalizeOrderDetail(initialOrderId, detailResponse.data) : null;
+      const center = referenceCenterResponse.data;
       startTransition(() => {
         setOverview(overviewResponse.data.data);
+        setRequirementSpecs(requirementsResponse.data);
         setOrders(orderItems);
         setSelectedOrderId(initialOrderId);
         setSelectedOrder(detail);
+        setReferenceCenter(center);
         setWorkorderBatch(detail?.workorder_batch ?? null);
         setError(null);
       });
@@ -97,21 +125,8 @@ export function XXP3Page() {
     if (!orderId) {
       return;
     }
-    const requestId = beginOrderRequest();
     const response = await generateWorkorderBatch(orderId);
-    if (requestId !== latestOrderRequestRef.current) {
-      return;
-    }
-    setWorkorderBatch(response.data);
-    setSelectedOrder((currentOrder) =>
-      currentOrder
-        ? {
-            ...currentOrder,
-            order_id: currentOrder.order_id || orderId,
-            workorder_batch: response.data,
-          }
-        : currentOrder,
-    );
+    await refreshPageForOrder(orderId);
     return response.data;
   }
 
@@ -121,6 +136,23 @@ export function XXP3Page() {
       return;
     }
     await pushWorkorderBatchToP4(orderId);
+    await refreshPageForOrder(orderId);
+  }
+
+  async function handleSearchStandards() {
+    const response = await searchSoftwareDesignStandards(standardSearchQuery);
+    setStandardSearchResults(response.data.items);
+  }
+
+  async function handleCreateOrder(specId: string) {
+    const response = await createSoftwareDesignOrder({
+      requirement_spec_id: specId,
+      requested_by: "P3值班台",
+      notes: "由 XX-P3 受理并进入软件设计编制流程。",
+    });
+    setSelectedOrderId(response.data.order_id);
+    setActiveWorkspace("overview");
+    await loadPage(false, response.data.order_id);
   }
 
   if (loading && !overview) {
@@ -160,6 +192,11 @@ export function XXP3Page() {
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={8}>
             <Space direction="vertical" size={16} style={{ display: "flex" }}>
+              <P3RequirementIntakePanel
+                specs={requirementSpecs}
+                acceptedRequirementSpecIds={orders.map((order) => order.requirement_spec_id)}
+                onCreateOrder={handleCreateOrder}
+              />
               <P3OrderQueue
                 orders={orders}
                 selectedOrderId={selectedOrderId}
@@ -170,11 +207,15 @@ export function XXP3Page() {
                 }}
                 onApprove={async (orderId) => {
                   await approveSoftwareDesignOrder(orderId);
+                  await refreshPageForOrder(orderId);
+                }}
+                onReject={async (orderId) => {
+                  await rejectSoftwareDesignOrder(orderId);
+                  await refreshPageForOrder(orderId);
                 }}
                 onGenerateDraft={async (orderId) => {
-                  const requestId = beginOrderRequest();
                   await generateSoftwareDesignDraft(orderId);
-                  await loadOrderDetail(orderId, requestId);
+                  await refreshPageForOrder(orderId);
                 }}
               />
               <P3OrderContextPanel order={selectedOrder} />
@@ -182,78 +223,85 @@ export function XXP3Page() {
           </Col>
 
           <Col xs={24} xl={16}>
-            {selectedOrder ? (
-              <Card style={{ borderRadius: 20, boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)" }}>
-                <P3WorkspaceTabs
-                  activeKey={activeWorkspace}
-                  items={[
-                    {
-                      key: "overview",
-                      label: "总览",
-                      children: <P3OrderContextPanel order={selectedOrder} />,
-                    },
-                    {
-                      key: "design",
-                      label: "设计编制",
-                      children: <P3DesignWorkspace order={selectedOrder} />,
-                    },
-                    {
-                      key: "review",
-                      label: "评审协作",
-                      children: (
-                        <P3ReviewWorkspace
-                          order={selectedOrder}
-                          onCreateThread={async (payload) => {
-                            const orderId = selectedOrder.order_id || selectedOrderId;
-                            if (!orderId) {
-                              return;
-                            }
-                            const requestId = beginOrderRequest();
-                            await createReviewThread(orderId, payload);
-                            await loadOrderDetail(orderId, requestId);
-                          }}
-                          onFreeze={async () => {
-                            const orderId = selectedOrder.order_id || selectedOrderId;
-                            if (!orderId) {
-                              return;
-                            }
-                            await freezeSoftwareDesign(orderId);
-                            setSelectedOrder((currentOrder) =>
-                              currentOrder
-                                ? {
-                                    ...currentOrder,
-                                    order_id: currentOrder.order_id || orderId,
-                                    status: "frozen",
-                                  }
-                                : currentOrder,
-                            );
-                          }}
-                        />
-                      ),
-                    },
-                    {
-                      key: "workorders",
-                      label: "模块工单包",
-                      children: (
-                        <P3WorkorderBatchWorkspace
-                          order={{
-                            ...selectedOrder,
-                            workorder_batch: workorderBatch ?? selectedOrder.workorder_batch,
-                          }}
-                          onGenerateBatch={handleGenerateBatch}
-                          onPushToP4={handlePushToP4}
-                        />
-                      ),
-                    },
-                  ]}
-                  onChange={setActiveWorkspace}
-                />
-              </Card>
-            ) : (
-              <Card style={{ borderRadius: 20 }}>
-                <Empty description="当前没有可查看的订单" />
-              </Card>
-            )}
+            <Card style={{ borderRadius: 20, boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)" }}>
+              <P3WorkspaceTabs
+                activeKey={activeWorkspace}
+                items={[
+                  {
+                    key: "reference",
+                    label: "模板与规范",
+                    children: (
+                      <P3TemplateCenterWorkspace
+                        referenceCenter={referenceCenter}
+                        searchQuery={standardSearchQuery}
+                        searchResults={standardSearchResults}
+                        onSearchQueryChange={setStandardSearchQuery}
+                        onSearch={handleSearchStandards}
+                      />
+                    ),
+                  },
+                  {
+                    key: "overview",
+                    label: "总览",
+                    children: <P3OrderContextPanel order={selectedOrder} />,
+                  },
+                  {
+                    key: "design",
+                    label: "设计编制",
+                    children: <P3DesignWorkspace order={selectedOrder} />,
+                  },
+                  {
+                    key: "review",
+                    label: "评审协作",
+                    children: (
+                      <P3ReviewWorkspace
+                        order={selectedOrder}
+                        onCreateThread={async (payload) => {
+                          const orderId = selectedOrder?.order_id || selectedOrderId;
+                          if (!orderId) {
+                            return;
+                          }
+                          await createReviewThread(orderId, payload);
+                          await refreshPageForOrder(orderId);
+                        }}
+                        onFreeze={async () => {
+                          const orderId = selectedOrder?.order_id || selectedOrderId;
+                          if (!orderId) {
+                            return;
+                          }
+                          await freezeSoftwareDesign(orderId);
+                          await refreshPageForOrder(orderId);
+                        }}
+                      />
+                    ),
+                  },
+                  {
+                    key: "workorders",
+                    label: "模块工单包",
+                    children: (
+                      <P3WorkorderBatchWorkspace
+                        order={
+                          selectedOrder
+                            ? {
+                                ...selectedOrder,
+                                workorder_batch: workorderBatch ?? selectedOrder.workorder_batch,
+                              }
+                            : null
+                        }
+                        onGenerateBatch={handleGenerateBatch}
+                        onPushToP4={handlePushToP4}
+                      />
+                    ),
+                  },
+                ]}
+                onChange={setActiveWorkspace}
+              />
+              {!selectedOrder ? (
+                <div style={{ marginTop: 12 }}>
+                  <Empty description="当前没有可查看的订单" />
+                </div>
+              ) : null}
+            </Card>
           </Col>
         </Row>
       </div>

@@ -7,10 +7,18 @@ type P3OrderQueueProps = {
   selectedOrderId: string | null;
   onSelectOrder: (orderId: string) => void | Promise<void>;
   onApprove: (orderId: string) => void | Promise<void>;
+  onReject: (orderId: string) => void | Promise<void>;
   onGenerateDraft: (orderId: string) => void | Promise<void>;
 };
 
-export function P3OrderQueue({ orders, selectedOrderId, onSelectOrder, onApprove, onGenerateDraft }: P3OrderQueueProps) {
+export function P3OrderQueue({
+  orders,
+  selectedOrderId,
+  onSelectOrder,
+  onApprove,
+  onReject,
+  onGenerateDraft,
+}: P3OrderQueueProps) {
   return (
     <Card title="虚规订单列表" style={{ borderRadius: 18 }}>
       {orders.length === 0 ? (
@@ -39,6 +47,17 @@ export function P3OrderQueue({ orders, selectedOrderId, onSelectOrder, onApprove
                   }}
                 >
                   审批通过
+                </Button>,
+                <Button
+                  key="reject"
+                  danger
+                  size="small"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onReject(order.order_id);
+                  }}
+                >
+                  驳回
                 </Button>,
                 <Button
                   key="generate"

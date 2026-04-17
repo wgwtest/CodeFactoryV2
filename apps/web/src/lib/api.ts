@@ -875,3 +875,57 @@ export type P3OrderDetail = {
   review_threads: P3ReviewThread[];
   workorder_batch: P3WorkorderBatch | null;
 };
+
+export type P3ReferenceSection = {
+  section_id: string;
+  title: string;
+  summary: string;
+};
+
+export type P3ReferenceTemplate = {
+  template_id: string;
+  title: string;
+  source_doc_id: string;
+  document_type: "software_design_description";
+  version: string;
+  format: "pdf";
+  summary: string;
+  recommendation: string;
+  official_detail_url: string;
+  pdf_asset_name: string;
+  pdf_url: string | null;
+  sections: P3ReferenceSection[];
+};
+
+export type P3StandardReference = {
+  doc_id: string;
+  title: string;
+  category: string;
+  scope: string;
+  summary: string;
+  official_detail_url: string;
+  recommended_use: string;
+  tags: string[];
+  sections: P3ReferenceSection[];
+};
+
+export type P3TemplateStandardMapping = {
+  template_id: string;
+  doc_id: string;
+  rationale: string;
+  section_pairs: Array<{ template_section: string; standard_section: string }>;
+};
+
+export type P3ReferenceCenter = {
+  templates: P3ReferenceTemplate[];
+  standards: P3StandardReference[];
+  mappings: P3TemplateStandardMapping[];
+};
+
+export type P3StandardSearchResult = {
+  doc_id: string;
+  title: string;
+  matched_section: string;
+  excerpt: string;
+  official_detail_url: string;
+};

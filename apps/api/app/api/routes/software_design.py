@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.db.session import get_session
@@ -21,13 +22,37 @@ def get_software_design_service() -> SoftwareDesignService:
 
 def _raise_http_error(exc: ValueError) -> HTTPException:
     detail = str(exc)
-    status_code = 404 if detail.endswith("not found") else 400
+    if detail.endswith("not found"):
+        status_code = 404
+    elif "already exists" in detail:
+        status_code = 409
+    else:
+        status_code = 400
     return HTTPException(status_code=status_code, detail=detail)
 
 
 @router.get("/overview")
 def get_software_design_overview(service: SoftwareDesignService = Depends(get_software_design_service)):
     return service.get_overview()
+
+
+@router.get("/reference-center")
+def get_reference_center(service: SoftwareDesignService = Depends(get_software_design_service)):
+    return service.get_reference_center()
+
+
+@router.get("/standards/search")
+def search_standard_library(q: str, service: SoftwareDesignService = Depends(get_software_design_service)):
+    return {"items": service.search_standard_library(q)}
+
+
+@router.get("/reference-assets/{asset_name}")
+def get_reference_asset(asset_name: str, service: SoftwareDesignService = Depends(get_software_design_service)):
+    try:
+        asset_path = service.get_reference_asset_path(asset_name)
+    except ValueError as exc:
+        raise _raise_http_error(exc) from exc
+    return FileResponse(asset_path, media_type="application/pdf")
 
 
 @router.get("/orders")
@@ -59,6 +84,14 @@ def create_software_design_order(
 def approve_software_design_order(order_id: str, service: SoftwareDesignService = Depends(get_software_design_service)):
     try:
         return service.approve_order(order_id)
+    except ValueError as exc:
+        raise _raise_http_error(exc) from exc
+
+
+@router.post("/orders/{order_id}/reject")
+def reject_software_design_order(order_id: str, service: SoftwareDesignService = Depends(get_software_design_service)):
+    try:
+        return service.reject_order(order_id)
     except ValueError as exc:
         raise _raise_http_error(exc) from exc
 

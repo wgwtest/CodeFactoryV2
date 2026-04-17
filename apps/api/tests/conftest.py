@@ -11,13 +11,18 @@ def app():
     return create_app()
 
 
-@pytest.fixture()
-def db_session() -> Session:
+@pytest.fixture(autouse=True)
+def reset_database_schema() -> None:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    yield
+    Base.metadata.drop_all(engine)
+
+
+@pytest.fixture()
+def db_session() -> Session:
     with SessionLocal() as session:
         yield session
-    Base.metadata.drop_all(engine)
 
 
 @pytest.fixture()

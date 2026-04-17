@@ -13,11 +13,14 @@ from app.software_design.models import (
     P3Order,
     P3OrderCreate,
     P3OrderDetail,
+    ReferenceCenter,
     ReviewThread,
     ReviewThreadWrite,
+    StandardSearchResult,
     SoftwareDesignBaseline,
     now_iso,
 )
+from app.software_design.reference_library import build_reference_center, ensure_reference_assets, search_standards
 from app.software_design.repository import SoftwareDesignRepository
 from app.software_design.snapshot import project_order_detail, project_order_list, project_overview
 
@@ -25,6 +28,7 @@ from app.software_design.snapshot import project_order_detail, project_order_lis
 class SoftwareDesignService:
     def __init__(self, root: str | Path) -> None:
         self.repository = SoftwareDesignRepository(root)
+        ensure_reference_assets(self.repository.reference_assets_dir)
 
     def get_overview(self) -> dict[str, object]:
         return {"data": project_overview(self.repository.list_orders(), self.repository.list_packages())}
@@ -41,10 +45,28 @@ class SoftwareDesignService:
             self.repository.get_package(order_id),
         )
 
+    def get_reference_center(self) -> ReferenceCenter:
+        return build_reference_center("/api/software-design/reference-assets")
+
+    def search_standard_library(self, query: str) -> list[StandardSearchResult]:
+        return search_standards(query)
+
+    def get_reference_asset_path(self, asset_name: str) -> Path:
+        asset_path = (self.repository.reference_assets_dir / asset_name).resolve()
+        reference_root = self.repository.reference_assets_dir.resolve()
+        if reference_root not in asset_path.parents and asset_path != reference_root:
+            raise ValueError("Reference asset not found")
+        if not asset_path.exists():
+            raise ValueError("Reference asset not found")
+        return asset_path
+
     def create_order(self, payload: P3OrderCreate, requirement_service: RequirementSpecService) -> P3Order:
         spec = requirement_service.get_spec(payload.requirement_spec_id)
         if spec is None:
             raise ValueError("Requirement spec not found")
+        existing_order = self.repository.get_order_by_requirement_spec_id(payload.requirement_spec_id)
+        if existing_order is not None:
+            raise ValueError(f"P3 order already exists for requirement spec {payload.requirement_spec_id}")
         timestamp = now_iso()
         order = P3Order(
             order_id=f"p3-order-{uuid4().hex[:12]}",
@@ -63,6 +85,10 @@ class SoftwareDesignService:
     def approve_order(self, order_id: str) -> P3Order:
         order = self._get_order(order_id)
         return self.repository.save_order(order.model_copy(update={"status": "approved_for_generation", "updated_at": now_iso()}))
+
+    def reject_order(self, order_id: str) -> P3Order:
+        order = self._get_order(order_id)
+        return self.repository.save_order(order.model_copy(update={"status": "rejected", "updated_at": now_iso()}))
 
     def generate_draft(self, order_id: str, requirement_service: RequirementSpecService) -> P3OrderDetail:
         order = self._get_order(order_id)
