@@ -1,14 +1,22 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag } from "antd";
+import { Button, Card, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 
-import type { ToolDefinition, ToolDefinitionWriteInput, ToolHubCatalogs } from "../../lib/api";
+import type {
+  ToolDefinition,
+  ToolDefinitionWriteInput,
+  ToolHubCatalogs,
+  ToolManufacturePlanView,
+} from "../../lib/api";
 
 type P4RegistryWorkspaceProps = {
   tools: ToolDefinition[];
+  manufacturePlans: ToolManufacturePlanView[];
   catalogs: ToolHubCatalogs;
   saving: boolean;
   onCreate: (payload: ToolDefinitionWriteInput) => Promise<void>;
   onUpdate: (toolId: string, payload: ToolDefinitionWriteInput) => Promise<void>;
+  onDelete: (toolId: string) => Promise<void>;
+  onClearAllTools: () => Promise<void>;
 };
 
 type RegistryFormValues = {
@@ -75,10 +83,13 @@ function retainCustomTags(tags: string[]) {
 
 export function P4RegistryWorkspace({
   tools,
+  manufacturePlans,
   catalogs,
   saving,
   onCreate,
   onUpdate,
+  onDelete,
+  onClearAllTools,
 }: P4RegistryWorkspaceProps) {
   const [form] = Form.useForm<RegistryFormValues>();
   const [modalOpen, setModalOpen] = useState(false);
@@ -127,104 +138,190 @@ export function P4RegistryWorkspace({
     form.resetFields();
   }
 
+  function renderPlanStatusTag(status: ToolManufacturePlanView["status"]) {
+    if (status === "ready_for_fetch") {
+      return <Tag color="green">{status}</Tag>;
+    }
+    if (status === "manufacturing_in_progress") {
+      return <Tag color="blue">{status}</Tag>;
+    }
+    if (status === "failed") {
+      return <Tag color="red">{status}</Tag>;
+    }
+    return <Tag color="gold">{status}</Tag>;
+  }
+
   return (
     <>
-      <Card
-        title="工具仓库"
-        extra={
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingTool(null);
-              form.setFieldsValue(buildFormValues(null));
-              setModalOpen(true);
-            }}
-          >
-            新建工具
-          </Button>
-        }
-        style={{ borderRadius: 18 }}
-      >
-        <Table
-          rowKey="tool_id"
-          dataSource={tools}
-          pagination={false}
-          columns={[
-            {
-              title: "工具",
-              dataIndex: "name",
-              render: (_, record) => (
-                <Space direction="vertical" size={4}>
-                  <strong>{record.name}</strong>
-                  <span style={{ color: "#64748b" }}>{record.summary}</span>
-                </Space>
-              ),
-            },
-            {
-              title: "状态",
-              dataIndex: "status",
-              render: (value) => (
-                <Tag color={value === "active" ? "green" : value === "archived" ? "default" : "gold"}>{value}</Tag>
-              ),
-            },
-            {
-              title: "业务域",
-              dataIndex: "primary_domain_id",
-              render: (value) => catalogs.domains.find((item) => item.id === value)?.label ?? value,
-            },
-            {
-              title: "形态",
-              dataIndex: "tool_form_id",
-              render: (value) => catalogs.tool_forms.find((item) => item.id === value)?.label ?? value,
-            },
-            {
-              title: "运行平台",
-              dataIndex: "runtime_platform_ids",
-              render: (value: string[]) =>
-                value
-                  .map((item) => catalogs.runtime_platforms.find((platform) => platform.id === item)?.label ?? item)
-                  .join(" / "),
-            },
-            {
-              title: "验证",
-              dataIndex: ["verification", "status"],
-              render: (value) => <Tag color={value === "verified" ? "green" : "blue"}>{value}</Tag>,
-            },
-            {
-              title: "操作",
-              key: "actions",
-              render: (_, record) => (
-                <Space>
-                  <Button
-                    type="link"
-                    onClick={() => {
-                      setEditingTool(record);
-                      form.setFieldsValue(buildFormValues(record));
-                      setModalOpen(true);
-                    }}
-                  >
-                    编辑
-                  </Button>
-                  {record.status !== "archived" ? (
+      <Space id="xx-p4-registry-workspace" direction="vertical" size={16} style={{ display: "flex" }}>
+        <Card id="xx-p4-registry-manufacture-queue" title="模拟研制队列" style={{ borderRadius: 18 }}>
+          {manufacturePlans.length === 0 ? (
+            <Empty description="当前没有处于模拟研制队列的工具" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            <Table
+              id="xx-p4-registry-manufacture-table"
+              rowKey="plan_id"
+              dataSource={manufacturePlans}
+              pagination={false}
+              columns={[
+                {
+                  title: "组件需求",
+                  dataIndex: "component_name",
+                  render: (_, record) => (
+                    <Space direction="vertical" size={2}>
+                      <Typography.Text strong>{record.component_name}</Typography.Text>
+                      <Typography.Text type="secondary">{record.item_id}</Typography.Text>
+                    </Space>
+                  ),
+                },
+                {
+                  title: "计划状态",
+                  dataIndex: "status",
+                  render: (value: ToolManufacturePlanView["status"]) => renderPlanStatusTag(value),
+                },
+                {
+                  title: "当前进度",
+                  dataIndex: "progress_percent",
+                  render: (value: number) => `${value}%`,
+                },
+                {
+                  title: "时长档位",
+                  dataIndex: "simulation_profile",
+                  render: (value: ToolManufacturePlanView["simulation_profile"]) => <Tag color="geekblue">{value}</Tag>,
+                },
+                {
+                  title: "目标时长",
+                  dataIndex: "target_duration_seconds",
+                  render: (value: number) => `${value}s`,
+                },
+                {
+                  title: "预计完成",
+                  dataIndex: "estimated_ready_at",
+                },
+                {
+                  title: "最近消息",
+                  dataIndex: "last_progress_message",
+                },
+              ]}
+            />
+          )}
+        </Card>
+
+        <Card
+          title="工具仓库"
+          extra={
+            <Space>
+              <Button id="xx-p4-registry-clear-tools-button" danger onClick={() => void onClearAllTools()} loading={saving}>
+                测试清空全部工具
+              </Button>
+              <Button
+                id="xx-p4-registry-create-tool-button"
+                type="primary"
+                onClick={() => {
+                  setEditingTool(null);
+                  form.setFieldsValue(buildFormValues(null));
+                  setModalOpen(true);
+                }}
+              >
+                新建工具
+              </Button>
+            </Space>
+          }
+          style={{ borderRadius: 18 }}
+        >
+          <Table
+            id="xx-p4-registry-tools-table"
+            rowKey="tool_id"
+            dataSource={tools}
+            pagination={false}
+            columns={[
+              {
+                title: "工具",
+                dataIndex: "name",
+                render: (_, record) => (
+                  <Space direction="vertical" size={4}>
+                    <strong>{record.name}</strong>
+                    <span style={{ color: "#64748b" }}>{record.summary}</span>
+                  </Space>
+                ),
+              },
+              {
+                title: "状态",
+                dataIndex: "status",
+                render: (value) => (
+                  <Tag color={value === "active" ? "green" : value === "archived" ? "default" : "gold"}>{value}</Tag>
+                ),
+              },
+              {
+                title: "业务域",
+                dataIndex: "primary_domain_id",
+                render: (value) => catalogs.domains.find((item) => item.id === value)?.label ?? value,
+              },
+              {
+                title: "形态",
+                dataIndex: "tool_form_id",
+                render: (value) => catalogs.tool_forms.find((item) => item.id === value)?.label ?? value,
+              },
+              {
+                title: "运行平台",
+                dataIndex: "runtime_platform_ids",
+                render: (value: string[]) =>
+                  value
+                    .map((item) => catalogs.runtime_platforms.find((platform) => platform.id === item)?.label ?? item)
+                    .join(" / "),
+              },
+              {
+                title: "验证",
+                dataIndex: ["verification", "status"],
+                render: (value) => <Tag color={value === "verified" ? "green" : "blue"}>{value}</Tag>,
+              },
+              {
+                title: "操作",
+                key: "actions",
+                render: (_, record) => (
+                  <Space>
                     <Button
                       type="link"
-                      danger
-                      onClick={() =>
-                        void onUpdate(record.tool_id, {
-                          ...record,
-                          status: "archived",
-                        })
-                      }
+                      aria-label={`编辑工具 ${record.name}`}
+                      onClick={() => {
+                        setEditingTool(record);
+                        form.setFieldsValue(buildFormValues(record));
+                        setModalOpen(true);
+                      }}
                     >
-                      归档
+                      编辑
                     </Button>
-                  ) : null}
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Card>
+                    {record.status !== "archived" ? (
+                      <Button
+                        type="link"
+                        danger
+                        aria-label={`归档工具 ${record.name}`}
+                        onClick={() =>
+                          void onUpdate(record.tool_id, {
+                            ...record,
+                            status: "archived",
+                          })
+                        }
+                      >
+                        归档
+                      </Button>
+                    ) : null}
+                    <Button
+                      id={`xx-p4-registry-remove-tool-${record.tool_id}`}
+                      type="link"
+                      danger
+                      aria-label={`移除工具 ${record.name}`}
+                      onClick={() => void onDelete(record.tool_id)}
+                    >
+                      移除
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Card>
+      </Space>
 
       <Modal
         title={editingTool ? "编辑工具" : "新建工具"}

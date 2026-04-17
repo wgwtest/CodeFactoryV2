@@ -151,7 +151,14 @@ def build_overview_metrics(
         archived_tool_count=len([tool for tool in tools if tool.status == "archived"]),
         match_run_count=len(match_runs),
         evolution_run_count=len(evolution_runs),
-        active_chain_count=len([sheet for sheet in demand_sheets if sheet.status != "ready"]),
+        active_chain_count=len(
+            [
+                sheet
+                for sheet in demand_sheets
+                if sheet.lifecycle_status not in {"rejected", "withdrawn", "closed"}
+                and not (sheet.review_status == "reviewed" and sheet.delivery_status == "delivered")
+            ]
+        ),
         overlap_candidate_count=current_evolution.summary.overlap_risk_count,
         pending_suggestion_count=len(pending_suggestions),
         recent_success_rate=recent_success_rate,

@@ -1,10 +1,12 @@
 # P4 Input Chain Closed-Loop Implementation Plan
 
+> 2026-04-17 修订：本计划已按“推荐优先、逐项审定、批准后交付/研制”的口径收敛。`工具需求单` 视为 `P3 / P4 / P5` 的主干交付流对象。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 `P4` 落地 `P3-sim -> P4 -> P5-sim` 的输入工序链闭环，支持模拟蓝军树型工具需求总单、叶子项匹配/模拟制造，以及整单和叶子双查询。
+**Goal:** 为 `P4` 落地 `P3-sim -> P4 -> P5-sim` 的输入工序链闭环，支持模拟蓝军树型工具需求总单、叶子项推荐分析、人工逐项审定、批准后交付或研制，以及整单和叶子双查询。
 
-**Architecture:** 后端在现有 `tool_hub` 子域上新增 `demand_sheets / demand_items / manufacture_plans` 三类事实对象和对应 API，统一继续投影到 `ToolHubStateSnapshot`。前端新增 `/xx-p3-sim` 与 `/xx-p5-sim` 两个独立模拟页，同时把 `/xx-p4` 的“输入工具链”升级为总单树审查、叶子项流水与 `P5` 输出预览工作区。当前阶段不做真实 `P3/P5`，未命中分支仅做按查询自动推进的模拟制造。
+**Architecture:** 后端在现有 `tool_hub` 子域上新增 `demand_sheets / demand_items / manufacture_plans` 三类事实对象和对应 API，统一继续投影到 `ToolHubStateSnapshot`。前端新增 `/xx-p3-sim` 与 `/xx-p5-sim` 两个独立模拟页，同时把 `/xx-p4` 的“输入工具链”升级为“工具需求列表 + 需求审批与处置面板”的审定工作区。当前阶段不做真实 `P3/P5`，未命中分支仅在人工批准后进入按查询自动推进的模拟制造。
 
 **Tech Stack:** FastAPI, Pydantic, React 18, TypeScript, Ant Design 5, Vitest, Testing Library, pytest
 
@@ -109,7 +111,9 @@ def test_create_mock_blue_force_demand_sheet(tmp_path: Path) -> None:
     payload = response.json()
     assert payload["sheet_id"]
     assert payload["business_case"] == "simulated_blue_force"
-    assert payload["status"] == "accepted"
+    assert payload["lifecycle_status"] == "accepted"
+    assert payload["review_status"] == "pending_review"
+    assert payload["delivery_status"] == "not_delivered"
     assert payload["item_count"] >= 6
 ```
 
@@ -300,7 +304,9 @@ def create_demand_sheet(self, payload: ToolDemandSheetCreateRequest) -> ToolDema
     sheet = ToolDemandSheet(
         sheet_id=sheet_id,
         sheet_name=payload.sheet_name,
-        status="accepted",
+        lifecycle_status="accepted",
+        review_status="pending_review",
+        delivery_status="not_delivered",
         source=payload.source,
         requested_by=payload.requested_by,
         business_case=payload.source["business_case"],
@@ -404,9 +410,11 @@ test("renders P3 and P5 simulator routes", async () => {
 - [ ] **Step 2: Extend the failing `XXP4Page` test for demand-sheet blocks**
 
 ```tsx
-expect(await screen.findByText("P3 模拟发生区")).toBeInTheDocument();
-expect(await screen.findByText("总单树审查区")).toBeInTheDocument();
-expect(await screen.findByText("P5 输出预览区")).toBeInTheDocument();
+expect(await screen.findByText("工序单受理区")).toBeInTheDocument();
+expect(await screen.findByText("工具需求列表")).toBeInTheDocument();
+expect(await screen.findByText("需求审批与处置面板")).toBeInTheDocument();
+expect(screen.queryByText("P3 模拟发生区")).not.toBeInTheDocument();
+expect(screen.queryByText("P5 输出预览区")).not.toBeInTheDocument();
 ```
 
 - [ ] **Step 3: Run the new frontend tests to verify they fail**
@@ -445,7 +453,9 @@ git commit -m "test: add failing P3 P4 P5 sim page coverage"
 export type ToolDemandSheet = {
   sheet_id: string;
   sheet_name: string;
-  status: "accepted" | "processing" | "partially_ready" | "ready" | "failed";
+  lifecycle_status: "submitted" | "accepted" | "rejected" | "withdrawn" | "closed";
+  review_status: "pending_review" | "reviewing" | "reviewed";
+  delivery_status: "not_delivered" | "delivering" | "delivered";
   business_case: string;
   item_count: number;
   matched_existing_count: number;
@@ -514,24 +524,24 @@ export function XXP5SimPage() {
 
 ```tsx
 <Space direction="vertical" size={16} style={{ display: "flex" }}>
-  <Card title="P3 模拟发生区">
-    <Button type="primary" onClick={() => void onGenerateMockSheet()}>生成模拟蓝军需求总单</Button>
+  <Card title="工序单受理区">
+    <Typography.Paragraph>新建总单请前往 /xx-p3-sim</Typography.Paragraph>
+    <Typography.Paragraph>结果消费与进度决策请前往 /xx-p5-sim</Typography.Paragraph>
+    <Select value={activeSheet?.sheet_id} onChange={(value) => void onSelectSheet(value)} />
   </Card>
   <Row gutter={[16, 16]}>
     <Col span={10}>
-      <Card title="总单树审查区">
-        <P4DemandSheetTree sheet={activeSheet} selectedItemId={selectedItemId} onSelectItem={setSelectedItemId} />
-      </Card>
-    </Col>
-    <Col span={14}>
-      <Card title="叶子项处理流水区">
+      <Card title="工具需求列表">
         <P4DemandItemBoard items={activeItems} selectedItemId={selectedItemId} onSelectItem={setSelectedItemId} />
       </Card>
     </Col>
+    <Col span={14}>
+      <Card title="需求审批与处置面板">
+        <P4SupplyResultPreview item={selectedItem} />
+        <P4DemandSheetTree sheet={activeSheet} selectedItemId={selectedItemId} onSelectItem={setSelectedItemId} />
+      </Card>
+    </Col>
   </Row>
-  <Card title="P5 输出预览区">
-    <P4SupplyResultPreview item={selectedItem} />
-  </Card>
 </Space>
 ```
 

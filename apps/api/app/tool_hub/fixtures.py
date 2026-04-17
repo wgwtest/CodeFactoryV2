@@ -5,6 +5,8 @@ from app.tool_hub.models import CatalogItem, ToolDefinition, ToolVerification
 
 DOMAIN_CATALOG = [
     CatalogItem(id="simulated_blue_force", label="模拟蓝军", description="围绕蓝军建模、对抗推演、行动控制和评估复盘的业务域"),
+    CatalogItem(id="navigation_planning", label="导航规划", description="围绕航路设计、冲突校核和导航方案生成的业务域"),
+    CatalogItem(id="data_governance", label="数据治理", description="围绕对象归并、质量核验、血缘审查和标准化治理的业务域"),
     CatalogItem(id="case_management", label="案件管理", description="围绕工单、案例、事项等业务对象的受理与流转"),
     CatalogItem(id="workflow_approval", label="审批流转", description="围绕审批路径、规则校验和节点解释的业务域"),
     CatalogItem(id="scheduling_dispatch", label="排班调度", description="围绕资源排班、冲突检测和调度建议的业务域"),

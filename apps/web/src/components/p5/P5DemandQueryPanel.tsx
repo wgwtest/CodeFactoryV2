@@ -4,15 +4,51 @@ import { Alert, Button, Card, Descriptions, Input, List, Space, Switch, Tag, Typ
 import type { ItemProgressView, ToolDemandItem, ToolDemandSheet } from "../../lib/api";
 import { getDemandItem, getDemandItemProgress, getDemandSheet } from "../../lib/toolHub";
 
-function renderStatusTag(status: string) {
-  if (status === "matched_existing" || status === "ready_for_fetch") {
+function renderLifecycleTag(status: string) {
+  if (status === "accepted" || status === "submitted") {
+    return <Tag color="blue">{`状态码 ${status}`}</Tag>;
+  }
+  if (status === "withdrawn") {
+    return <Tag color="orange">{`状态码 ${status}`}</Tag>;
+  }
+  if (status === "rejected") {
+    return <Tag color="red">{`状态码 ${status}`}</Tag>;
+  }
+  if (status === "closed") {
+    return <Tag>{`状态码 ${status}`}</Tag>;
+  }
+  return <Tag color="gold">{`状态码 ${status}`}</Tag>;
+}
+
+function renderProcessingTag(status: string) {
+  if (status === "matched_existing" || status === "ready_for_fetch" || status === "ready") {
     return <Tag color="green">{status}</Tag>;
   }
-  if (status === "manufacturing_in_progress") {
+  if (status === "manufacturing_in_progress" || status === "processing" || status === "partially_ready") {
     return <Tag color="blue">{status}</Tag>;
   }
   if (status === "failed") {
     return <Tag color="red">{status}</Tag>;
+  }
+  return <Tag color="gold">{status}</Tag>;
+}
+
+function renderReviewTag(status: string) {
+  if (status === "reviewed") {
+    return <Tag color="green">{status}</Tag>;
+  }
+  if (status === "reviewing") {
+    return <Tag color="blue">{status}</Tag>;
+  }
+  return <Tag color="gold">{status}</Tag>;
+}
+
+function renderDeliveryTag(status: string) {
+  if (status === "delivered") {
+    return <Tag color="green">{status}</Tag>;
+  }
+  if (status === "delivering") {
+    return <Tag color="blue">{status}</Tag>;
   }
   return <Tag color="gold">{status}</Tag>;
 }
@@ -39,8 +75,10 @@ export function P5DemandQueryPanel() {
       const response = await getDemandSheet(targetSheetId.trim());
       setSheet(response.data);
       const firstItemId = response.data.items?.[0]?.item_id ?? "";
-      if (firstItemId) {
-        setItemId(firstItemId);
+      setItemId(firstItemId);
+      if (!firstItemId) {
+        setItem(null);
+        setProgress(null);
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "查询工具需求单失败");
@@ -126,9 +164,13 @@ export function P5DemandQueryPanel() {
             <Space direction="vertical" size={16} style={{ display: "flex" }}>
               <Descriptions bordered size="small" column={2}>
                 <Descriptions.Item label="需求单">{sheet.sheet_name}</Descriptions.Item>
-                <Descriptions.Item label="状态">{renderStatusTag(sheet.status)}</Descriptions.Item>
+                <Descriptions.Item label="生命周期状态">{renderLifecycleTag(sheet.lifecycle_status)}</Descriptions.Item>
                 <Descriptions.Item label="sheet_id">{sheet.sheet_id}</Descriptions.Item>
                 <Descriptions.Item label="业务案例">{sheet.business_case}</Descriptions.Item>
+                <Descriptions.Item label="审定状态">{renderReviewTag(sheet.review_status)}</Descriptions.Item>
+                <Descriptions.Item label="交付状态">{renderDeliveryTag(sheet.delivery_status)}</Descriptions.Item>
+                <Descriptions.Item label="处理进度状态">{renderProcessingTag(sheet.processing_status)}</Descriptions.Item>
+                <Descriptions.Item label="终态原因码">{sheet.terminal_reason_code ?? "-"}</Descriptions.Item>
               </Descriptions>
 
               <List
@@ -142,7 +184,8 @@ export function P5DemandQueryPanel() {
                     <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
                       <Space align="center" wrap>
                         <Typography.Text strong>{demandItem.component_name}</Typography.Text>
-                        {renderStatusTag(demandItem.status)}
+                        <Tag color="gold">{demandItem.review_status}</Tag>
+                        {renderProcessingTag(demandItem.processing_status)}
                       </Space>
                       <Typography.Text type="secondary">{demandItem.item_id}</Typography.Text>
                       <Button
@@ -190,7 +233,9 @@ export function P5DemandQueryPanel() {
           {item ? (
             <Descriptions bordered size="small" column={2}>
               <Descriptions.Item label="组件">{item.component_name}</Descriptions.Item>
-              <Descriptions.Item label="状态">{renderStatusTag(item.status)}</Descriptions.Item>
+              <Descriptions.Item label="状态">{renderProcessingTag(item.processing_status)}</Descriptions.Item>
+              <Descriptions.Item label="审定状态">{item.review_status}</Descriptions.Item>
+              <Descriptions.Item label="推荐结论">{item.recommendation_type}</Descriptions.Item>
               <Descriptions.Item label="item_id">{item.item_id}</Descriptions.Item>
               <Descriptions.Item label="路径">{item.ancestry.join(" / ")}</Descriptions.Item>
             </Descriptions>
@@ -199,16 +244,30 @@ export function P5DemandQueryPanel() {
           {progress ? (
             <Card id="xx-p5-progress-card" size="small" style={{ borderRadius: 16, background: "#f8fafc" }}>
               <Space direction="vertical" size={8} style={{ display: "flex" }}>
-                <Typography.Text strong>{progress.summary}</Typography.Text>
+                <Typography.Text strong>{progress.last_message}</Typography.Text>
+                <Typography.Text type="secondary">
+                  生命周期状态：{progress.sheet_lifecycle_status}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  审定状态：{progress.sheet_review_status}；交付状态：{progress.sheet_delivery_status}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  叶子项处理状态：{progress.status}
+                </Typography.Text>
                 <Typography.Text type="secondary">当前进度：{progress.progress_percent}%</Typography.Text>
-                {progress.estimated_ready_in_hours != null ? (
+                {progress.result_type === "pending_manufacture" || progress.result_type === "manufactured_tool" ? (
                   <Typography.Text type="secondary">
-                    预计完成：{progress.estimated_ready_in_hours} 小时
+                    当前进度由 P4 模拟执行器后台推进，P5 仅执行查询与取用决策。
                   </Typography.Text>
                 ) : null}
-                {progress.fetch_manifest ? (
+                {progress.suggested_poll_after_seconds != null ? (
                   <Typography.Text type="secondary">
-                    获取接口：{progress.fetch_manifest.fetch_path}
+                    建议轮询：{progress.suggested_poll_after_seconds} 秒
+                  </Typography.Text>
+                ) : null}
+                {progress.fetch_interface ? (
+                  <Typography.Text type="secondary">
+                    获取接口：{progress.fetch_interface.entrypoint_locator}
                   </Typography.Text>
                 ) : null}
               </Space>

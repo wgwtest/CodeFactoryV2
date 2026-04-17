@@ -10,31 +10,37 @@
 - `P4.2.4` `P5-sim` 模拟消费页
 - `P4.2.5` 三段联调与回归验证
 
+> `P4.2.1` 中与“工具需求单生命周期、撤销/驳回边界、业务态/处理态拆分”相关的约束，已从本文拆分到独立文档：
+> `docs/superpowers/specs/2026-04-16-p4-tool-demand-sheet-lifecycle-design.md`
+
 ## 1. 设计目标
 
 在不引入真实 `P3`、真实 `P5`、真实工具开发编排的前提下，为当前 `P4` 增加一条可演示、可查询、可校验的输入工序链闭环：
 
-`P3 模拟发生器 -> P4 接收工具需求总单 -> 拆叶子项 -> 分析/核对/匹配 -> 未命中模拟制造 -> P5 模拟消费与查询`
+`P3 模拟发生器 -> P4 接收工具需求总单 -> 拆叶子项 -> 系统推荐 -> 人工逐项审定 -> 批准后直接交付或进入研制 -> P5 模拟消费与查询`
 
-本轮目标不是补齐完整平台，而是把跨阶段协议、查询机制和页面边界固定清楚，给后续 `P3`、`P4`、`P5` 的正式开发留下稳定外壳。
+本轮目标不是补齐完整平台，而是把跨阶段协议、查询机制、逐项审定边界、完成判定和页面边界固定清楚，给后续 `P3`、`P4`、`P5` 的正式开发留下稳定外壳。
 
 ## 2. 设计边界
 
 ### 2.1 本轮要做
 
 - 定义 `P3 -> P4 -> P5` 的标准协议对象
+- 把 `工具需求总单` 固定为 `P3 / P4 / P5` 的主干交付流对象
 - 提供独立 `P3-sim` 页面，模拟 `P3` 产生工具需求总单
 - 提供升级后的 `P4` 输入工具链工作区，处理总单与叶子项
+- 支持 `P4` 对每个工具需求项进行人工审定
+- 支持“批准直接交付 / 批准进入研制 / 驳回需求项”三种审定结论
 - 提供独立 `P5-sim` 页面，模拟 `P5` 查询和消费 `P4` 输出
 - 支持整单查询、叶子查询、进度查询
-- 支持未命中后由 `P4` 内部进行“模拟制造”
+- 支持审定通过后由 `P4` 内部进行“模拟制造”
 
 ### 2.2 本轮不做
 
 - 不做真实 `P3` 建模链
 - 不做真实 `P5` 执行链
 - 不做真实工具开发、真实制品发布、真实调度器
-- 不做消息推送、审批流、权限治理
+- 不做消息推送、多角色复杂审批流、权限治理
 - 不做多工具依赖编排
 
 ## 3. 页面拓扑与解耦原则
@@ -56,7 +62,7 @@
 
 `/xx-p4`：
 
-- 只负责受理、拆叶子项、匹配、模拟制造、结果输出
+- 只负责受理、拆叶子项、推荐分析、逐项审定、批准后的交付或研制输出
 - 不负责 `P3` 的树编辑体验，也不负责 `P5` 的消费决策界面
 
 `/xx-p5-sim`：
@@ -203,12 +209,18 @@ acceptance_notes:
 ```yaml
 sheet_id:
 sheet_name:
-status:
+lifecycle_status:
+review_status:
+delivery_status:
 source:
 requested_by:
 business_case:
 root_node:
 item_count:
+pending_review_count:
+approved_delivery_count:
+approved_manufacture_count:
+rejected_item_count:
 matched_existing_count:
 manufacturing_count:
 ready_for_fetch_count:
@@ -216,6 +228,13 @@ failed_count:
 submitted_at:
 updated_at:
 ```
+
+说明：
+
+- `lifecycle_status`：整单在业务流转上的位置，例如 `submitted / accepted / withdrawn / rejected / closed`
+- `review_status`：整单的审定聚合状态，例如 `pending_review / reviewing / reviewed`
+- `delivery_status`：整单的交付聚合状态，例如 `not_delivered / delivering / delivered`
+- `review_status` 与 `delivery_status` 是当前页面对外展示的主状态，不再依赖单一 `processing_status`
 
 ### 5.5 `ToolDemandItem`
 
@@ -233,7 +252,16 @@ expected_output_types:
 preferred_tool_forms:
 preferred_runtime_platforms:
 lifecycle_stage_ids:
-status:
+recommendation_type:
+recommendation_summary:
+review_status:
+importance_score:
+urgency_score:
+rationality_verdict:
+review_comment:
+reviewed_by:
+reviewed_at:
+processing_status:
 analysis_result:
 check_result:
 match_result:
@@ -241,6 +269,33 @@ supply_result:
 submitted_at:
 updated_at:
 ```
+
+字段约束：
+
+- `recommendation_type`：系统推荐结论，固定为 `existing_tool / manufacture_candidate / insufficient_info`
+- `review_status`：人工审定结论，固定为 `pending_review / approved_delivery / approved_manufacture / rejected`
+- `importance_score / urgency_score`：当前阶段允许 `1-5` 分
+- `rationality_verdict`：人工对需求项合理性的简要判断
+- `processing_status`：仅表示内部处理推进，不再代替人工审定结论
+
+### 5.5.1 `ToolDemandReviewDecisionRequest`
+
+`P4` 对单个工具需求项提交审定结论的标准对象。
+
+```yaml
+decision:
+importance_score:
+urgency_score:
+rationality_verdict:
+review_comment:
+reviewed_by:
+```
+
+其中 `decision` 固定为：
+
+- `approve_delivery`
+- `approve_manufacture`
+- `reject`
 
 ### 5.6 `ToolManufacturePlan`
 
@@ -257,6 +312,12 @@ planned_runtime_platform_ids:
 created_at:
 updated_at:
 ```
+
+约束：
+
+- `ToolManufacturePlan` 只能在 `ToolDemandItem.review_status = approved_manufacture` 后创建
+- “系统推荐待研制”不等于“已经进入研制名单”
+- 未经人工审定，不允许自动生成制造计划
 
 ### 5.7 `ToolSupplyResult`
 
@@ -321,11 +382,11 @@ last_message:
 updated_at:
 ```
 
-## 7. 状态机
+## 7. 状态模型与完成判定
 
-### 7.1 叶子项状态机
+### 7.1 叶子项内部处理状态
 
-`ToolDemandItem.status` 固定为：
+`ToolDemandItem.processing_status` 固定为：
 
 - `accepted`
 - `analyzing`
@@ -338,30 +399,86 @@ updated_at:
 
 状态流固定为：
 
-- 命中链路：
+- 推荐命中链路：
   `accepted -> analyzing -> checking -> matched_existing`
-- 未命中链路：
+- 审定后进入研制链路：
   `accepted -> analyzing -> checking -> manufacturing_pending -> manufacturing_in_progress -> ready_for_fetch`
 - 异常链路：
   任一非终态可进入 `failed`
 
-### 7.2 总单状态机
+补充约束：
 
-`ToolDemandSheet.status` 固定为：
+- `manufacturing_pending / manufacturing_in_progress / ready_for_fetch` 只能出现在 `review_status = approved_manufacture` 之后
+- 推荐结果是 `manufacture_candidate` 时，不允许在待审阶段直接进入制造状态
 
-- `accepted`
-- `processing`
-- `partially_ready`
-- `ready`
-- `failed`
+### 7.2 叶子项审定状态
+
+`ToolDemandItem.review_status` 固定为：
+
+- `pending_review`
+- `approved_delivery`
+- `approved_manufacture`
+- `rejected`
+
+说明：
+
+- `pending_review`：系统已给出推荐结论，但 `P4` 尚未做最终人工判断
+- `approved_delivery`：`P4` 认可命中结论，允许直接把现有工具接口交给 `P5`
+- `approved_manufacture`：`P4` 认可需求项成立，允许进入研制名单
+- `rejected`：该叶子项在当前批次下被 `P4` 驳回，不进入交付和研制
+
+### 7.3 总单聚合状态
+
+总单不再用单一处理态表达所有语义，而是暴露三条聚合状态轴：
+
+- `lifecycle_status`
+- `review_status`
+- `delivery_status`
 
 聚合规则：
 
-- 刚受理成功：`accepted`
-- 至少一个叶子项在处理中，且没有任何叶子可取：`processing`
-- 至少一个叶子已可取，但整单未全部可取：`partially_ready`
-- 所有叶子进入 `matched_existing` 或 `ready_for_fetch`：`ready`
-- 总单解析失败或全部叶子失败：`failed`
+- `review_status = pending_review`
+  - 所有叶子项都仍处于 `pending_review`
+- `review_status = reviewing`
+  - 部分叶子项已审定，但仍存在 `pending_review`
+- `review_status = reviewed`
+  - 所有叶子项都已有最终审定结论
+
+- `delivery_status = not_delivered`
+  - 没有任何被批准的叶子项形成可交付结果
+- `delivery_status = delivering`
+  - 一部分被批准项已可交付，但仍有批准项不可交付
+- `delivery_status = delivered`
+  - 所有被批准的叶子项都已形成可交付结果
+
+### 7.4 “审定完成”与“P4 完成”的定义
+
+当前设计必须区分两个完成里程碑：
+
+`审定完成`：
+
+- 所有叶子项都已经落到以下三种最终结论之一：
+  - `approved_delivery`
+  - `approved_manufacture`
+  - `rejected`
+- 此时总单 `review_status = reviewed`
+
+`P4 闭环完成`：
+
+- 总单已经 `reviewed`
+- 且所有被批准的叶子项都已经形成可交付结果
+
+其中“可交付结果”的定义为：
+
+- 对 `approved_delivery` 项：正式 `fetch_manifest` 已可供 `P5` 获取
+- 对 `approved_manufacture` 项：新工具已达到 `ready_for_fetch`
+- 对 `rejected` 项：不计入交付完成范围
+
+补充边界：
+
+- `P4` 的 `delivered` 语义是“P4 已准备好，P5 现在可以取”
+- 不要求等待 `P5` 真正签收或消费成功
+- 这样可以保持 `P4 / P5` 解耦
 
 ## 8. P4 处理规则
 
@@ -370,6 +487,7 @@ updated_at:
 - `P4` 收到 `ToolDemandSheetCreateRequest` 后，立即生成 `sheet_id`
 - 对树执行结构校验
 - 自动从所有 `component` 叶子节点拆出 `ToolDemandItem`
+- 所有新拆出的叶子项默认进入 `review_status = pending_review`
 
 ### 8.2 分析与核对规则
 
@@ -393,28 +511,63 @@ updated_at:
 - 运行平台
 - 关键词
 
-命中后立即生成 `existing_tool` 类型的 `ToolSupplyResult`。
+匹配的直接结果不是“自动交付”或“自动入研制”，而是生成系统推荐：
 
-### 8.4 未命中规则
+- 命中现有工具：`recommendation_type = existing_tool`
+- 未命中但可研制：`recommendation_type = manufacture_candidate`
+- 输入不足或约束不完整：`recommendation_type = insufficient_info`
 
-未命中后：
+同时生成对应 `recommendation_summary`、`analysis_result`、`check_result` 与 `match_result`。
 
-- `P4` 内部生成 `ToolManufacturePlan`
-- 返回 `pending_manufacture` 类型结果
-- 给出 `estimated_ready_at`
-- 给出 `progress_query_interface`
+### 8.4 审定规则
 
-### 8.5 模拟制造规则
+`P4` 必须对每个叶子项提交人工审定结论，不能让系统推荐直接替代最终决定。
+
+允许动作：
+
+- `approve_delivery`
+- `approve_manufacture`
+- `reject`
+
+审定约束：
+
+- 只有 `recommendation_type = existing_tool` 时允许 `approve_delivery`
+- 只有 `recommendation_type = manufacture_candidate` 时允许 `approve_manufacture`
+- `recommendation_type = insufficient_info` 当前阶段不允许直接批准，只允许继续保持待审或驳回
+- 驳回必须填写理由
+
+### 8.5 未命中规则
+
+系统推荐未命中后：
+
+- 只生成“建议进入研制”的推荐结论
+- 不自动创建 `ToolManufacturePlan`
+- 不自动把该需求项放进研制名单
+- 必须等待人工执行 `approve_manufacture`
+
+### 8.6 模拟制造规则
 
 本轮不启动后台调度器，采用“按查询自动推进”的模拟制造方式。
 
 规则固定为：
 
+- 只有在 `approve_manufacture` 之后才创建计划
 - 创建计划时写入 `estimated_ready_at`
 - 每次查询 `item progress` 时，根据当前时间推进状态
 - 未到预计时间：返回 `manufacturing_pending` 或 `manufacturing_in_progress`
 - 到达预计时间：自动转为 `ready_for_fetch`
 - 同时写入一个模拟工具定义和可取清单
+
+### 8.7 交付规则
+
+审定后的交付规则固定为：
+
+- `approved_delivery`
+  - 立即把命中的现有工具接口视为正式可交付结果
+- `approved_manufacture`
+  - 只有在工具进入 `ready_for_fetch` 后，才视为正式可交付
+- `rejected`
+  - 不进入交付范围
 
 ## 9. API 设计
 
@@ -477,7 +630,22 @@ GET /api/tool-hub/demand-items/{item_id}
 - 当前 `ToolSupplyResult`
 - 分析、核对、匹配结果
 
-### 9.6 叶子项进度查询
+### 9.6 叶子项审定接口
+
+```text
+POST /api/tool-hub/demand-items/{item_id}/review
+```
+
+请求体：
+
+- `ToolDemandReviewDecisionRequest`
+
+用途：
+
+- 由 `P4` 对当前叶子项提交最终人工审定结论
+- 决定该项是直接交付、进入研制，还是驳回
+
+### 9.7 叶子项进度查询
 
 ```text
 GET /api/tool-hub/demand-items/{item_id}/progress
@@ -487,7 +655,7 @@ GET /api/tool-hub/demand-items/{item_id}/progress
 
 - `ItemProgressView`
 
-### 9.7 工具获取清单接口
+### 9.8 工具获取清单接口
 
 ```text
 GET /api/tool-hub/tools/{tool_id}/fetch
@@ -521,14 +689,47 @@ GET /api/tool-hub/tools/{tool_id}/fetch
 
 `输入工具链` 工作区固定区块：
 
-- `P3 模拟发生区`
-- `总单摘要区`
-- `总单树审查区`
-- `叶子项处理流水区`
-- `当前叶子详情区`
-- `P5 输出预览区`
-- `整单查询区`
-- `叶子进度查询区`
+- `工序单受理区`
+- `工具需求列表`
+- `需求审批与处置面板`
+
+说明：
+
+- 新建总单必须前往独立 `/xx-p3-sim`
+- 结果消费与进度决策必须前往独立 `/xx-p5-sim`
+- `/xx-p4` 只保留已有总单的受理、逐项审定、研制准入与结果输出
+
+`工具需求列表`：
+
+- 一行对应一个真实工具需求项
+- 不再把树节点和需求项混展示
+- 默认支持以下筛选：
+  - `全部`
+  - `待审定`
+  - `直接交付`
+  - `进入研制`
+  - `已驳回`
+- 默认排序：
+  - `待审定优先`
+  - `重要性优先`
+  - `更新时间优先`
+
+`需求审批与处置面板` 内部固定拆成 4 个子区：
+
+- `需求摘要`
+- `审批决策`
+- `供给与交付结果`
+- `辅助来源信息`
+
+其中：
+
+- 原来的 `供给结果输出区` 不再作为独立大区存在，直接并入 `供给与交付结果`
+- 原来的树形区不再作为主视图区存在，只保留在 `辅助来源信息` 中，默认折叠
+- `辅助来源信息` 只回答“这个需求项从哪条上游结构拆出来”，不再承担主审批功能
+
+左栏和右栏之间的主流程固定为：
+
+`选中需求项 -> 查看摘要 -> 打分/判断合理性 -> 审批 -> 直接交付或进入研制名单`
 
 ### 10.3 `/xx-p5-sim`
 
@@ -544,8 +745,10 @@ GET /api/tool-hub/tools/{tool_id}/fetch
 
 - 输入 `sheet_id` 看整单
 - 输入 `item_id` 看进度
-- 命中时查看 `fetch_interface`
+- 查看整单 `lifecycle_status / review_status / delivery_status`
+- 命中且已批准时查看 `fetch_interface`
 - 未命中时查看 `estimated_ready_at` 和 `progress_query_interface`
+- 对 `withdrawn / rejected` 工单只做只读提示，不继续视为有效待取供给
 
 ## 11. 数据层与目录建议
 
@@ -576,7 +779,7 @@ GET /api/tool-hub/tools/{tool_id}/fetch
 1. 定义协议模型与接口契约
 2. 补充文件型仓储
 3. 实现 `P3-sim` 模拟发生器入口
-4. 实现 `P4` 总单受理、拆叶子项、匹配、模拟制造
+4. 实现 `P4` 总单受理、拆叶子项、推荐分析、逐项审定与批准后交付/研制
 5. 实现整单查询、叶子详情、进度查询、工具获取清单接口
 6. 改造 `/xx-p4` 输入工具链工作区
 7. 新增 `/xx-p3-sim` 与 `/xx-p5-sim`
@@ -590,8 +793,10 @@ GET /api/tool-hub/tools/{tool_id}/fetch
 2. 存在独立 `P5-sim` 页面 `/xx-p5-sim`
 3. `P3-sim` 能生成并提交一张“模拟蓝军”工具需求总单
 4. `P4` 能把总单拆成叶子项并处理
-5. 命中现有工具时，`P4` 能返回统一 `fetch_interface`
-6. 未命中时，`P4` 能返回预计生成时间与进度查询接口
-7. `P5-sim` 能查整单，也能查叶子项进度
-8. 到达预计时间后，叶子项能自动转为 `ready_for_fetch`
-9. 三页之间只通过协议联动，不共享业务页面组件
+5. 所有叶子项在进入研制或交付前，都必须先进入 `pending_review`
+6. 命中现有工具时，只有在 `approve_delivery` 后，`P4` 才能返回统一 `fetch_interface`
+7. 未命中时，只有在 `approve_manufacture` 后，`P4` 才能返回预计生成时间与进度查询接口
+8. `P5-sim` 能查整单，也能查叶子项进度
+9. 整单查询必须能同时展示 `lifecycle_status / review_status / delivery_status`
+10. 到达预计时间后，已批准进入研制的叶子项能自动转为 `ready_for_fetch`
+11. 三页之间只通过协议联动，不共享业务页面组件

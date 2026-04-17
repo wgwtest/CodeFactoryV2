@@ -15,9 +15,19 @@ ToolVerificationStatus = Literal["unverified", "verified", "warning", "failed"]
 SupportedSource = Literal["p1_readonly_api", "frozen_snapshot", "manual_input", "tool_hub_snapshot"]
 RiskKind = Literal["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"]
 RiskSeverity = Literal["info", "warning", "critical"]
-ToolDemandSheetStatus = Literal["accepted", "processing", "partially_ready", "ready", "failed"]
+ToolDemandSheetLifecycleStatus = Literal["submitted", "accepted", "rejected", "withdrawn", "closed"]
+ToolDemandSheetReviewStatus = Literal["pending_review", "reviewing", "reviewed"]
+ToolDemandSheetDeliveryStatus = Literal["not_delivered", "delivering", "delivered"]
+ToolDemandSheetProcessingStatus = Literal["not_started", "processing", "partially_ready", "ready", "failed"]
 ToolDemandNodeType = Literal["system", "subsystem", "sub_subsystem", "module", "component"]
-ToolDemandItemStatus = Literal[
+ToolDemandLifecycleEventType = Literal["submitted", "accepted", "rejected", "withdrawn", "closed"]
+ToolDemandItemRecommendationType = Literal["existing_tool", "manufacture_candidate", "insufficient_info"]
+ToolDemandItemReviewStatus = Literal["pending_review", "approved_delivery", "approved_manufacture", "rejected"]
+ToolDemandReviewDecision = Literal["approve_delivery", "approve_manufacture", "reject"]
+ToolDemandItemProcessingStatus = Literal[
+    "accepted",
+    "analyzing",
+    "checking",
     "matched_existing",
     "manufacturing_pending",
     "manufacturing_in_progress",
@@ -26,6 +36,9 @@ ToolDemandItemStatus = Literal[
 ]
 ToolSupplyResultType = Literal["existing_tool", "pending_manufacture", "manufactured_tool"]
 ToolManufacturePlanStatus = Literal["manufacturing_pending", "manufacturing_in_progress", "ready_for_fetch", "failed"]
+ToolManufactureSimulationProfile = Literal["fast", "normal", "slow"]
+ToolDemandSheetStatus = ToolDemandSheetProcessingStatus
+ToolDemandItemStatus = ToolDemandItemProcessingStatus
 
 LEGACY_CATEGORY_TO_DOMAIN = {
     "knowledge_ingestion": "cross_domain_shared",
@@ -50,6 +63,18 @@ LEGACY_CAPABILITY_TO_DOMAIN = {
     "entity-normalization": "master_data",
     "process-analysis": "workflow_approval",
     "coverage-analysis": "cross_domain_shared",
+}
+
+LEGACY_SHEET_STATUS_TO_STATE: dict[str, tuple[ToolDemandSheetLifecycleStatus, ToolDemandSheetProcessingStatus]] = {
+    "accepted": ("accepted", "not_started"),
+    "processing": ("accepted", "processing"),
+    "partially_ready": ("accepted", "partially_ready"),
+    "ready": ("accepted", "ready"),
+    "failed": ("accepted", "failed"),
+    "submitted": ("submitted", "not_started"),
+    "rejected": ("rejected", "not_started"),
+    "withdrawn": ("withdrawn", "not_started"),
+    "closed": ("closed", "ready"),
 }
 
 
@@ -125,6 +150,65 @@ def _build_canonical_tags(payload: dict[str, Any]) -> list[str]:
         *[f"output:{item}" for item in output_types],
     ]
     return sorted(dict.fromkeys([*canonical_tags, *preserved_tags]))
+
+
+def _normalize_legacy_sheet_status(
+    status: Any,
+) -> tuple[ToolDemandSheetLifecycleStatus, ToolDemandSheetProcessingStatus]:
+    if isinstance(status, str) and status in LEGACY_SHEET_STATUS_TO_STATE:
+        return LEGACY_SHEET_STATUS_TO_STATE[status]
+    return ("submitted", "not_started")
+
+
+def _normalize_legacy_item_status(status: Any) -> ToolDemandItemProcessingStatus:
+    if isinstance(status, str):
+        if status in {
+            "accepted",
+            "analyzing",
+            "checking",
+            "matched_existing",
+            "manufacturing_pending",
+            "manufacturing_in_progress",
+            "ready_for_fetch",
+            "failed",
+        }:
+            return status
+    return "accepted"
+
+
+def _derive_legacy_item_review_status(payload: dict[str, Any]) -> ToolDemandItemReviewStatus:
+    review_status = payload.get("review_status")
+    if review_status in {"pending_review", "approved_delivery", "approved_manufacture", "rejected"}:
+        return review_status
+
+    supply_result = payload.get("supply_result")
+    result_type = supply_result.get("result_type") if isinstance(supply_result, dict) else None
+    if result_type == "existing_tool":
+        return "approved_delivery"
+    if result_type in {"pending_manufacture", "manufactured_tool"}:
+        return "approved_manufacture"
+    return "pending_review"
+
+
+def _derive_legacy_item_recommendation_type(payload: dict[str, Any]) -> ToolDemandItemRecommendationType:
+    recommendation_type = payload.get("recommendation_type")
+    if recommendation_type in {"existing_tool", "manufacture_candidate", "insufficient_info"}:
+        return recommendation_type
+
+    supply_result = payload.get("supply_result")
+    result_type = supply_result.get("result_type") if isinstance(supply_result, dict) else None
+    processing_status = payload.get("processing_status") or payload.get("status")
+    if result_type == "existing_tool" or processing_status == "matched_existing":
+        return "existing_tool"
+    if result_type in {"pending_manufacture", "manufactured_tool"} or processing_status in {
+        "manufacturing_pending",
+        "manufacturing_in_progress",
+        "ready_for_fetch",
+    }:
+        return "manufacture_candidate"
+    if payload.get("required_input_types") or payload.get("expected_output_types"):
+        return "manufacture_candidate"
+    return "insufficient_info"
 
 
 class ToolVerification(BaseModel):
@@ -233,21 +317,84 @@ class ToolDemandSheetCreateRequest(BaseModel):
 class ToolFetchManifest(BaseModel):
     tool_id: str
     tool_name: str
-    fetch_type: Literal["tool_definition"] = "tool_definition"
-    fetch_path: str
-    fetch_method: Literal["GET"] = "GET"
-    note: str = ""
+    tool_version: str = "v1"
+    tool_form_id: str = "skill"
+    runtime_platform_ids: list[str] = Field(default_factory=list)
+    fetch_mode: Literal["descriptor"] = "descriptor"
+    entrypoint_type: Literal["http", "descriptor", "artifact_ref", "manual"] = "http"
+    entrypoint_locator: str
+    contract_version: str = "p4.fetch.v1"
+    updated_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        if "entrypoint_locator" not in payload and "fetch_path" in payload:
+            payload["entrypoint_locator"] = payload["fetch_path"]
+        payload.setdefault("tool_version", "v1")
+        payload.setdefault("tool_form_id", "skill")
+        payload.setdefault("runtime_platform_ids", ["agent_runtime"])
+        payload.setdefault("fetch_mode", "descriptor")
+        locator = str(payload.get("entrypoint_locator", ""))
+        payload.setdefault("entrypoint_type", "http" if locator.startswith("/") else "descriptor")
+        payload.setdefault("contract_version", "p4.fetch.v1")
+        payload.setdefault("updated_at", now_iso())
+        return payload
 
 
 class ToolSupplyResult(BaseModel):
     result_type: ToolSupplyResultType
-    summary: str = ""
-    tool_id: str | None = None
-    tool_name: str | None = None
-    fetch_manifest: ToolFetchManifest | None = None
-    progress_query_path: str | None = None
+    item_id: str
+    tool_ref: str | None = None
+    fetch_interface: ToolFetchManifest | None = None
+    progress_query_interface: str | None = None
     estimated_ready_at: str | None = None
-    estimated_ready_in_hours: int | None = None
+    suggested_poll_after_seconds: int | None = None
+    available_at: str | None = None
+    last_message: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        if "tool_ref" not in payload and payload.get("tool_id"):
+            payload["tool_ref"] = payload["tool_id"]
+        if "fetch_interface" not in payload and payload.get("fetch_manifest") is not None:
+            payload["fetch_interface"] = payload["fetch_manifest"]
+        if "progress_query_interface" not in payload and payload.get("progress_query_path"):
+            payload["progress_query_interface"] = payload["progress_query_path"]
+        if "last_message" not in payload and payload.get("summary"):
+            payload["last_message"] = payload["summary"]
+        payload.setdefault("item_id", "")
+        payload.setdefault("suggested_poll_after_seconds", None)
+        payload.setdefault("available_at", None)
+        return payload
+
+
+class ToolDemandLifecycleEvent(BaseModel):
+    event_id: str
+    event_type: ToolDemandLifecycleEventType
+    actor_phase: str
+    actor_id: str
+    from_status: ToolDemandSheetLifecycleStatus | None = None
+    to_status: ToolDemandSheetLifecycleStatus
+    reason_code: str = ""
+    reason_message: str = ""
+    occurred_at: str = Field(default_factory=now_iso)
+
+
+class ToolDemandSheetActionRequest(BaseModel):
+    actor_id: str
+    reason_code: str
+    reason_message: str
+    actor_phase: str | None = None
 
 
 class ToolDemandItem(BaseModel):
@@ -266,47 +413,141 @@ class ToolDemandItem(BaseModel):
     lifecycle_stage_ids: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     acceptance_notes: str = ""
-    status: ToolDemandItemStatus
+    recommendation_type: ToolDemandItemRecommendationType
+    recommendation_summary: str = ""
+    recommended_tool_id: str | None = None
+    recommended_tool_name: str | None = None
+    review_status: ToolDemandItemReviewStatus
+    importance_score: int | None = None
+    urgency_score: int | None = None
+    rationality_verdict: str = ""
+    review_comment: str = ""
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    processing_status: ToolDemandItemProcessingStatus
     analysis_result: str = ""
     check_result: str = ""
     match_result: str = ""
-    supply_result: ToolSupplyResult
+    supply_result: ToolSupplyResult | None = None
     submitted_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_status(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        if "processing_status" not in payload:
+            payload["processing_status"] = _normalize_legacy_item_status(payload.get("status"))
+        payload.setdefault("review_status", _derive_legacy_item_review_status(payload))
+        payload.setdefault("recommendation_type", _derive_legacy_item_recommendation_type(payload))
+        payload.setdefault(
+            "recommendation_summary",
+            str(payload.get("match_result") or payload.get("analysis_result") or ""),
+        )
+        supply_result = payload.get("supply_result")
+        if isinstance(supply_result, dict):
+            payload.setdefault("recommended_tool_id", supply_result.get("tool_id") or supply_result.get("tool_ref"))
+            payload.setdefault("recommended_tool_name", supply_result.get("tool_name"))
+        payload.setdefault("importance_score", None)
+        payload.setdefault("urgency_score", None)
+        payload.setdefault("rationality_verdict", "")
+        payload.setdefault("review_comment", "")
+        payload.setdefault("reviewed_by", None)
+        payload.setdefault("reviewed_at", None)
+        return payload
 
 
 class ToolManufacturePlan(BaseModel):
     plan_id: str
     item_id: str
     status: ToolManufacturePlanStatus
+    simulation_profile: ToolManufactureSimulationProfile = "normal"
+    target_duration_seconds: int = 300
     estimated_ready_at: str
-    estimated_ready_in_hours: int
+    estimated_ready_in_hours: int | None = None
+    suggested_poll_after_seconds: int = 60
     planned_tool_name: str
     planned_tool_form_id: str
     planned_runtime_platform_ids: list[str] = Field(default_factory=list)
     manufactured_tool_id: str | None = None
     query_count: int = 0
     progress_percent: int = 15
+    started_at: str | None = None
+    completed_at: str | None = None
+    last_progress_message: str = ""
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        payload.setdefault("simulation_profile", "normal")
+        payload.setdefault("target_duration_seconds", 300)
+        payload.setdefault("suggested_poll_after_seconds", 60)
+        payload.setdefault("started_at", None)
+        payload.setdefault("completed_at", None)
+        payload.setdefault("last_progress_message", "")
+        return payload
 
 
 class ToolDemandSheet(BaseModel):
     sheet_id: str
     sheet_name: str
-    status: ToolDemandSheetStatus
+    lifecycle_status: ToolDemandSheetLifecycleStatus
+    review_status: ToolDemandSheetReviewStatus
+    delivery_status: ToolDemandSheetDeliveryStatus
+    processing_status: ToolDemandSheetProcessingStatus
     source: ToolDemandSource
     requested_by: str
     business_case: str
     root_node: ToolDemandNode
     item_ids: list[str] = Field(default_factory=list)
     item_count: int = 0
+    pending_review_count: int = 0
+    approved_delivery_count: int = 0
+    approved_manufacture_count: int = 0
+    rejected_item_count: int = 0
     matched_existing_count: int = 0
     manufacturing_count: int = 0
     ready_for_fetch_count: int = 0
     failed_count: int = 0
+    lifecycle_events: list[ToolDemandLifecycleEvent] = Field(default_factory=list)
+    last_actor_phase: str | None = None
+    last_actor_id: str | None = None
+    terminal_reason_code: str | None = None
+    terminal_reason_message: str | None = None
     submitted_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_status(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        lifecycle_status, processing_status = _normalize_legacy_sheet_status(payload.get("status"))
+        payload.setdefault("lifecycle_status", lifecycle_status)
+        payload.setdefault("review_status", "pending_review")
+        payload.setdefault("delivery_status", "not_delivered")
+        payload.setdefault("processing_status", processing_status)
+        payload.setdefault("pending_review_count", 0)
+        payload.setdefault("approved_delivery_count", 0)
+        payload.setdefault("approved_manufacture_count", 0)
+        payload.setdefault("rejected_item_count", 0)
+        payload.setdefault("lifecycle_events", [])
+        payload.setdefault("last_actor_phase", None)
+        payload.setdefault("last_actor_id", None)
+        payload.setdefault("terminal_reason_code", None)
+        payload.setdefault("terminal_reason_message", None)
+        return payload
 
 
 class ToolDemandSheetDetail(ToolDemandSheet):
@@ -317,17 +558,88 @@ class ToolDemandSheetEnvelope(BaseModel):
     items: list[ToolDemandSheet]
 
 
+class ToolManufacturePlanView(BaseModel):
+    plan_id: str
+    item_id: str
+    sheet_id: str
+    component_name: str
+    planned_tool_name: str
+    status: ToolManufacturePlanStatus
+    progress_percent: int = 0
+    simulation_profile: ToolManufactureSimulationProfile = "normal"
+    target_duration_seconds: int = 300
+    estimated_ready_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    last_progress_message: str = ""
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolManufacturePlanEnvelope(BaseModel):
+    items: list[ToolManufacturePlanView]
+
+
+class ToolRegistryDeleteResult(BaseModel):
+    removed_tool_id: str
+    remaining_tool_count: int = 0
+
+
+class ToolRegistryTestingClearResult(BaseModel):
+    cleared_tool_count: int = 0
+    cleared_match_run_count: int = 0
+    cleared_evolution_run_count: int = 0
+
+
+class ToolDemandTestingClearResult(BaseModel):
+    cleared_sheet_count: int = 0
+    cleared_item_count: int = 0
+    cleared_manufacture_plan_count: int = 0
+
+
 class ItemProgressView(BaseModel):
     item_id: str
     sheet_id: str
-    status: ToolDemandItemStatus
-    result_type: ToolSupplyResultType
+    status: ToolDemandItemProcessingStatus
+    sheet_lifecycle_status: ToolDemandSheetLifecycleStatus
+    sheet_review_status: ToolDemandSheetReviewStatus = "pending_review"
+    sheet_delivery_status: ToolDemandSheetDeliveryStatus = "not_delivered"
+    review_status: ToolDemandItemReviewStatus = "pending_review"
+    result_type: ToolSupplyResultType | None = None
     progress_percent: int = 0
-    summary: str = ""
     estimated_ready_at: str | None = None
-    estimated_ready_in_hours: int | None = None
-    progress_query_path: str | None = None
-    fetch_manifest: ToolFetchManifest | None = None
+    suggested_poll_after_seconds: int | None = None
+    fetch_interface: ToolFetchManifest | None = None
+    last_message: str = ""
+    updated_at: str = Field(default_factory=now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_status(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        if "status" not in payload:
+            payload["status"] = _normalize_legacy_item_status(payload.get("processing_status") or payload.get("status"))
+        if "fetch_interface" not in payload and payload.get("fetch_manifest") is not None:
+            payload["fetch_interface"] = payload["fetch_manifest"]
+        if "last_message" not in payload and payload.get("summary"):
+            payload["last_message"] = payload["summary"]
+        payload.setdefault("sheet_lifecycle_status", "accepted")
+        payload.setdefault("sheet_review_status", "pending_review")
+        payload.setdefault("sheet_delivery_status", "not_delivered")
+        payload.setdefault("review_status", "pending_review")
+        payload.setdefault("updated_at", now_iso())
+        return payload
+
+
+class ToolDemandReviewDecisionRequest(BaseModel):
+    decision: ToolDemandReviewDecision
+    importance_score: int | None = None
+    urgency_score: int | None = None
+    rationality_verdict: str = ""
+    review_comment: str = ""
+    reviewed_by: str
 
 
 class ToolListEnvelope(BaseModel):

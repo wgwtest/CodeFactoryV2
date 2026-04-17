@@ -1,5 +1,5 @@
 import { Layout, Menu, Select, Space, Typography } from "antd";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
@@ -14,7 +14,7 @@ import { XXP5SimPage } from "./pages/XXP5SimPage";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
-  { key: "/", label: <Link to="/">文档导入</Link> },
+  { key: "/documents", label: <Link to="/documents">文档导入</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
@@ -24,7 +24,8 @@ const items = [
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
-  const selectedMenuKey = location.pathname === "/documents" ? "/" : location.pathname;
+  const selectedMenuKey = location.pathname;
+  const defaultRoute = import.meta.env.VITE_DEFAULT_ROUTE ?? "/xx-p4";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -57,7 +58,7 @@ function MainShell() {
       <Layout.Content style={{ padding: 24 }}>
         <Routes>
           <Route path="/archives" element={<ArchiveManagementPage />} />
-          <Route path="/" element={<DocumentsPage />} />
+          <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />

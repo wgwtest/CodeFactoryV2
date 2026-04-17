@@ -1,19 +1,22 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import App from "../App";
+import type { ToolDemandItem, ToolDemandSheet } from "../lib/api";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
 const putMock = vi.fn();
+const deleteMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
     put: (...args: unknown[]) => putMock(...args),
+    delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
 
@@ -28,168 +31,26 @@ function buildReadEnvelope<T>(data: T, snapshotId = "snapshot-1") {
   };
 }
 
-function buildOverview() {
-  return {
-    metrics: {
-      tool_count: 4,
-      verified_tool_count: 2,
-      active_tool_count: 3,
-      active_chain_count: 1,
-      overlap_candidate_count: 2,
-      pending_suggestion_count: 5,
-      recent_success_rate: 100,
-    },
-    coverage_matrix: {
-      title: "业务域 × 工具形态",
-      x_axis_label: "工具形态",
-      y_axis_label: "业务能力域",
-      columns: [
-        { id: "skill", label: "Skill", description: "" },
-        { id: "template", label: "模板", description: "" },
-        { id: "service_endpoint", label: "服务接口", description: "" },
-      ],
-      rows: [
-        {
-          row_id: "workflow_approval",
-          row_label: "审批流转",
-          cells: [
-            { column_id: "skill", value: 2 },
-            { column_id: "template", value: 0 },
-            { column_id: "service_endpoint", value: 0 },
-          ],
-        },
-        {
-          row_id: "master_data",
-          row_label: "主数据维护",
-          cells: [
-            { column_id: "skill", value: 0 },
-            { column_id: "template", value: 0 },
-            { column_id: "service_endpoint", value: 1 },
-          ],
-        },
-      ],
-    },
-    risk_summary: [
-      {
-        kind: "overlap_risk",
-        title: "审批规则校验器与审批路径解释器疑似重叠",
-        description: "两者在业务域、生命周期和输入上存在高相似度。",
-        severity: "warning",
-      },
-    ],
-    recent_match_runs: [
-      {
-        run_id: "match-1",
-        run_type: "match",
-        title: "流程验证场景",
-        status: "completed",
-        created_at: "2026-04-15T10:00:00Z",
-        summary: "2 个候选工具",
-      },
-    ],
-    recent_evolution_runs: [
-      {
-        run_id: "evolution-1",
-        run_type: "evolution",
-        title: "工具池巡检",
-        status: "completed",
-        created_at: "2026-04-15T09:00:00Z",
-        summary: "3 项发现",
-      },
-    ],
-    recent_demand_sheets: [
-      {
-        sheet_id: "tds-001",
-        sheet_name: "模拟蓝军一期工具需求单",
-        status: "accepted",
-        business_case: "simulated_blue_force",
-        source: {
-          phase: "p3_simulator",
-          producer: "mock_blue_force_generator",
-          business_case: "simulated_blue_force",
-          scenario_id: "blue-force-sim-001",
-          scenario_name: "模拟蓝军对抗推演一期",
-        },
-        requested_by: "P3",
-        root_node: {
-          node_id: "sys-blue-force",
-          node_type: "system",
-          node_name: "模拟蓝军系统",
-          node_code: "SYS-BLUE-FORCE",
-          business_domain_id: "simulated_blue_force",
-          children: [],
-        },
-        item_ids: ["tdi-001"],
-        item_count: 1,
-        matched_existing_count: 0,
-        manufacturing_count: 1,
-        ready_for_fetch_count: 0,
-        failed_count: 0,
-        submitted_at: "2026-04-16T09:00:00Z",
-        updated_at: "2026-04-16T09:00:00Z",
-      },
-    ],
-    catalogs: {
-      domains: [
-        { id: "simulated_blue_force", label: "模拟蓝军", description: "" },
-        { id: "workflow_approval", label: "审批流转", description: "" },
-        { id: "master_data", label: "主数据维护", description: "" },
-      ],
-      lifecycle_stages: [
-        { id: "solution_design", label: "方案设计", description: "" },
-        { id: "verification_release", label: "验证发布", description: "" },
-      ],
-      tool_forms: [
-        { id: "skill", label: "Skill", description: "" },
-        { id: "service_endpoint", label: "服务接口", description: "" },
-      ],
-      runtime_platforms: [
-        { id: "agent_runtime", label: "Agent 运行时", description: "" },
-        { id: "backend_service", label: "后端服务", description: "" },
-      ],
-      input_types: [
-        { id: "process_list", label: "流程列表", description: "" },
-        { id: "manual_text", label: "人工文本", description: "" },
-      ],
-      output_types: [
-        { id: "validation_report", label: "验证报告", description: "" },
-        { id: "review_suggestion", label: "审核建议", description: "" },
-      ],
-      supported_sources: [
-        { id: "manual_input", label: "人工输入", description: "" },
-      ],
-      verification_statuses: [
-        { id: "verified", label: "已验证", description: "" },
-        { id: "warning", label: "需复核", description: "" },
-      ],
-      tag_namespaces: [
-        { id: "domain", label: "业务域标签", description: "" },
-        { id: "form", label: "工具形态标签", description: "" },
-      ],
-    },
-  };
-}
-
 function buildTools() {
   return {
     items: [
       {
-        tool_id: "tool-approval-rule-validator",
-        name: "审批规则校验器",
-        slug: "approval-rule-validator",
+        tool_id: "tool-blue-force-tree-builder",
+        name: "蓝军编组树构造器",
+        slug: "blue-force-tree-builder",
         status: "active",
-        summary: "针对审批流程生成结构化验证建议",
-        problem_statement: "降低审批设计前期人工比对成本",
-        primary_domain_id: "workflow_approval",
+        summary: "根据兵力定义生成蓝军编组树",
+        problem_statement: "支撑蓝军编组设计阶段的工具匹配",
+        primary_domain_id: "simulated_blue_force",
         tool_form_id: "skill",
         runtime_platform_ids: ["agent_runtime"],
-        tags: ["domain:workflow_approval", "form:skill", "runtime:agent_runtime", "lifecycle:solution_design"],
-        lifecycle_stage_ids: ["solution_design", "verification_release"],
-        input_types: ["process_list"],
-        output_types: ["validation_report"],
+        tags: ["domain:simulated_blue_force", "form:skill", "runtime:agent_runtime", "lifecycle:solution_design"],
+        lifecycle_stage_ids: ["solution_design"],
+        input_types: ["force_definition"],
+        output_types: ["force_tree"],
         supported_sources: ["manual_input"],
-        usage_notes: "用于审批验证",
-        keywords: ["审批", "验证"],
+        usage_notes: "命中模拟蓝军编组树生成场景",
+        keywords: ["蓝军", "编组", "树"],
         verification: {
           status: "verified",
           last_verified_at: null,
@@ -203,11 +64,87 @@ function buildTools() {
   };
 }
 
-function buildDemandSheetDetail() {
+function buildPendingDemandItem(): ToolDemandItem {
+  return {
+    item_id: "tdi-001",
+    sheet_id: "tds-001",
+    source_node_id: "component-blue-force-tree-builder",
+    ancestry: ["模拟蓝军系统", "蓝军编组", "兵力结构编组", "编制树生成", "蓝军编组树构造器"],
+    business_domain_id: "simulated_blue_force",
+    component_name: "蓝军编组树构造器",
+    component_code: "COMP-BLUE-FORCE-TREE-BUILDER",
+    problem_statement: "生成蓝军编组树并输出结构化结果",
+    required_input_types: ["force_definition"],
+    expected_output_types: ["force_tree"],
+    preferred_tool_forms: ["skill"],
+    preferred_runtime_platforms: ["agent_runtime"],
+    lifecycle_stage_ids: ["solution_design"],
+    keywords: ["蓝军", "编组", "树"],
+    acceptance_notes: "输出结构化蓝军编组树",
+    recommendation_type: "existing_tool",
+    recommendation_summary: "建议直接交付现有工具：蓝军编组树构造器（匹配得分 85）。",
+    recommended_tool_id: "tool-blue-force-tree-builder",
+    recommended_tool_name: "蓝军编组树构造器",
+    review_status: "pending_review",
+    importance_score: null,
+    urgency_score: null,
+    rationality_verdict: "",
+    review_comment: "",
+    reviewed_by: null,
+    reviewed_at: null,
+    processing_status: "matched_existing",
+    analysis_result: "已受理组件需求：模拟蓝军系统 / 蓝军编组 / 兵力结构编组 / 编制树生成 / 蓝军编组树构造器",
+    check_result: "树型层级校验通过，组件叶子项结构完整。",
+    match_result: "命中现有工具：蓝军编组树构造器（得分 85），待人工审定。",
+    supply_result: null,
+    submitted_at: "2026-04-16T09:00:00Z",
+    updated_at: "2026-04-16T09:00:00Z",
+  };
+}
+
+function buildApprovedDemandItem(): ToolDemandItem {
+  return {
+    ...buildPendingDemandItem(),
+    review_status: "approved_delivery",
+    importance_score: 5,
+    urgency_score: 4,
+    rationality_verdict: "合理",
+    review_comment: "已有合适工具，直接交付。",
+    reviewed_by: "p4-reviewer",
+    reviewed_at: "2026-04-16T10:00:00Z",
+    supply_result: {
+      result_type: "existing_tool",
+      item_id: "tdi-001",
+      tool_ref: "tool-blue-force-tree-builder",
+      fetch_interface: {
+        tool_id: "tool-blue-force-tree-builder",
+        tool_name: "蓝军编组树构造器",
+        tool_version: "v1",
+        tool_form_id: "skill",
+        runtime_platform_ids: ["agent_runtime"],
+        fetch_mode: "descriptor",
+        entrypoint_type: "http",
+        entrypoint_locator: "/api/tool-hub/tools/tool-blue-force-tree-builder/fetch",
+        contract_version: "p4.fetch.v1",
+        updated_at: "2026-04-15T08:00:00Z",
+      },
+      progress_query_interface: null,
+      estimated_ready_at: null,
+      suggested_poll_after_seconds: null,
+      available_at: "2026-04-16T10:00:00Z",
+      last_message: "已批准直接交付现有工具：蓝军编组树构造器",
+    },
+  };
+}
+
+function buildPendingDemandSheetDetail(overrides: Partial<ToolDemandSheet> = {}): ToolDemandSheet {
   return {
     sheet_id: "tds-001",
     sheet_name: "模拟蓝军一期工具需求单",
-    status: "accepted",
+    lifecycle_status: "accepted",
+    review_status: "pending_review",
+    delivery_status: "not_delivered",
+    processing_status: "processing",
     business_case: "simulated_blue_force",
     source: {
       phase: "p3_simulator",
@@ -275,54 +212,140 @@ function buildDemandSheetDetail() {
     },
     item_ids: ["tdi-001"],
     item_count: 1,
-    matched_existing_count: 0,
-    manufacturing_count: 1,
+    pending_review_count: 1,
+    approved_delivery_count: 0,
+    approved_manufacture_count: 0,
+    rejected_item_count: 0,
+    matched_existing_count: 1,
+    manufacturing_count: 0,
     ready_for_fetch_count: 0,
     failed_count: 0,
-    items: [
-      {
-        item_id: "tdi-001",
-        sheet_id: "tds-001",
-        source_node_id: "component-blue-force-tree-builder",
-        ancestry: ["模拟蓝军系统", "蓝军编组", "兵力结构编组", "编制树生成", "蓝军编组树构造器"],
-        business_domain_id: "simulated_blue_force",
-        component_name: "蓝军编组树构造器",
-        component_code: "COMP-BLUE-FORCE-TREE-BUILDER",
-        problem_statement: "生成蓝军编组树并输出结构化结果",
-        required_input_types: ["force_definition"],
-        expected_output_types: ["force_tree"],
-        preferred_tool_forms: ["skill"],
-        preferred_runtime_platforms: ["agent_runtime"],
-        lifecycle_stage_ids: ["solution_design"],
-        keywords: ["蓝军", "编组", "树"],
-        acceptance_notes: "输出结构化蓝军编组树",
-        status: "manufacturing_pending",
-        analysis_result: "已受理组件需求",
-        check_result: "树型层级校验通过",
-        match_result: "未命中现有工具，已进入模拟制造排期。",
-        supply_result: {
-          result_type: "pending_manufacture",
-          summary: "未命中现有工具，等待模拟制造。",
-          progress_query_path: "/api/tool-hub/demand-items/tdi-001/progress",
-          estimated_ready_at: "2026-04-16T18:00:00Z",
-          estimated_ready_in_hours: 8,
-        },
-        submitted_at: "2026-04-16T09:00:00Z",
-        updated_at: "2026-04-16T09:00:00Z",
-      },
-    ],
+    items: [buildPendingDemandItem()],
+    lifecycle_events: [],
     submitted_at: "2026-04-16T09:00:00Z",
     updated_at: "2026-04-16T09:00:00Z",
+    ...overrides,
   };
 }
 
-function buildDemandSheets() {
-  const detail = buildDemandSheetDetail();
+function buildApprovedDemandSheetDetail(): ToolDemandSheet {
+  return buildPendingDemandSheetDetail({
+    review_status: "reviewed",
+    delivery_status: "delivered",
+    processing_status: "ready",
+    pending_review_count: 0,
+    approved_delivery_count: 1,
+    ready_for_fetch_count: 1,
+    items: [buildApprovedDemandItem()],
+  });
+}
+
+function buildDemandSheetSummaries(pendingDetail: ToolDemandSheet, approvedDetail: ToolDemandSheet) {
+  return {
+    items: [
+      { ...pendingDetail, items: undefined },
+      { ...approvedDetail, items: undefined, sheet_id: "tds-002", sheet_name: "模拟蓝军二期工具需求单" },
+    ],
+  };
+}
+
+function buildOverview(recentDemandSheets: unknown[]) {
+  return {
+    metrics: {
+      tool_count: 4,
+      verified_tool_count: 2,
+      active_tool_count: 3,
+      active_chain_count: 1,
+      overlap_candidate_count: 2,
+      pending_suggestion_count: 5,
+      recent_success_rate: 100,
+    },
+    coverage_matrix: {
+      title: "业务域 × 工具形态",
+      x_axis_label: "工具形态",
+      y_axis_label: "业务能力域",
+      columns: [
+        { id: "skill", label: "Skill", description: "" },
+        { id: "template", label: "模板", description: "" },
+      ],
+      rows: [
+        {
+          row_id: "simulated_blue_force",
+          row_label: "模拟蓝军",
+          cells: [
+            { column_id: "skill", value: 1 },
+            { column_id: "template", value: 0 },
+          ],
+        },
+      ],
+    },
+    risk_summary: [
+      {
+        kind: "overlap_risk",
+        title: "审批规则校验器与审批路径解释器疑似重叠",
+        description: "两者在业务域、生命周期和输入上存在高相似度。",
+        severity: "warning",
+      },
+    ],
+    pending_suggestions: [],
+    recent_match_runs: [
+      {
+        run_id: "match-1",
+        run_type: "match",
+        title: "流程验证场景",
+        status: "completed",
+        created_at: "2026-04-15T10:00:00Z",
+        summary: "2 个候选工具",
+      },
+    ],
+    recent_evolution_runs: [
+      {
+        run_id: "evolution-1",
+        run_type: "evolution",
+        title: "工具池巡检",
+        status: "completed",
+        created_at: "2026-04-15T09:00:00Z",
+        summary: "3 项发现",
+      },
+    ],
+    recent_demand_sheets: recentDemandSheets,
+    catalogs: {
+      domains: [
+        { id: "simulated_blue_force", label: "模拟蓝军", description: "" },
+        { id: "workflow_approval", label: "审批流转", description: "" },
+      ],
+      lifecycle_stages: [{ id: "solution_design", label: "方案设计", description: "" }],
+      tool_forms: [
+        { id: "skill", label: "Skill", description: "" },
+        { id: "service_endpoint", label: "服务接口", description: "" },
+      ],
+      runtime_platforms: [{ id: "agent_runtime", label: "Agent 运行时", description: "" }],
+      input_types: [{ id: "force_definition", label: "兵力定义", description: "" }],
+      output_types: [{ id: "force_tree", label: "兵力树", description: "" }],
+      supported_sources: [{ id: "manual_input", label: "人工输入", description: "" }],
+      verification_statuses: [{ id: "verified", label: "已验证", description: "" }],
+      tag_namespaces: [{ id: "domain", label: "业务域标签", description: "" }],
+    },
+  };
+}
+
+function buildManufacturePlans() {
   return {
     items: [
       {
-        ...detail,
-        items: undefined,
+        plan_id: "tmp-001",
+        item_id: "tdi-003",
+        sheet_id: "tds-003",
+        component_name: "蓝军战术推演器",
+        planned_tool_name: "蓝军战术推演器",
+        status: "manufacturing_in_progress",
+        progress_percent: 62,
+        simulation_profile: "normal",
+        target_duration_seconds: 18,
+        estimated_ready_at: "2026-04-16T10:18:00Z",
+        started_at: "2026-04-16T10:00:00Z",
+        completed_at: null,
+        last_progress_message: "模拟研制进行中，已完成 62%。",
       },
     ],
   };
@@ -332,12 +355,25 @@ beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
   putMock.mockReset();
+  deleteMock.mockReset();
 });
 
-test("renders XX-P4 cockpit route with input demand chain and evolution workspaces", async () => {
+test("renders XX-P4 review-first input chain and can approve an existing tool demand item", async () => {
+  let cleared = false;
+  let pendingDetail: ToolDemandSheet = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
   getMock.mockImplementation((url: string) => {
     if (url === "/tool-hub/overview") {
-      return Promise.resolve({ data: buildReadEnvelope(buildOverview()) });
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
@@ -345,19 +381,68 @@ test("renders XX-P4 cockpit route with input demand chain and evolution workspac
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
     }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
+    }
     if (url === "/tool-hub/demand-sheets") {
-      return Promise.resolve({ data: buildDemandSheets() });
+      return Promise.resolve({
+        data: cleared ? { items: [] } : buildDemandSheetSummaries(pendingDetail, approvedDetail),
+      });
     }
     if (url === "/tool-hub/demand-sheets/tds-001") {
-      return Promise.resolve({ data: buildDemandSheetDetail() });
+      return Promise.resolve({ data: pendingDetail });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-002") {
+      return Promise.resolve({ data: approvedDetail });
     }
     throw new Error(`unexpected get url: ${url}`);
   });
 
-  postMock.mockImplementation((url: string) => {
-    if (url === "/tool-hub/mock-generators/blue-force-demand-sheets") {
+  postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/tool-hub/demand-items/tdi-001/review") {
+      const payload = body as Record<string, unknown>;
+      pendingDetail = buildApprovedDemandSheetDetail();
       return Promise.resolve({
-        data: buildDemandSheetDetail(),
+        data: {
+          ...buildApprovedDemandItem(),
+          importance_score: payload.importance_score,
+          urgency_score: payload.urgency_score,
+          rationality_verdict: payload.rationality_verdict,
+          review_comment: payload.review_comment,
+          reviewed_by: payload.reviewed_by,
+        },
+      });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001/reject") {
+      pendingDetail = {
+        ...pendingDetail,
+        lifecycle_status: "rejected",
+        terminal_reason_code: "manual_reject",
+        terminal_reason_message: "P4 工作台人工驳回当前工单。",
+        lifecycle_events: [
+          {
+            event_id: "evt-1",
+            event_type: "rejected",
+            actor_phase: "P4",
+            actor_id: "p4-workspace",
+            from_status: "accepted",
+            to_status: "rejected",
+            reason_code: "manual_reject",
+            reason_message: "P4 工作台人工驳回当前工单。",
+            occurred_at: "2026-04-16T10:00:00Z",
+          },
+        ],
+      };
+      return Promise.resolve({ data: pendingDetail });
+    }
+    if (url === "/tool-hub/testing/clear-demand-sheets") {
+      cleared = true;
+      return Promise.resolve({
+        data: {
+          cleared_sheet_count: 2,
+          cleared_item_count: 2,
+          cleared_manufacture_plan_count: 0,
+        },
       });
     }
     if (url === "/tool-hub/evolution-runs") {
@@ -397,45 +482,58 @@ test("renders XX-P4 cockpit route with input demand chain and evolution workspac
   );
 
   expect(await screen.findByText("XX-P4")).toBeInTheDocument();
-  expect(screen.getByText("工具中台 / Tool Hub")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-page")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-hero-shell")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-content-shell")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspaces")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspace-nav")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspace-tab-overview")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspace-tab-input-chain")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspace-tab-evolution")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-workspace-tab-registry")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-content-shell")).toHaveStyle({ margin: "0 auto 0" });
-  expect(document.querySelector("#xx-p4-workspace-tab-overview")).toHaveAttribute("data-workspace-tone", "overview");
-  expect(document.querySelector("#xx-p4-workspace-tab-input-chain")).toHaveAttribute("data-workspace-tone", "input");
-  expect(document.querySelector("#xx-p4-workspace-tab-evolution")).toHaveAttribute("data-workspace-tone", "evolution");
-  expect(document.querySelector("#xx-p4-workspace-tab-registry")).toHaveAttribute("data-workspace-tone", "registry");
-  expect(screen.getByText("全局状态")).toBeInTheDocument();
-  expect(screen.getByText("总单到供给")).toBeInTheDocument();
-  expect(screen.getByText("工具池体检")).toBeInTheDocument();
-  expect(screen.getByText("资产与覆盖")).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "总览" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "输入工序链" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "自演进巡检" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "工具仓库" })).toBeInTheDocument();
-  expect(screen.queryByText("P4 数据快照不一致，当前视图可能不是同一份统一数据层结果。")).not.toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-overview-metrics")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-metrics-strip")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-metric-tool_count")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-overview-run-monitor")).toBeInTheDocument();
-  expect(screen.getByText("运行监视")).toBeInTheDocument();
-  expect(screen.queryByText("业务域 × 工具形态")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "输入工序链" }));
-  expect(await screen.findByText("P3 模拟发生区")).toBeInTheDocument();
-  expect(screen.getByText("总单树审查区")).toBeInTheDocument();
-  expect(screen.getByText("叶子项处理流水区")).toBeInTheDocument();
-  expect(screen.getByText("P5 输出预览区")).toBeInTheDocument();
-  expect(screen.getByText("模拟蓝军一期工具需求单")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "生成模拟蓝军需求总单" }));
-  expect(postMock).toHaveBeenCalledWith("/tool-hub/mock-generators/blue-force-demand-sheets");
+  expect(await screen.findByText("工序单受理区")).toBeInTheDocument();
+  expect(screen.getByText("工具需求列表")).toBeInTheDocument();
+  expect(screen.getByText("需求审批与处置面板")).toBeInTheDocument();
+  expect(screen.queryByText("总单树审查区")).not.toBeInTheDocument();
+  expect(screen.queryByText("供给结果输出区")).not.toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-review-panel")).toHaveTextContent(
+    "建议直接交付现有工具：蓝军编组树构造器（匹配得分 85）。",
+  );
+
+  fireEvent.change(screen.getByLabelText("重要性评分"), { target: { value: "5" } });
+  fireEvent.change(screen.getByLabelText("紧急性评分"), { target: { value: "4" } });
+  fireEvent.change(screen.getByLabelText("合理性判断"), { target: { value: "合理" } });
+  fireEvent.change(screen.getByLabelText("审定备注"), { target: { value: "已有合适工具，直接交付。" } });
+  fireEvent.click(screen.getByRole("button", { name: "批准并直接交付" }));
+
+  expect(postMock).toHaveBeenCalledWith(
+    "/tool-hub/demand-items/tdi-001/review",
+    expect.objectContaining({
+      decision: "approve_delivery",
+      importance_score: 5,
+      urgency_score: 4,
+      rationality_verdict: "合理",
+      review_comment: "已有合适工具，直接交付。",
+    }),
+  );
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-review-panel")).toHaveTextContent("approved_delivery");
+  });
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-review-supply-result")).toHaveTextContent(
+      "/api/tool-hub/tools/tool-blue-force-tree-builder/fetch",
+    );
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "驳回当前工单" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-demand-sheet-intake-card")).toHaveTextContent("rejected");
+  });
+  expect(postMock).toHaveBeenCalledWith(
+    "/tool-hub/demand-sheets/tds-001/reject",
+    expect.objectContaining({
+      actor_id: "p4-workspace",
+      reason_code: "manual_reject",
+    }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "测试一键清理全部工单" }));
+  expect(postMock).toHaveBeenCalledWith("/tool-hub/testing/clear-demand-sheets");
+  expect(await screen.findByText("当前没有工具需求单")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "自演进巡检" }));
   fireEvent.click(await screen.findByRole("button", { name: "触发巡检" }));
@@ -444,15 +542,24 @@ test("renders XX-P4 cockpit route with input demand chain and evolution workspac
   fireEvent.click(screen.getByRole("tab", { name: "工具仓库" }));
   expect(await screen.findByText("业务域 × 工具形态")).toBeInTheDocument();
   expect(document.querySelector("#xx-p4-registry-coverage-matrix")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-coverage-matrix")).toBeInTheDocument();
 });
 
 test("creates a tool from registry workspace", async () => {
   let tools = buildTools();
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
 
   getMock.mockImplementation((url: string) => {
     if (url === "/tool-hub/overview") {
-      return Promise.resolve({ data: buildReadEnvelope(buildOverview()) });
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(tools) });
@@ -460,11 +567,14 @@ test("creates a tool from registry workspace", async () => {
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
     }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
+    }
     if (url === "/tool-hub/demand-sheets") {
-      return Promise.resolve({ data: buildDemandSheets() });
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
     }
     if (url === "/tool-hub/demand-sheets/tds-001") {
-      return Promise.resolve({ data: buildDemandSheetDetail() });
+      return Promise.resolve({ data: pendingDetail });
     }
     throw new Error(`unexpected get url: ${url}`);
   });
@@ -543,22 +653,215 @@ test("creates a tool from registry workspace", async () => {
   expect(await screen.findByText("新建流程工具")).toBeInTheDocument();
 });
 
-test("shows snapshot consistency warning when tool hub read models are out of sync", async () => {
+test("removes a single tool from registry workspace", async () => {
+  let tools = buildTools();
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
   getMock.mockImplementation((url: string) => {
     if (url === "/tool-hub/overview") {
-      return Promise.resolve({ data: buildReadEnvelope(buildOverview(), "snapshot-overview") });
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(tools) });
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  deleteMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/tools/tool-blue-force-tree-builder") {
+      tools = { items: [] };
+      return Promise.resolve({
+        data: {
+          removed_tool_id: "tool-blue-force-tree-builder",
+          remaining_tool_count: 0,
+        },
+      });
+    }
+    throw new Error(`unexpected delete url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
+  expect(await screen.findByText("蓝军编组树构造器")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByLabelText("移除工具 蓝军编组树构造器"));
+
+  expect(deleteMock).toHaveBeenCalledWith("/tool-hub/tools/tool-blue-force-tree-builder");
+  await waitFor(() => {
+    expect(screen.queryByText("蓝军编组树构造器")).not.toBeInTheDocument();
+  });
+});
+
+test("clears all tools from registry workspace for testing", async () => {
+  let tools = buildTools();
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(tools) });
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/testing/clear-tools") {
+      tools = { items: [] };
+      return Promise.resolve({
+        data: {
+          cleared_tool_count: 1,
+          cleared_match_run_count: 0,
+          cleared_evolution_run_count: 0,
+        },
+      });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
+  expect(await screen.findByText("蓝军编组树构造器")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "测试清空全部工具" }));
+
+  expect(postMock).toHaveBeenCalledWith("/tool-hub/testing/clear-tools");
+  await waitFor(() => {
+    expect(screen.queryByText("蓝军编组树构造器")).not.toBeInTheDocument();
+  });
+});
+
+test("shows simulated manufacture queue in registry workspace", async () => {
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: buildManufacturePlans() });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
+  expect(await screen.findByText("模拟研制队列")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-registry-manufacture-queue")).toHaveTextContent("蓝军战术推演器");
+  expect(document.querySelector("#xx-p4-registry-manufacture-queue")).toHaveTextContent("manufacturing_in_progress");
+  expect(getMock).toHaveBeenCalledWith("/tool-hub/manufacture-plans");
+});
+
+test("shows snapshot consistency warning when tool hub read models are out of sync", async () => {
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+          "snapshot-overview",
+        ),
+      });
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(buildTools(), "snapshot-tools") });
     }
     if (url === "/tool-hub/evolution-runs") {
-      return Promise.resolve({ data: buildReadEnvelope({ items: [] }, "snapshot-evolution") });
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }, "snapshot-tools") });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
     }
     if (url === "/tool-hub/demand-sheets") {
-      return Promise.resolve({ data: buildDemandSheets() });
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
     }
     if (url === "/tool-hub/demand-sheets/tds-001") {
-      return Promise.resolve({ data: buildDemandSheetDetail() });
+      return Promise.resolve({ data: pendingDetail });
     }
     throw new Error(`unexpected get url: ${url}`);
   });

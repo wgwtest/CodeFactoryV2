@@ -158,6 +158,75 @@ def test_tool_hub_overview_and_tool_crud(tmp_path: Path) -> None:
     assert overview_after_update_body["data"]["metrics"]["tool_count"] == len(tools_after_update_body["data"]["items"])
 
 
+def test_tool_hub_can_delete_single_tool_and_clear_all_tools_for_testing(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    first_create_payload = {
+        "name": "审批规则校验器",
+        "slug": "approval-rule-validator",
+        "status": "active",
+        "summary": "针对审批路径和规则集生成校验建议",
+        "problem_statement": "降低审批方案设计阶段的人工比对成本",
+        "primary_domain_id": "workflow_approval",
+        "tool_form_id": "skill",
+        "runtime_platform_ids": ["agent_runtime"],
+        "tags": [
+            "domain:workflow_approval",
+            "form:skill",
+            "runtime:agent_runtime",
+            "lifecycle:solution_design",
+            "input:process_list",
+            "output:validation_report",
+        ],
+        "lifecycle_stage_ids": ["solution_design"],
+        "input_types": ["process_list"],
+        "output_types": ["validation_report"],
+        "supported_sources": ["manual_input"],
+        "usage_notes": "用于审批验证",
+        "keywords": ["审批", "验证"],
+        "verification": {
+            "status": "verified",
+            "last_verified_result": "样例通过",
+            "sample_case_ids": ["sample-1"],
+        },
+    }
+    second_create_payload = {
+        **first_create_payload,
+        "name": "导航航路装配器",
+        "slug": "navigation-route-assembler",
+        "primary_domain_id": "cross_domain_shared",
+        "keywords": ["导航", "航路"],
+    }
+
+    first_created = client.post("/api/tool-hub/tools", json=first_create_payload)
+    second_created = client.post("/api/tool-hub/tools", json=second_create_payload)
+    assert first_created.status_code == 201
+    assert second_created.status_code == 201
+
+    first_tool_id = first_created.json()["tool_id"]
+
+    delete_response = client.delete(f"/api/tool-hub/tools/{first_tool_id}")
+    assert delete_response.status_code == 200
+    delete_payload = delete_response.json()
+    assert delete_payload["removed_tool_id"] == first_tool_id
+    assert delete_payload["remaining_tool_count"] == 1
+
+    listed_after_delete = client.get("/api/tool-hub/tools")
+    assert listed_after_delete.status_code == 200
+    assert len(listed_after_delete.json()["data"]["items"]) == 1
+
+    clear_response = client.post("/api/tool-hub/testing/clear-tools")
+    assert clear_response.status_code == 200
+    clear_payload = clear_response.json()
+    assert clear_payload["cleared_tool_count"] == 1
+    assert clear_payload["cleared_match_run_count"] == 0
+    assert clear_payload["cleared_evolution_run_count"] == 0
+
+    listed_after_clear = client.get("/api/tool-hub/tools")
+    assert listed_after_clear.status_code == 200
+    assert listed_after_clear.json()["data"]["items"] == []
+
+
 def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
 

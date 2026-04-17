@@ -10,13 +10,13 @@ type P4DemandSheetTreeProps = {
 };
 
 function renderStatusTag(status: string) {
-  if (status === "matched_existing" || status === "ready_for_fetch") {
+  if (status === "approved_delivery") {
     return <Tag color="green">{status}</Tag>;
   }
-  if (status === "manufacturing_in_progress") {
+  if (status === "approved_manufacture") {
     return <Tag color="blue">{status}</Tag>;
   }
-  if (status === "failed") {
+  if (status === "rejected") {
     return <Tag color="red">{status}</Tag>;
   }
   return <Tag color="gold">{status}</Tag>;
@@ -41,7 +41,7 @@ export function P4DemandSheetTree({ sheet, selectedItemId, onSelectItem }: P4Dem
       title: (
         <Space size={8} wrap>
           <Typography.Text>{node.node_name}</Typography.Text>
-          {relatedItem ? renderStatusTag(relatedItem.status) : null}
+          {relatedItem ? renderStatusTag(relatedItem.review_status) : null}
         </Space>
       ),
       children: node.children.map(buildTreeNode),
