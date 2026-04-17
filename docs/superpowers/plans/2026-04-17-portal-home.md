@@ -77,3 +77,16 @@
 - [ ] 运行 `npm run build`
 - [ ] 启动前端供用户查看 `/portal`
 - [ ] 提交并推送仅包含 P6 门户相关改动
+
+### Task 6: 对照远端评论补齐 P6.1 语言与规则层
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-04-11-software-factory-platform-design.md`
+- Modify: `docs/superpowers/specs/2026-04-17-portal-home-design.md`
+- Modify: `docs/superpowers/issues/2026-04-17-p6-platform-entry-issue-tree-mirror.md`
+
+- [ ] 将 `P6.1` 拆解为 `P6.1.1 ~ P6.1.4`
+- [ ] 明确元素分类、图形语言与表现约束
+- [ ] 明确连线语义、流向编码与拥塞处理规则
+- [ ] 明确拖拽边界、自动布局与人工覆盖的交互规则
+- [ ] 明确门户主节点、关系、产物和布局的投影数据模型
