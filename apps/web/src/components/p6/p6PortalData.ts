@@ -19,6 +19,8 @@ export type P6PortalNode = {
   width: number;
   height: number;
   kind: "user" | "module";
+  categoryLabel: string;
+  projectionMode: "auto" | "manual";
   description: string;
 };
 
@@ -30,6 +32,23 @@ export type P6PortalFlow = {
   toSide: P6PortalAnchorSide;
   label: string;
   tone: "knowledge" | "analysis" | "design" | "tooling" | "delivery";
+  renderStyle: "solid" | "dashed";
+  semanticLabel: string;
+};
+
+export type P6PortalArtifactTone = "analysis" | "design" | "tooling";
+
+export type P6PortalArtifact = {
+  id: "spec" | "design" | "tooling";
+  title: string;
+  summary: string;
+  x: number;
+  y: number;
+  tone: P6PortalArtifactTone;
+  categoryLabel: string;
+  projectionMode: "auto" | "manual";
+  linkedNodeIds: P6PortalNodeId[];
+  linkedFlowIds: string[];
 };
 
 export const P6_PORTAL_LAYOUT_STORAGE_KEY = "code-factory.p6.portal.layout";
@@ -50,6 +69,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 220,
     height: 160,
     kind: "user",
+    categoryLabel: "角色节点",
+    projectionMode: "manual",
     description: "行业专家以业务视角进入平台，关注对象、场景、边界和目标，而不是技术实现细节。",
   },
   {
@@ -64,6 +85,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 330,
     height: 188,
     kind: "module",
+    categoryLabel: "系统节点",
+    projectionMode: "auto",
     description: "负责把原始资料沉淀为可追溯、可筛选、可查询的业务知识元素，并向下游提供稳定知识出口。",
   },
   {
@@ -78,6 +101,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 340,
     height: 196,
     kind: "module",
+    categoryLabel: "系统节点",
+    projectionMode: "auto",
     description: "通过选配式和表单式建模，把用户输入组织成需求规格说明与结构化需求模型。",
   },
   {
@@ -92,6 +117,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 340,
     height: 196,
     kind: "module",
+    categoryLabel: "系统节点",
+    projectionMode: "auto",
     description: "承接需求规格说明，形成软件设计说明，并进一步导出工具可消费的结构化设计表达。",
   },
   {
@@ -106,6 +133,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 360,
     height: 196,
     kind: "module",
+    categoryLabel: "系统节点",
+    projectionMode: "auto",
     description: "沉淀工具能力与匹配规则，支撑设计产物向执行能力映射和后续编排。",
   },
   {
@@ -120,6 +149,8 @@ export const p6PortalNodes: P6PortalNode[] = [
     width: 350,
     height: 196,
     kind: "module",
+    categoryLabel: "系统节点",
+    projectionMode: "auto",
     description: "结合设计说明、工具中台和组件资产，执行应用构建、集成与结果输出。",
   },
 ];
@@ -133,6 +164,8 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "left",
     label: "需求进入",
     tone: "analysis",
+    renderStyle: "solid",
+    semanticLabel: "角色输入",
   },
   {
     id: "p1-p2",
@@ -142,6 +175,8 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "bottom",
     label: "知识供给",
     tone: "knowledge",
+    renderStyle: "dashed",
+    semanticLabel: "知识支撑",
   },
   {
     id: "p2-p3",
@@ -151,6 +186,8 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "left",
     label: "规格说明",
     tone: "analysis",
+    renderStyle: "solid",
+    semanticLabel: "规格投递",
   },
   {
     id: "p3-p4",
@@ -160,6 +197,8 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "top",
     label: "工具匹配",
     tone: "tooling",
+    renderStyle: "dashed",
+    semanticLabel: "能力匹配",
   },
   {
     id: "p4-p5",
@@ -169,6 +208,8 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "left",
     label: "构建执行",
     tone: "delivery",
+    renderStyle: "solid",
+    semanticLabel: "执行主链",
   },
   {
     id: "p3-p5",
@@ -178,6 +219,47 @@ export const p6PortalFlows: P6PortalFlow[] = [
     toSide: "left",
     label: "设计落地",
     tone: "design",
+    renderStyle: "solid",
+    semanticLabel: "设计转化",
+  },
+];
+
+export const p6PortalArtifacts: P6PortalArtifact[] = [
+  {
+    id: "spec",
+    title: "需求规格说明",
+    summary: "从需求建模投影出的结构化规格",
+    x: 745,
+    y: 300,
+    tone: "analysis",
+    categoryLabel: "数据产物",
+    projectionMode: "auto",
+    linkedNodeIds: ["p2", "p3"],
+    linkedFlowIds: ["p2-p3"],
+  },
+  {
+    id: "design",
+    title: "软件设计说明",
+    summary: "从规格说明转化出的设计表达",
+    x: 1180,
+    y: 330,
+    tone: "design",
+    categoryLabel: "数据产物",
+    projectionMode: "auto",
+    linkedNodeIds: ["p3", "p5"],
+    linkedFlowIds: ["p3-p5"],
+  },
+  {
+    id: "tooling",
+    title: "工具化描述 / 调用编排",
+    summary: "驱动工具中台与构建执行的调用对象",
+    x: 1350,
+    y: 610,
+    tone: "tooling",
+    categoryLabel: "数据产物",
+    projectionMode: "auto",
+    linkedNodeIds: ["p3", "p4", "p5"],
+    linkedFlowIds: ["p3-p4", "p4-p5"],
   },
 ];
 

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { P6BlueprintArtifact } from "./P6BlueprintArtifact";
 import { P6BlueprintLegend } from "./P6BlueprintLegend";
 import { P6BlueprintNode } from "./P6BlueprintNode";
 import {
   P6_PORTAL_LAYOUT_STORAGE_KEY,
   P6_PORTAL_WORLD,
   type P6PortalAnchorSide,
+  p6PortalArtifacts,
   type P6PortalFlow,
   type P6PortalNode,
   type P6PortalNodeId,
@@ -15,14 +17,23 @@ import {
   defaultP6PortalLayout,
   p6PortalFlows,
   p6PortalNodes,
-  readP6PortalLayout,
 } from "./p6PortalData";
-
-type CameraState = {
-  x: number;
-  y: number;
-  scale: number;
-};
+import {
+  P6_PORTAL_NODE_PADDING,
+  clampCameraToWorld,
+  clampNodePosition,
+  getPortalNodeById,
+  type P6PortalCameraState as CameraState,
+} from "./p6PortalGeometry";
+import {
+  buildPortalNodeRelationSnapshots,
+  buildPortalProjectionSummary,
+  getArtifactsForRelationshipView,
+  hasStoredP6PortalLayout,
+  readPersonalPortalLayout,
+  type P6PortalLayoutMode,
+  type P6PortalRelationshipViewMode,
+} from "./p6PortalProjection";
 
 type NodeDragState = {
   kind: "node";
@@ -49,10 +60,6 @@ const defaultCamera: CameraState = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
-}
-
-function getNodeById(nodeId: P6PortalNodeId) {
-  return p6PortalNodes.find((item) => item.id === nodeId) ?? p6PortalNodes[0];
 }
 
 function getAnchorPoint(node: P6PortalNode, position: P6PortalPosition, side: P6PortalAnchorSide) {
@@ -86,8 +93,8 @@ function getControlPoint(point: { x: number; y: number }, side: P6PortalAnchorSi
 }
 
 function createFlowPath(flow: P6PortalFlow, layout: Record<P6PortalNodeId, P6PortalPosition>) {
-  const fromNode = getNodeById(flow.from);
-  const toNode = getNodeById(flow.to);
+  const fromNode = getPortalNodeById(flow.from);
+  const toNode = getPortalNodeById(flow.to);
   const fromPoint = getAnchorPoint(fromNode, layout[flow.from], flow.fromSide);
   const toPoint = getAnchorPoint(toNode, layout[flow.to], flow.toSide);
   const distance = Math.max(Math.abs(toPoint.x - fromPoint.x) * 0.38, Math.abs(toPoint.y - fromPoint.y) * 0.32, 120);
@@ -121,19 +128,36 @@ function getVisiblePins(nodeId: P6PortalNodeId) {
 export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
   const navigate = useNavigate();
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [layout, setLayout] = useState<Record<P6PortalNodeId, P6PortalPosition>>(() => readP6PortalLayout());
+  const personalLayoutRef = useRef<Record<P6PortalNodeId, P6PortalPosition>>(readPersonalPortalLayout());
+  const [layout, setLayout] = useState<Record<P6PortalNodeId, P6PortalPosition>>(() => readPersonalPortalLayout());
   const [camera, setCamera] = useState<CameraState>(defaultCamera);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<P6PortalNodeId | null>("p2");
   const [hoveredNodeId, setHoveredNodeId] = useState<P6PortalNodeId | null>(null);
   const [activeFlowIndex, setActiveFlowIndex] = useState(0);
+  const [layoutMode, setLayoutMode] = useState<P6PortalLayoutMode>(() => (hasStoredP6PortalLayout() ? "personal" : "system"));
+  const [relationshipMode, setRelationshipMode] = useState<P6PortalRelationshipViewMode>("semantic");
 
   const focusNodeId = hoveredNodeId ?? selectedNodeId;
   const activeFlow = p6PortalFlows[activeFlowIndex] ?? p6PortalFlows[0];
+  const relationSnapshots = useMemo(() => buildPortalNodeRelationSnapshots(), []);
+  const projectionSummary = useMemo(
+    () => buildPortalProjectionSummary(archiveName, layoutMode, relationshipMode),
+    [archiveName, layoutMode, relationshipMode],
+  );
+  const visibleArtifacts = useMemo(
+    () => getArtifactsForRelationshipView(relationshipMode, focusNodeId),
+    [focusNodeId, relationshipMode],
+  );
 
   useEffect(() => {
+    if (layoutMode !== "personal") {
+      return;
+    }
+
+    personalLayoutRef.current = layout;
     window.localStorage.setItem(P6_PORTAL_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
-  }, [layout]);
+  }, [layout, layoutMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -152,11 +176,19 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
 
     function handleMouseMove(event: MouseEvent) {
       if (currentDrag.kind === "pan") {
-        setCamera({
+        const viewportRect = viewportRef.current?.getBoundingClientRect();
+        const nextCamera = {
           x: currentDrag.origin.x + event.clientX - currentDrag.startClientX,
           y: currentDrag.origin.y + event.clientY - currentDrag.startClientY,
           scale: currentDrag.origin.scale,
-        });
+        };
+
+        setCamera(
+          clampCameraToWorld(nextCamera, {
+            width: viewportRect?.width,
+            height: viewportRect?.height,
+          }),
+        );
         return;
       }
 
@@ -165,11 +197,12 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
 
       setLayout((current) => ({
         ...current,
-        [currentDrag.nodeId]: {
-          x: clamp(nextX, 48, P6_PORTAL_WORLD.width - getNodeById(currentDrag.nodeId).width - 48),
-          y: clamp(nextY, 48, P6_PORTAL_WORLD.height - getNodeById(currentDrag.nodeId).height - 48),
-        },
+        [currentDrag.nodeId]: clampNodePosition(currentDrag.nodeId, {
+          x: nextX,
+          y: nextY,
+        }),
       }));
+      setLayoutMode("personal");
     }
 
     function handleMouseUp() {
@@ -194,6 +227,8 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
     [layout],
   );
 
+  const emphasizedArtifactIds = new Set<(typeof p6PortalArtifacts)[number]["id"]>();
+
   const emphasizedFlowIds = new Set<string>();
   const emphasizedNodeIds = new Set<P6PortalNodeId>();
 
@@ -206,10 +241,20 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
         emphasizedNodeIds.add(flow.to);
       }
     });
+    p6PortalArtifacts.forEach((artifact) => {
+      if (artifact.linkedNodeIds.includes(focusNodeId)) {
+        emphasizedArtifactIds.add(artifact.id);
+      }
+    });
   } else {
     emphasizedFlowIds.add(activeFlow.id);
     emphasizedNodeIds.add(activeFlow.from);
     emphasizedNodeIds.add(activeFlow.to);
+    p6PortalArtifacts.forEach((artifact) => {
+      if (artifact.linkedFlowIds.includes(activeFlow.id)) {
+        emphasizedArtifactIds.add(artifact.id);
+      }
+    });
   }
 
   function handleViewportWheel(event: ReactWheelEvent<HTMLDivElement>) {
@@ -225,11 +270,19 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
     const worldY = (pointerY - camera.y) / camera.scale;
     const nextScale = clamp(camera.scale * (event.deltaY > 0 ? 0.92 : 1.08), 0.54, 1.24);
 
-    setCamera({
-      x: pointerX - worldX * nextScale,
-      y: pointerY - worldY * nextScale,
-      scale: nextScale,
-    });
+    setCamera(
+      clampCameraToWorld(
+        {
+          x: pointerX - worldX * nextScale,
+          y: pointerY - worldY * nextScale,
+          scale: nextScale,
+        },
+        {
+          width: viewportRect.width,
+          height: viewportRect.height,
+        },
+      ),
+    );
   }
 
   return (
@@ -267,6 +320,20 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
             transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
           }}
         >
+          <div
+            data-testid="p6-portal-world-boundary"
+            className="p6-portal-stage__boundary"
+            style={{
+              left: `${P6_PORTAL_NODE_PADDING}px`,
+              top: `${P6_PORTAL_NODE_PADDING}px`,
+              width: `${P6_PORTAL_WORLD.width - P6_PORTAL_NODE_PADDING * 2}px`,
+              height: `${P6_PORTAL_WORLD.height - P6_PORTAL_NODE_PADDING * 2}px`,
+            }}
+          >
+            <span className="p6-portal-stage__boundary-label">自动布局区</span>
+            <span className="p6-portal-stage__boundary-note">边界内可拖拽，边界外只保留视口平移</span>
+          </div>
+
           <svg
             className="p6-portal-stage__wires"
             viewBox={`0 0 ${P6_PORTAL_WORLD.width} ${P6_PORTAL_WORLD.height}`}
@@ -280,6 +347,7 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
                   className={[
                     "p6-portal-wire",
                     `p6-portal-wire--${flow.tone}`,
+                    `p6-portal-wire--${flow.renderStyle}`,
                     emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
                   ]
                     .filter(Boolean)
@@ -290,6 +358,7 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
                   className={[
                     "p6-portal-wire-travel",
                     `p6-portal-wire-travel--${flow.tone}`,
+                    `p6-portal-wire-travel--${flow.renderStyle}`,
                     emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
                   ]
                     .filter(Boolean)
@@ -300,34 +369,33 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
             ))}
           </svg>
 
-          {flowPaths.map((flow) => (
-            <div
-              key={`${flow.id}-label`}
-              className={[
-                "p6-portal-flow-label",
-                `p6-portal-flow-label--${flow.tone}`,
-                emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              style={{
-                left: `${flow.labelPosition.x - 56}px`,
-                top: `${flow.labelPosition.y - 18}px`,
-              }}
-            >
-              {flow.label}
-            </div>
-          ))}
+          {relationshipMode === "semantic"
+            ? flowPaths.map((flow) => (
+                <div
+                  key={`${flow.id}-label`}
+                  data-testid={`p6-flow-label-${flow.id}`}
+                  className={[
+                    "p6-portal-flow-label",
+                    `p6-portal-flow-label--${flow.tone}`,
+                    `p6-portal-flow-label--${flow.renderStyle}`,
+                    emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  title={flow.semanticLabel}
+                  style={{
+                    left: `${flow.labelPosition.x - 56}px`,
+                    top: `${flow.labelPosition.y - 18}px`,
+                  }}
+                >
+                  {flow.label}
+                </div>
+              ))
+            : null}
 
-          <div className="p6-portal-artifact p6-portal-artifact--spec" style={{ left: "745px", top: "300px" }}>
-            需求规格说明
-          </div>
-          <div className="p6-portal-artifact p6-portal-artifact--design" style={{ left: "1180px", top: "330px" }}>
-            软件设计说明
-          </div>
-          <div className="p6-portal-artifact p6-portal-artifact--tooling" style={{ left: "1350px", top: "610px" }}>
-            工具化描述 / 调用编排
-          </div>
+          {visibleArtifacts.map((artifact) => (
+            <P6BlueprintArtifact key={artifact.id} artifact={artifact} emphasized={emphasizedArtifactIds.has(artifact.id)} />
+          ))}
 
           {p6PortalNodes.map((node) => (
             <P6BlueprintNode
@@ -337,6 +405,7 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
               active={selectedNodeId === node.id}
               emphasized={emphasizedNodeIds.has(node.id)}
               visiblePins={getVisiblePins(node.id)}
+              relationSummary={relationshipMode === "projection" ? relationSnapshots[node.id]?.label : undefined}
               onClick={() => setSelectedNodeId(node.id)}
               onDoubleClick={() => {
                 if (node.route) {
@@ -367,10 +436,19 @@ export function P6BlueprintCanvas({ archiveName }: { archiveName: string }) {
 
       <P6BlueprintLegend
         archiveName={archiveName}
+        projectionSummary={projectionSummary}
+        layoutMode={layoutMode}
+        relationshipMode={relationshipMode}
+        hasPersonalLayout={hasStoredP6PortalLayout()}
+        onLayoutModeChange={(mode) => {
+          setLayoutMode(mode);
+          setLayout(mode === "system" ? defaultP6PortalLayout : personalLayoutRef.current);
+        }}
+        onRelationshipModeChange={setRelationshipMode}
         onResetView={(event) => {
           event.stopPropagation();
           setCamera(defaultCamera);
-          setLayout(defaultP6PortalLayout);
+          setLayout(layoutMode === "system" ? defaultP6PortalLayout : personalLayoutRef.current);
           setSelectedNodeId("p2");
         }}
       />

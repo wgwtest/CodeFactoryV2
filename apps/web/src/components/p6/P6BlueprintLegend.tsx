@@ -2,13 +2,33 @@ import { Button } from "antd";
 
 import type { MouseEventHandler } from "react";
 import { p6PortalLegendRoadmap } from "./p6PortalData";
+import type {
+  P6PortalLayoutMode,
+  P6PortalProjectionSummary,
+  P6PortalRelationshipViewMode,
+} from "./p6PortalProjection";
 
 type P6BlueprintLegendProps = {
   archiveName: string;
+  projectionSummary: P6PortalProjectionSummary;
+  layoutMode: P6PortalLayoutMode;
+  relationshipMode: P6PortalRelationshipViewMode;
+  hasPersonalLayout: boolean;
+  onLayoutModeChange: (mode: P6PortalLayoutMode) => void;
+  onRelationshipModeChange: (mode: P6PortalRelationshipViewMode) => void;
   onResetView: MouseEventHandler<HTMLButtonElement>;
 };
 
-export function P6BlueprintLegend({ archiveName, onResetView }: P6BlueprintLegendProps) {
+export function P6BlueprintLegend({
+  archiveName,
+  projectionSummary,
+  layoutMode,
+  relationshipMode,
+  hasPersonalLayout,
+  onLayoutModeChange,
+  onRelationshipModeChange,
+  onResetView,
+}: P6BlueprintLegendProps) {
   return (
     <aside id="p6-portal-legend" data-testid="p6-portal-legend" className="p6-blueprint-legend">
       <div className="p6-blueprint-legend__topline">
@@ -21,6 +41,73 @@ export function P6BlueprintLegend({ archiveName, onResetView }: P6BlueprintLegen
       <div className="p6-blueprint-legend__group">
         <div className="p6-blueprint-legend__group-title">交互</div>
         <div className="p6-blueprint-legend__fact">单击高亮 / 双击进入 / 滚轮缩放 / 背景平移</div>
+        <div className="p6-blueprint-legend__fact">节点拖拽仅在自动布局区内生效，超界后自动回收</div>
+      </div>
+
+      <div className="p6-blueprint-legend__group">
+        <div className="p6-blueprint-legend__group-title">元素语言</div>
+        <div className="p6-blueprint-legend__fact">圆角卡片 = 系统节点，椭圆胶囊 = 角色节点，小胶囊 = 数据产物</div>
+      </div>
+
+      <div className="p6-blueprint-legend__group">
+        <div className="p6-blueprint-legend__group-title">视图控制</div>
+        <div className="p6-blueprint-legend__toggle-row">
+          <button
+            type="button"
+            className={["p6-blueprint-legend__toggle", layoutMode === "system" ? "is-active" : ""].filter(Boolean).join(" ")}
+            onClick={() => onLayoutModeChange("system")}
+          >
+            推荐布局
+          </button>
+          <button
+            type="button"
+            className={["p6-blueprint-legend__toggle", layoutMode === "personal" ? "is-active" : ""].filter(Boolean).join(" ")}
+            onClick={() => onLayoutModeChange("personal")}
+            disabled={!hasPersonalLayout}
+          >
+            个人布局
+          </button>
+        </div>
+        <div className="p6-blueprint-legend__toggle-row">
+          <button
+            type="button"
+            className={[
+              "p6-blueprint-legend__toggle",
+              relationshipMode === "semantic" ? "is-active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => onRelationshipModeChange("semantic")}
+          >
+            语义线
+          </button>
+          <button
+            type="button"
+            className={[
+              "p6-blueprint-legend__toggle",
+              relationshipMode === "projection" ? "is-active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => onRelationshipModeChange("projection")}
+          >
+            投影聚合
+          </button>
+        </div>
+      </div>
+
+      <div className="p6-blueprint-legend__group">
+        <div className="p6-blueprint-legend__group-title">投影摘要</div>
+        <div className="p6-blueprint-legend__facts-grid">
+          <span className="p6-blueprint-legend__fact-chip">系统 {projectionSummary.moduleCount}</span>
+          <span className="p6-blueprint-legend__fact-chip">角色 {projectionSummary.userCount}</span>
+          <span className="p6-blueprint-legend__fact-chip">产物 {projectionSummary.artifactCount}</span>
+          <span className="p6-blueprint-legend__fact-chip">连线 {projectionSummary.flowCount}</span>
+          <span className="p6-blueprint-legend__fact-chip">自动 {projectionSummary.autoProjectionCount}</span>
+          <span className="p6-blueprint-legend__fact-chip">人工 {projectionSummary.manualProjectionCount}</span>
+        </div>
+        <div className="p6-blueprint-legend__fact">当前布局：{projectionSummary.layoutModeLabel}</div>
+        <div className="p6-blueprint-legend__fact">关系视图：{projectionSummary.relationshipModeLabel}</div>
       </div>
 
       <div className="p6-blueprint-legend__group">

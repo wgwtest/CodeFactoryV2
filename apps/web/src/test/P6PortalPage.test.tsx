@@ -37,6 +37,23 @@ test("legend styles anchor it to the portal bottom-right corner", () => {
   expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*bottom:\s*24px;/s);
 });
 
+test("renders distinct portal element types and a visible world boundary", async () => {
+  render(
+    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByTestId("p6-portal-node-user")).toHaveAttribute("data-node-kind", "user");
+  expect(screen.getByTestId("p6-portal-node-p1")).toHaveAttribute("data-node-kind", "module");
+
+  const artifact = screen.getByTestId("p6-portal-artifact-spec");
+  expect(artifact).toHaveAttribute("data-artifact-kind", "artifact");
+  expect(artifact).toHaveTextContent("自动投影");
+
+  expect(screen.getByTestId("p6-portal-world-boundary")).toHaveTextContent("自动布局区");
+});
+
 test("clicking a module only highlights it and does not open a summary popup", async () => {
   render(
     <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -69,6 +86,30 @@ test("restores saved blueprint node layout from localStorage", async () => {
   expect(node).toHaveStyle({ left: "520px", top: "600px" });
 });
 
+test("switches between recommended layout and personal layout", async () => {
+  window.localStorage.setItem(
+    P6_PORTAL_LAYOUT_STORAGE_KEY,
+    JSON.stringify({
+      p1: { x: 520, y: 600 },
+    }),
+  );
+
+  render(
+    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const node = await screen.findByTestId("p6-portal-node-p1");
+  expect(node).toHaveStyle({ left: "520px", top: "600px" });
+
+  fireEvent.click(screen.getByRole("button", { name: "推荐布局" }));
+  expect(node).toHaveStyle({ left: "400px", top: "660px" });
+
+  fireEvent.click(screen.getByRole("button", { name: "个人布局" }));
+  expect(node).toHaveStyle({ left: "520px", top: "600px" });
+});
+
 test("persists blueprint node layout after dragging", async () => {
   render(
     <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -88,6 +129,24 @@ test("persists blueprint node layout after dragging", async () => {
   expect(savedLayout.p1).toBeDefined();
   expect(savedLayout.p1?.x).toBeGreaterThan(420);
   expect(savedLayout.p1?.y).toBeGreaterThan(540);
+});
+
+test("switches relationship view from semantic wires to projection aggregation", async () => {
+  render(
+    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByTestId("p6-flow-label-p2-p3")).toBeInTheDocument();
+  expect(screen.queryByTestId("p6-node-relations-p3")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "投影聚合" }));
+
+  expect(screen.queryByTestId("p6-flow-label-p2-p3")).not.toBeInTheDocument();
+  expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/入1/);
+  expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/出2/);
+  expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/产物3/);
 });
 
 test("double clicking a module navigates to its target workspace", async () => {

@@ -8,6 +8,7 @@ type P6BlueprintNodeProps = {
   active: boolean;
   emphasized: boolean;
   visiblePins: P6PortalAnchorSide[];
+  relationSummary?: string;
   onClick: () => void;
   onDoubleClick: () => void;
   onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>) => void;
@@ -21,6 +22,7 @@ export function P6BlueprintNode({
   active,
   emphasized,
   visiblePins,
+  relationSummary,
   onClick,
   onDoubleClick,
   onMouseDown,
@@ -43,6 +45,8 @@ export function P6BlueprintNode({
       type="button"
       data-testid={`p6-portal-node-${node.id}`}
       data-active={active ? "true" : "false"}
+      data-node-kind={node.kind}
+      data-projection-mode={node.projectionMode}
       aria-label={node.title}
       className={className}
       style={{
@@ -72,7 +76,10 @@ export function P6BlueprintNode({
         {node.kind === "module" ? (
           <>
             <div className="p6-blueprint-node__head">
-              <span className="p6-blueprint-node__stage">{node.stage}</span>
+              <div className="p6-blueprint-node__head-group">
+                <span className="p6-blueprint-node__stage">{node.stage}</span>
+                <span className="p6-blueprint-node__category">{node.categoryLabel}</span>
+              </div>
               <span className="p6-blueprint-node__status">{node.status}</span>
             </div>
             <div className="p6-blueprint-node__title">{node.title}</div>
@@ -84,12 +91,23 @@ export function P6BlueprintNode({
                 </span>
               ))}
             </div>
+            {relationSummary ? (
+              <div data-testid={`p6-node-relations-${node.id}`} className="p6-blueprint-node__relations">
+                {relationSummary}
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="p6-blueprint-node__user-shell">
-            <span className="p6-blueprint-node__user-kicker">P6 入口感知</span>
+            <span className="p6-blueprint-node__user-kicker">{node.categoryLabel}</span>
             <span className="p6-blueprint-node__user-title">{node.title}</span>
             <span className="p6-blueprint-node__user-summary">{node.summary}</span>
+            <span className="p6-blueprint-node__user-status">{node.status}</span>
+            {relationSummary ? (
+              <span data-testid={`p6-node-relations-${node.id}`} className="p6-blueprint-node__user-relations">
+                {relationSummary}
+              </span>
+            ) : null}
           </div>
         )}
       </div>
