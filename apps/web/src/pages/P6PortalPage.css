@@ -1,0 +1,425 @@
+.p6-portal-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(86, 149, 255, 0.14), transparent 18%),
+    radial-gradient(circle at 92% 74%, rgba(23, 184, 166, 0.14), transparent 16%),
+    linear-gradient(180deg, #eef5ff 0%, #f6fbff 48%, #eef5ff 100%);
+  color: #132b46;
+}
+
+.p6-portal-viewport,
+.p6-portal-legend {
+  position: absolute;
+}
+
+.p6-portal-viewport {
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.p6-portal-viewport:active {
+  cursor: grabbing;
+}
+
+.p6-portal-viewport__background-grid,
+.p6-portal-viewport__ambient,
+.p6-portal-stage,
+.p6-portal-stage__wires,
+.p6-portal-flow-label,
+.p6-blueprint-node,
+.p6-portal-artifact {
+  position: absolute;
+}
+
+.p6-portal-viewport__background-grid {
+  inset: 0;
+  background:
+    linear-gradient(0deg, rgba(71, 108, 160, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 108, 160, 0.08) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.p6-portal-viewport__ambient {
+  border-radius: 999px;
+  filter: blur(40px);
+}
+
+.p6-portal-viewport__ambient--one {
+  left: 180px;
+  top: 80px;
+  width: 380px;
+  height: 260px;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.p6-portal-viewport__ambient--two {
+  right: 180px;
+  bottom: 120px;
+  width: 340px;
+  height: 280px;
+  background: rgba(20, 184, 166, 0.14);
+}
+
+.p6-portal-stage {
+  left: 0;
+  top: 0;
+  transform-origin: top left;
+}
+
+.p6-portal-stage__wires {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.p6-portal-wire,
+.p6-portal-wire-travel {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.p6-portal-wire {
+  stroke: rgba(61, 93, 131, 0.18);
+  stroke-width: 4;
+}
+
+.p6-portal-wire.is-emphasized {
+  stroke-width: 5;
+}
+
+.p6-portal-wire--knowledge.is-emphasized,
+.p6-portal-wire-travel--knowledge {
+  stroke: #0f766e;
+}
+
+.p6-portal-wire--analysis.is-emphasized,
+.p6-portal-wire-travel--analysis {
+  stroke: #2563eb;
+}
+
+.p6-portal-wire--design.is-emphasized,
+.p6-portal-wire-travel--design {
+  stroke: #4f46e5;
+}
+
+.p6-portal-wire--tooling.is-emphasized,
+.p6-portal-wire-travel--tooling {
+  stroke: #ca8a04;
+}
+
+.p6-portal-wire--delivery.is-emphasized,
+.p6-portal-wire-travel--delivery {
+  stroke: #dc2626;
+}
+
+.p6-portal-wire-travel {
+  opacity: 0.18;
+  stroke-width: 6;
+  stroke-dasharray: 16 26;
+}
+
+.p6-portal-wire-travel.is-emphasized {
+  opacity: 0.92;
+  animation: p6-portal-wire-move 3.4s linear infinite;
+}
+
+.p6-portal-flow-label,
+.p6-portal-artifact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(144, 172, 216, 0.5);
+  box-shadow: 0 12px 26px rgba(18, 49, 85, 0.08);
+  color: #456381;
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+}
+
+.p6-portal-flow-label.is-emphasized {
+  color: #173d68;
+  border-color: rgba(59, 130, 246, 0.44);
+  box-shadow: 0 18px 34px rgba(18, 49, 85, 0.14);
+}
+
+.p6-portal-artifact {
+  z-index: 1;
+  font-size: 12px;
+  background: rgba(242, 247, 255, 0.9);
+}
+
+.p6-blueprint-node {
+  z-index: 2;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 0;
+  cursor: grab;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.p6-blueprint-node:active {
+  cursor: grabbing;
+}
+
+.p6-blueprint-node--module,
+.p6-blueprint-node--user {
+  border-radius: 30px;
+}
+
+.p6-blueprint-node--module {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(246, 250, 255, 0.92) 100%);
+  border: 1px solid rgba(144, 172, 216, 0.45);
+  box-shadow: 0 24px 46px rgba(18, 49, 85, 0.14);
+}
+
+.p6-blueprint-node--user {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 247, 255, 0.94) 100%);
+  border: 1px solid rgba(144, 172, 216, 0.4);
+  box-shadow: 0 24px 46px rgba(18, 49, 85, 0.12);
+}
+
+.p6-blueprint-node.is-active,
+.p6-blueprint-node.is-emphasized,
+.p6-blueprint-node:hover {
+  transform: translateY(-5px);
+}
+
+.p6-blueprint-node.is-active,
+.p6-blueprint-node.is-emphasized {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--p6-node-accent) 28%, white),
+    0 28px 54px rgba(18, 49, 85, 0.2);
+}
+
+.p6-blueprint-node__body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 18px 18px 16px;
+}
+
+.p6-blueprint-node__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.p6-blueprint-node__stage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--p6-node-accent) 12%, white);
+  color: #21456f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.p6-blueprint-node__status {
+  color: #5c7999;
+  font-size: 12px;
+}
+
+.p6-blueprint-node__title,
+.p6-blueprint-node__user-title {
+  margin-top: 14px;
+  color: #143155;
+  font-size: 27px;
+  line-height: 1.12;
+  font-family: "Noto Serif SC", "STSong", serif;
+}
+
+.p6-blueprint-node__summary,
+.p6-blueprint-node__user-summary {
+  margin: 12px 0 0;
+  color: #4f6d8d;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.p6-blueprint-node__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.p6-blueprint-node__metric {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(241, 246, 255, 0.92);
+  border: 1px solid rgba(200, 216, 242, 0.92);
+  color: #476684;
+  font-size: 12px;
+}
+
+.p6-blueprint-node__user-shell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 24px;
+  text-align: center;
+}
+
+.p6-blueprint-node__user-kicker {
+  color: #637f9f;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.p6-blueprint-node__pin {
+  position: absolute;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--p6-node-accent) 70%, white);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--p6-node-accent) 16%, transparent);
+}
+
+.p6-blueprint-node__pin--left {
+  left: -7px;
+  top: calc(50% - 7px);
+}
+
+.p6-blueprint-node__pin--right {
+  right: -7px;
+  top: calc(50% - 7px);
+}
+
+.p6-blueprint-node__pin--top {
+  top: -7px;
+  left: calc(50% - 7px);
+}
+
+.p6-blueprint-node__pin--bottom {
+  bottom: -7px;
+  left: calc(50% - 7px);
+}
+
+.p6-blueprint-legend {
+  right: 26px;
+  bottom: 24px;
+  z-index: 4;
+  width: 360px;
+  padding: 18px 20px 18px;
+  border-radius: 28px;
+  border: 1px solid rgba(140, 170, 214, 0.42);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 28px 54px rgba(18, 49, 85, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.p6-blueprint-legend__eyebrow {
+  color: #6a85a5;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.p6-blueprint-legend__title {
+  margin: 6px 0 0;
+  color: #143155;
+  font-size: 28px;
+  line-height: 1.18;
+  font-family: "Noto Serif SC", "STSong", serif;
+}
+
+.p6-blueprint-legend__summary {
+  margin: 12px 0 0;
+  color: #567391;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.p6-blueprint-legend__group {
+  margin-top: 16px;
+}
+
+.p6-blueprint-legend__group-title {
+  color: #27466d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.p6-blueprint-legend__fact {
+  margin-top: 8px;
+  color: #5d7898;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.p6-blueprint-legend__roadmap {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.p6-blueprint-legend__roadmap li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(214, 225, 241, 0.85);
+  color: #4f6d8d;
+  font-size: 13px;
+}
+
+.p6-blueprint-legend__roadmap li:first-child {
+  border-top: 0;
+}
+
+.p6-blueprint-legend__roadmap strong {
+  color: #7a92ae;
+  font-size: 12px;
+}
+
+.p6-blueprint-legend__reset.ant-btn {
+  margin-top: 18px;
+  width: 100%;
+  height: 40px;
+  border-radius: 999px;
+  border-color: rgba(104, 138, 189, 0.42);
+  color: #2c507d;
+  background: rgba(241, 246, 255, 0.86);
+}
+
+@keyframes p6-portal-wire-move {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -160;
+  }
+}
+
+@media (max-width: 1100px) {
+  .p6-blueprint-legend {
+    width: 320px;
+  }
+}
