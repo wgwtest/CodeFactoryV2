@@ -45,7 +45,7 @@ export function P4Hero({ overview, archiveName }: P4HeroProps) {
             fontSize: 15,
           }}
         >
-          面向工具资产、输入工具链和自演进巡检的独立驾驶舱。当前版本聚焦 P4 第一批最小闭环，强调覆盖、
+          面向工具资产、输入工序链和自演进巡检的独立驾驶舱。当前版本聚焦 P4 第一批最小闭环，强调覆盖、
           健康度、命中解释和待演进建议。
         </Typography.Paragraph>
       </div>

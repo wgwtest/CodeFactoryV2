@@ -14,18 +14,27 @@ import { useArchiveContext } from "../context/ArchiveContext";
 import type {
   EvolutionRun,
   ToolDefinition,
+  ToolDemandSheet,
+  ToolDemandReviewDecisionInput,
   ToolDefinitionWriteInput,
   ToolHubOverview,
-  ToolMatchRequestInput,
-  ToolMatchRun,
+  ToolManufacturePlanView,
 } from "../lib/api";
 import {
+  clearToolsForTesting,
   createEvolutionRun,
   createToolDefinition,
-  createToolMatchRun,
+  deleteToolDefinition,
+  getManufacturePlans,
+  getDemandItemProgress,
+  getDemandSheet,
+  getDemandSheets,
   getEvolutionRuns,
   getToolDefinitions,
   getToolHubOverview,
+  clearDemandSheetsForTesting,
+  rejectDemandSheet,
+  reviewDemandItem,
   updateToolDefinition,
 } from "../lib/toolHub";
 
@@ -35,38 +44,67 @@ export function XXP4Page() {
   const { activeArchive, activeArchiveId } = useArchiveContext();
   const [overview, setOverview] = useState<ToolHubOverview | null>(null);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
+  const [manufacturePlans, setManufacturePlans] = useState<ToolManufacturePlanView[]>([]);
+  const [demandSheets, setDemandSheets] = useState<ToolDemandSheet[]>([]);
+  const [activeSheet, setActiveSheet] = useState<ToolDemandSheet | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [evolutionRuns, setEvolutionRuns] = useState<EvolutionRun[]>([]);
-  const [matchRun, setMatchRun] = useState<ToolMatchRun | null>(null);
   const [latestEvolutionRun, setLatestEvolutionRun] = useState<EvolutionRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState(false);
-  const [runningMatch, setRunningMatch] = useState(false);
+  const [refreshingItemId, setRefreshingItemId] = useState<string | null>(null);
+  const [reviewingItemId, setReviewingItemId] = useState<string | null>(null);
+  const [rejectingCurrentSheet, setRejectingCurrentSheet] = useState(false);
+  const [clearingDemandSheets, setClearingDemandSheets] = useState(false);
   const [runningEvolution, setRunningEvolution] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
-  async function loadPage(showLoading = false) {
+  async function loadPage(showLoading = false, preferredSheetId?: string | null, preferredItemId?: string | null) {
     if (showLoading) {
       setLoading(true);
     }
     try {
-      const [overviewResponse, toolsResponse, evolutionResponse] = await Promise.all([
+      const [overviewResponse, toolsResponse, evolutionResponse, demandSheetsResponse, manufacturePlansResponse] = await Promise.all([
         getToolHubOverview(),
         getToolDefinitions(),
         getEvolutionRuns(),
+        getDemandSheets(),
+        getManufacturePlans(),
       ]);
       const overviewEnvelope = overviewResponse.data;
       const toolsEnvelope = toolsResponse.data;
       const evolutionEnvelope = evolutionResponse.data;
+      const demandSheetEnvelope = demandSheetsResponse.data;
+      const manufacturePlanEnvelope = manufacturePlansResponse.data;
       const snapshotIds = [
         overviewEnvelope.meta.snapshot_id,
         toolsEnvelope.meta.snapshot_id,
         evolutionEnvelope.meta.snapshot_id,
       ];
       const hasSnapshotMismatch = new Set(snapshotIds).size > 1;
+      const availableSheetIds = new Set(demandSheetEnvelope.items.map((sheet) => sheet.sheet_id));
+      const requestedSheetId =
+        preferredSheetId === null ? null : preferredSheetId ?? activeSheet?.sheet_id ?? demandSheetEnvelope.items[0]?.sheet_id ?? null;
+      const currentActiveSheetId =
+        preferredSheetId === null
+          ? null
+          : requestedSheetId && availableSheetIds.has(requestedSheetId)
+            ? requestedSheetId
+            : demandSheetEnvelope.items[0]?.sheet_id ?? null;
+      const activeSheetResponse = currentActiveSheetId ? await getDemandSheet(currentActiveSheetId) : null;
+      const activeSheetDetail = activeSheetResponse?.data ?? null;
+      const nextSelectedItemId =
+        preferredItemId && activeSheetDetail?.items?.some((item) => item.item_id === preferredItemId)
+          ? preferredItemId
+          : activeSheetDetail?.items?.[0]?.item_id ?? null;
       startTransition(() => {
         setOverview(overviewEnvelope.data);
         setTools(toolsEnvelope.data.items);
+        setManufacturePlans(manufacturePlanEnvelope.items);
+        setDemandSheets(demandSheetEnvelope.items);
+        setActiveSheet(activeSheetDetail);
+        setSelectedItemId(nextSelectedItemId);
         setEvolutionRuns(evolutionEnvelope.data.items);
         setSnapshotWarning(hasSnapshotMismatch ? SNAPSHOT_WARNING_MESSAGE : null);
         setError(null);
@@ -84,22 +122,94 @@ export function XXP4Page() {
     void loadPage(true);
   }, []);
 
-  async function handleRunMatch(request: ToolMatchRequestInput) {
+  async function handleSelectSheet(sheetId: string) {
+    const summary = demandSheets.find((sheet) => sheet.sheet_id === sheetId) ?? null;
     try {
-      setRunningMatch(true);
-      const response = await createToolMatchRun({
-        ...request,
-        knowledge_context: {
-          ...request.knowledge_context,
-          archive_id: request.knowledge_context.archive_id ?? activeArchiveId ?? undefined,
-        },
-      });
-      setMatchRun(response.data);
-      await loadPage();
+      if (summary) {
+        setActiveSheet(summary);
+        setSelectedItemId(summary.items?.[0]?.item_id ?? null);
+      }
+      const response = await getDemandSheet(sheetId);
+      setActiveSheet(response.data);
+      setDemandSheets((currentSheets) =>
+        currentSheets.map((sheet) => (sheet.sheet_id === response.data.sheet_id ? { ...sheet, ...response.data } : sheet)),
+      );
+      setSelectedItemId(response.data.items?.[0]?.item_id ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "加载工具需求单失败");
+    }
+  }
+
+  async function handleRefreshItemProgress(itemId: string) {
+    if (!activeSheet) {
+      return;
+    }
+
+    try {
+      setRefreshingItemId(itemId);
+      await getDemandItemProgress(itemId);
+      await loadPage(false, activeSheet.sheet_id, itemId);
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "运行工具匹配失败");
+      setError(runError instanceof Error ? runError.message : "刷新叶子项进度失败");
     } finally {
-      setRunningMatch(false);
+      setRefreshingItemId(null);
+    }
+  }
+
+  async function handleReviewItem(itemId: string, payload: ToolDemandReviewDecisionInput) {
+    if (!activeSheet) {
+      return;
+    }
+
+    try {
+      setReviewingItemId(itemId);
+      setError(null);
+      await reviewDemandItem(itemId, payload);
+      await loadPage(false, activeSheet.sheet_id, itemId);
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : "提交需求项审定失败");
+    } finally {
+      setReviewingItemId(null);
+    }
+  }
+
+  async function handleRejectCurrentSheet() {
+    if (!activeSheet) {
+      return;
+    }
+
+    try {
+      setRejectingCurrentSheet(true);
+      const response = await rejectDemandSheet(activeSheet.sheet_id, {
+        actor_id: "p4-workspace",
+        actor_phase: "P4",
+        reason_code: "manual_reject",
+        reason_message: "P4 工作台人工驳回当前工单。",
+      });
+      const rejectedSheet = response.data;
+      startTransition(() => {
+        setActiveSheet(rejectedSheet);
+        setDemandSheets((currentSheets) =>
+          currentSheets.map((sheet) => (sheet.sheet_id === rejectedSheet.sheet_id ? { ...sheet, ...rejectedSheet } : sheet)),
+        );
+        setError(null);
+      });
+    } catch (rejectError) {
+      setError(rejectError instanceof Error ? rejectError.message : "驳回当前工单失败");
+    } finally {
+      setRejectingCurrentSheet(false);
+    }
+  }
+
+  async function handleClearDemandSheets() {
+    try {
+      setClearingDemandSheets(true);
+      await clearDemandSheetsForTesting();
+      await loadPage(false, null, null);
+    } catch (clearError) {
+      setError(clearError instanceof Error ? clearError.message : "清理测试工单失败");
+    } finally {
+      setClearingDemandSheets(false);
     }
   }
 
@@ -135,6 +245,30 @@ export function XXP4Page() {
       await loadPage();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "更新工具失败");
+    } finally {
+      setSavingTool(false);
+    }
+  }
+
+  async function handleDeleteTool(toolId: string) {
+    try {
+      setSavingTool(true);
+      await deleteToolDefinition(toolId);
+      await loadPage();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "移除工具失败");
+    } finally {
+      setSavingTool(false);
+    }
+  }
+
+  async function handleClearTools() {
+    try {
+      setSavingTool(true);
+      await clearToolsForTesting();
+      await loadPage();
+    } catch (clearError) {
+      setError(clearError instanceof Error ? clearError.message : "清空工具仓库失败");
     } finally {
       setSavingTool(false);
     }
@@ -225,7 +359,7 @@ export function XXP4Page() {
                                 运行监视
                               </Typography.Title>
                               <Typography.Paragraph style={{ margin: "8px 0 0", color: "#475569" }}>
-                                跟踪输入工具链、自演进巡检与风险摘要，快速判断当前 P4 工作状态是否需要下钻处理。
+                                跟踪输入工序链、自演进巡检与风险摘要，快速判断当前 P4 工作状态是否需要下钻处理。
                               </Typography.Paragraph>
                             </div>
 
@@ -241,7 +375,7 @@ export function XXP4Page() {
                                     variant="borderless"
                                     style={{ background: "#ffffff", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                                   >
-                                    <Typography.Text type="secondary">输入工具链</Typography.Text>
+                                    <Typography.Text type="secondary">输入工序链</Typography.Text>
                                     <Typography.Title level={2} style={{ margin: "8px 0 10px" }}>
                                       {overview.recent_match_runs.length}
                                     </Typography.Title>
@@ -318,19 +452,28 @@ export function XXP4Page() {
                     "xx-p4-workspace-tab-input-chain",
                     "input",
                     "02",
-                    "输入工具链",
-                    "场景到匹配",
+                    "输入工序链",
+                    "总单到供给",
                   ),
                   children: (
                     <P4InputChainWorkspace
-                      catalogs={overview.catalogs}
-                      activeArchiveId={activeArchiveId}
-                      running={runningMatch}
-                      run={matchRun}
-                      onRun={handleRunMatch}
-                    />
-                  ),
-                },
+              sheets={demandSheets}
+              activeSheet={activeSheet}
+              selectedItemId={selectedItemId}
+              refreshingItemId={refreshingItemId}
+              reviewingItemId={reviewingItemId}
+              rejectingCurrentSheet={rejectingCurrentSheet}
+              clearingDemandSheets={clearingDemandSheets}
+              error={error}
+              onSelectSheet={handleSelectSheet}
+              onSelectItem={setSelectedItemId}
+              onRefreshProgress={handleRefreshItemProgress}
+              onReviewItem={handleReviewItem}
+              onRejectCurrentSheet={handleRejectCurrentSheet}
+              onClearDemandSheets={handleClearDemandSheets}
+            />
+          ),
+        },
                 {
                   key: "evolution",
                   label: renderWorkspaceTabLabel(
@@ -356,10 +499,13 @@ export function XXP4Page() {
                     <Space direction="vertical" size={18} style={{ display: "flex" }}>
                       <P4RegistryWorkspace
                         tools={tools}
+                        manufacturePlans={manufacturePlans}
                         catalogs={overview.catalogs}
                         saving={savingTool}
                         onCreate={handleCreateTool}
                         onUpdate={handleUpdateTool}
+                        onDelete={handleDeleteTool}
+                        onClearAllTools={handleClearTools}
                       />
                       <div id="xx-p4-registry-coverage-matrix">
                         <P4CoverageMatrix id="xx-p4-coverage-matrix" matrix={overview.coverage_matrix} />

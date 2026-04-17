@@ -8,6 +8,8 @@
 
 **Tech Stack:** FastAPI, Pydantic, React 18, TypeScript, Ant Design 5, Vitest, Testing Library, pytest
 
+**2026-04-16 Correction:** 当前实现以更新后的 P4 设计为准，工具仓核心模型已从旧的 `category / stage / capability` 轴线纠偏为 `business domain / tool form / runtime platform / lifecycle stage`。
+
 ---
 
 ### Task 1: 锁定 `tool_hub` 后端契约与最小行为

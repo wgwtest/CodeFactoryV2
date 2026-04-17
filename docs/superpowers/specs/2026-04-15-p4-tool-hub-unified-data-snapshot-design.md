@@ -29,6 +29,7 @@
 - 前端分别请求 `overview / tools / evolution-runs`，尚未明确这些接口是否来自同一份统一状态
 - `metrics / risk_summary / coverage_matrix / recent runs` 仍是页面导向的拼装结果，尚未沉淀为独立的派生层
 - 缺少统一的 `snapshot_id`，无法证明四个工作区看到的是同一时刻的 `P4` 状态
+- 旧版矩阵语义曾把平台建设能力误当成工具仓业务域，导致 `coverage_matrix` 轴线本身存在建模偏差
 
 ## 3. 设计边界
 
@@ -117,6 +118,16 @@ ToolHubStateSnapshot:
 - `match_runs`
 - `evolution_runs`
 
+其中 `catalogs` 至少包含：
+
+- `domains`
+- `lifecycle_stages`
+- `tool_forms`
+- `runtime_platforms`
+- `input_types`
+- `output_types`
+- `supported_sources`
+
 ### 5.3 `derived`
 
 第一批最小派生状态固定为：
@@ -167,7 +178,7 @@ ToolHubStateSnapshot:
 
 ### 6.4 `coverage_matrix`
 
-回答“工具在阶段 × 分类上的覆盖情况如何”。
+回答“工具在业务域 × 工具形态上的覆盖情况如何”。
 
 它只是 `raw.tools + raw.catalogs` 的投影，不是单独维护的数据表。
 

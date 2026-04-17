@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.tool_hub.fixtures import CATEGORY_CATALOG, STAGE_CATALOG
+from app.tool_hub.fixtures import DOMAIN_CATALOG, TOOL_FORM_CATALOG
 from app.tool_hub.models import (
     CoverageMatrix,
     CoverageMatrixCell,
@@ -19,6 +19,7 @@ from app.tool_hub.models import (
     RecentRunSummary,
     RiskSummaryItem,
     ToolDefinition,
+    ToolDemandSheet,
     ToolHubCatalogs,
     ToolHubDerivedState,
     ToolHubOverview,
@@ -31,8 +32,8 @@ from app.tool_hub.models import (
     now_iso,
 )
 
-STATE_VERSION = "p4-tool-hub-state-v1"
-SOURCE_CONTRACT_VERSION = "p4-tool-hub-read-v1"
+STATE_VERSION = "p4-tool-hub-state-v2"
+SOURCE_CONTRACT_VERSION = "p4-tool-hub-read-v2"
 VIRTUAL_EVOLUTION_RUN_ID = "evolution-virtual"
 
 
@@ -40,12 +41,14 @@ def build_tool_hub_snapshot(
     *,
     catalogs: ToolHubCatalogs,
     tools: list[ToolDefinition],
+    demand_sheets: list[ToolDemandSheet],
     match_runs: list[ToolMatchRun],
     evolution_runs: list[EvolutionRun],
 ) -> ToolHubStateSnapshot:
     raw = ToolHubRawState(
         catalogs=catalogs,
         tools=tools,
+        demand_sheets=demand_sheets,
         match_runs=match_runs,
         evolution_runs=evolution_runs,
     )
@@ -54,6 +57,7 @@ def build_tool_hub_snapshot(
     derived = ToolHubDerivedState(
         metrics=build_overview_metrics(
             tools=tools,
+            demand_sheets=demand_sheets,
             match_runs=match_runs,
             evolution_runs=evolution_runs,
             current_evolution=current_evolution,
@@ -78,6 +82,7 @@ def project_tool_hub_overview(snapshot: ToolHubStateSnapshot) -> ToolHubOverview
         coverage_matrix=snapshot.derived.coverage_matrix,
         risk_summary=snapshot.derived.risk_summary,
         pending_suggestions=snapshot.derived.pending_suggestions,
+        recent_demand_sheets=snapshot.raw.demand_sheets[:5],
         recent_match_runs=[summarize_match_run(run) for run in snapshot.raw.match_runs[:5]],
         recent_evolution_runs=[summarize_evolution_run(run) for run in snapshot.raw.evolution_runs[:5]],
         catalogs=snapshot.raw.catalogs,
@@ -130,6 +135,7 @@ def build_snapshot_meta(raw: ToolHubRawState) -> ToolHubSnapshotMeta:
 def build_overview_metrics(
     *,
     tools: list[ToolDefinition],
+    demand_sheets: list[ToolDemandSheet],
     match_runs: list[ToolMatchRun],
     evolution_runs: list[EvolutionRun],
     current_evolution: EvolutionRun,
@@ -145,7 +151,14 @@ def build_overview_metrics(
         archived_tool_count=len([tool for tool in tools if tool.status == "archived"]),
         match_run_count=len(match_runs),
         evolution_run_count=len(evolution_runs),
-        active_chain_count=len(match_runs),
+        active_chain_count=len(
+            [
+                sheet
+                for sheet in demand_sheets
+                if sheet.lifecycle_status not in {"rejected", "withdrawn", "closed"}
+                and not (sheet.review_status == "reviewed" and sheet.delivery_status == "delivered")
+            ]
+        ),
         overlap_candidate_count=current_evolution.summary.overlap_risk_count,
         pending_suggestion_count=len(pending_suggestions),
         recent_success_rate=recent_success_rate,
@@ -168,22 +181,28 @@ def build_run_monitor(
 
 def build_coverage_matrix(catalogs: ToolHubCatalogs, tools: list[ToolDefinition]) -> CoverageMatrix:
     rows: list[CoverageMatrixRow] = []
-    for category in catalogs.categories:
-        category_tools = [tool for tool in tools if tool.primary_category_id == category.id and tool.status == "active"]
+    for domain in catalogs.domains:
+        domain_tools = [tool for tool in tools if tool.primary_domain_id == domain.id and tool.status == "active"]
         rows.append(
             CoverageMatrixRow(
-                category_id=category.id,
-                category_label=category.label,
+                row_id=domain.id,
+                row_label=domain.label,
                 cells=[
                     CoverageMatrixCell(
-                        stage_id=stage.id,
-                        value=len([tool for tool in category_tools if stage.id in tool.applicable_stages]),
+                        column_id=tool_form.id,
+                        value=len([tool for tool in domain_tools if tool.tool_form_id == tool_form.id]),
                     )
-                    for stage in catalogs.stages
+                    for tool_form in catalogs.tool_forms
                 ],
             )
         )
-    return CoverageMatrix(stages=catalogs.stages, rows=rows)
+    return CoverageMatrix(
+        title="业务域 × 工具形态",
+        x_axis_label="工具形态",
+        y_axis_label="业务能力域",
+        columns=catalogs.tool_forms,
+        rows=rows,
+    )
 
 
 def build_risk_summary(run: EvolutionRun) -> list[RiskSummaryItem]:
@@ -241,8 +260,9 @@ def _analyze_evolution(
     deterministic: bool,
 ) -> tuple[EvolutionRunSummary, list[EvolutionFinding]]:
     findings: list[EvolutionFinding] = []
-    known_categories = {item.id for item in CATEGORY_CATALOG}
-    required_tag_namespaces = ("stage:", "capability:", "input:", "output:")
+    known_domains = {item.id for item in DOMAIN_CATALOG}
+    known_tool_forms = {item.id for item in TOOL_FORM_CATALOG}
+    required_tag_namespaces = ("domain:", "form:", "runtime:", "lifecycle:", "input:", "output:")
 
     for tool in tools:
         if not tool.summary.strip() or not tool.problem_statement.strip():
@@ -256,15 +276,21 @@ def _analyze_evolution(
                     tool_ids=[tool.tool_id],
                 )
             )
-        if tool.primary_category_id not in known_categories or not all(
+        if (
+            tool.primary_domain_id not in known_domains
+            or tool.tool_form_id not in known_tool_forms
+            or len(tool.runtime_platform_ids) == 0
+            or len(tool.lifecycle_stage_ids) == 0
+            or not all(
             any(tag.startswith(prefix) for tag in tool.tags) for prefix in required_tag_namespaces
+            )
         ):
             findings.append(
                 _build_finding(
                     deterministic=deterministic,
                     kind="taxonomy_issue",
-                    title=f"{tool.name} 分类或标签不规范",
-                    description="当前工具缺少标准分类或缺失关键命名空间标签。",
+                    title=f"{tool.name} 域模型或标签不规范",
+                    description="当前工具缺少标准业务域、工具形态、运行平台或关键命名空间标签。",
                     severity="warning",
                     tool_ids=[tool.tool_id],
                 )
@@ -272,38 +298,43 @@ def _analyze_evolution(
 
     active_tools = [tool for tool in tools if tool.status == "active"]
     for index, current in enumerate(active_tools):
-        current_capabilities = {tag for tag in current.tags if tag.startswith("capability:")}
-        current_stages = set(current.applicable_stages)
+        current_domains = {current.primary_domain_id}
+        current_stages = set(current.lifecycle_stage_ids)
         current_inputs = set(current.input_types)
         for other in active_tools[index + 1 :]:
             overlap_score = 0
-            if current_stages.intersection(other.applicable_stages):
+            if current_domains.intersection({other.primary_domain_id}):
+                overlap_score += 1
+            if current.tool_form_id == other.tool_form_id:
+                overlap_score += 1
+            if current_stages.intersection(other.lifecycle_stage_ids):
                 overlap_score += 1
             if current_inputs.intersection(other.input_types):
                 overlap_score += 1
-            other_capabilities = {tag for tag in other.tags if tag.startswith("capability:")}
-            if current_capabilities.intersection(other_capabilities):
+            if set(current.runtime_platform_ids).intersection(other.runtime_platform_ids):
                 overlap_score += 1
-            if overlap_score >= 2:
+            if overlap_score >= 3:
                 findings.append(
                     _build_finding(
                         deterministic=deterministic,
                         kind="overlap_risk",
                         title=f"{current.name} 与 {other.name} 疑似重叠",
-                        description="两者在阶段、输入或能力标签上存在高相似度，建议人工评估是否整合。",
-                        severity="critical" if overlap_score >= 3 else "warning",
+                        description="两者在业务域、形态、生命周期或输入侧存在高相似度，建议人工评估是否整合。",
+                        severity="critical" if overlap_score >= 4 else "warning",
                         tool_ids=[current.tool_id, other.tool_id],
                     )
                 )
 
-    for stage in STAGE_CATALOG:
-        if not any(stage.id in tool.applicable_stages for tool in active_tools):
+    for domain in DOMAIN_CATALOG:
+        if domain.id == "cross_domain_shared":
+            continue
+        if not any(domain.id == tool.primary_domain_id for tool in active_tools):
             findings.append(
                 _build_finding(
                     deterministic=deterministic,
                     kind="coverage_gap",
-                    title=f"{stage.label} 阶段覆盖不足",
-                    description="当前没有激活工具覆盖该阶段，驾驶舱矩阵存在明显空白。",
+                    title=f"{domain.label} 域覆盖不足",
+                    description="当前没有激活工具覆盖该业务域，工具仓矩阵存在明显空白。",
                     severity="info",
                     tool_ids=[],
                 )

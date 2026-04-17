@@ -625,9 +625,11 @@ export type ToolDefinition = {
   status: ToolStatus;
   summary: string;
   problem_statement: string;
-  primary_category_id: string;
+  primary_domain_id: string;
+  tool_form_id: string;
+  runtime_platform_ids: string[];
   tags: string[];
-  applicable_stages: string[];
+  lifecycle_stage_ids: string[];
   input_types: string[];
   output_types: string[];
   supported_sources: string[];
@@ -657,8 +659,10 @@ export type ToolHubReadEnvelope<T> = {
 };
 
 export type ToolHubCatalogs = {
-  categories: ToolHubCatalogItem[];
-  stages: ToolHubCatalogItem[];
+  domains: ToolHubCatalogItem[];
+  lifecycle_stages: ToolHubCatalogItem[];
+  tool_forms: ToolHubCatalogItem[];
+  runtime_platforms: ToolHubCatalogItem[];
   input_types: ToolHubCatalogItem[];
   output_types: ToolHubCatalogItem[];
   supported_sources: ToolHubCatalogItem[];
@@ -681,12 +685,15 @@ export type ToolHubOverviewMetrics = {
 };
 
 export type ToolHubCoverageMatrix = {
-  stages: ToolHubCatalogItem[];
+  title: string;
+  x_axis_label: string;
+  y_axis_label: string;
+  columns: ToolHubCatalogItem[];
   rows: Array<{
-    category_id: string;
-    category_label: string;
+    row_id: string;
+    row_label: string;
     cells: Array<{
-      stage_id: string;
+      column_id: string;
       value: number;
     }>;
   }>;
@@ -736,9 +743,12 @@ export type ToolMatchKnowledgeContext = {
 
 export type ToolMatchRequestInput = {
   scenario_text: string;
-  target_stage: string;
+  target_domain_ids: string[];
+  lifecycle_stage_ids: string[];
   required_input_types: string[];
   expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
   preferred_tags: string[];
   knowledge_context: ToolMatchKnowledgeContext;
 };
@@ -796,7 +806,247 @@ export type ToolHubOverview = {
   coverage_matrix: ToolHubCoverageMatrix;
   risk_summary: ToolHubRiskSummaryItem[];
   pending_suggestions: PendingSuggestionItem[];
+  recent_demand_sheets?: ToolDemandSheet[];
   recent_match_runs: ToolHubRecentRunSummary[];
   recent_evolution_runs: ToolHubRecentRunSummary[];
   catalogs: ToolHubCatalogs;
+};
+
+export type ToolDemandSheetLifecycleStatus = "submitted" | "accepted" | "rejected" | "withdrawn" | "closed";
+export type ToolDemandSheetReviewStatus = "pending_review" | "reviewing" | "reviewed";
+export type ToolDemandSheetDeliveryStatus = "not_delivered" | "delivering" | "delivered";
+export type ToolDemandSheetProcessingStatus = "not_started" | "processing" | "partially_ready" | "ready" | "failed";
+export type ToolDemandItemRecommendationType = "existing_tool" | "manufacture_candidate" | "insufficient_info";
+export type ToolDemandItemReviewStatus = "pending_review" | "approved_delivery" | "approved_manufacture" | "rejected";
+export type ToolDemandItemProcessingStatus =
+  | "accepted"
+  | "analyzing"
+  | "checking"
+  | "matched_existing"
+  | "manufacturing_pending"
+  | "manufacturing_in_progress"
+  | "ready_for_fetch"
+  | "failed";
+export type ToolSupplyResultType = "existing_tool" | "pending_manufacture" | "manufactured_tool";
+export type ToolManufacturePlanStatus = "manufacturing_pending" | "manufacturing_in_progress" | "ready_for_fetch" | "failed";
+export type ToolManufactureSimulationProfile = "fast" | "normal" | "slow";
+export type MockDemandScenarioId = "simulated_blue_force" | "navigation_planning" | "data_governance";
+
+export type ToolDemandSource = {
+  phase: string;
+  producer: string;
+  business_case: string;
+  scenario_id: string;
+  scenario_name: string;
+};
+
+export type ComponentSpec = {
+  component_name: string;
+  component_code: string;
+  problem_statement: string;
+  required_input_types: string[];
+  expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
+  lifecycle_stage_ids: string[];
+  keywords: string[];
+  acceptance_notes: string;
+};
+
+export type ToolDemandNode = {
+  node_id: string;
+  node_type: "system" | "subsystem" | "sub_subsystem" | "module" | "component";
+  node_name: string;
+  node_code: string;
+  description?: string;
+  business_domain_id: string;
+  children: ToolDemandNode[];
+  component_spec?: ComponentSpec | null;
+};
+
+export type ToolFetchManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_version: string;
+  tool_form_id: string;
+  runtime_platform_ids: string[];
+  fetch_mode: "descriptor";
+  entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
+  entrypoint_locator: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type ToolSupplyResult = {
+  result_type: ToolSupplyResultType;
+  item_id: string;
+  tool_ref?: string | null;
+  fetch_interface?: ToolFetchManifest | null;
+  progress_query_interface?: string | null;
+  estimated_ready_at?: string | null;
+  suggested_poll_after_seconds?: number | null;
+  available_at?: string | null;
+  last_message: string;
+};
+
+export type ToolDemandLifecycleEvent = {
+  event_id: string;
+  event_type: ToolDemandSheetLifecycleStatus;
+  actor_phase: string;
+  actor_id: string;
+  from_status?: ToolDemandSheetLifecycleStatus | null;
+  to_status: ToolDemandSheetLifecycleStatus;
+  reason_code: string;
+  reason_message: string;
+  occurred_at: string;
+};
+
+export type ToolDemandItem = {
+  item_id: string;
+  sheet_id: string;
+  source_node_id: string;
+  ancestry: string[];
+  business_domain_id: string;
+  component_name: string;
+  component_code: string;
+  problem_statement: string;
+  required_input_types: string[];
+  expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
+  lifecycle_stage_ids: string[];
+  keywords: string[];
+  acceptance_notes: string;
+  recommendation_type: ToolDemandItemRecommendationType;
+  recommendation_summary: string;
+  recommended_tool_id?: string | null;
+  recommended_tool_name?: string | null;
+  review_status: ToolDemandItemReviewStatus;
+  importance_score?: number | null;
+  urgency_score?: number | null;
+  rationality_verdict: string;
+  review_comment: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  processing_status: ToolDemandItemProcessingStatus;
+  analysis_result: string;
+  check_result: string;
+  match_result: string;
+  supply_result?: ToolSupplyResult | null;
+  submitted_at: string;
+  updated_at: string;
+};
+
+export type ToolDemandSheet = {
+  sheet_id: string;
+  sheet_name: string;
+  lifecycle_status: ToolDemandSheetLifecycleStatus;
+  review_status: ToolDemandSheetReviewStatus;
+  delivery_status: ToolDemandSheetDeliveryStatus;
+  processing_status: ToolDemandSheetProcessingStatus;
+  source: ToolDemandSource;
+  requested_by: string;
+  business_case: string;
+  root_node: ToolDemandNode;
+  item_ids: string[];
+  item_count: number;
+  pending_review_count: number;
+  approved_delivery_count: number;
+  approved_manufacture_count: number;
+  rejected_item_count: number;
+  matched_existing_count: number;
+  manufacturing_count: number;
+  ready_for_fetch_count: number;
+  failed_count: number;
+  lifecycle_events: ToolDemandLifecycleEvent[];
+  last_actor_phase?: string | null;
+  last_actor_id?: string | null;
+  terminal_reason_code?: string | null;
+  terminal_reason_message?: string | null;
+  items?: ToolDemandItem[];
+  submitted_at: string;
+  updated_at: string;
+};
+
+export type ToolDemandSheetCreateRequestInput = {
+  sheet_name: string;
+  source: ToolDemandSource;
+  requested_by: string;
+  root_node: ToolDemandNode;
+  notes?: string;
+};
+
+export type ToolDemandSheetEnvelope = {
+  items: ToolDemandSheet[];
+};
+
+export type ToolManufacturePlanView = {
+  plan_id: string;
+  item_id: string;
+  sheet_id: string;
+  component_name: string;
+  planned_tool_name: string;
+  status: ToolManufacturePlanStatus;
+  progress_percent: number;
+  simulation_profile: ToolManufactureSimulationProfile;
+  target_duration_seconds: number;
+  estimated_ready_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  last_progress_message: string;
+  updated_at: string;
+};
+
+export type ToolManufacturePlanEnvelope = {
+  items: ToolManufacturePlanView[];
+};
+
+export type ToolRegistryDeleteResult = {
+  removed_tool_id: string;
+  remaining_tool_count: number;
+};
+
+export type ToolRegistryTestingClearResult = {
+  cleared_tool_count: number;
+  cleared_match_run_count: number;
+  cleared_evolution_run_count: number;
+};
+
+export type ToolDemandTestingClearResult = {
+  cleared_sheet_count: number;
+  cleared_item_count: number;
+  cleared_manufacture_plan_count: number;
+};
+
+export type ToolDemandSheetActionInput = {
+  actor_id: string;
+  reason_code: string;
+  reason_message: string;
+  actor_phase?: string;
+};
+
+export type ToolDemandReviewDecisionInput = {
+  decision: "approve_delivery" | "approve_manufacture" | "reject";
+  importance_score?: number | null;
+  urgency_score?: number | null;
+  rationality_verdict: string;
+  review_comment: string;
+  reviewed_by: string;
+};
+
+export type ItemProgressView = {
+  item_id: string;
+  sheet_id: string;
+  status: ToolDemandItemProcessingStatus;
+  sheet_lifecycle_status: ToolDemandSheetLifecycleStatus;
+  sheet_review_status: ToolDemandSheetReviewStatus;
+  sheet_delivery_status: ToolDemandSheetDeliveryStatus;
+  review_status: ToolDemandItemReviewStatus;
+  result_type?: ToolSupplyResultType | null;
+  progress_percent: number;
+  estimated_ready_at?: string | null;
+  suggested_poll_after_seconds?: number | null;
+  fetch_interface?: ToolFetchManifest | null;
+  last_message: string;
+  updated_at: string;
 };

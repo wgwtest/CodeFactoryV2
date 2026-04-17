@@ -7,9 +7,21 @@ from app.config import settings
 from app.tool_hub.models import (
     EvolutionRun,
     EvolutionRunReadEnvelope,
+    ItemProgressView,
     ToolDefinition,
     ToolDefinitionWrite,
+    ToolDemandItem,
+    ToolDemandReviewDecisionRequest,
+    ToolDemandSheetActionRequest,
+    ToolDemandSheetCreateRequest,
+    ToolDemandSheetDetail,
+    ToolDemandSheetEnvelope,
+    ToolDemandTestingClearResult,
+    ToolFetchManifest,
     ToolHubOverviewReadEnvelope,
+    ToolManufacturePlanEnvelope,
+    ToolRegistryDeleteResult,
+    ToolRegistryTestingClearResult,
     ToolListReadEnvelope,
     ToolMatchRequest,
     ToolMatchRun,
@@ -53,6 +65,14 @@ def create_tool_definition(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/tools/{tool_id}/fetch", response_model=ToolFetchManifest)
+def get_tool_fetch_manifest(tool_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    manifest = service.get_tool_fetch_manifest(tool_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return manifest
+
+
 @router.get("/tools/{tool_id}", response_model=ToolDefinition)
 def get_tool_definition(tool_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
     tool = service.get_tool(tool_id)
@@ -76,12 +96,144 @@ def update_tool_definition(
     return tool
 
 
+@router.delete("/tools/{tool_id}", response_model=ToolRegistryDeleteResult)
+def delete_tool_definition(
+    tool_id: str,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        result = service.delete_tool(tool_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return result
+
+
 @router.post("/match-runs", status_code=status.HTTP_201_CREATED, response_model=ToolMatchRun)
 def create_match_run(
     payload: ToolMatchRequest,
     service: ToolHubService = Depends(get_tool_hub_service),
 ):
     return service.run_match(payload)
+
+
+@router.post(
+    "/mock-generators/blue-force-demand-sheets",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ToolDemandSheetDetail,
+)
+def create_mock_blue_force_demand_sheet(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.create_mock_blue_force_demand_sheet()
+
+
+@router.post(
+    "/mock-generators/demand-sheets/{scenario_id}",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ToolDemandSheetDetail,
+)
+def create_mock_demand_sheet(scenario_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    try:
+        return service.create_mock_demand_sheet(scenario_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/demand-sheets", status_code=status.HTTP_201_CREATED, response_model=ToolDemandSheetDetail)
+def create_demand_sheet(
+    payload: ToolDemandSheetCreateRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.create_demand_sheet(payload)
+
+
+@router.get("/demand-sheets", response_model=ToolDemandSheetEnvelope)
+def list_demand_sheets(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.list_demand_sheets()
+
+
+@router.get("/manufacture-plans", response_model=ToolManufacturePlanEnvelope)
+def list_manufacture_plans(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.list_manufacture_plans()
+
+
+@router.get("/demand-sheets/{sheet_id}", response_model=ToolDemandSheetDetail)
+def get_demand_sheet(sheet_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    sheet = service.get_demand_sheet(sheet_id)
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Demand sheet not found")
+    return sheet
+
+
+@router.post("/demand-sheets/{sheet_id}/withdraw", response_model=ToolDemandSheetDetail)
+def withdraw_demand_sheet(
+    sheet_id: str,
+    payload: ToolDemandSheetActionRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        sheet = service.withdraw_demand_sheet(sheet_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Demand sheet not found")
+    return sheet
+
+
+@router.post("/demand-sheets/{sheet_id}/reject", response_model=ToolDemandSheetDetail)
+def reject_demand_sheet(
+    sheet_id: str,
+    payload: ToolDemandSheetActionRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        sheet = service.reject_demand_sheet(sheet_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Demand sheet not found")
+    return sheet
+
+
+@router.post("/testing/clear-demand-sheets", response_model=ToolDemandTestingClearResult)
+def clear_demand_sheets_for_testing(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.clear_demand_chain_for_testing()
+
+
+@router.post("/testing/clear-tools", response_model=ToolRegistryTestingClearResult)
+def clear_tools_for_testing(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.clear_tool_registry_for_testing()
+
+
+@router.get("/demand-items/{item_id}", response_model=ToolDemandItem)
+def get_demand_item(item_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    item = service.get_demand_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Demand item not found")
+    return item
+
+
+@router.post("/demand-items/{item_id}/review", response_model=ToolDemandItem)
+def review_demand_item(
+    item_id: str,
+    payload: ToolDemandReviewDecisionRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        item = service.review_demand_item(item_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Demand item not found")
+    return item
+
+
+@router.get("/demand-items/{item_id}/progress", response_model=ItemProgressView)
+def get_demand_item_progress(item_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    progress = service.get_demand_item_progress(item_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Demand item not found")
+    return progress
 
 
 @router.get("/evolution-runs", response_model=EvolutionRunReadEnvelope)
