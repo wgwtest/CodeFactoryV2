@@ -18,7 +18,7 @@ function colorForSeverity(severity: ToolHubRiskSummaryItem["severity"]) {
 
 export function P4RiskSummary({ items }: P4RiskSummaryProps) {
   return (
-    <Card title="风险摘要" style={{ borderRadius: 18 }}>
+    <Card title="风险摘要" className="xx-p4-panel-card">
       {items.length === 0 ? (
         <Empty description="暂无风险摘要" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (

@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.tool_hub.demand_fixtures import build_mock_blue_force_request, build_mock_demand_request
+from app.tool_hub.demand_service import DemandService
+from app.tool_hub.evolution_service import EvolutionService
 from app.tool_hub.fixtures import (
     DOMAIN_CATALOG,
     INPUT_TYPE_CATALOG,
@@ -21,9 +23,24 @@ from app.tool_hub.fixtures import (
     VERIFICATION_STATUS_CATALOG,
     demo_tools,
 )
+from app.tool_hub.manufacture_service import ManufactureService
 from app.tool_hub.models import (
+    EvolutionChangeSet,
+    EvolutionConfigReadEnvelope,
+    EvolutionConfigUpdateRequest,
+    EvolutionFinding,
+    EvolutionFindingDecisionRequest,
+    EvolutionInspectionConfig,
+    EvolutionRollbackRecord,
+    EvolutionRunCreateRequest,
     EvolutionRun,
+    EvolutionRunSummary,
     EvolutionRunReadEnvelope,
+    EvolutionRuntimeState,
+    EvolutionTask,
+    EvolutionTaskEnvelope,
+    EvolutionTaskReadEnvelope,
+    EvolutionTaskRollbackRequest,
     ItemProgressView,
     ToolDefinition,
     ToolDefinitionWrite,
@@ -41,6 +58,7 @@ from app.tool_hub.models import (
     ToolHubCatalogs,
     ToolHubOverviewReadEnvelope,
     ToolHubStateSnapshot,
+    ToolListEnvelope,
     ToolManufacturePlan,
     ToolManufacturePlanEnvelope,
     ToolManufacturePlanView,
@@ -55,6 +73,9 @@ from app.tool_hub.models import (
     now_iso,
 )
 from app.tool_hub.repository import ToolHubRepository
+from app.tool_hub.registry_service import RegistryService
+from app.tool_hub.query_service import ToolHubQueryService
+from app.tool_hub.runtime_repository import RuntimeRepository
 from app.tool_hub.snapshot import (
     build_evolution_run,
     build_tool_hub_snapshot,
@@ -73,12 +94,12 @@ MIN_SIMULATION_DURATION_SECONDS = 5
 MAX_SIMULATION_DURATION_SECONDS = 2 * 60 * 60
 
 
-class _ToolManufactureExecutor:
+class _ToolHubRuntimeCoordinator:
     def __init__(self, service_factory: Callable[[], "ToolHubService"], interval_seconds: float) -> None:
         self.service_factory = service_factory
         self.interval_seconds = interval_seconds
         self._stop_event = Event()
-        self._thread = Thread(target=self._run, name="tool-hub-manufacture-executor", daemon=True)
+        self._thread = Thread(target=self._run, name="tool-hub-runtime-coordinator", daemon=True)
 
     def start(self) -> None:
         if self._thread.is_alive():
@@ -89,14 +110,14 @@ class _ToolManufactureExecutor:
         service = self.service_factory()
         while not self._stop_event.is_set():
             try:
-                service.run_manufacture_executor_cycle()
+                service.run_runtime_cycle()
             except Exception:
                 pass
             self._stop_event.wait(self.interval_seconds)
 
 
 class ToolHubService:
-    _executor_registry: ClassVar[dict[str, _ToolManufactureExecutor]] = {}
+    _executor_registry: ClassVar[dict[str, _ToolHubRuntimeCoordinator]] = {}
     _executor_registry_lock: ClassVar[Lock] = Lock()
 
     def __init__(
@@ -110,10 +131,19 @@ class ToolHubService:
     ) -> None:
         self.root = Path(root)
         self.repository = ToolHubRepository(self.root)
+        self.runtime_repository = RuntimeRepository(self.root)
         self.archive_service = archive_service
         self.seed_demo_data = seed_demo_data
         self.executor_tick_seconds = executor_tick_seconds
         self.simulation_profile_durations = simulation_profile_durations or DEFAULT_SIMULATION_PROFILE_WINDOWS
+        self.query_service = ToolHubQueryService(self.repository)
+        self.registry_service = RegistryService(self)
+        self.demand_service = DemandService(self)
+        self.manufacture_service = ManufactureService(self)
+        self.evolution_service = EvolutionService(self)
+        from app.tool_hub.runtime_service import ToolHubRuntimeService
+
+        self.runtime_service = ToolHubRuntimeService(self)
         self._ensure_demo_data()
         if enable_background_executor:
             self._ensure_background_executor()
@@ -123,7 +153,7 @@ class ToolHubService:
         with self._executor_registry_lock:
             if root_key in self._executor_registry:
                 return
-            executor = _ToolManufactureExecutor(
+            executor = _ToolHubRuntimeCoordinator(
                 service_factory=lambda: ToolHubService(
                     root=self.root,
                     archive_service=self.archive_service,
@@ -139,19 +169,13 @@ class ToolHubService:
 
     def get_snapshot(self) -> ToolHubStateSnapshot:
         self._ensure_demo_data()
-        return build_tool_hub_snapshot(
-            catalogs=self.get_catalogs(),
-            tools=self.repository.list_tools(),
-            demand_sheets=self.repository.list_demand_sheets(),
-            match_runs=self.repository.list_match_runs(),
-            evolution_runs=self.repository.list_evolution_runs(),
-        )
+        return self.query_service.get_state_snapshot()
 
     def get_overview(self) -> ToolHubOverviewReadEnvelope:
-        snapshot = self.get_snapshot()
+        projection = self.query_service.get_overview_projection()
         return ToolHubOverviewReadEnvelope(
-            meta=snapshot.meta,
-            data=project_tool_hub_overview(snapshot),
+            meta=projection.meta,
+            data=projection.overview,
         )
 
     def get_catalogs(self) -> ToolHubCatalogs:
@@ -168,52 +192,23 @@ class ToolHubService:
         )
 
     def list_tools(self) -> ToolListReadEnvelope:
-        snapshot = self.get_snapshot()
+        projection = self.query_service.get_tool_list_projection()
         return ToolListReadEnvelope(
-            meta=snapshot.meta,
-            data=project_tool_list(snapshot),
+            meta=projection.meta,
+            data=ToolListEnvelope(items=projection.items),
         )
 
     def get_tool(self, tool_id: str) -> ToolDefinition | None:
-        self._ensure_demo_data()
-        return self.repository.get_tool(tool_id)
+        return self.registry_service.get_tool(tool_id)
 
     def create_tool(self, payload: ToolDefinitionWrite) -> ToolDefinition:
-        self._ensure_demo_data()
-        self._ensure_slug_unique(payload.slug)
-        tool = ToolDefinition(
-            tool_id=f"tool-{uuid4().hex[:12]}",
-            **payload.model_dump(mode="json"),
-        )
-        return self.repository.save_tool(tool)
+        return self.registry_service.create_tool(payload)
 
     def update_tool(self, tool_id: str, payload: ToolDefinitionWrite) -> ToolDefinition | None:
-        existing = self.repository.get_tool(tool_id)
-        if existing is None:
-            return None
-        self._ensure_slug_unique(payload.slug, ignore_tool_id=tool_id)
-        updated = ToolDefinition.model_validate(
-            {
-                **existing.model_dump(mode="json"),
-                **payload.model_dump(mode="json"),
-                "tool_id": tool_id,
-                "created_at": existing.created_at,
-                "updated_at": now_iso(),
-            }
-        )
-        return self.repository.save_tool(updated)
+        return self.registry_service.update_tool(tool_id, payload)
 
     def delete_tool(self, tool_id: str) -> ToolRegistryDeleteResult | None:
-        self._ensure_demo_data()
-        tool = self.repository.get_tool(tool_id)
-        if tool is None:
-            return None
-        self._ensure_tool_is_not_referenced(tool_id)
-        self.repository.delete_tool(tool_id)
-        return ToolRegistryDeleteResult(
-            removed_tool_id=tool_id,
-            remaining_tool_count=len(self.repository.list_tools()),
-        )
+        return self.registry_service.delete_tool(tool_id)
 
     def run_match(self, request: ToolMatchRequest) -> ToolMatchRun:
         self._ensure_demo_data()
@@ -236,237 +231,118 @@ class ToolHubService:
         return self.repository.save_match_run(run)
 
     def list_evolution_runs(self) -> EvolutionRunReadEnvelope:
-        snapshot = self.get_snapshot()
-        return EvolutionRunReadEnvelope(
-            meta=snapshot.meta,
-            data=project_evolution_runs(snapshot),
-        )
+        return self.evolution_service.list_evolution_runs()
 
-    def run_evolution(self) -> EvolutionRun:
-        self._ensure_demo_data()
-        run = build_evolution_run(self.repository.list_tools())
-        return self.repository.save_evolution_run(run)
+    def get_evolution_run(self, run_id: str) -> EvolutionRun | None:
+        return self.evolution_service.get_evolution_run(run_id)
+
+    def get_evolution_config(self) -> EvolutionConfigReadEnvelope:
+        return self.evolution_service.get_evolution_config()
+
+    def update_evolution_config(
+        self,
+        payload: EvolutionConfigUpdateRequest | dict,
+        *,
+        actor_id: str,
+    ) -> EvolutionInspectionConfig:
+        return self.evolution_service.update_evolution_config(payload, actor_id=actor_id)
+
+    def list_evolution_tasks(self) -> EvolutionTaskReadEnvelope:
+        return self.evolution_service.list_evolution_tasks()
+
+    def get_evolution_task(self, task_id: str) -> EvolutionTask | None:
+        return self.evolution_service.get_evolution_task(task_id)
+
+    def run_evolution(
+        self,
+        *,
+        actor_id: str = "p4-system",
+        trigger_type: str = "manual",
+    ) -> EvolutionRun:
+        return self.evolution_service.run_evolution(actor_id=actor_id, trigger_type=trigger_type)
+
+    def decide_evolution_finding(
+        self,
+        finding_id: str,
+        payload: EvolutionFindingDecisionRequest,
+    ) -> EvolutionFinding | None:
+        return self.evolution_service.decide_evolution_finding(finding_id, payload)
+
+    def rollback_evolution_task(
+        self,
+        task_id: str,
+        payload: EvolutionTaskRollbackRequest,
+    ) -> EvolutionTask | None:
+        return self.evolution_service.rollback_evolution_task(task_id, payload)
+
+    def mark_evolution_dirty(self) -> EvolutionRuntimeState:
+        return self.evolution_service.mark_dirty()
 
     def create_mock_blue_force_demand_sheet(self) -> ToolDemandSheetDetail:
-        return self.create_demand_sheet(build_mock_blue_force_request())
+        return self.demand_service.create_mock_blue_force_demand_sheet()
 
     def create_mock_demand_sheet(self, scenario_id: str) -> ToolDemandSheetDetail:
-        return self.create_demand_sheet(build_mock_demand_request(scenario_id))
+        return self.demand_service.create_mock_demand_sheet(scenario_id)
 
     def create_demand_sheet(self, payload: ToolDemandSheetCreateRequest) -> ToolDemandSheetDetail:
-        sheet_id = f"tds-{uuid4().hex[:12]}"
-        items = [self._process_demand_item(item) for item in self._build_demand_items(sheet_id, payload.root_node)]
-        for item in items:
-            self.repository.save_demand_item(item)
-
-        submitted_event = self._build_lifecycle_event(
-            event_type="submitted",
-            actor_phase=payload.requested_by,
-            actor_id=payload.source.producer,
-            from_status=None,
-            to_status="submitted",
-            reason_code="sheet_submitted",
-            reason_message="需求方已提交工具需求单。",
-        )
-        accepted_event = self._build_lifecycle_event(
-            event_type="accepted",
-            actor_phase="P4",
-            actor_id="p4-system",
-            from_status="submitted",
-            to_status="accepted",
-            reason_code="sheet_accepted",
-            reason_message="P4 已受理当前工具需求单。",
-        )
-        sheet = ToolDemandSheet(
-            sheet_id=sheet_id,
-            sheet_name=payload.sheet_name,
-            lifecycle_status="accepted",
-            review_status="pending_review",
-            delivery_status="not_delivered",
-            processing_status="not_started",
-            source=payload.source,
-            requested_by=payload.requested_by,
-            business_case=payload.source.business_case,
-            root_node=payload.root_node,
-            item_ids=[item.item_id for item in items],
-            item_count=len(items),
-            lifecycle_events=[submitted_event, accepted_event],
-            last_actor_phase="P4",
-            last_actor_id="p4-system",
-        )
-        refreshed = self._refresh_sheet(sheet, items)
-        self.repository.save_demand_sheet(refreshed)
-        return ToolDemandSheetDetail(**refreshed.model_dump(mode="json"), items=items)
+        return self.demand_service.create_demand_sheet(payload)
 
     def list_demand_sheets(self) -> ToolDemandSheetEnvelope:
-        sheets = [self._refresh_sheet(sheet) for sheet in self.repository.list_demand_sheets()]
-        return ToolDemandSheetEnvelope(items=sheets)
+        return self.demand_service.list_demand_sheets()
 
     def list_manufacture_plans(self) -> ToolManufacturePlanEnvelope:
-        items: list[ToolManufacturePlanView] = []
-        for plan in self.repository.list_manufacture_plans():
-            item = self.repository.get_demand_item(plan.item_id)
-            if item is None:
-                continue
-            items.append(self._build_manufacture_plan_view(plan, item))
-        return ToolManufacturePlanEnvelope(items=items)
+        return self.manufacture_service.list_manufacture_plans()
 
     def get_demand_sheet(self, sheet_id: str) -> ToolDemandSheetDetail | None:
-        sheet = self.repository.get_demand_sheet(sheet_id)
-        if sheet is None:
-            return None
-        items = self._get_sheet_items(sheet)
-        refreshed = self._refresh_sheet(sheet, items)
-        if refreshed.model_dump(mode="json") != sheet.model_dump(mode="json"):
-            self.repository.save_demand_sheet(refreshed)
-        return ToolDemandSheetDetail(**refreshed.model_dump(mode="json"), items=items)
+        return self.demand_service.get_demand_sheet(sheet_id)
 
     def get_demand_item(self, item_id: str) -> ToolDemandItem | None:
-        return self.repository.get_demand_item(item_id)
+        return self.demand_service.get_demand_item(item_id)
 
     def review_demand_item(
         self,
         item_id: str,
         payload: ToolDemandReviewDecisionRequest,
     ) -> ToolDemandItem | None:
-        item = self.repository.get_demand_item(item_id)
-        if item is None:
-            return None
-
-        sheet = self.repository.get_demand_sheet(item.sheet_id)
-        if sheet is None:
-            return None
-        if sheet.lifecycle_status in TERMINAL_SHEET_LIFECYCLE_STATUSES:
-            raise ValueError("Demand sheet is already in terminal status")
-        if item.review_status != "pending_review":
-            raise ValueError("Demand item is already reviewed")
-
-        review_update = {
-            "importance_score": payload.importance_score,
-            "urgency_score": payload.urgency_score,
-            "rationality_verdict": payload.rationality_verdict,
-            "review_comment": payload.review_comment,
-            "reviewed_by": payload.reviewed_by,
-            "reviewed_at": now_iso(),
-            "updated_at": now_iso(),
-        }
-
-        if payload.decision == "approve_delivery":
-            if item.recommendation_type != "existing_tool" or not item.recommended_tool_id:
-                raise ValueError("Current demand item is not eligible for direct delivery")
-            tool = self.repository.get_tool(item.recommended_tool_id)
-            if tool is None:
-                raise ValueError("Recommended tool is no longer available")
-            updated_item = item.model_copy(
-                update={
-                    **review_update,
-                    "review_status": "approved_delivery",
-                    "processing_status": "matched_existing",
-                    "supply_result": self._build_existing_tool_supply_result(item, tool),
-                }
-            )
-        elif payload.decision == "approve_manufacture":
-            if item.recommendation_type != "manufacture_candidate":
-                raise ValueError("Current demand item is not eligible for manufacture approval")
-            plan = self.repository.get_manufacture_plan(item.item_id)
-            if plan is None:
-                plan = self._build_manufacture_plan(item)
-                self.repository.save_manufacture_plan(plan)
-            updated_item = item.model_copy(
-                update={
-                    **review_update,
-                    "review_status": "approved_manufacture",
-                    "processing_status": "manufacturing_pending",
-                    "supply_result": self._build_pending_manufacture_supply_result(item, plan),
-                }
-            )
-        else:
-            updated_item = item.model_copy(
-                update={
-                    **review_update,
-                    "review_status": "rejected",
-                    "supply_result": None,
-                }
-            )
-
-        self.repository.save_demand_item(updated_item)
-        self._refresh_sheet_for_item(updated_item)
-        return self.repository.get_demand_item(item_id)
+        return self.demand_service.review_demand_item(item_id, payload)
 
     def withdraw_demand_sheet(
         self,
         sheet_id: str,
         payload: ToolDemandSheetActionRequest,
     ) -> ToolDemandSheetDetail | None:
-        return self._transition_demand_sheet(
-            sheet_id=sheet_id,
-            event_type="withdrawn",
-            actor_phase=payload.actor_phase or "P3",
-            actor_id=payload.actor_id,
-            reason_code=payload.reason_code,
-            reason_message=payload.reason_message,
-        )
+        return self.demand_service.withdraw_demand_sheet(sheet_id, payload)
 
     def reject_demand_sheet(
         self,
         sheet_id: str,
         payload: ToolDemandSheetActionRequest,
     ) -> ToolDemandSheetDetail | None:
-        return self._transition_demand_sheet(
-            sheet_id=sheet_id,
-            event_type="rejected",
-            actor_phase=payload.actor_phase or "P4",
-            actor_id=payload.actor_id,
-            reason_code=payload.reason_code,
-            reason_message=payload.reason_message,
-        )
+        return self.demand_service.reject_demand_sheet(sheet_id, payload)
 
     def clear_demand_chain_for_testing(self) -> ToolDemandTestingClearResult:
-        cleared_sheet_count, cleared_item_count, cleared_manufacture_plan_count = (
-            self.repository.clear_demand_chain_runtime()
-        )
-        return ToolDemandTestingClearResult(
-            cleared_sheet_count=cleared_sheet_count,
-            cleared_item_count=cleared_item_count,
-            cleared_manufacture_plan_count=cleared_manufacture_plan_count,
-        )
+        return self.demand_service.clear_demand_chain_for_testing()
 
     def clear_tool_registry_for_testing(self) -> ToolRegistryTestingClearResult:
-        self._mark_demo_seed_initialized()
-        cleared_tool_count, cleared_match_run_count, cleared_evolution_run_count = (
-            self.repository.clear_tool_runtime()
-        )
-        return ToolRegistryTestingClearResult(
-            cleared_tool_count=cleared_tool_count,
-            cleared_match_run_count=cleared_match_run_count,
-            cleared_evolution_run_count=cleared_evolution_run_count,
-        )
+        return self.registry_service.clear_tool_registry_for_testing()
+
+    def run_runtime_cycle(self) -> None:
+        self.runtime_service.run_once()
+
+    def run_scheduled_evolution_cycle(self) -> None:
+        self.runtime_service._run_due_evolution_scan()
+
+    def run_evolution_task_cycle(self) -> None:
+        self.runtime_service._run_queue("p4-evolution", self.runtime_service._execute_evolution_job)
 
     def run_manufacture_executor_cycle(self) -> None:
-        for plan in self.repository.list_manufacture_plans():
-            if plan.status not in {"manufacturing_pending", "manufacturing_in_progress"}:
-                continue
-            item = self.repository.get_demand_item(plan.item_id)
-            if item is None:
-                continue
-            sheet = self.repository.get_demand_sheet(item.sheet_id)
-            if sheet is not None and sheet.lifecycle_status in TERMINAL_SHEET_LIFECYCLE_STATUSES:
-                continue
-            self._advance_manufacture_plan(plan, item)
+        self.runtime_service._run_queue("p4-manufacture", self.runtime_service._execute_manufacture_job)
 
     def get_demand_item_progress(self, item_id: str) -> ItemProgressView | None:
-        item = self.repository.get_demand_item(item_id)
-        if item is None:
-            return None
-
-        sheet = self.repository.get_demand_sheet(item.sheet_id)
-        return self._build_progress_view(item, sheet)
+        return self.demand_service.get_demand_item_progress(item_id)
 
     def get_tool_fetch_manifest(self, tool_id: str) -> ToolFetchManifest | None:
-        tool = self.repository.get_tool(tool_id)
-        if tool is None:
-            return None
-        return self._build_tool_fetch_manifest_response(tool)
+        return self.manufacture_service.get_tool_fetch_manifest(tool_id)
 
     def _transition_demand_sheet(
         self,
@@ -1198,6 +1074,182 @@ class ToolHubService:
             last_progress_message=plan.last_progress_message,
             updated_at=plan.updated_at,
         )
+
+    def _build_evolution_task(self, finding: EvolutionFinding, actor_id: str) -> EvolutionTask:
+        config = self.repository.get_evolution_config()
+        task_type = "auto_apply" if finding.kind in set(config.auto_apply_rule_ids) else "manual_followup"
+        planned_action_by_kind = {
+            "missing_description": "enrich_description",
+            "taxonomy_issue": "normalize_metadata",
+            "overlap_risk": "manual_overlap_review",
+            "coverage_gap": "manual_coverage_followup",
+        }
+        priority_by_severity = {
+            "info": "low",
+            "warning": "medium",
+            "critical": "high",
+        }
+        return EvolutionTask(
+            task_id=f"evolution-task-{uuid4().hex[:12]}",
+            source_run_id=finding.run_id,
+            source_finding_id=finding.finding_id,
+            task_type=task_type,
+            priority=priority_by_severity[finding.severity],
+            planned_action=planned_action_by_kind[finding.kind],
+            target_tool_ids=finding.tool_ids,
+            created_by=actor_id,
+            result_summary="等待 P4 runtime coordinator 处理。",
+        )
+
+    def _build_evolution_run_summary(self, findings: list[EvolutionFinding], tool_count: int) -> EvolutionRunSummary:
+        return EvolutionRunSummary(
+            tool_count=tool_count,
+            finding_count=len(findings),
+            missing_description_count=len([item for item in findings if item.kind == "missing_description"]),
+            taxonomy_issue_count=len([item for item in findings if item.kind == "taxonomy_issue"]),
+            overlap_risk_count=len([item for item in findings if item.kind == "overlap_risk"]),
+            coverage_gap_count=len([item for item in findings if item.kind == "coverage_gap"]),
+            accepted_count=len([item for item in findings if item.decision_status == "accepted_to_task"]),
+            ignored_count=len([item for item in findings if item.decision_status == "ignored"]),
+            generated_task_count=len([item for item in findings if item.linked_task_id]),
+        )
+
+    def _advance_evolution_task(self, task: EvolutionTask) -> None:
+        timestamp = now_iso()
+        running_task = task if task.task_status == "running" else task.model_copy(
+            update={"task_status": "running", "started_at": timestamp, "updated_at": timestamp}
+        )
+        self.repository.save_evolution_task(running_task)
+
+        if running_task.task_type != "auto_apply":
+            return
+
+        change_sets = self._apply_evolution_auto_changes(running_task)
+        completed_task = running_task.model_copy(
+            update={
+                "task_status": "completed",
+                "completed_at": now_iso(),
+                "updated_at": now_iso(),
+                "change_count": len(change_sets),
+                "rollback_available": len(change_sets) > 0,
+                "result_summary": f"已自动改写 {len(change_sets)} 个工具定义。",
+            }
+        )
+        self.repository.save_evolution_task(completed_task)
+        if change_sets:
+            self.mark_evolution_dirty()
+
+    def _apply_evolution_auto_changes(self, task: EvolutionTask) -> list[EvolutionChangeSet]:
+        change_sets: list[EvolutionChangeSet] = []
+        located = self.repository.get_evolution_finding(task.source_finding_id)
+        if located is None:
+            return change_sets
+        run, finding_index = located
+        finding = run.findings[finding_index]
+
+        for tool_id in task.target_tool_ids:
+            tool = self.repository.get_tool(tool_id)
+            if tool is None:
+                continue
+            updated_tool, change_kind = self._build_auto_updated_tool(tool, finding)
+            if updated_tool.model_dump(mode="json") == tool.model_dump(mode="json"):
+                continue
+            self.repository.save_tool(updated_tool)
+            change_set = EvolutionChangeSet(
+                change_set_id=f"ecs-{uuid4().hex[:12]}",
+                task_id=task.task_id,
+                tool_id=tool.tool_id,
+                change_kind=change_kind,
+                before_snapshot=tool.model_dump(mode="json"),
+                after_snapshot=updated_tool.model_dump(mode="json"),
+            )
+            self.repository.save_evolution_change_set(change_set)
+            change_sets.append(change_set)
+
+        return change_sets
+
+    def _build_auto_updated_tool(self, tool: ToolDefinition, finding: EvolutionFinding) -> tuple[ToolDefinition, str]:
+        if finding.kind == "missing_description":
+            summary = tool.summary.strip() or f"{tool.name} 的基础能力摘要已由自演进巡检补充。"
+            problem_statement = tool.problem_statement.strip() or f"补充 {tool.name} 的问题定义，便于后续匹配与验证。"
+            verification = tool.verification.model_copy(
+                update={
+                    "last_verified_result": tool.verification.last_verified_result
+                    or "P4 自演进巡检已自动补充基础描述字段。"
+                }
+            )
+            return (
+                tool.model_copy(
+                    update={
+                        "summary": summary,
+                        "problem_statement": problem_statement,
+                        "verification": verification,
+                        "updated_at": now_iso(),
+                    }
+                ),
+                "description_enrichment",
+            )
+
+        normalized_domain_id = tool.primary_domain_id if tool.primary_domain_id in {item.id for item in DOMAIN_CATALOG} else "cross_domain_shared"
+        normalized_tool_form_id = tool.tool_form_id if tool.tool_form_id in {item.id for item in TOOL_FORM_CATALOG} else "skill"
+        runtime_platform_ids = tool.runtime_platform_ids or ["agent_runtime"]
+        lifecycle_stage_ids = tool.lifecycle_stage_ids or ["solution_design"]
+        normalized_tool = ToolDefinition.model_validate(
+            {
+                **tool.model_dump(mode="json"),
+                "primary_domain_id": normalized_domain_id,
+                "tool_form_id": normalized_tool_form_id,
+                "runtime_platform_ids": runtime_platform_ids,
+                "lifecycle_stage_ids": lifecycle_stage_ids,
+                "tags": self._build_normalized_tool_tags(
+                    tool=tool,
+                    primary_domain_id=normalized_domain_id,
+                    tool_form_id=normalized_tool_form_id,
+                    runtime_platform_ids=runtime_platform_ids,
+                    lifecycle_stage_ids=lifecycle_stage_ids,
+                ),
+                "updated_at": now_iso(),
+            }
+        )
+        return normalized_tool, "metadata_normalization"
+
+    def _build_normalized_tool_tags(
+        self,
+        *,
+        tool: ToolDefinition,
+        primary_domain_id: str,
+        tool_form_id: str,
+        runtime_platform_ids: list[str],
+        lifecycle_stage_ids: list[str],
+    ) -> list[str]:
+        preserved = [
+            tag
+            for tag in tool.tags
+            if tag.startswith("risk:")
+            or not any(
+                tag.startswith(prefix)
+                for prefix in ("domain:", "form:", "runtime:", "lifecycle:", "input:", "output:")
+            )
+        ]
+        return sorted(
+            dict.fromkeys(
+                [
+                    f"domain:{primary_domain_id}",
+                    f"form:{tool_form_id}",
+                    *[f"runtime:{item}" for item in runtime_platform_ids],
+                    *[f"lifecycle:{item}" for item in lifecycle_stage_ids],
+                    *[f"input:{item}" for item in tool.input_types],
+                    *[f"output:{item}" for item in tool.output_types],
+                    *preserved,
+                ]
+            )
+        )
+
+    def _trim_evolution_run_history(self, max_run_history: int) -> None:
+        runs = self.repository.list_evolution_runs()
+        for stale_run in runs[max_run_history:]:
+            stale_path = self.repository.evolution_runs_dir / f"{stale_run.run_id}.json"
+            stale_path.unlink(missing_ok=True)
 
     def _refresh_sheet_for_item(self, item: ToolDemandItem) -> None:
         sheet = self.repository.get_demand_sheet(item.sheet_id)

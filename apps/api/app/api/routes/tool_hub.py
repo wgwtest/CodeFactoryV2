@@ -5,8 +5,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.config import settings
 from app.tool_hub.models import (
+    EvolutionConfigReadEnvelope,
+    EvolutionConfigUpdateRequest,
+    EvolutionFinding,
+    EvolutionFindingDecisionRequest,
+    EvolutionInspectionConfig,
+    EvolutionRunCreateRequest,
     EvolutionRun,
     EvolutionRunReadEnvelope,
+    EvolutionTask,
+    EvolutionTaskReadEnvelope,
+    EvolutionTaskRollbackRequest,
     ItemProgressView,
     ToolDefinition,
     ToolDefinitionWrite,
@@ -236,6 +245,83 @@ def get_demand_item_progress(item_id: str, service: ToolHubService = Depends(get
     return progress
 
 
+@router.get("/evolution/config", response_model=EvolutionConfigReadEnvelope)
+def get_evolution_config(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.get_evolution_config()
+
+
+@router.patch("/evolution/config", response_model=EvolutionInspectionConfig)
+def update_evolution_config(
+    payload: EvolutionConfigUpdateRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.update_evolution_config(payload, actor_id="p4-workspace")
+
+
+@router.get("/evolution/runs", response_model=EvolutionRunReadEnvelope)
+def list_evolution_runs_v2(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.list_evolution_runs()
+
+
+@router.post("/evolution/runs", status_code=status.HTTP_201_CREATED, response_model=EvolutionRun)
+def create_evolution_run_v2(
+    payload: EvolutionRunCreateRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.run_evolution(actor_id=payload.actor_id, trigger_type="manual")
+
+
+@router.get("/evolution/runs/{run_id}", response_model=EvolutionRun)
+def get_evolution_run(run_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    run = service.get_evolution_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Evolution run not found")
+    return run
+
+
+@router.post("/evolution/findings/{finding_id}/decision", response_model=EvolutionFinding)
+def decide_evolution_finding(
+    finding_id: str,
+    payload: EvolutionFindingDecisionRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        finding = service.decide_evolution_finding(finding_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if finding is None:
+        raise HTTPException(status_code=404, detail="Evolution finding not found")
+    return finding
+
+
+@router.get("/evolution/tasks", response_model=EvolutionTaskReadEnvelope)
+def list_evolution_tasks(service: ToolHubService = Depends(get_tool_hub_service)):
+    return service.list_evolution_tasks()
+
+
+@router.get("/evolution/tasks/{task_id}", response_model=EvolutionTask)
+def get_evolution_task(task_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    task = service.get_evolution_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Evolution task not found")
+    return task
+
+
+@router.post("/evolution/tasks/{task_id}/rollback", response_model=EvolutionTask)
+def rollback_evolution_task(
+    task_id: str,
+    payload: EvolutionTaskRollbackRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    try:
+        task = service.rollback_evolution_task(task_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if task is None:
+        raise HTTPException(status_code=404, detail="Evolution task not found")
+    return task
+
+
 @router.get("/evolution-runs", response_model=EvolutionRunReadEnvelope)
 def list_evolution_runs(service: ToolHubService = Depends(get_tool_hub_service)):
     return service.list_evolution_runs()
@@ -243,4 +329,4 @@ def list_evolution_runs(service: ToolHubService = Depends(get_tool_hub_service))
 
 @router.post("/evolution-runs", status_code=status.HTTP_201_CREATED, response_model=EvolutionRun)
 def create_evolution_run(service: ToolHubService = Depends(get_tool_hub_service)):
-    return service.run_evolution()
+    return service.run_evolution(actor_id="legacy-evolution-api", trigger_type="manual")

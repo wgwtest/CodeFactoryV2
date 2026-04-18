@@ -8,6 +8,7 @@ import type { ToolDemandItem, ToolDemandSheet } from "../lib/api";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const patchMock = vi.fn();
 const putMock = vi.fn();
 const deleteMock = vi.fn();
 
@@ -15,6 +16,7 @@ vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
+    patch: (...args: unknown[]) => patchMock(...args),
     put: (...args: unknown[]) => putMock(...args),
     delete: (...args: unknown[]) => deleteMock(...args),
   },
@@ -351,9 +353,113 @@ function buildManufacturePlans() {
   };
 }
 
+function buildEvolutionConfig() {
+  return {
+    config_id: "default",
+    enabled: true,
+    schedule_mode: "manual_and_scheduled",
+    interval_minutes: 60,
+    include_draft_tools: true,
+    focus_rule_ids: ["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"],
+    overlap_threshold: 3,
+    max_run_history: 50,
+    auto_apply_rule_ids: ["missing_description", "taxonomy_issue"],
+    updated_by: "p4-workspace",
+    updated_at: "2026-04-18T08:00:00Z",
+  };
+}
+
+function buildEvolutionRuns() {
+  return {
+    items: [
+      {
+        run_id: "evolution-2",
+        status: "completed",
+        trigger_type: "manual",
+        triggered_by: "p4-workspace",
+        created_at: "2026-04-15T11:05:00Z",
+        updated_at: "2026-04-15T11:05:00Z",
+        started_at: "2026-04-15T11:05:00Z",
+        completed_at: "2026-04-15T11:05:00Z",
+        failed_at: null,
+        snapshot_id: "snapshot-1",
+        error_message: "",
+        summary: {
+          tool_count: 1,
+          finding_count: 1,
+          missing_description_count: 1,
+          taxonomy_issue_count: 0,
+          overlap_risk_count: 0,
+          coverage_gap_count: 0,
+          accepted_count: 0,
+          ignored_count: 0,
+          generated_task_count: 0,
+        },
+        findings: [
+          {
+            finding_id: "finding-1",
+            run_id: "evolution-2",
+            kind: "missing_description",
+            title: "案例标签修复器描述缺失",
+            description: "工具摘要或问题定义为空，影响匹配和验证解释。",
+            severity: "warning",
+            tool_ids: ["tool-case-tag-fixer"],
+            evidence: {},
+            decision_status: "pending",
+            decision_by: null,
+            decision_at: null,
+            decision_note: "",
+            linked_task_id: null,
+            updated_at: "2026-04-15T11:05:00Z",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildEvolutionTasks() {
+  return {
+    items: [
+      {
+        task_id: "evolution-task-1",
+        source_run_id: "evolution-1",
+        source_finding_id: "finding-legacy",
+        task_type: "auto_apply",
+        task_status: "completed",
+        priority: "medium",
+        planned_action: "normalize_metadata",
+        target_tool_ids: ["tool-blue-force-tree-builder"],
+        result_summary: "已自动改写 1 个工具定义。",
+        change_count: 1,
+        rollback_available: true,
+        created_by: "p4-workspace",
+        created_at: "2026-04-15T09:30:00Z",
+        started_at: "2026-04-15T09:31:00Z",
+        completed_at: "2026-04-15T09:32:00Z",
+        updated_at: "2026-04-15T09:32:00Z",
+      },
+    ],
+  };
+}
+
+function buildEvolutionReadResponse(url: string) {
+  if (url === "/tool-hub/evolution/config") {
+    return Promise.resolve({ data: buildReadEnvelope(buildEvolutionConfig()) });
+  }
+  if (url === "/tool-hub/evolution/runs") {
+    return Promise.resolve({ data: buildReadEnvelope(buildEvolutionRuns()) });
+  }
+  if (url === "/tool-hub/evolution/tasks") {
+    return Promise.resolve({ data: buildReadEnvelope(buildEvolutionTasks()) });
+  }
+  return null;
+}
+
 beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
+  patchMock.mockReset();
   putMock.mockReset();
   deleteMock.mockReset();
 });
@@ -377,6 +483,10 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
     }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
@@ -445,12 +555,20 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
         },
       });
     }
-    if (url === "/tool-hub/evolution-runs") {
+    if (url === "/tool-hub/evolution/runs") {
       return Promise.resolve({
         data: {
           run_id: "evolution-2",
           status: "completed",
+          trigger_type: "manual",
+          triggered_by: "p4-workspace",
           created_at: "2026-04-15T11:05:00Z",
+          updated_at: "2026-04-15T11:05:00Z",
+          started_at: "2026-04-15T11:05:00Z",
+          completed_at: "2026-04-15T11:05:00Z",
+          failed_at: null,
+          snapshot_id: "snapshot-1",
+          error_message: "",
           summary: {
             tool_count: 1,
             finding_count: 1,
@@ -458,15 +576,26 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
             taxonomy_issue_count: 0,
             overlap_risk_count: 1,
             coverage_gap_count: 0,
+            accepted_count: 0,
+            ignored_count: 0,
+            generated_task_count: 0,
           },
           findings: [
             {
               finding_id: "finding-1",
+              run_id: "evolution-2",
               kind: "overlap_risk",
               title: "审批规则校验器与审批路径解释器疑似重叠",
               description: "两者在业务域、生命周期和输入上存在高相似度。",
               severity: "warning",
               tool_ids: ["tool-approval-rule-validator", "tool-approval-path-explainer"],
+              evidence: {},
+              decision_status: "pending",
+              decision_by: null,
+              decision_at: null,
+              decision_note: "",
+              linked_task_id: null,
+              updated_at: "2026-04-15T11:05:00Z",
             },
           ],
         },
@@ -482,7 +611,12 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
   );
 
   expect(await screen.findByText("XX-P4")).toBeInTheDocument();
+  expect(screen.getByText("工具中台 / Tool Hub")).toBeInTheDocument();
+  expect(screen.queryByText(/当前知识库：/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/待演进建议：/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/最近成功率：/)).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "输入工序链" })).toBeInTheDocument();
+  expect(document.querySelectorAll('#xx-p4-workspace-nav [data-nav-variant="segmented"]').length).toBe(4);
 
   fireEvent.click(screen.getByRole("tab", { name: "输入工序链" }));
   expect(await screen.findByText("工序单受理区")).toBeInTheDocument();
@@ -537,7 +671,7 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
 
   fireEvent.click(screen.getByRole("tab", { name: "自演进巡检" }));
   fireEvent.click(await screen.findByRole("button", { name: "触发巡检" }));
-  expect((await screen.findAllByText("审批规则校验器与审批路径解释器疑似重叠")).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("案例标签修复器描述缺失")).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("tab", { name: "工具仓库" }));
   expect(await screen.findByText("业务域 × 工具形态")).toBeInTheDocument();
@@ -563,6 +697,10 @@ test("creates a tool from registry workspace", async () => {
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(tools) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
     }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
@@ -653,6 +791,121 @@ test("creates a tool from registry workspace", async () => {
   expect(await screen.findByText("新建流程工具")).toBeInTheDocument();
 });
 
+test("renders evolution workspace as decoupled cards", async () => {
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({
+        data: buildReadEnvelope({
+          items: [
+            {
+              run_id: "evolution-2",
+              status: "completed",
+              created_at: "2026-04-15T11:05:00Z",
+              summary: {
+                tool_count: 1,
+                finding_count: 1,
+                missing_description_count: 1,
+                taxonomy_issue_count: 0,
+                overlap_risk_count: 0,
+                coverage_gap_count: 0,
+              },
+              findings: [
+                {
+                  finding_id: "finding-1",
+                  kind: "missing_description",
+                  title: "案例标签修复器描述缺失",
+                  description: "工具摘要或问题定义为空，影响匹配和验证解释。",
+                  severity: "warning",
+                  tool_ids: ["tool-case-tag-fixer"],
+                },
+              ],
+            },
+          ],
+        }),
+      });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/evolution/runs") {
+      return Promise.resolve({
+        data: {
+          run_id: "evolution-3",
+          status: "completed",
+          trigger_type: "manual",
+          triggered_by: "p4-workspace",
+          created_at: "2026-04-16T11:05:00Z",
+          updated_at: "2026-04-16T11:05:00Z",
+          started_at: "2026-04-16T11:05:00Z",
+          completed_at: "2026-04-16T11:05:00Z",
+          failed_at: null,
+          snapshot_id: "snapshot-1",
+          error_message: "",
+          summary: {
+            tool_count: 1,
+            finding_count: 1,
+            missing_description_count: 1,
+            taxonomy_issue_count: 0,
+            overlap_risk_count: 0,
+            coverage_gap_count: 0,
+            accepted_count: 0,
+            ignored_count: 0,
+            generated_task_count: 0,
+          },
+          findings: [],
+        },
+      });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("tab", { name: "自演进巡检" }));
+
+  expect(document.querySelector("#xx-p4-evolution-config-card")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-run-list-card")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-summary-card")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-findings-card")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-task-queue-card")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-completed-card")).toBeInTheDocument();
+});
+
 test("removes a single tool from registry workspace", async () => {
   let tools = buildTools();
   const pendingDetail = buildPendingDemandSheetDetail();
@@ -672,6 +925,10 @@ test("removes a single tool from registry workspace", async () => {
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(tools) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
     }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
@@ -738,6 +995,10 @@ test("clears all tools from registry workspace for testing", async () => {
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(tools) });
     }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
+    }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
     }
@@ -803,6 +1064,10 @@ test("shows simulated manufacture queue in registry workspace", async () => {
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
     }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
+    }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
     }
@@ -850,6 +1115,15 @@ test("shows snapshot consistency warning when tool hub read models are out of sy
     }
     if (url === "/tool-hub/tools") {
       return Promise.resolve({ data: buildReadEnvelope(buildTools(), "snapshot-tools") });
+    }
+    if (url === "/tool-hub/evolution/config") {
+      return Promise.resolve({ data: buildReadEnvelope(buildEvolutionConfig(), "snapshot-tools") });
+    }
+    if (url === "/tool-hub/evolution/runs") {
+      return Promise.resolve({ data: buildReadEnvelope(buildEvolutionRuns(), "snapshot-tools") });
+    }
+    if (url === "/tool-hub/evolution/tasks") {
+      return Promise.resolve({ data: buildReadEnvelope(buildEvolutionTasks(), "snapshot-tools") });
     }
     if (url === "/tool-hub/evolution-runs") {
       return Promise.resolve({ data: buildReadEnvelope({ items: [] }, "snapshot-tools") });

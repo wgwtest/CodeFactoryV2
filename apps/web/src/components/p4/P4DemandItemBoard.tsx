@@ -93,13 +93,12 @@ export function P4DemandItemBoard({
             <Card
               key={item.item_id}
               id={`xx-p4-demand-item-${item.item_id}`}
+              className={`xx-p4-demand-item-card${selected ? " xx-p4-demand-item-card--selected" : ""}`}
               size="small"
               hoverable
               onClick={() => onSelectItem(item.item_id)}
               style={{
-                borderRadius: 16,
                 background: selected ? "#eef4ff" : "#ffffff",
-                borderColor: selected ? "#1f6feb" : "#d0d7de",
               }}
             >
               <Space direction="vertical" size={8} style={{ display: "flex" }}>

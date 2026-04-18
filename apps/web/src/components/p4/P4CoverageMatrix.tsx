@@ -25,12 +25,12 @@ export function P4CoverageMatrix({ id, matrix }: P4CoverageMatrixProps) {
     <div id={id}>
       <Card
         title={matrix.title}
+        className="xx-p4-panel-card"
         extra={
           <Typography.Text type="secondary">
             {matrix.y_axis_label} × {matrix.x_axis_label}
           </Typography.Text>
         }
-        style={{ borderRadius: 20, boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)" }}
       >
         <Space direction="vertical" size={12} style={{ display: "flex" }}>
           <div

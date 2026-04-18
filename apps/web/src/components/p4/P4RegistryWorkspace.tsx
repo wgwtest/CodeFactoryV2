@@ -153,8 +153,8 @@ export function P4RegistryWorkspace({
 
   return (
     <>
-      <Space id="xx-p4-registry-workspace" direction="vertical" size={16} style={{ display: "flex" }}>
-        <Card id="xx-p4-registry-manufacture-queue" title="模拟研制队列" style={{ borderRadius: 18 }}>
+      <div id="xx-p4-registry-workspace" className="xx-p4-pane-stack xx-p4-registry-stack">
+        <Card id="xx-p4-registry-manufacture-queue" title="模拟研制队列" className="xx-p4-panel-card">
           {manufacturePlans.length === 0 ? (
             <Empty description="当前没有处于模拟研制队列的工具" image={Empty.PRESENTED_IMAGE_SIMPLE} />
           ) : (
@@ -227,7 +227,6 @@ export function P4RegistryWorkspace({
               </Button>
             </Space>
           }
-          style={{ borderRadius: 18 }}
         >
           <Table
             id="xx-p4-registry-tools-table"
@@ -321,7 +320,7 @@ export function P4RegistryWorkspace({
             ]}
           />
         </Card>
-      </Space>
+      </div>
 
       <Modal
         title={editingTool ? "编辑工具" : "新建工具"}

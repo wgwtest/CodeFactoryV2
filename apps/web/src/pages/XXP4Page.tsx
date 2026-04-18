@@ -1,3 +1,4 @@
+import "../components/p4/p4-page.css";
 import { startTransition, useEffect, useState } from "react";
 import { Alert, Card, Col, Empty, Row, Space, Spin, Typography } from "antd";
 
@@ -10,9 +11,11 @@ import { P4RiskSummary } from "../components/p4/P4RiskSummary";
 import { P4RegistryWorkspace } from "../components/p4/P4RegistryWorkspace";
 import { P4RunList } from "../components/p4/P4RunList";
 import { P4WorkspaceTabs } from "../components/p4/P4WorkspaceTabs";
-import { useArchiveContext } from "../context/ArchiveContext";
 import type {
+  EvolutionFindingDecisionInput,
+  EvolutionInspectionConfig,
   EvolutionRun,
+  EvolutionTask,
   ToolDefinition,
   ToolDemandSheet,
   ToolDemandReviewDecisionInput,
@@ -22,33 +25,39 @@ import type {
 } from "../lib/api";
 import {
   clearToolsForTesting,
-  createEvolutionRun,
+  createEvolutionRunV2,
   createToolDefinition,
+  decideEvolutionFinding,
   deleteToolDefinition,
+  getEvolutionConfig,
   getManufacturePlans,
   getDemandItemProgress,
   getDemandSheet,
   getDemandSheets,
-  getEvolutionRuns,
+  getEvolutionRunsV2,
+  getEvolutionTasks,
   getToolDefinitions,
   getToolHubOverview,
+  rollbackEvolutionTask,
   clearDemandSheetsForTesting,
   rejectDemandSheet,
   reviewDemandItem,
+  updateEvolutionConfig,
   updateToolDefinition,
 } from "../lib/toolHub";
 
 const SNAPSHOT_WARNING_MESSAGE = "P4 数据快照不一致，当前视图可能不是同一份统一数据层结果。";
 
 export function XXP4Page() {
-  const { activeArchive, activeArchiveId } = useArchiveContext();
   const [overview, setOverview] = useState<ToolHubOverview | null>(null);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [manufacturePlans, setManufacturePlans] = useState<ToolManufacturePlanView[]>([]);
   const [demandSheets, setDemandSheets] = useState<ToolDemandSheet[]>([]);
   const [activeSheet, setActiveSheet] = useState<ToolDemandSheet | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [evolutionConfig, setEvolutionConfig] = useState<EvolutionInspectionConfig | null>(null);
   const [evolutionRuns, setEvolutionRuns] = useState<EvolutionRun[]>([]);
+  const [evolutionTasks, setEvolutionTasks] = useState<EvolutionTask[]>([]);
   const [latestEvolutionRun, setLatestEvolutionRun] = useState<EvolutionRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingTool, setSavingTool] = useState(false);
@@ -57,6 +66,9 @@ export function XXP4Page() {
   const [rejectingCurrentSheet, setRejectingCurrentSheet] = useState(false);
   const [clearingDemandSheets, setClearingDemandSheets] = useState(false);
   const [runningEvolution, setRunningEvolution] = useState(false);
+  const [savingEvolutionConfig, setSavingEvolutionConfig] = useState(false);
+  const [decidingEvolutionFindingId, setDecidingEvolutionFindingId] = useState<string | null>(null);
+  const [rollingBackEvolutionTaskId, setRollingBackEvolutionTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
@@ -65,22 +77,36 @@ export function XXP4Page() {
       setLoading(true);
     }
     try {
-      const [overviewResponse, toolsResponse, evolutionResponse, demandSheetsResponse, manufacturePlansResponse] = await Promise.all([
+      const [
+        overviewResponse,
+        toolsResponse,
+        evolutionConfigResponse,
+        evolutionResponse,
+        evolutionTasksResponse,
+        demandSheetsResponse,
+        manufacturePlansResponse,
+      ] = await Promise.all([
         getToolHubOverview(),
         getToolDefinitions(),
-        getEvolutionRuns(),
+        getEvolutionConfig(),
+        getEvolutionRunsV2(),
+        getEvolutionTasks(),
         getDemandSheets(),
         getManufacturePlans(),
       ]);
       const overviewEnvelope = overviewResponse.data;
       const toolsEnvelope = toolsResponse.data;
+      const evolutionConfigEnvelope = evolutionConfigResponse.data;
       const evolutionEnvelope = evolutionResponse.data;
+      const evolutionTasksEnvelope = evolutionTasksResponse.data;
       const demandSheetEnvelope = demandSheetsResponse.data;
       const manufacturePlanEnvelope = manufacturePlansResponse.data;
       const snapshotIds = [
         overviewEnvelope.meta.snapshot_id,
         toolsEnvelope.meta.snapshot_id,
+        evolutionConfigEnvelope.meta.snapshot_id,
         evolutionEnvelope.meta.snapshot_id,
+        evolutionTasksEnvelope.meta.snapshot_id,
       ];
       const hasSnapshotMismatch = new Set(snapshotIds).size > 1;
       const availableSheetIds = new Set(demandSheetEnvelope.items.map((sheet) => sheet.sheet_id));
@@ -105,7 +131,9 @@ export function XXP4Page() {
         setDemandSheets(demandSheetEnvelope.items);
         setActiveSheet(activeSheetDetail);
         setSelectedItemId(nextSelectedItemId);
+        setEvolutionConfig(evolutionConfigEnvelope.data);
         setEvolutionRuns(evolutionEnvelope.data.items);
+        setEvolutionTasks(evolutionTasksEnvelope.data.items);
         setSnapshotWarning(hasSnapshotMismatch ? SNAPSHOT_WARNING_MESSAGE : null);
         setError(null);
       });
@@ -216,13 +244,52 @@ export function XXP4Page() {
   async function handleRunEvolution() {
     try {
       setRunningEvolution(true);
-      const response = await createEvolutionRun();
+      const response = await createEvolutionRunV2({ actor_id: "p4-workspace" });
       setLatestEvolutionRun(response.data);
       await loadPage();
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : "触发自演进巡检失败");
     } finally {
       setRunningEvolution(false);
+    }
+  }
+
+  async function handleSaveEvolutionConfig(payload: Partial<EvolutionInspectionConfig>) {
+    try {
+      setSavingEvolutionConfig(true);
+      await updateEvolutionConfig(payload);
+      await loadPage();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存自演进巡检配置失败");
+    } finally {
+      setSavingEvolutionConfig(false);
+    }
+  }
+
+  async function handleDecisionEvolutionFinding(findingId: string, payload: EvolutionFindingDecisionInput) {
+    try {
+      setDecidingEvolutionFindingId(findingId);
+      await decideEvolutionFinding(findingId, payload);
+      await loadPage();
+    } catch (decisionError) {
+      setError(decisionError instanceof Error ? decisionError.message : "提交自演进发现项决策失败");
+    } finally {
+      setDecidingEvolutionFindingId(null);
+    }
+  }
+
+  async function handleRollbackEvolutionTask(taskId: string) {
+    try {
+      setRollingBackEvolutionTaskId(taskId);
+      await rollbackEvolutionTask(taskId, {
+        actor_id: "p4-workspace",
+        note: "P4 工作台人工回退自动改写。",
+      });
+      await loadPage();
+    } catch (rollbackError) {
+      setError(rollbackError instanceof Error ? rollbackError.message : "回退自演进任务失败");
+    } finally {
+      setRollingBackEvolutionTaskId(null);
     }
   }
 
@@ -299,7 +366,7 @@ export function XXP4Page() {
     title: string,
     caption: string,
   ) => (
-    <div id={id} className="xx-p4-workspace-tab-card" data-workspace-tone={tone}>
+    <div id={id} className="xx-p4-workspace-tab-card" data-workspace-tone={tone} data-nav-variant="segmented">
       <span aria-hidden="true" className="xx-p4-workspace-tab-index">
         {index}
       </span>
@@ -313,21 +380,12 @@ export function XXP4Page() {
   );
 
   return (
-    <div id="xx-p4-page" style={{ minHeight: "100vh", background: "#f6f8fa", padding: "24px 24px 32px" }}>
-      <div id="xx-p4-hero-shell" style={{ maxWidth: 1440, margin: "0 auto 20px" }}>
-        <Card
-          style={{
-            borderRadius: 20,
-            border: "1px solid #d0d7de",
-            background: "linear-gradient(180deg, #ffffff 0%, #f6f8fa 100%)",
-            boxShadow: "0 10px 24px rgba(31, 35, 40, 0.06)",
-          }}
-        >
-          <P4Hero overview={overview} archiveName={activeArchive?.name ?? activeArchiveId} />
-        </Card>
+    <div id="xx-p4-page" className="xx-p4-page">
+      <div id="xx-p4-hero-shell" className="xx-p4-page-shell">
+        <P4Hero />
       </div>
 
-      <div id="xx-p4-content-shell" style={{ maxWidth: 1440, margin: "0 auto 0" }}>
+      <div id="xx-p4-content-shell" className="xx-p4-page-shell">
         {error ? (
           <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
         ) : null}
@@ -336,24 +394,24 @@ export function XXP4Page() {
         ) : null}
 
         <div id="xx-p4-workspaces">
-          <Card style={{ borderRadius: 20, boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)" }}>
+          <div className="xx-p4-workspace-frame">
             <P4WorkspaceTabs
               items={[
                 {
                   key: "overview",
                   label: renderWorkspaceTabLabel("xx-p4-workspace-tab-overview", "overview", "01", "总览", "全局状态"),
                   children: (
-                    <Space direction="vertical" size={18} style={{ display: "flex" }}>
+                    <div id="xx-p4-overview-pane" className="xx-p4-pane-stack">
                       <div id="xx-p4-overview-metrics">
                         <P4MetricsPanel metrics={overview.metrics} />
                       </div>
 
                       <div id="xx-p4-overview-run-monitor">
                         <Card
+                          className="xx-p4-panel-card xx-p4-panel-card--muted"
                           variant="borderless"
-                          style={{ borderRadius: 18, background: "#f8fafc", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                         >
-                          <Space direction="vertical" size={18} style={{ display: "flex" }}>
+                          <div className="xx-p4-pane-stack">
                             <div>
                               <Typography.Title level={4} style={{ margin: 0 }}>
                                 运行监视
@@ -368,12 +426,12 @@ export function XXP4Page() {
                             overview.risk_summary.length === 0 ? (
                               <Empty description="最近没有运行记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                             ) : (
-                              <Row gutter={[16, 16]}>
-                                <Col xs={24} lg={8}>
+                              <div className="xx-p4-overview-monitor-grid">
+                                <div>
                                   <Card
                                     id="xx-p4-run-monitor-match"
+                                    className="xx-p4-overview-monitor-card"
                                     variant="borderless"
-                                    style={{ background: "#ffffff", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                                   >
                                     <Typography.Text type="secondary">输入工序链</Typography.Text>
                                     <Typography.Title level={2} style={{ margin: "8px 0 10px" }}>
@@ -385,12 +443,12 @@ export function XXP4Page() {
                                         : "当前没有最近输入链任务"}
                                     </Typography.Paragraph>
                                   </Card>
-                                </Col>
-                                <Col xs={24} lg={8}>
+                                </div>
+                                <div>
                                   <Card
                                     id="xx-p4-run-monitor-evolution"
+                                    className="xx-p4-overview-monitor-card"
                                     variant="borderless"
-                                    style={{ background: "#ffffff", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                                   >
                                     <Typography.Text type="secondary">自演进巡检</Typography.Text>
                                     <Typography.Title level={2} style={{ margin: "8px 0 10px" }}>
@@ -402,25 +460,25 @@ export function XXP4Page() {
                                         : "当前没有最近巡检任务"}
                                     </Typography.Paragraph>
                                   </Card>
-                                </Col>
-                                <Col xs={24} lg={8}>
+                                </div>
+                                <div>
                                   <Card
                                     id="xx-p4-run-monitor-risk"
+                                    className="xx-p4-overview-monitor-card"
                                     variant="borderless"
-                                    style={{ background: "#ffffff", boxShadow: "inset 0 0 0 1px #e2e8f0" }}
                                   >
                                     <Typography.Text type="secondary">风险摘要</Typography.Text>
                                     <Typography.Title level={2} style={{ margin: "8px 0 10px" }}>
                                       {overview.risk_summary.length}
                                     </Typography.Title>
                                     <Typography.Paragraph style={{ marginBottom: 0, color: "#475569" }}>
-                                      {overview.risk_summary[0]?.title ?? "当前没有新增风险提示"}
+                                        {overview.risk_summary[0]?.title ?? "当前没有新增风险提示"}
                                     </Typography.Paragraph>
                                   </Card>
-                                </Col>
-                              </Row>
+                                </div>
+                              </div>
                             )}
-                          </Space>
+                          </div>
                         </Card>
                       </div>
 
@@ -443,7 +501,7 @@ export function XXP4Page() {
                           <P4RiskSummary items={overview.risk_summary} />
                         </Col>
                       </Row>
-                    </Space>
+                    </div>
                   ),
                 },
                 {
@@ -485,10 +543,18 @@ export function XXP4Page() {
                   ),
                   children: (
                     <P4EvolutionWorkspace
+                      config={evolutionConfig}
                       runs={evolutionRuns}
+                      tasks={evolutionTasks}
                       latestRun={latestEvolutionRun}
                       running={runningEvolution}
+                      savingConfig={savingEvolutionConfig}
+                      decidingFindingId={decidingEvolutionFindingId}
+                      rollingBackTaskId={rollingBackEvolutionTaskId}
                       onRun={handleRunEvolution}
+                      onSaveConfig={handleSaveEvolutionConfig}
+                      onDecisionFinding={handleDecisionEvolutionFinding}
+                      onRollbackTask={handleRollbackEvolutionTask}
                     />
                   ),
                 },
@@ -496,7 +562,7 @@ export function XXP4Page() {
                   key: "registry",
                   label: renderWorkspaceTabLabel("xx-p4-workspace-tab-registry", "registry", "04", "工具仓库", "资产与覆盖"),
                   children: (
-                    <Space direction="vertical" size={18} style={{ display: "flex" }}>
+                    <div id="xx-p4-registry-pane" className="xx-p4-pane-stack">
                       <P4RegistryWorkspace
                         tools={tools}
                         manufacturePlans={manufacturePlans}
@@ -510,12 +576,12 @@ export function XXP4Page() {
                       <div id="xx-p4-registry-coverage-matrix">
                         <P4CoverageMatrix id="xx-p4-coverage-matrix" matrix={overview.coverage_matrix} />
                       </div>
-                    </Space>
+                    </div>
                   ),
                 },
               ]}
             />
-          </Card>
+          </div>
         </div>
       </div>
     </div>

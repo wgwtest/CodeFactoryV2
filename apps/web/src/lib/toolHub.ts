@@ -1,7 +1,15 @@
 import { api } from "./api";
 import type {
+  EvolutionConfigUpdateInput,
+  EvolutionFinding,
+  EvolutionFindingDecisionInput,
+  EvolutionInspectionConfig,
   EvolutionRun,
+  EvolutionRunCreateInput,
   EvolutionRunEnvelope,
+  EvolutionTask,
+  EvolutionTaskEnvelope,
+  EvolutionTaskRollbackInput,
   ItemProgressView,
   MockDemandScenarioId,
   ToolDefinition,
@@ -54,6 +62,38 @@ export function getEvolutionRuns() {
 
 export function createEvolutionRun() {
   return api.post<EvolutionRun>("/tool-hub/evolution-runs");
+}
+
+export function getEvolutionConfig() {
+  return api.get<ToolHubReadEnvelope<EvolutionInspectionConfig>>("/tool-hub/evolution/config");
+}
+
+export function updateEvolutionConfig(payload: EvolutionConfigUpdateInput) {
+  return api.patch<EvolutionInspectionConfig>("/tool-hub/evolution/config", payload);
+}
+
+export function getEvolutionRunsV2() {
+  return api.get<ToolHubReadEnvelope<EvolutionRunEnvelope>>("/tool-hub/evolution/runs");
+}
+
+export function createEvolutionRunV2(payload: EvolutionRunCreateInput) {
+  return api.post<EvolutionRun>("/tool-hub/evolution/runs", payload);
+}
+
+export function decideEvolutionFinding(findingId: string, payload: EvolutionFindingDecisionInput) {
+  return api.post<EvolutionFinding>(`/tool-hub/evolution/findings/${findingId}/decision`, payload);
+}
+
+export function getEvolutionTasks() {
+  return api.get<ToolHubReadEnvelope<EvolutionTaskEnvelope>>("/tool-hub/evolution/tasks");
+}
+
+export function getEvolutionTask(taskId: string) {
+  return api.get<EvolutionTask>(`/tool-hub/evolution/tasks/${taskId}`);
+}
+
+export function rollbackEvolutionTask(taskId: string, payload: EvolutionTaskRollbackInput) {
+  return api.post<EvolutionTask>(`/tool-hub/evolution/tasks/${taskId}/rollback`, payload);
 }
 
 export function createMockDemandSheet(scenarioId: MockDemandScenarioId) {

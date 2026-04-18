@@ -1,12 +1,14 @@
 # P4 工具中台本地 Issue 树镜像
 
-> 本地镜像已于 2026-04-16 与 GitHub Issue Tree / Project 7 同步。当前主树以 GitHub Issues 为准，这里保留一份工作树内可直接查阅的镜像与节点说明。
+> 本地镜像最近已于 2026-04-18 补充同步 `P4.3 / P4.4` 到 GitHub Issue Tree / Project 7。当前主树以 GitHub Issues 为准，这里保留一份工作树内可直接查阅的镜像与节点说明。
 
 ## GitHub Sync
 
 - Root issue: `#12` `WBS L1: P4 工具仓库 / 工具中台`
 - 已完成包: `#13` `WBS L2: P4.1 第一批最小闭环`
 - 当前在研包: `#45` `WBS L2: P4.2 输入工序链闭环探索`
+- 当前在研包: `#69` `WBS L2: P4.3 自演进巡检闭环`
+- 规划中包: `#75` `WBS L2: P4.4 后端服务化与运行时演进`
 - Project: `CodeFactoryV2 Delivery Roadmap` `#7`
 
 ## 节点文档映射
@@ -15,6 +17,10 @@
 
 - `P4`
   - 设计文档：`docs/superpowers/specs/2026-04-15-xx-p4-tool-hub-design.md`
+  - 补充设计：`docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md`
+  - 补充设计：`docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md`
+  - 补充设计：`docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`
+  - 补充设计：`docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md`
 - `P4.1`
   - 设计文档：`docs/superpowers/specs/2026-04-15-xx-p4-tool-hub-design.md`
 - `P4.1.6`
@@ -44,6 +50,34 @@
   - 设计文档：`docs/superpowers/specs/2026-04-17-p4-simulated-manufacture-executor-design.md`
   - 执行文档：`docs/superpowers/issues/P4.2.6-simulated-manufacture-executor-execution.md`
   - 实施计划：`docs/superpowers/plans/2026-04-17-p4-simulated-manufacture-executor.md`
+- `P4.3`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-evolution-inspection-closed-loop.md`
+- `P4.3.1`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md`
+- `P4.3.2`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md`
+- `P4.3.3`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-evolution-inspection-closed-loop.md`
+- `P4.4`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
+- `P4.4.1`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
+- `P4.4.2`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
+- `P4.4.3`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
+- `P4.4.4`
+  - 设计文档：`docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md`
+  - 实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
 - `P4.1.2` 补充
   - 设计文档：`docs/superpowers/specs/2026-04-17-p4-tool-registry-reset-and-p3-multi-scenario-generator-design.md`
   - 实施计划：`docs/superpowers/plans/2026-04-17-p4-tool-registry-reset-and-p3-multi-scenario-generator.md`
@@ -51,7 +85,7 @@
   - 设计文档：`docs/superpowers/specs/2026-04-17-p4-tool-registry-reset-and-p3-multi-scenario-generator-design.md`
   - 实施计划：`docs/superpowers/plans/2026-04-17-p4-tool-registry-reset-and-p3-multi-scenario-generator.md`
 
-> 2026-04-16 已完成远端同步。当前 GitHub 有效树对应：
+> 2026-04-18 已完成 `P4.3 / P4.4` 远端同步。当前 GitHub 有效树对应：
 > - `#12` `WBS L1: P4 工具仓库 / 工具中台`
 > - `#13` `WBS L2: P4.1 第一批最小闭环`
 > - `#39 ~ #44` `P4.1.1 ~ P4.1.6`
@@ -73,6 +107,15 @@
     - `#49` `P4.2.4` `P5-sim` 模拟消费页 `[待开发]`
     - `#50` `P4.2.5` 三段联调与回归验证 `[待开发]`
     - `待同步` `P4.2.6` 模拟研制执行器 `[待开发]`
+  - `#69` `P4.3` 自演进巡检闭环 `[已自测]`
+    - `#68` `P4.3.1` 巡检协议与运行规范 `[已自测]`
+    - `#71` `P4.3.2` 自演进巡检前端卡片工作区 `[已自测]`
+    - `#70` `P4.3.3` 巡检引擎、存储与统一运行管理 `[已自测]`
+  - `#75` `P4.4` 后端服务化与运行时演进 `[待开发]`
+    - `#72` `P4.4.1` 核心业务循环与统一命令模型 `[待开发]`
+    - `#73` `P4.4.2` Runtime Coordinator、Worker 与 Queue 标准化 `[待开发]`
+    - `#76` `P4.4.3` Backend Service 分域与接口边界落地 `[待开发]`
+    - `#74` `P4.4.4` 数据模型、投影模型与存储升级 `[待开发]`
 
 ## 已退役旧节点
 
@@ -139,6 +182,28 @@
 
 - `P4.1.2` 工具仓库页增加单工具安全删除，以及当前阶段临时性的“一键清空全部工具”测试入口
 - `P4.2.2` `P3-sim` 从单一蓝军发生器升级为“典型工单发生器”，固定支持 `模拟蓝军 / 导航规划 / 数据治理` 三类预置工单
+
+## 2026-04-18 自演进巡检闭环补充
+
+本轮新增 `P4.3`，用于修正另一个结构性缺口：
+
+- 自演进巡检不再附着于 `P4.2` 输入工序链
+- `P4.3` 作为独立生命周期存在，负责工具池自检、建议处置、内部任务和自动修复
+- `P4.3` 首版固定拆为 `P4.3.1 协议与运行规范 / P4.3.2 前端卡片工作区 / P4.3.3 巡检引擎、存储与统一运行管理`
+- `P4.3` 首版采用 `手动 + 定时` 触发，统一由 `P4 runtime coordinator` 推进
+- 低风险建议允许自动改写工具数据，但必须保留变更前后快照与任务级回退能力
+- 已同步远端节点 `#69 / #68 / #71 / #70`，并已加入 `Project 7`
+- `#12 -> #69 -> (#68 / #71 / #70)` 已切换为 GitHub 原生 `sub-issue` 树，不再只是正文模拟关系
+
+## 2026-04-18 后端架构演进补充
+
+本轮新增 `P4.4`，用于把 `P4` 从“验证可用的工具中台”继续推进到“可独立服务化的后台架构底座”：
+
+- `P4.4` 首版固定拆为 `P4.4.1 核心业务循环 / P4.4.2 Runtime Coordinator、Worker 与 Queue / P4.4.3 Backend Service 分域与接口边界 / P4.4.4 数据模型、投影模型与存储升级`
+- 新增四份专项设计文档，分别覆盖业务循环、运行时、服务边界和数据投影
+- 新增一份统一实施计划：`docs/superpowers/plans/2026-04-18-p4-backend-architecture-evolution.md`
+- 已同步远端节点 `#75 / #72 / #73 / #76 / #74`
+- `#12 -> #75 -> (#72 / #73 / #76 / #74)` 已切换为 GitHub 原生 `sub-issue` 树
 
 ## 2026-04-16 生命周期建模补充
 

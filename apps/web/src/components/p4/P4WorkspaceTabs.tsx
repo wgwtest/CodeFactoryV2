@@ -21,7 +21,6 @@ export function P4WorkspaceTabs({ items }: P4WorkspaceTabsProps) {
         defaultActiveKey="overview"
         destroyOnHidden
         items={items}
-        style={{ marginTop: 12 }}
       />
     </div>
   );
