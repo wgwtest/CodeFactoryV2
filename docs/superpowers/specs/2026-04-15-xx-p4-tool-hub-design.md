@@ -97,13 +97,18 @@
 
 典型路径：
 
-`定时/手动触发 -> 当前工具扫描 -> 重叠/缺口/规范性分析 -> 演进建议 -> 待确认项`
+`定时/手动触发 -> 当前工具扫描 -> 发现项 -> 采纳/忽略 -> P4 内部任务 -> 自动改写或人工跟进 -> 留痕/回退`
 
 首版目标：
 
 - 对现有工具定义做基本质量巡检
 - 暴露疑似重复、标签不规范、描述缺失、覆盖空白
-- 形成建议项与可人工确认的结果集
+- 形成“发现项 -> 内部任务 -> 自动改写/人工跟进 -> 回退”的闭环
+
+补充说明：
+
+- 自 `2026-04-18` 起，`P4.3` 的详细协议、状态机与运行边界以 `docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md` 为准
+- 本文保留总设计层的角色定位与页面边界，不再重复展开 `P4.3` 的全部细节
 
 ### 3.4 工单主干流定位
 
@@ -140,7 +145,7 @@
 
 - 页面标题：`XX-P4`
 - 页面副标题：`工具中台 / Tool Hub`
-- 当前运行上下文：当前知识库、最近巡检时间、任务状态摘要
+- 当前运行上下文：当前工作区说明、最近巡检时间、任务状态摘要
 
 视觉原则：
 
@@ -223,7 +228,7 @@
 
 目标：
 
-- 承载“扫描 -> 分析 -> 建议 -> 待确认项”闭环
+- 承载“巡检配置 -> 巡检轮次 -> 发现项 -> 内部任务 -> 已完成项 -> 回退”闭环
 
 首版只巡检以下 4 类问题：
 
@@ -234,10 +239,12 @@
 
 首版必须包括：
 
-- 巡检任务列表
-- 本轮发现摘要
-- 建议项列表
-- 人工确认状态
+- 巡检配置卡
+- 巡检轮次列表卡
+- 本轮发现摘要卡
+- 发现项处置卡
+- 内部任务队列卡
+- 已完成优化项与回退卡
 
 #### 4.3.4 `工具仓库`
 
@@ -425,17 +432,23 @@ knowledge_context:
 
 ## 8. 自演进巡检模型
 
-第一版巡检结果对象：`EvolutionRun`
+自 `2026-04-18` 起，`P4.3` 不再只输出单一 `EvolutionRun` 报告对象，而是升级为一组闭环协议对象：
 
-至少包含：
+- `EvolutionInspectionConfig`
+- `EvolutionRun`
+- `EvolutionFinding`
+- `EvolutionTask`
+- `EvolutionChangeSet`
+- `EvolutionRollbackRecord`
 
-- `run_id`
-- `status`
-- `created_at`
-- `summary`
-- `findings`
+其中：
 
-第一版 `findings` 类型固定为：
+- `EvolutionRun` 负责承载本轮巡检与聚合摘要
+- `EvolutionFinding` 负责承载发现项与 `采纳 / 忽略` 决策
+- `EvolutionTask` 负责承载内部执行任务
+- `EvolutionChangeSet` 与 `EvolutionRollbackRecord` 负责留痕与回退
+
+第一版 `finding.rule_id` 固定为：
 
 - `missing_description`
 - `taxonomy_issue`
@@ -471,6 +484,23 @@ knowledge_context:
 - `GET /api/tool-hub/evolution-runs`
 - `POST /api/tool-hub/evolution-runs`
 
+其中自 `2026-04-18` 起，`P4.3` 详细 API 补充为：
+
+- `GET /api/tool-hub/evolution/config`
+- `PATCH /api/tool-hub/evolution/config`
+- `GET /api/tool-hub/evolution/runs`
+- `POST /api/tool-hub/evolution/runs`
+- `GET /api/tool-hub/evolution/runs/{run_id}`
+- `POST /api/tool-hub/evolution/findings/{finding_id}/decision`
+- `GET /api/tool-hub/evolution/tasks`
+- `GET /api/tool-hub/evolution/tasks/{task_id}`
+- `POST /api/tool-hub/evolution/tasks/{task_id}/rollback`
+
+兼容性要求：
+
+- 继续保留旧版 `/api/tool-hub/evolution-runs` 读写端点作为兼容入口
+- `P4.3` 具体对象结构和交互语义以 `2026-04-18` 专项设计文档为准
+
 `overview` 返回：
 
 - 指标
@@ -489,6 +519,11 @@ knowledge_context:
 - `.data/tool_hub/runs/match/`
 - `.data/tool_hub/runs/evolution/`
 - `.data/tool_hub/catalogs/`
+- `.data/tool_hub/evolution/config/`
+- `.data/tool_hub/evolution/tasks/`
+- `.data/tool_hub/evolution/change_sets/`
+- `.data/tool_hub/evolution/rollbacks/`
+- `.data/tool_hub/runtime/`
 
 目标：
 
@@ -554,7 +589,7 @@ knowledge_context:
 3. 工具仓库支持文件型 CRUD
 4. 工具分类与标签可维护、可展示、可用于匹配
 5. 输入工具链支持工单受理、逐项审定、供给结果输出与完成状态判定
-6. 自演进巡检支持输出基础发现项与建议项
+6. 自演进巡检支持配置、发现项处置、内部任务推进与任务级回退
 7. 驾驶舱页能展示覆盖热力矩阵与风险摘要
 8. 前后端均有自动化测试覆盖最小主路径
 

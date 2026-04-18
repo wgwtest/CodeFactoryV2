@@ -10,7 +10,7 @@ type P4RunListProps = {
 
 export function P4RunList({ title, items, emptyText }: P4RunListProps) {
   return (
-    <Card title={title} style={{ borderRadius: 18 }}>
+    <Card title={title} className="xx-p4-panel-card">
       {items.length === 0 ? (
         <Empty description={emptyText} image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (

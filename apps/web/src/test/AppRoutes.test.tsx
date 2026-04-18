@@ -7,17 +7,20 @@ import App from "../App";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const patchMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
+    patch: (...args: unknown[]) => patchMock(...args),
   },
 }));
 
 beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
+  patchMock.mockReset();
 });
 
 function mockDocumentsApis() {
@@ -113,6 +116,61 @@ function mockP4WorkspaceApis() {
     }
 
     if (url === "/tool-hub/tools") {
+      return Promise.resolve({
+        data: {
+          meta: {
+            snapshot_id: "snapshot-1",
+            generated_at: "2026-04-17T09:00:00Z",
+            state_version: "v1",
+          },
+          data: {
+            items: [],
+          },
+        },
+      });
+    }
+
+    if (url === "/tool-hub/evolution/config") {
+      return Promise.resolve({
+        data: {
+          meta: {
+            snapshot_id: "snapshot-1",
+            generated_at: "2026-04-17T09:00:00Z",
+            state_version: "v1",
+          },
+          data: {
+            config_id: "default",
+            enabled: true,
+            schedule_mode: "manual_and_scheduled",
+            interval_minutes: 60,
+            include_draft_tools: true,
+            focus_rule_ids: ["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"],
+            overlap_threshold: 3,
+            max_run_history: 50,
+            auto_apply_rule_ids: ["missing_description", "taxonomy_issue"],
+            updated_by: "p4-workspace",
+            updated_at: "2026-04-18T08:00:00Z",
+          },
+        },
+      });
+    }
+
+    if (url === "/tool-hub/evolution/runs") {
+      return Promise.resolve({
+        data: {
+          meta: {
+            snapshot_id: "snapshot-1",
+            generated_at: "2026-04-17T09:00:00Z",
+            state_version: "v1",
+          },
+          data: {
+            items: [],
+          },
+        },
+      });
+    }
+
+    if (url === "/tool-hub/evolution/tasks") {
       return Promise.resolve({
         data: {
           meta: {

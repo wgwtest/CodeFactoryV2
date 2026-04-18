@@ -106,10 +106,10 @@ export function P4InputChainWorkspace({
   }
 
   return (
-    <Space id="xx-p4-input-chain-workspace" direction="vertical" size={16} style={{ display: "flex" }}>
+    <div id="xx-p4-input-chain-workspace" className="xx-p4-pane-stack">
       {error ? <Alert id="xx-p4-input-chain-error" type="error" showIcon message={error} /> : null}
 
-      <Card id="xx-p4-demand-sheet-intake-card" title="工序单受理区" style={{ borderRadius: 18 }}>
+      <Card id="xx-p4-demand-sheet-intake-card" title="工序单受理区" className="xx-p4-panel-card">
         <Space direction="vertical" size={16} style={{ display: "flex" }}>
           <Typography.Paragraph style={{ margin: 0, color: "#475569" }}>
             P4 只受理已经提交的工具需求单，不在当前页内发起 P3 模拟发生，也不承载 P5 模拟消费。
@@ -200,9 +200,9 @@ export function P4InputChainWorkspace({
         </Space>
       </Card>
 
-      <Row gutter={[16, 16]}>
+      <Row id="xx-p4-input-chain-grid" className="xx-p4-input-chain-grid" gutter={[20, 20]}>
         <Col xs={24} xl={10}>
-          <Card id="xx-p4-demand-item-board-card" title="工具需求列表" style={{ borderRadius: 18, height: "100%" }}>
+          <Card id="xx-p4-demand-item-board-card" title="工具需求列表" className="xx-p4-panel-card" style={{ height: "100%" }}>
             <P4DemandItemBoard
               items={activeSheet?.items ?? []}
               selectedItemId={selectedItemId}
@@ -214,10 +214,10 @@ export function P4InputChainWorkspace({
         </Col>
 
         <Col xs={24} xl={14}>
-          <Card id="xx-p4-review-panel-card" title="需求审批与处置面板" style={{ borderRadius: 18, height: "100%" }}>
+          <Card id="xx-p4-review-panel-card" title="需求审批与处置面板" className="xx-p4-panel-card" style={{ height: "100%" }}>
             {activeItem ? (
               <Space id="xx-p4-review-panel" direction="vertical" size={16} style={{ display: "flex" }}>
-                <Card id="xx-p4-review-summary" size="small" title="需求摘要">
+                <Card id="xx-p4-review-summary" size="small" title="需求摘要" className="xx-p4-subcard">
                   <Space direction="vertical" size={8} style={{ display: "flex" }}>
                     <Space wrap>
                       <Typography.Text strong>{activeItem.component_name}</Typography.Text>
@@ -229,7 +229,7 @@ export function P4InputChainWorkspace({
                   </Space>
                 </Card>
 
-                <Card id="xx-p4-review-decision" size="small" title="审批决策">
+                <Card id="xx-p4-review-decision" size="small" title="审批决策" className="xx-p4-subcard">
                   <Space direction="vertical" size={12} style={{ display: "flex" }}>
                     <label htmlFor="xx-p4-importance-score">
                       <Typography.Text>重要性评分</Typography.Text>
@@ -311,11 +311,11 @@ export function P4InputChainWorkspace({
                   </Space>
                 </Card>
 
-                <Card id="xx-p4-review-supply-card" size="small" title="供给与交付结果">
+                <Card id="xx-p4-review-supply-card" size="small" title="供给与交付结果" className="xx-p4-subcard">
                   <P4SupplyResultPreview item={activeItem} />
                 </Card>
 
-                <Card id="xx-p4-review-source-card" size="small" title="辅助来源信息">
+                <Card id="xx-p4-review-source-card" size="small" title="辅助来源信息" className="xx-p4-subcard">
                   <P4DemandSheetTree sheet={activeSheet} selectedItemId={selectedItemId} onSelectItem={onSelectItem} />
                 </Card>
               </Space>
@@ -325,6 +325,6 @@ export function P4InputChainWorkspace({
           </Card>
         </Col>
       </Row>
-    </Space>
+    </div>
   );
 }

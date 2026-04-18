@@ -15,6 +15,12 @@ ToolVerificationStatus = Literal["unverified", "verified", "warning", "failed"]
 SupportedSource = Literal["p1_readonly_api", "frozen_snapshot", "manual_input", "tool_hub_snapshot"]
 RiskKind = Literal["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"]
 RiskSeverity = Literal["info", "warning", "critical"]
+EvolutionRunStatus = Literal["queued", "running", "completed", "failed"]
+EvolutionTriggerType = Literal["manual", "scheduled"]
+EvolutionFindingDecisionStatus = Literal["pending", "accepted_to_task", "ignored"]
+EvolutionTaskType = Literal["auto_apply", "manual_followup"]
+EvolutionTaskStatus = Literal["queued", "running", "completed", "failed", "rolled_back"]
+EvolutionTaskPriority = Literal["low", "medium", "high"]
 ToolDemandSheetLifecycleStatus = Literal["submitted", "accepted", "rejected", "withdrawn", "closed"]
 ToolDemandSheetReviewStatus = Literal["pending_review", "reviewing", "reviewed"]
 ToolDemandSheetDeliveryStatus = Literal["not_delivered", "delivering", "delivered"]
@@ -809,10 +815,18 @@ class ToolMatchRunEnvelope(BaseModel):
 class EvolutionFinding(BaseModel):
     finding_id: str
     kind: RiskKind
+    run_id: str = ""
     title: str
     description: str
     severity: RiskSeverity = "warning"
     tool_ids: list[str] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    decision_status: EvolutionFindingDecisionStatus = "pending"
+    decision_by: str | None = None
+    decision_at: str | None = None
+    decision_note: str = ""
+    linked_task_id: str | None = None
+    updated_at: str = Field(default_factory=now_iso)
 
 
 class EvolutionRunSummary(BaseModel):
@@ -822,18 +836,119 @@ class EvolutionRunSummary(BaseModel):
     taxonomy_issue_count: int = 0
     overlap_risk_count: int = 0
     coverage_gap_count: int = 0
+    accepted_count: int = 0
+    ignored_count: int = 0
+    generated_task_count: int = 0
 
 
 class EvolutionRun(BaseModel):
     run_id: str
-    status: Literal["completed"] = "completed"
+    status: EvolutionRunStatus = "completed"
+    trigger_type: EvolutionTriggerType = "manual"
+    triggered_by: str = "p4-system"
     created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+    started_at: str | None = None
+    completed_at: str | None = None
+    failed_at: str | None = None
+    snapshot_id: str | None = None
+    error_message: str = ""
     summary: EvolutionRunSummary = Field(default_factory=EvolutionRunSummary)
     findings: list[EvolutionFinding] = Field(default_factory=list)
 
 
 class EvolutionRunEnvelope(BaseModel):
     items: list[EvolutionRun]
+
+
+class EvolutionInspectionConfig(BaseModel):
+    config_id: str = "default"
+    enabled: bool = True
+    schedule_mode: Literal["manual_and_scheduled"] = "manual_and_scheduled"
+    interval_minutes: float = 60
+    include_draft_tools: bool = True
+    focus_rule_ids: list[RiskKind] = Field(
+        default_factory=lambda: ["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"]
+    )
+    overlap_threshold: int = 3
+    max_run_history: int = 50
+    auto_apply_rule_ids: list[RiskKind] = Field(default_factory=lambda: ["missing_description", "taxonomy_issue"])
+    updated_by: str = "p4-system"
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class EvolutionConfigUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    interval_minutes: float | None = None
+    include_draft_tools: bool | None = None
+    focus_rule_ids: list[RiskKind] | None = None
+    overlap_threshold: int | None = None
+    max_run_history: int | None = None
+    auto_apply_rule_ids: list[RiskKind] | None = None
+
+
+class EvolutionRunCreateRequest(BaseModel):
+    actor_id: str
+
+
+class EvolutionFindingDecisionRequest(BaseModel):
+    actor_id: str
+    decision: Literal["accept", "ignore"]
+    note: str = ""
+
+
+class EvolutionTask(BaseModel):
+    task_id: str
+    source_run_id: str
+    source_finding_id: str
+    task_type: EvolutionTaskType
+    task_status: EvolutionTaskStatus = "queued"
+    priority: EvolutionTaskPriority = "medium"
+    planned_action: str
+    target_tool_ids: list[str] = Field(default_factory=list)
+    result_summary: str = ""
+    change_count: int = 0
+    rollback_available: bool = False
+    created_by: str
+    created_at: str = Field(default_factory=now_iso)
+    started_at: str | None = None
+    completed_at: str | None = None
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class EvolutionTaskEnvelope(BaseModel):
+    items: list[EvolutionTask]
+
+
+class EvolutionTaskRollbackRequest(BaseModel):
+    actor_id: str
+    note: str = ""
+
+
+class EvolutionChangeSet(BaseModel):
+    change_set_id: str
+    task_id: str
+    tool_id: str
+    change_kind: str
+    before_snapshot: dict[str, Any]
+    after_snapshot: dict[str, Any]
+    applied_at: str = Field(default_factory=now_iso)
+    applied_by: str = "p4-runtime"
+
+
+class EvolutionRollbackRecord(BaseModel):
+    rollback_id: str
+    task_id: str
+    change_set_ids: list[str] = Field(default_factory=list)
+    rolled_back_by: str
+    rolled_back_at: str = Field(default_factory=now_iso)
+    rollback_summary: str = ""
+
+
+class EvolutionRuntimeState(BaseModel):
+    evolution_dirty: bool = True
+    last_scheduled_evolution_at: str | None = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
 
 
 class ToolHubSnapshotMeta(BaseModel):
@@ -848,7 +963,10 @@ class ToolHubRawState(BaseModel):
     tools: list[ToolDefinition] = Field(default_factory=list)
     demand_sheets: list[ToolDemandSheet] = Field(default_factory=list)
     match_runs: list[ToolMatchRun] = Field(default_factory=list)
+    evolution_config: EvolutionInspectionConfig = Field(default_factory=EvolutionInspectionConfig)
     evolution_runs: list[EvolutionRun] = Field(default_factory=list)
+    evolution_tasks: list[EvolutionTask] = Field(default_factory=list)
+    runtime_state: EvolutionRuntimeState = Field(default_factory=EvolutionRuntimeState)
 
 
 class ToolHubDerivedState(BaseModel):
@@ -890,3 +1008,13 @@ class ToolListReadEnvelope(BaseModel):
 class EvolutionRunReadEnvelope(BaseModel):
     meta: ToolHubSnapshotMeta
     data: EvolutionRunEnvelope
+
+
+class EvolutionConfigReadEnvelope(BaseModel):
+    meta: ToolHubSnapshotMeta
+    data: EvolutionInspectionConfig
+
+
+class EvolutionTaskReadEnvelope(BaseModel):
+    meta: ToolHubSnapshotMeta
+    data: EvolutionTaskEnvelope

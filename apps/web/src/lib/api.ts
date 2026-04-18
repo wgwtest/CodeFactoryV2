@@ -774,17 +774,33 @@ export type ToolMatchRun = {
 
 export type EvolutionFinding = {
   finding_id: string;
+  run_id: string;
   kind: "missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap";
   title: string;
   description: string;
   severity: "info" | "warning" | "critical";
   tool_ids: string[];
+  evidence: Record<string, unknown>;
+  decision_status: "pending" | "accepted_to_task" | "ignored";
+  decision_by: string | null;
+  decision_at: string | null;
+  decision_note: string;
+  linked_task_id: string | null;
+  updated_at: string;
 };
 
 export type EvolutionRun = {
   run_id: string;
-  status: "completed";
+  status: "queued" | "running" | "completed" | "failed";
+  trigger_type: "manual" | "scheduled";
+  triggered_by: string;
   created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  snapshot_id: string | null;
+  error_message: string;
   summary: {
     tool_count: number;
     finding_count: number;
@@ -792,12 +808,80 @@ export type EvolutionRun = {
     taxonomy_issue_count: number;
     overlap_risk_count: number;
     coverage_gap_count: number;
+    accepted_count: number;
+    ignored_count: number;
+    generated_task_count: number;
   };
   findings: EvolutionFinding[];
 };
 
 export type EvolutionRunEnvelope = {
   items: EvolutionRun[];
+};
+
+export type EvolutionInspectionConfig = {
+  config_id: string;
+  enabled: boolean;
+  schedule_mode: "manual_and_scheduled";
+  interval_minutes: number;
+  include_draft_tools: boolean;
+  focus_rule_ids: Array<"missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap">;
+  overlap_threshold: number;
+  max_run_history: number;
+  auto_apply_rule_ids: Array<"missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap">;
+  updated_by: string;
+  updated_at: string;
+};
+
+export type EvolutionConfigUpdateInput = Partial<
+  Pick<
+    EvolutionInspectionConfig,
+    | "enabled"
+    | "interval_minutes"
+    | "include_draft_tools"
+    | "focus_rule_ids"
+    | "overlap_threshold"
+    | "max_run_history"
+    | "auto_apply_rule_ids"
+  >
+>;
+
+export type EvolutionRunCreateInput = {
+  actor_id: string;
+};
+
+export type EvolutionFindingDecisionInput = {
+  actor_id: string;
+  decision: "accept" | "ignore";
+  note: string;
+};
+
+export type EvolutionTask = {
+  task_id: string;
+  source_run_id: string;
+  source_finding_id: string;
+  task_type: "auto_apply" | "manual_followup";
+  task_status: "queued" | "running" | "completed" | "failed" | "rolled_back";
+  priority: "low" | "medium" | "high";
+  planned_action: string;
+  target_tool_ids: string[];
+  result_summary: string;
+  change_count: number;
+  rollback_available: boolean;
+  created_by: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+export type EvolutionTaskEnvelope = {
+  items: EvolutionTask[];
+};
+
+export type EvolutionTaskRollbackInput = {
+  actor_id: string;
+  note: string;
 };
 
 export type ToolHubOverview = {

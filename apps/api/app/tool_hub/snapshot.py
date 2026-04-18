@@ -11,6 +11,9 @@ from app.tool_hub.models import (
     CoverageMatrixCell,
     CoverageMatrixRow,
     EvolutionFinding,
+    EvolutionInspectionConfig,
+    EvolutionRuntimeState,
+    EvolutionTask,
     EvolutionRun,
     EvolutionRunEnvelope,
     EvolutionRunSummary,
@@ -43,23 +46,34 @@ def build_tool_hub_snapshot(
     tools: list[ToolDefinition],
     demand_sheets: list[ToolDemandSheet],
     match_runs: list[ToolMatchRun],
+    evolution_config: EvolutionInspectionConfig,
     evolution_runs: list[EvolutionRun],
+    evolution_tasks: list[EvolutionTask],
+    runtime_state: EvolutionRuntimeState,
 ) -> ToolHubStateSnapshot:
     raw = ToolHubRawState(
         catalogs=catalogs,
         tools=tools,
         demand_sheets=demand_sheets,
         match_runs=match_runs,
+        evolution_config=evolution_config,
         evolution_runs=evolution_runs,
+        evolution_tasks=evolution_tasks,
+        runtime_state=runtime_state,
     )
-    current_evolution = evolution_runs[0] if evolution_runs else build_virtual_evolution_run(tools)
-    pending_suggestions = build_pending_suggestions(current_evolution)
+    current_evolution = evolution_runs[0] if evolution_runs else build_virtual_evolution_run(
+        tools,
+        overlap_threshold=evolution_config.overlap_threshold,
+        include_draft_tools=evolution_config.include_draft_tools,
+    )
+    pending_suggestions = build_pending_suggestions(evolution_runs, current_evolution)
     derived = ToolHubDerivedState(
         metrics=build_overview_metrics(
             tools=tools,
             demand_sheets=demand_sheets,
             match_runs=match_runs,
             evolution_runs=evolution_runs,
+            evolution_tasks=evolution_tasks,
             current_evolution=current_evolution,
             pending_suggestions=pending_suggestions,
         ),
@@ -97,22 +111,60 @@ def project_evolution_runs(snapshot: ToolHubStateSnapshot) -> EvolutionRunEnvelo
     return EvolutionRunEnvelope(items=snapshot.raw.evolution_runs)
 
 
-def build_evolution_run(tools: list[ToolDefinition]) -> EvolutionRun:
-    summary, findings = _analyze_evolution(tools, deterministic=False)
+def build_evolution_run(
+    tools: list[ToolDefinition],
+    *,
+    overlap_threshold: int = 3,
+    include_draft_tools: bool = True,
+    trigger_type: str = "manual",
+    triggered_by: str = "p4-system",
+    snapshot_id: str | None = None,
+) -> EvolutionRun:
+    run_id = f"evolution-run-{uuid4().hex[:12]}"
+    summary, findings = _analyze_evolution(
+        tools,
+        deterministic=False,
+        overlap_threshold=overlap_threshold,
+        include_draft_tools=include_draft_tools,
+    )
+    timestamp = now_iso()
     return EvolutionRun(
-        run_id=f"evolution-{uuid4().hex[:12]}",
+        run_id=run_id,
+        trigger_type=trigger_type,
+        triggered_by=triggered_by,
+        snapshot_id=snapshot_id,
+        started_at=timestamp,
+        completed_at=timestamp,
+        updated_at=timestamp,
         summary=summary,
-        findings=findings,
+        findings=[finding.model_copy(update={"run_id": run_id, "updated_at": timestamp}) for finding in findings],
     )
 
 
-def build_virtual_evolution_run(tools: list[ToolDefinition]) -> EvolutionRun:
-    summary, findings = _analyze_evolution(tools, deterministic=True)
+def build_virtual_evolution_run(
+    tools: list[ToolDefinition],
+    *,
+    overlap_threshold: int = 3,
+    include_draft_tools: bool = True,
+) -> EvolutionRun:
+    summary, findings = _analyze_evolution(
+        tools,
+        deterministic=True,
+        overlap_threshold=overlap_threshold,
+        include_draft_tools=include_draft_tools,
+    )
+    timestamp = _latest_or_default_timestamp(tools)
     return EvolutionRun(
         run_id=VIRTUAL_EVOLUTION_RUN_ID,
-        created_at=_latest_or_default_timestamp(tools),
+        created_at=timestamp,
+        updated_at=timestamp,
+        started_at=timestamp,
+        completed_at=timestamp,
         summary=summary,
-        findings=findings,
+        findings=[
+            finding.model_copy(update={"run_id": VIRTUAL_EVOLUTION_RUN_ID, "updated_at": timestamp})
+            for finding in findings
+        ],
     )
 
 
@@ -138,6 +190,7 @@ def build_overview_metrics(
     demand_sheets: list[ToolDemandSheet],
     match_runs: list[ToolMatchRun],
     evolution_runs: list[EvolutionRun],
+    evolution_tasks: list[EvolutionTask],
     current_evolution: EvolutionRun,
     pending_suggestions: list[PendingSuggestionItem],
 ) -> OverviewMetrics:
@@ -217,18 +270,28 @@ def build_risk_summary(run: EvolutionRun) -> list[RiskSummaryItem]:
     ]
 
 
-def build_pending_suggestions(run: EvolutionRun) -> list[PendingSuggestionItem]:
+def build_pending_suggestions(
+    evolution_runs: list[EvolutionRun],
+    current_run: EvolutionRun,
+) -> list[PendingSuggestionItem]:
+    pending_findings = [
+        finding
+        for run in evolution_runs
+        for finding in run.findings
+        if finding.decision_status == "pending"
+    ]
+    source_findings = pending_findings or current_run.findings
     return [
         PendingSuggestionItem(
             finding_id=finding.finding_id,
-            source_run_id=run.run_id,
+            source_run_id=finding.run_id or current_run.run_id,
             kind=finding.kind,
             title=finding.title,
             description=finding.description,
             severity=finding.severity,
             tool_ids=finding.tool_ids,
         )
-        for finding in run.findings
+        for finding in source_findings
     ]
 
 
@@ -258,13 +321,17 @@ def _analyze_evolution(
     tools: list[ToolDefinition],
     *,
     deterministic: bool,
+    overlap_threshold: int = 3,
+    include_draft_tools: bool = True,
 ) -> tuple[EvolutionRunSummary, list[EvolutionFinding]]:
     findings: list[EvolutionFinding] = []
     known_domains = {item.id for item in DOMAIN_CATALOG}
     known_tool_forms = {item.id for item in TOOL_FORM_CATALOG}
     required_tag_namespaces = ("domain:", "form:", "runtime:", "lifecycle:", "input:", "output:")
 
-    for tool in tools:
+    analyzable_tools = [tool for tool in tools if tool.status == "active" or (include_draft_tools and tool.status == "draft")]
+
+    for tool in analyzable_tools:
         if not tool.summary.strip() or not tool.problem_statement.strip():
             findings.append(
                 _build_finding(
@@ -313,14 +380,14 @@ def _analyze_evolution(
                 overlap_score += 1
             if set(current.runtime_platform_ids).intersection(other.runtime_platform_ids):
                 overlap_score += 1
-            if overlap_score >= 3:
+            if overlap_score >= overlap_threshold:
                 findings.append(
                     _build_finding(
                         deterministic=deterministic,
                         kind="overlap_risk",
                         title=f"{current.name} 与 {other.name} 疑似重叠",
                         description="两者在业务域、形态、生命周期或输入侧存在高相似度，建议人工评估是否整合。",
-                        severity="critical" if overlap_score >= 4 else "warning",
+                        severity="critical" if overlap_score >= max(overlap_threshold + 1, 4) else "warning",
                         tool_ids=[current.tool_id, other.tool_id],
                     )
                 )
@@ -341,12 +408,15 @@ def _analyze_evolution(
             )
 
     summary = EvolutionRunSummary(
-        tool_count=len(tools),
+        tool_count=len(analyzable_tools),
         finding_count=len(findings),
         missing_description_count=len([item for item in findings if item.kind == "missing_description"]),
         taxonomy_issue_count=len([item for item in findings if item.kind == "taxonomy_issue"]),
         overlap_risk_count=len([item for item in findings if item.kind == "overlap_risk"]),
         coverage_gap_count=len([item for item in findings if item.kind == "coverage_gap"]),
+        accepted_count=len([item for item in findings if item.decision_status == "accepted_to_task"]),
+        ignored_count=len([item for item in findings if item.decision_status == "ignored"]),
+        generated_task_count=len([item for item in findings if item.linked_task_id]),
     )
     return summary, findings
 
@@ -380,6 +450,9 @@ def _collect_generated_at(raw: ToolHubRawState) -> str:
         *[item.updated_at for item in raw.tools],
         *[item.created_at for item in raw.match_runs],
         *[item.created_at for item in raw.evolution_runs],
+        raw.evolution_config.updated_at,
+        raw.runtime_state.updated_at,
+        *[item.updated_at for item in raw.evolution_tasks],
     ]
     if not timestamps:
         return now_iso()
