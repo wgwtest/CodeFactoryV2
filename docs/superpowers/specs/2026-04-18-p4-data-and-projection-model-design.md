@@ -44,6 +44,48 @@
 
 存放变更前后快照、回退记录、执行账本。
 
+```mermaid
+flowchart TB
+    subgraph L1["业务事实层"]
+        B1["Registry 聚合"]
+        B2["Demand 聚合"]
+        B3["Manufacture 聚合"]
+        B4["Evolution 聚合"]
+    end
+
+    subgraph L2["运行事实层"]
+        R1["RuntimeJob"]
+        R2["RuntimeLease"]
+        R3["RuntimeExecutionRecord"]
+        R4["RuntimeScheduleState"]
+    end
+
+    subgraph L3["查询投影层"]
+        Q1["OverviewProjection"]
+        Q2["Demand / Registry / Evolution 投影"]
+        Q3["ToolDeliveryProjection"]
+    end
+
+    subgraph L4["审计与快照层"]
+        A1["LifecycleEvent"]
+        A2["ChangeSet / RollbackRecord"]
+        A3["Snapshot / Ledger"]
+    end
+
+    B1 --> R1
+    B2 --> R1
+    B3 --> R1
+    B4 --> R1
+    B1 --> Q1
+    B2 --> Q2
+    B3 --> Q3
+    B4 --> Q2
+    B1 --> A3
+    B2 --> A1
+    B3 --> A3
+    B4 --> A2
+```
+
 ## 3. 业务事实模型
 
 ### 3.1 Tool Registry 聚合
@@ -230,6 +272,21 @@
 - `reason_code`
 - `reason_message`
 - `occurred_at`
+
+```mermaid
+flowchart LR
+    SHEET["ToolDemandSheet"] --> ITEM["ToolDemandItem"]
+    SHEET --> EVENT["ToolDemandLifecycleEvent"]
+    ITEM --> PLAN["ToolManufacturePlan"]
+    PLAN --> TOOL["ToolDefinition"]
+
+    CONFIG["EvolutionInspectionConfig"] --> RUN["EvolutionRun"]
+    RUN --> FINDING["EvolutionFinding"]
+    FINDING --> TASK["EvolutionTask"]
+    TASK --> CHANGE["EvolutionChangeSet"]
+    TASK --> ROLLBACK["EvolutionRollbackRecord"]
+    CHANGE --> TOOL
+```
 
 ## 4. 运行事实模型
 
@@ -488,6 +545,19 @@
 
 只有调试、重建或恢复场景，才触发全量快照重算。
 
+```mermaid
+flowchart LR
+    CMD["命令写入聚合事实"] --> FACT["权威事实对象"]
+    FACT --> JOB["RuntimeJob"]
+    JOB --> WORKER["Worker 执行"]
+    WORKER --> FACT
+    FACT --> REFRESH["Projection Refresh"]
+    REFRESH --> PROJ["只读投影表"]
+    PROJ --> UI["XX-P4"]
+    PROJ --> P5["P5 Query"]
+    FACT --> AUDIT["快照 / 审计 / 回退记录"]
+```
+
 ## 12. 与 `P4.1.6` 的关系
 
 `P4.1.6` 已经证明：
@@ -532,4 +602,3 @@
 - 当前统一快照在未来系统中扮演什么角色
 - 数据库分表和投影分层应该如何组织
 - 自动改写与回退需要保留哪些数据
-

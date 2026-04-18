@@ -38,6 +38,15 @@
 - `P5` 的构建执行逻辑
 - 跨全厂的通用任务调度
 
+```mermaid
+flowchart LR
+    P1["P1 标准知识出口 / 只读 API / 冻结快照"] --> P4["P4 backend service"]
+    P3["P3 / P3-sim"] -->|"P3 Input Port"| P4
+    OP["XX-P4 / Operator"] -->|"Operator Port"| P4
+    RT["Worker / Runtime Coordinator"] -->|"Internal Runtime Port"| P4
+    P4 -->|"P5 Query Port"| P5["P5 / P5-sim"]
+```
+
 ## 3. 分域设计
 
 建议把 `P4 backend service` 内部固定为 6 个域。
@@ -191,6 +200,29 @@
 - `XX-P4` 的总览与工作区查询
 - `P5` 的整单、叶子项和获取清单查询
 
+```mermaid
+flowchart TB
+    subgraph P4["P4 backend service"]
+        REG["Registry Domain"]
+        DEM["Demand Domain"]
+        MAN["Manufacture Domain"]
+        EVO["Evolution Domain"]
+        RUN["Runtime Domain"]
+        QRY["Query Projection Domain"]
+    end
+
+    DEM --> MAN
+    MAN --> REG
+    EVO --> REG
+    RUN --> DEM
+    RUN --> MAN
+    RUN --> EVO
+    REG --> QRY
+    DEM --> QRY
+    MAN --> QRY
+    EVO --> QRY
+```
+
 ## 4. 对外端口设计
 
 未来 `P4 backend service` 对外建议只保留 4 类端口。
@@ -280,6 +312,25 @@
 - 页面回调
 - 控制器互调
 - 跨域直接写文件/表
+
+```mermaid
+flowchart TD
+    A["P3 Input Port"] --> B["Demand Domain<br/>CreateDemandSheet"]
+    B --> C["ReviewDemandItem"]
+    C -->|"命中"| D["Registry Domain<br/>绑定 ToolSupplyResult"]
+    C -->|"未命中"| E["Manufacture Domain<br/>CreateManufacturePlan"]
+    E --> F["Runtime Domain<br/>投递制造任务"]
+    F --> G["Manufacture Worker 执行"]
+    G --> H["Registry Domain<br/>绑定 result_tool_id"]
+    D --> I["Query Projection Domain"]
+    H --> I
+    I --> J["P5 Query Port / XX-P4"]
+
+    K["Evolution Domain<br/>accept finding"] --> L["Runtime Domain<br/>投递 auto_apply"]
+    L --> M["Evolution Worker 执行"]
+    M --> N["Registry Domain<br/>应用 metadata patch"]
+    N --> I
+```
 
 ## 6. 域接口建议
 
@@ -423,4 +474,3 @@
 - `P3 / P5 / XX-P4 / worker` 分别应该访问哪个端口
 - 哪些接口是对外稳定契约
 - 未来若拆微服务，先拆什么、为什么
-

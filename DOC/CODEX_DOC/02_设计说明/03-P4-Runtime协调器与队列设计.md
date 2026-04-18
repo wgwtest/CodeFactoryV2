@@ -53,6 +53,28 @@
 - `Worker` 负责执行具体业务
 - `Projection Refresh` 负责查询投影
 
+```mermaid
+flowchart LR
+    API["API 命令入口"] --> JOB["Runtime Job Store"]
+    TIMER["定时触发"] --> JOB
+    EVENT["领域事件"] --> JOB
+    JOB --> DISP["Queue Dispatcher / Runtime Coordinator"]
+    DISP --> LEASE["Lease Manager"]
+    LEASE --> DW["Demand Worker"]
+    LEASE --> MW["Manufacture Worker"]
+    LEASE --> EW["Evolution Worker"]
+    LEASE --> PW["Projection Worker"]
+    DW --> AGG["Aggregate Update"]
+    MW --> AGG
+    EW --> AGG
+    AGG --> REFRESH["Projection Refresh"]
+    REFRESH --> QUERY["Query Store"]
+    DW --> OBS["Execution Record / Metrics"]
+    MW --> OBS
+    EW --> OBS
+    PW --> QUERY
+```
+
 ## 4. 核心组件
 
 ### 4.1 Runtime Coordinator
@@ -192,6 +214,24 @@ updated_at:
 - `queued -> leased -> running -> failed -> dead_letter`
 - `completed -> rolled_back`
 
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> leased: 协调器分配租约
+    leased --> running: Worker 开始执行
+    running --> completed: 成功
+    running --> failed: 失败
+    completed --> rolled_back: 回退
+    failed --> queued: 可重试
+    failed --> dead_letter: 超过阈值
+    leased --> queued: 租约过期回收
+    queued --> cancelled: 人工取消
+    cancelled --> [*]
+    dead_letter --> [*]
+    rolled_back --> [*]
+    completed --> [*]
+```
+
 ## 8. 租约机制
 
 ### 8.1 目的
@@ -303,6 +343,20 @@ updated_at:
 - 失败堆栈摘要
 - 已尝试次数
 - 人工恢复建议
+
+```mermaid
+flowchart TD
+    A["Worker 执行任务"] --> B{"执行结果"}
+    B -->|"success"| C["completed"]
+    B -->|"validation_error"| D["failed<br/>不重试"]
+    B -->|"aggregate_conflict"| E["短延迟回队"]
+    B -->|"dependency_unavailable"| F["指数退避回队"]
+    B -->|"logic_bug"| G["dead_letter + 报警"]
+    E --> H["queued"]
+    F --> H
+    H --> I["再次被调度"]
+    I --> A
+```
 
 ## 12. 调度触发模型
 
