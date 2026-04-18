@@ -21,6 +21,10 @@
 ## 3. 正式设计入口
 
 - `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
+- `DOC/CODEX_DOC/02_设计说明/02-P4-核心业务循环设计.md`
+- `DOC/CODEX_DOC/02_设计说明/03-P4-Runtime协调器与队列设计.md`
+- `DOC/CODEX_DOC/02_设计说明/04-P4-Backend服务边界设计.md`
+- `DOC/CODEX_DOC/02_设计说明/05-P4-数据与投影模型设计.md`
 
 ## 4. 当前 superpowers 参考
 
@@ -28,13 +32,18 @@
 - `docs/superpowers/specs/2026-04-16-p4-tool-demand-sheet-lifecycle-design.md`
 - `docs/superpowers/specs/2026-04-15-p4-tool-hub-unified-data-snapshot-design.md`
 - `docs/superpowers/specs/2026-04-16-p4-input-chain-closed-loop-design.md`
+- `docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md`
+- `docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md`
+- `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`
+- `docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md`
 - `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md`
 
 ## 5. 当前状态
 
 - 已建立独立方案线
 - 已存在节点设计与 issue 镜像
-- 需要继续按正式文档根归一化
+- `P4` 后端核心循环相关四份设计文档已归档到正式文档根
+- 其余工作层文档仍需继续按正式文档根归一化
 
 ## 6. 后续约束
 

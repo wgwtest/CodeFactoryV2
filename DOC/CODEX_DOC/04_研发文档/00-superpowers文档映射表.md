@@ -51,6 +51,10 @@
 | `docs/superpowers/specs/2026-04-16-p4-tool-demand-sheet-lifecycle-design.md` | `DOC/CODEX_DOC/03_研制计划/04-WBS-P4-工具仓库-研制计划.md` | 工具需求单生命周期 |
 | `docs/superpowers/specs/2026-04-15-p4-tool-hub-unified-data-snapshot-design.md` | `DOC/CODEX_DOC/03_研制计划/04-WBS-P4-工具仓库-研制计划.md` | 统一数据快照 |
 | `docs/superpowers/specs/2026-04-16-p4-input-chain-closed-loop-design.md` | `DOC/CODEX_DOC/03_研制计划/04-WBS-P4-工具仓库-研制计划.md` | 输入链闭环 |
+| `docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md` | `DOC/CODEX_DOC/02_设计说明/02-P4-核心业务循环设计.md` | `P4` 后端核心业务循环正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md` | `DOC/CODEX_DOC/02_设计说明/03-P4-Runtime协调器与队列设计.md` | `P4` 运行时协调器、Worker、Queue 正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md` | `DOC/CODEX_DOC/02_设计说明/04-P4-Backend服务边界设计.md` | `P4 backend service` 分域与边界正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md` | `DOC/CODEX_DOC/02_设计说明/05-P4-数据与投影模型设计.md` | `P4` 数据模型与投影模型正式归档 |
 | `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md` | `DOC/CODEX_DOC/03_研制计划/04-WBS-P4-工具仓库-研制计划.md` | `P4` issue tree mirror 的正式映射 |
 
 ## 7. P6 门户与平台入口
