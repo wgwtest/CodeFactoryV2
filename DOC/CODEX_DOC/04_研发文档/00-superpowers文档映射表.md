@@ -96,7 +96,8 @@
 
 | superpowers 文档 | 正式文档 | 说明 |
 | --- | --- | --- |
-| `docs/superpowers/specs/2026-04-19-xx-p5-software-construction-system-design.md` | `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/03_研制计划/05-WBS-P5-软件构建系统-研制计划.md`<br/>`DOC/CODEX_DOC/04_研发文档/03-P5详细设计前置分析-临时.md`<br/>`DOC/CODEX_DOC/02_设计说明/06-P3-软件设计系统设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/02-P4-核心业务循环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/04-P4-Backend服务边界设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/05-P4-数据与投影模型设计.md` | `P5` 当前确认的核心设计细节已正式迁入 `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`；前置分析文件保留为历史桥接材料，`P3/P4` 正式设计保留跨节点约束的交叉引用 |
+| `docs/superpowers/specs/2026-04-19-xx-p5-software-construction-system-design.md` | `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/03_研制计划/05-WBS-P5-软件构建系统-研制计划.md`<br/>`DOC/CODEX_DOC/04_研发文档/03-P5详细设计前置分析-临时.md`<br/>`DOC/CODEX_DOC/02_设计说明/04-P3-软件设计系统设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/06-P4-核心业务循环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/08-P4-Backend服务边界设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/09-P4-数据与投影模型设计.md` | `P5` 当前确认的总体设计细节已正式迁入 `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`；前置分析文件保留为历史桥接材料，`P3/P4` 正式设计保留跨节点约束的交叉引用 |
+| `docs/superpowers/specs/2026-04-20-p5-1-minimal-build-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/07A-P5.1-最小构建闭环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/03_研制计划/05-WBS-P5-软件构建系统-研制计划.md` | `P5.1` 专项设计、模拟输入命名、订单/批阅对象和页面分区已正式归档 |
 
 ## 9. 后续维护规则
 

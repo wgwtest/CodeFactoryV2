@@ -24,11 +24,13 @@
 
 - `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
 - `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`
+- `DOC/CODEX_DOC/02_设计说明/07A-P5.1-最小构建闭环设计.md`
 
 当前前置分析与工作层参考入口：
 
 - `DOC/CODEX_DOC/04_研发文档/03-P5详细设计前置分析-临时.md`
 - `docs/superpowers/specs/2026-04-19-xx-p5-software-construction-system-design.md`
+- `docs/superpowers/specs/2026-04-20-p5-1-minimal-build-loop-design.md`
 - `docs/superpowers/plans/2026-04-19-p5-software-construction-system.md`
 
 ## 4. 当前状态
@@ -70,18 +72,27 @@
 `P5.1` 首版至少要有以下页面区块：
 
 - 交付主单队列区
+- 输入绑定与确认区
 - 当前装配流程主视图区
 - 构建运行状态 / 服务监控区
 - 结果输出预览区
-- 缺口与反馈区
+- 批阅与反馈区
 
 `P5.1` 首版至少要有以下后台能力：
 
 - `P5DeliveryOrder` 主单服务
+- `P5InputBinding` 输入绑定服务
 - `P5AssemblyRun` / `P5AssemblyAttempt` 运行服务
 - 构建模拟执行器
 - 运行日志与进度查询
+- 人工批阅与反馈任务服务
 - `P3 / P4` 模拟输入接入
+
+`P5.1` 首版模拟输入命名固定为：
+
+- `/xx-p3-sim`：保留给 `P3 -> P4` 工具包 / 工单包模拟输入
+- `/xx-p3-doc-sim`：供 `P5.1` 消费 `P3` 设计说明模拟输出
+- `/xx-p4-supply-sim`：供 `P5.1` 消费 `P4` 供给结果模拟输出
 
 ### 6.2 `P5.2` 运行生成与监控
 
