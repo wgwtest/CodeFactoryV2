@@ -1,6 +1,6 @@
 # P4 Backend Service 边界与分域接口设计
 
-> 归档说明：本文件归档自 `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`，作为 `P4 Backend Service` 边界设计的正式引用入口之一。后续若工作层文档继续迭代，以本文件为正式归档基线。
+> 归档说明：本文件归档自 `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md`，作为 `P4 Backend Service` 边界设计的正式引用入口之一。后续若工作层文档继续迭代，以本文件为正式归档基线。自 `2026-04-19` 起，本文件作为 `P4` 总体设计下的专题设计之一按逻辑顺序归位。
 
 **日期：** 2026-04-18
 

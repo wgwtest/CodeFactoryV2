@@ -23,10 +23,14 @@
 ## 3. 正式设计入口
 
 - `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
+- `DOC/CODEX_DOC/02_设计说明/02-P1-业务知识库设计.md`
 
 ## 4. 当前 superpowers 参考
 
 - `docs/superpowers/specs/2026-04-11-software-factory-platform-design.md`
+- `docs/superpowers/specs/2026-04-11-archive-document-drilldown-design.md`
+- `docs/superpowers/specs/2026-04-11-archive-knowledge-review-editing-design.md`
+- `docs/superpowers/specs/2026-04-12-openai-compatible-llm-adapter-design.md`
 - `docs/superpowers/specs/2026-04-14-formal-archive-extraction-hard-gate-design.md`
 - `docs/superpowers/specs/2026-04-14-long-document-formal-extraction-design.md`
 - `docs/superpowers/specs/2026-04-15-document-incremental-knowledge-rebuild-design.md`
@@ -34,6 +38,8 @@
 
 ## 5. 当前状态
 
+- `2026-04-19` 已完成 `P1` 正式设计归档同步
+- 文档钻取、治理工作台、正式抽取硬门禁、长文档抽取、增量重建、双语投影已并入 `DOC/CODEX_DOC/02_设计说明/02-P1-业务知识库设计.md`
 - 已有运行闭环
 - 持续优化中
 - 重点问题仍集中在正式抽取质量、长文档处理、关系完整性和知识展示解释性
