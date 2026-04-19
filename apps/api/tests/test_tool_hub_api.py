@@ -228,6 +228,55 @@ def test_tool_hub_can_delete_single_tool_and_clear_all_tools_for_testing(tmp_pat
     assert listed_after_clear.json()["data"]["items"] == []
 
 
+def test_tool_fetch_manifest_exposes_atomic_frontend_component_contract(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    create_payload = {
+        "name": "查询表格元组件",
+        "slug": "query-table-widget",
+        "status": "draft",
+        "summary": "可嵌入宿主项目的查询表格元组件",
+        "problem_statement": "复用列表筛选、表格渲染和行级操作骨架",
+        "primary_domain_id": "cross_domain_shared",
+        "tool_form_id": "frontend_component",
+        "tool_granularity": "atomic",
+        "packaging_type": "source_package",
+        "integration_mode": "import_component",
+        "dependency_policy": "peer",
+        "runtime_dependencies": ["react@18", "antd@5"],
+        "host_constraints": {
+            "frontend_framework": "react",
+            "ui_library": "antd",
+        },
+        "runtime_platform_ids": ["web_frontend"],
+        "lifecycle_stage_ids": ["solution_design", "verification_release"],
+        "input_types": ["query_params", "column_schema"],
+        "output_types": ["tsx_component", "delivery_manifest"],
+        "supported_sources": ["manual_input"],
+        "tags": [
+            "domain:cross_domain_shared",
+            "form:frontend_component",
+            "runtime:web_frontend",
+            "delivery:import_component",
+        ],
+    }
+
+    created = client.post("/api/tool-hub/tools", json=create_payload)
+    assert created.status_code == 201
+    tool_id = created.json()["tool_id"]
+
+    manifest = client.get(f"/api/tool-hub/tools/{tool_id}/fetch")
+    assert manifest.status_code == 200
+    payload = manifest.json()
+    assert payload["tool_form_id"] == "frontend_component"
+    assert payload["packaging_type"] == "source_package"
+    assert payload["integration_mode"] == "import_component"
+    assert payload["dependency_policy"] == "peer"
+    assert payload["runtime_dependencies"] == ["react@18", "antd@5"]
+    assert payload["entrypoint_type"] == "descriptor"
+    assert payload["contract_version"] == "p4.fetch.v2"
+
+
 def test_tool_hub_match_and_evolution_runs(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
 

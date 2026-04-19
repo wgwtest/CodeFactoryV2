@@ -627,6 +627,18 @@ export type ToolDefinition = {
   problem_statement: string;
   primary_domain_id: string;
   tool_form_id: string;
+  tool_granularity: "atomic" | "composite" | "page_level";
+  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
+  integration_mode:
+    | "import_component"
+    | "import_module"
+    | "include_router"
+    | "call_http_api"
+    | "mount_page"
+    | "manual";
+  dependency_policy: "peer" | "bundled" | "external";
+  runtime_dependencies: string[];
+  host_constraints: Record<string, string | string[]>;
   runtime_platform_ids: string[];
   tags: string[];
   lifecycle_stage_ids: string[];
@@ -640,7 +652,29 @@ export type ToolDefinition = {
   updated_at: string;
 };
 
-export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
+type ToolDefinitionOptionalWriteFields = Pick<
+  ToolDefinition,
+  | "tool_granularity"
+  | "packaging_type"
+  | "integration_mode"
+  | "dependency_policy"
+  | "runtime_dependencies"
+  | "host_constraints"
+>;
+
+export type ToolDefinitionWriteInput = Omit<
+  ToolDefinition,
+  | "tool_id"
+  | "created_at"
+  | "updated_at"
+  | "tool_granularity"
+  | "packaging_type"
+  | "integration_mode"
+  | "dependency_policy"
+  | "runtime_dependencies"
+  | "host_constraints"
+> &
+  Partial<ToolDefinitionOptionalWriteFields>;
 
 export type ToolListEnvelope = {
   items: ToolDefinition[];
@@ -953,10 +987,62 @@ export type ToolFetchManifest = {
   tool_name: string;
   tool_version: string;
   tool_form_id: string;
+  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
+  integration_mode:
+    | "import_component"
+    | "import_module"
+    | "include_router"
+    | "call_http_api"
+    | "mount_page"
+    | "manual";
+  dependency_policy: "peer" | "bundled" | "external";
+  runtime_dependencies: string[];
   runtime_platform_ids: string[];
   fetch_mode: "descriptor";
   entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
   entrypoint_locator: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type ToolBuildRun = {
+  build_run_id: string;
+  build_request_id: string;
+  tool_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  queue_name: "p4-build";
+  artifact_version_id?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FrontendComponentBuildRequestInput = {
+  requested_by: string;
+  component_name: string;
+  scenario_id: string;
+  tool_definition: ToolDefinitionWriteInput;
+};
+
+export type ToolDeliveryManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_form_id: string;
+  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
+  integration_mode:
+    | "import_component"
+    | "import_module"
+    | "include_router"
+    | "call_http_api"
+    | "mount_page"
+    | "manual";
+  dependency_policy: "peer" | "bundled" | "external";
+  runtime_dependencies: string[];
+  import_specifier: string;
+  example_host_path: string;
+  artifact_version_id?: string | null;
+  manifest_path: string;
   contract_version: string;
   updated_at: string;
 };

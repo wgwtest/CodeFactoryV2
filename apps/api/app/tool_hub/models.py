@@ -13,6 +13,21 @@ def now_iso() -> str:
 ToolStatus = Literal["draft", "active", "archived"]
 ToolVerificationStatus = Literal["unverified", "verified", "warning", "failed"]
 SupportedSource = Literal["p1_readonly_api", "frozen_snapshot", "manual_input", "tool_hub_snapshot"]
+ToolGranularity = Literal["atomic", "composite", "page_level"]
+ToolPackagingType = Literal["source_package", "build_artifact", "http_endpoint", "descriptor_only"]
+ToolIntegrationMode = Literal[
+    "import_component",
+    "import_module",
+    "include_router",
+    "call_http_api",
+    "mount_page",
+    "manual",
+]
+ToolDependencyPolicy = Literal["peer", "bundled", "external"]
+ToolBuildRequestType = Literal["frontend_component"]
+ToolBuildRecipeStatus = Literal["pending", "generated", "failed"]
+ToolBuildRunStatus = Literal["queued", "running", "completed", "failed"]
+ToolValidationOverallStatus = Literal["pending", "passed", "failed"]
 RiskKind = Literal["missing_description", "taxonomy_issue", "overlap_risk", "coverage_gap"]
 RiskSeverity = Literal["info", "warning", "critical"]
 EvolutionRunStatus = Literal["queued", "running", "completed", "failed"]
@@ -132,6 +147,60 @@ def _normalize_lifecycle_stage_ids(payload: dict[str, Any]) -> list[str]:
     return ["solution_design"]
 
 
+def _infer_tool_granularity(payload: dict[str, Any]) -> ToolGranularity:
+    raw = payload.get("tool_granularity")
+    if raw in {"atomic", "composite", "page_level"}:
+        return raw
+    return "atomic"
+
+
+def _infer_packaging_type(payload: dict[str, Any]) -> ToolPackagingType:
+    raw = payload.get("packaging_type")
+    if raw in {"source_package", "build_artifact", "http_endpoint", "descriptor_only"}:
+        return raw
+
+    tool_form_id = str(payload.get("tool_form_id", "skill"))
+    if tool_form_id == "frontend_component":
+        return "source_package"
+    if tool_form_id == "service_endpoint":
+        return "http_endpoint"
+    if tool_form_id in {"package_bundle", "static_library", "dynamic_library"}:
+        return "build_artifact"
+    return "descriptor_only"
+
+
+def _infer_integration_mode(payload: dict[str, Any]) -> ToolIntegrationMode:
+    raw = payload.get("integration_mode")
+    if raw in {"import_component", "import_module", "include_router", "call_http_api", "mount_page", "manual"}:
+        return raw
+
+    tool_form_id = str(payload.get("tool_form_id", "skill"))
+    if tool_form_id == "frontend_component":
+        return "import_component"
+    if tool_form_id == "service_endpoint":
+        return "call_http_api"
+    if tool_form_id in {"package_bundle", "static_library", "dynamic_library"}:
+        return "import_module"
+    if tool_form_id == "template":
+        return "mount_page"
+    return "manual"
+
+
+def _infer_dependency_policy(payload: dict[str, Any]) -> ToolDependencyPolicy:
+    raw = payload.get("dependency_policy")
+    if raw in {"peer", "bundled", "external"}:
+        return raw
+
+    tool_form_id = str(payload.get("tool_form_id", "skill"))
+    if tool_form_id == "frontend_component":
+        return "peer"
+    if tool_form_id == "service_endpoint":
+        return "external"
+    if tool_form_id in {"package_bundle", "static_library", "dynamic_library"}:
+        return "bundled"
+    return "external"
+
+
 def _build_canonical_tags(payload: dict[str, Any]) -> list[str]:
     raw_tags = payload.get("tags", []) or []
     managed_prefixes = ("stage:", "capability:", "domain:", "form:", "runtime:", "lifecycle:", "input:", "output:")
@@ -232,6 +301,12 @@ class ToolDefinitionWrite(BaseModel):
     problem_statement: str = ""
     primary_domain_id: str
     tool_form_id: str
+    tool_granularity: ToolGranularity = "atomic"
+    packaging_type: ToolPackagingType = "descriptor_only"
+    integration_mode: ToolIntegrationMode = "manual"
+    dependency_policy: ToolDependencyPolicy = "external"
+    runtime_dependencies: list[str] = Field(default_factory=list)
+    host_constraints: dict[str, str | list[str]] = Field(default_factory=dict)
     runtime_platform_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     lifecycle_stage_ids: list[str] = Field(default_factory=list)
@@ -253,6 +328,12 @@ class ToolDefinitionWrite(BaseModel):
             payload["primary_domain_id"] = _infer_domain_from_legacy_payload(payload)
         if "tool_form_id" not in payload:
             payload["tool_form_id"] = _infer_tool_form(payload)
+        payload["tool_granularity"] = _infer_tool_granularity(payload)
+        payload["packaging_type"] = _infer_packaging_type(payload)
+        payload["integration_mode"] = _infer_integration_mode(payload)
+        payload["dependency_policy"] = _infer_dependency_policy(payload)
+        payload.setdefault("runtime_dependencies", [])
+        payload.setdefault("host_constraints", {})
         if "runtime_platform_ids" not in payload or not payload.get("runtime_platform_ids"):
             payload["runtime_platform_ids"] = ["agent_runtime"]
         payload["lifecycle_stage_ids"] = _normalize_lifecycle_stage_ids(payload)
@@ -264,6 +345,98 @@ class ToolDefinition(ToolDefinitionWrite):
     tool_id: str
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolBuildRequest(BaseModel):
+    build_request_id: str
+    tool_id: str
+    request_type: ToolBuildRequestType = "frontend_component"
+    requested_by: str
+    recipe_status: ToolBuildRecipeStatus = "pending"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    recipe_id: str | None = None
+    last_error: str | None = None
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolBuildRun(BaseModel):
+    build_run_id: str
+    build_request_id: str
+    tool_id: str
+    status: ToolBuildRunStatus = "queued"
+    queue_name: str = "p4-build"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    artifact_version_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolArtifactVersion(BaseModel):
+    artifact_version_id: str
+    tool_id: str
+    build_run_id: str
+    version_label: str = "v1"
+    artifact_root: str
+    manifest_path: str
+    packaging_type: ToolPackagingType = "descriptor_only"
+    integration_mode: ToolIntegrationMode = "manual"
+    dependency_policy: ToolDependencyPolicy = "external"
+    runtime_dependencies: list[str] = Field(default_factory=list)
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolValidationReport(BaseModel):
+    validation_report_id: str
+    build_run_id: str
+    overall_status: ToolValidationOverallStatus = "pending"
+    checks: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str = ""
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ToolRecipe(BaseModel):
+    recipe_id: str
+    component_name: str
+    package_name: str
+    props_schema: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    peer_dependencies: dict[str, str] = Field(default_factory=dict)
+    host_constraints: dict[str, str | list[str]] = Field(default_factory=dict)
+
+
+class GeneratedArtifactBundle(BaseModel):
+    artifact_root: str
+    manifest_path: str
+    import_specifier: str
+    example_host_path: str
+    files: list[str] = Field(default_factory=list)
+
+
+class ToolDeliveryManifest(BaseModel):
+    tool_id: str
+    tool_name: str
+    tool_form_id: str = "frontend_component"
+    packaging_type: ToolPackagingType = "source_package"
+    integration_mode: ToolIntegrationMode = "import_component"
+    dependency_policy: ToolDependencyPolicy = "peer"
+    runtime_dependencies: list[str] = Field(default_factory=list)
+    import_specifier: str
+    example_host_path: str
+    artifact_version_id: str | None = None
+    manifest_path: str
+    contract_version: str = "p4.delivery.v1"
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class FrontendComponentBuildRequest(BaseModel):
+    requested_by: str
+    component_name: str
+    scenario_id: str
+    tool_definition: ToolDefinitionWrite
 
 
 class ToolDemandSource(BaseModel):
@@ -325,11 +498,15 @@ class ToolFetchManifest(BaseModel):
     tool_name: str
     tool_version: str = "v1"
     tool_form_id: str = "skill"
+    packaging_type: ToolPackagingType = "descriptor_only"
+    integration_mode: ToolIntegrationMode = "manual"
+    dependency_policy: ToolDependencyPolicy = "external"
+    runtime_dependencies: list[str] = Field(default_factory=list)
     runtime_platform_ids: list[str] = Field(default_factory=list)
     fetch_mode: Literal["descriptor"] = "descriptor"
-    entrypoint_type: Literal["http", "descriptor", "artifact_ref", "manual"] = "http"
+    entrypoint_type: Literal["http", "descriptor", "artifact_ref", "manual"] = "descriptor"
     entrypoint_locator: str
-    contract_version: str = "p4.fetch.v1"
+    contract_version: str = "p4.fetch.v2"
     updated_at: str = Field(default_factory=now_iso)
 
     @model_validator(mode="before")
@@ -343,11 +520,15 @@ class ToolFetchManifest(BaseModel):
             payload["entrypoint_locator"] = payload["fetch_path"]
         payload.setdefault("tool_version", "v1")
         payload.setdefault("tool_form_id", "skill")
+        payload["packaging_type"] = _infer_packaging_type(payload)
+        payload["integration_mode"] = _infer_integration_mode(payload)
+        payload["dependency_policy"] = _infer_dependency_policy(payload)
+        payload.setdefault("runtime_dependencies", [])
         payload.setdefault("runtime_platform_ids", ["agent_runtime"])
         payload.setdefault("fetch_mode", "descriptor")
         locator = str(payload.get("entrypoint_locator", ""))
         payload.setdefault("entrypoint_type", "http" if locator.startswith("/") else "descriptor")
-        payload.setdefault("contract_version", "p4.fetch.v1")
+        payload.setdefault("contract_version", "p4.fetch.v2")
         payload.setdefault("updated_at", now_iso())
         return payload
 

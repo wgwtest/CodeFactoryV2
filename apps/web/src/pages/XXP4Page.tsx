@@ -7,6 +7,7 @@ import { P4EvolutionWorkspace } from "../components/p4/P4EvolutionWorkspace";
 import { P4Hero } from "../components/p4/P4Hero";
 import { P4InputChainWorkspace } from "../components/p4/P4InputChainWorkspace";
 import { P4MetricsPanel } from "../components/p4/P4MetricsPanel";
+import { P4RealToolDeliveryWorkspace } from "../components/p4/P4RealToolDeliveryWorkspace";
 import { P4RiskSummary } from "../components/p4/P4RiskSummary";
 import { P4RegistryWorkspace } from "../components/p4/P4RegistryWorkspace";
 import { P4RunList } from "../components/p4/P4RunList";
@@ -359,6 +360,7 @@ export function XXP4Page() {
 
   const latestMatchRun = overview.recent_match_runs[0];
   const latestEvolutionSummary = overview.recent_evolution_runs[0];
+  const latestFrontendToolId = tools.find((tool) => tool.tool_form_id === "frontend_component")?.tool_id ?? "";
   const renderWorkspaceTabLabel = (
     id: string,
     tone: "overview" | "input" | "evolution" | "registry",
@@ -573,6 +575,7 @@ export function XXP4Page() {
                         onDelete={handleDeleteTool}
                         onClearAllTools={handleClearTools}
                       />
+                      <P4RealToolDeliveryWorkspace initialToolId={latestFrontendToolId} />
                       <div id="xx-p4-registry-coverage-matrix">
                         <P4CoverageMatrix id="xx-p4-coverage-matrix" matrix={overview.coverage_matrix} />
                       </div>

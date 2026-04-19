@@ -309,7 +309,9 @@ def test_review_can_approve_existing_tool_for_direct_delivery(tmp_path: Path) ->
     assert fetch_response.status_code == 200
     fetch_payload = fetch_response.json()
     assert fetch_payload["tool_id"] == tool_id
-    assert fetch_payload["entrypoint_locator"] == f"/api/tool-hub/tools/{tool_id}"
+    assert fetch_payload["entrypoint_type"] == "descriptor"
+    assert fetch_payload["contract_version"] == "p4.fetch.v2"
+    assert fetch_payload["entrypoint_locator"] == "tool://blue-force-tree-builder"
 
 
 def test_tool_delete_is_refused_when_demand_chain_still_references_it(tmp_path: Path) -> None:

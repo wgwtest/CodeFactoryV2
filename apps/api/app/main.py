@@ -12,6 +12,7 @@ from app.api.routes.health import router as health_router
 from app.config import settings
 from app.db.base import Base
 from app.db.session import engine
+import app.db.models  # noqa: F401
 
 
 def create_app() -> FastAPI:

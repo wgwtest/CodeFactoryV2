@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.tool_hub.demand_fixtures import build_mock_blue_force_request, build_mock_demand_request
+from app.tool_hub.delivery_service import DeliveryService
 from app.tool_hub.demand_service import DemandService
 from app.tool_hub.evolution_service import EvolutionService
 from app.tool_hub.fixtures import (
@@ -73,6 +74,7 @@ from app.tool_hub.models import (
     now_iso,
 )
 from app.tool_hub.repository import ToolHubRepository
+from app.tool_hub.recipe_service import ToolRecipeService
 from app.tool_hub.registry_service import RegistryService
 from app.tool_hub.query_service import ToolHubQueryService
 from app.tool_hub.runtime_repository import RuntimeRepository
@@ -125,6 +127,8 @@ class ToolHubService:
         from app.tool_hub.runtime_service import ToolHubRuntimeService
 
         self.runtime_service = ToolHubRuntimeService(self, worker_id=runtime_worker_id)
+        self.recipe_service = ToolRecipeService(artifact_root=self.root / "delivery_artifacts")
+        self.delivery_service = DeliveryService(self, artifact_root=self.root / "delivery_artifacts")
         self._ensure_demo_data()
         if enable_background_executor:
             self._ensure_background_executor()
@@ -752,9 +756,14 @@ class ToolHubService:
             tool_id=tool.tool_id,
             tool_name=tool.name,
             tool_form_id=tool.tool_form_id,
+            packaging_type=tool.packaging_type,
+            integration_mode=tool.integration_mode,
+            dependency_policy=tool.dependency_policy,
+            runtime_dependencies=tool.runtime_dependencies,
             runtime_platform_ids=tool.runtime_platform_ids,
             entrypoint_type="http",
             entrypoint_locator=f"/api/tool-hub/tools/{tool.tool_id}/fetch",
+            contract_version="p4.fetch.v1",
             updated_at=tool.updated_at,
         )
 
@@ -763,9 +772,14 @@ class ToolHubService:
             tool_id=tool.tool_id,
             tool_name=tool.name,
             tool_form_id=tool.tool_form_id,
+            packaging_type=tool.packaging_type,
+            integration_mode=tool.integration_mode,
+            dependency_policy=tool.dependency_policy,
+            runtime_dependencies=tool.runtime_dependencies,
             runtime_platform_ids=tool.runtime_platform_ids,
-            entrypoint_type="http",
-            entrypoint_locator=f"/api/tool-hub/tools/{tool.tool_id}",
+            entrypoint_type="descriptor",
+            entrypoint_locator=f"tool://{tool.slug}",
+            contract_version="p4.fetch.v2",
             updated_at=tool.updated_at,
         )
 

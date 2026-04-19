@@ -15,6 +15,7 @@ from app.tool_hub.models import (
     EvolutionTask,
     EvolutionTaskReadEnvelope,
     EvolutionTaskRollbackRequest,
+    ToolBuildRun,
     ToolDefinition,
     ToolDefinitionWrite,
     ToolDemandItem,
@@ -144,6 +145,14 @@ def clear_demand_sheets_for_testing(service: ToolHubService = Depends(get_tool_h
 @router.post("/testing/clear-tools", response_model=ToolRegistryTestingClearResult)
 def clear_tools_for_testing(service: ToolHubService = Depends(get_tool_hub_service)):
     return service.clear_tool_registry_for_testing()
+
+
+@router.get("/build-runs/{build_run_id}", response_model=ToolBuildRun)
+def get_build_run(build_run_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    build_run = service.delivery_service.get_build_run(build_run_id)
+    if build_run is None:
+        raise HTTPException(status_code=404, detail="Build run not found")
+    return build_run
 
 
 @router.get("/evolution/config", response_model=EvolutionConfigReadEnvelope)

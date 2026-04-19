@@ -1,7 +1,13 @@
-from app.db.models import document, knowledge, requirements
+from app.db.models import document, knowledge, requirements, tool_hub_delivery
 from app.db.models.document import Document, DocumentSegment, DocumentVersion, ParseRun
 from app.db.models.knowledge import AuditLog, CandidateItem, KnowledgeItem, KnowledgeVersion
 from app.db.models.requirements import RequirementSpec
+from app.db.models.tool_hub_delivery import (
+    ToolArtifactVersionRecord,
+    ToolBuildRequestRecord,
+    ToolBuildRunRecord,
+    ToolValidationReportRecord,
+)
 
 __all__ = [
     "AuditLog",
@@ -13,7 +19,12 @@ __all__ = [
     "KnowledgeVersion",
     "ParseRun",
     "RequirementSpec",
+    "ToolArtifactVersionRecord",
+    "ToolBuildRequestRecord",
+    "ToolBuildRunRecord",
+    "ToolValidationReportRecord",
     "document",
     "knowledge",
     "requirements",
+    "tool_hub_delivery",
 ]

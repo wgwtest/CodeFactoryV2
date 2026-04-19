@@ -10,10 +10,13 @@ import type {
   EvolutionTask,
   EvolutionTaskEnvelope,
   EvolutionTaskRollbackInput,
+  FrontendComponentBuildRequestInput,
   ItemProgressView,
   MockDemandScenarioId,
+  ToolBuildRun,
   ToolDefinition,
   ToolDefinitionWriteInput,
+  ToolDeliveryManifest,
   ToolDemandItem,
   ToolDemandReviewDecisionInput,
   ToolDemandSheetActionInput,
@@ -150,4 +153,16 @@ export function getDemandItemProgress(itemId: string) {
 
 export function getToolFetchManifest(toolId: string) {
   return api.get<ToolFetchManifest>(`/tool-hub/tools/${toolId}/fetch`);
+}
+
+export function createFrontendComponentBuildRequest(payload: FrontendComponentBuildRequestInput) {
+  return api.post<ToolBuildRun>("/tool-hub/build-requests/frontend-components", payload);
+}
+
+export function getBuildRun(buildRunId: string) {
+  return api.get<ToolBuildRun>(`/tool-hub/build-runs/${buildRunId}`);
+}
+
+export function getToolDeliveryManifest(toolId: string) {
+  return api.get<ToolDeliveryManifest>(`/tool-hub/tools/${toolId}/delivery-manifest`);
 }

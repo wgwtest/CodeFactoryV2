@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.routes.tool_hub_deps import get_tool_hub_service
 from app.tool_hub.models import (
+    FrontendComponentBuildRequest,
+    ToolBuildRun,
     ToolDemandSheetActionRequest,
     ToolDemandSheetCreateRequest,
     ToolDemandSheetDetail,
@@ -41,6 +43,18 @@ def create_demand_sheet(
     service: ToolHubService = Depends(get_tool_hub_service),
 ):
     return service.create_demand_sheet(payload)
+
+
+@router.post(
+    "/build-requests/frontend-components",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ToolBuildRun,
+)
+def create_frontend_component_build_request(
+    payload: FrontendComponentBuildRequest,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.delivery_service.create_frontend_component_build_request(payload)
 
 
 @router.get("/demand-sheets", response_model=ToolDemandSheetEnvelope)

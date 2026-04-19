@@ -36,6 +36,23 @@ class ToolHubRuntimeService:
             )
         )
 
+    def enqueue_build_job(self, build_run_id: str, actor_id: str) -> RuntimeJob:
+        existing = self._find_open_job(queue_name="p4-build", aggregate_id=build_run_id)
+        if existing is not None:
+            return existing
+        return self.runtime_repository.save_job(
+            RuntimeJob(
+                job_id=f"job-{uuid4().hex[:12]}",
+                job_type="frontend_component_build",
+                queue_name="p4-build",
+                aggregate_type="tool_build_run",
+                aggregate_id=build_run_id,
+                trigger_source="internal_command",
+                trigger_actor_id=actor_id,
+                payload_ref=build_run_id,
+            )
+        )
+
     def enqueue_evolution_task_job(self, task_id: str, actor_id: str) -> RuntimeJob | None:
         task = self.tool_hub_service.repository.get_evolution_task(task_id)
         if task is None or task.task_type != "auto_apply":
@@ -77,6 +94,9 @@ class ToolHubRuntimeService:
         scheduled_job_count = self._run_due_evolution_scan()
         scheduled_job_count += self._enqueue_due_manufacture_jobs()
         processed_queues: list[str] = []
+        build_count = self._run_queue("p4-build", self._execute_build_job)
+        if build_count > 0:
+            processed_queues.append("p4-build")
         evolution_count = self._run_queue("p4-evolution", self._execute_evolution_job)
         if evolution_count > 0:
             processed_queues.append("p4-evolution")
@@ -85,7 +105,7 @@ class ToolHubRuntimeService:
             processed_queues.append("p4-manufacture")
 
         refresh_result = None
-        processed_job_count = evolution_count + manufacture_count
+        processed_job_count = build_count + evolution_count + manufacture_count
         if processed_job_count > 0 or scheduled_job_count > 0:
             refresh_result = self.tool_hub_service.refresh_query_projections()
         return RuntimeCycleRunResult(
@@ -95,7 +115,6 @@ class ToolHubRuntimeService:
             refreshed_projection_names=[] if refresh_result is None else refresh_result.refreshed_projection_names,
             snapshot_id=None if refresh_result is None else refresh_result.snapshot_id,
         )
-
     def _run_due_evolution_scan(self) -> int:
         config = self.tool_hub_service.repository.get_evolution_config()
         runtime_state = self.tool_hub_service.repository.get_runtime_state()
@@ -149,7 +168,6 @@ class ToolHubRuntimeService:
                 self.runtime_repository.save_job(released)
                 queued_or_released += 1
         return queued_or_released
-
     def _run_queue(self, queue_name: str, executor: Callable[[RuntimeJob], None]) -> int:
         processed = 0
         while True:
@@ -237,6 +255,9 @@ class ToolHubRuntimeService:
             return
         if refreshed_plan.status in {"manufacturing_pending", "manufacturing_in_progress"}:
             self._schedule_followup_manufacture_job(refreshed_plan, actor_id=job.trigger_actor_id)
+
+    def _execute_build_job(self, job: RuntimeJob) -> None:
+        self.tool_hub_service.delivery_service.execute_build_run(job.aggregate_id)
 
     def _execute_evolution_job(self, job: RuntimeJob) -> None:
         if job.job_type == "scheduled_evolution_scan":

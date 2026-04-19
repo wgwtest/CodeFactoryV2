@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.routes.tool_hub_deps import get_tool_hub_service
-from app.tool_hub.models import ItemProgressView, ToolDemandItem, ToolDemandSheetDetail, ToolFetchManifest
+from app.tool_hub.models import ItemProgressView, ToolDeliveryManifest, ToolDemandItem, ToolDemandSheetDetail, ToolFetchManifest
 from app.tool_hub.service import ToolHubService
 
 router = APIRouter(tags=["tool-hub-p5-query"])
@@ -14,6 +14,14 @@ def get_tool_fetch_manifest(tool_id: str, service: ToolHubService = Depends(get_
     manifest = service.get_tool_fetch_manifest(tool_id)
     if manifest is None:
         raise HTTPException(status_code=404, detail="Tool not found")
+    return manifest
+
+
+@router.get("/tools/{tool_id}/delivery-manifest", response_model=ToolDeliveryManifest)
+def get_tool_delivery_manifest(tool_id: str, service: ToolHubService = Depends(get_tool_hub_service)):
+    manifest = service.delivery_service.get_delivery_manifest(tool_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Delivery manifest not found")
     return manifest
 
 

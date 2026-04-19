@@ -5,6 +5,7 @@ from pathlib import Path
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.tool_hub.models import (
     EvolutionFindingDecisionRequest,
+    FrontendComponentBuildRequest,
     ToolDefinitionWrite,
     ToolDemandReviewDecisionRequest,
 )
@@ -206,3 +207,51 @@ def test_standalone_runtime_worker_can_process_jobs_from_shared_root(tmp_path: P
     progress = service.get_demand_item_progress(target_item.item_id)
     assert progress is not None
     assert progress.status in {"manufacturing_in_progress", "ready_for_fetch"}
+
+
+def test_runtime_coordinator_processes_frontend_component_build_jobs(tmp_path: Path) -> None:
+    service = _build_service(tmp_path)
+    build_run = service.delivery_service.create_frontend_component_build_request(
+        FrontendComponentBuildRequest(
+            requested_by="p3-sim",
+            component_name="QueryTableWidget",
+            scenario_id="frontend-query-table-widget",
+            tool_definition=ToolDefinitionWrite.model_validate(
+                {
+                    "name": "查询表格元组件",
+                    "slug": "query-table-widget",
+                    "status": "draft",
+                    "summary": "可嵌入宿主的查询表格组件",
+                    "problem_statement": "复用表格和筛选骨架",
+                    "primary_domain_id": "cross_domain_shared",
+                    "tool_form_id": "frontend_component",
+                    "tool_granularity": "atomic",
+                    "packaging_type": "source_package",
+                    "integration_mode": "import_component",
+                    "dependency_policy": "peer",
+                    "runtime_dependencies": ["react@18", "antd@5"],
+                    "runtime_platform_ids": ["web_frontend"],
+                    "lifecycle_stage_ids": ["solution_design"],
+                    "input_types": ["query_params", "column_schema"],
+                    "output_types": ["tsx_component", "delivery_manifest"],
+                    "supported_sources": ["manual_input"],
+                    "tags": [],
+                }
+            ),
+        )
+    )
+
+    runtime_repository = RuntimeRepository(service.root)
+    queued_jobs = runtime_repository.list_jobs(status="queued")
+    assert any(job.queue_name == "p4-build" and job.aggregate_id == build_run.build_run_id for job in queued_jobs)
+
+    runtime = ToolHubRuntimeService(service)
+    runtime.run_once()
+
+    refreshed = service.delivery_service.get_build_run(build_run.build_run_id)
+    assert refreshed is not None
+    assert refreshed.status == "completed"
+
+    manifest = service.delivery_service.get_delivery_manifest(refreshed.tool_id)
+    assert manifest is not None
+    assert manifest.import_specifier == "@p4-tools/query-table-widget"

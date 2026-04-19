@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Card, Space, Typography } from "antd";
 
+import { P3AtomicToolRequestGenerator } from "../components/p3/P3AtomicToolRequestGenerator";
 import { P3BlueForceGenerator } from "../components/p3/P3BlueForceGenerator";
 import type { MockDemandScenarioId, ToolDemandSheet } from "../lib/api";
 import {
@@ -153,19 +154,22 @@ export function XXP3SimPage() {
           <Alert id="xx-p3-page-error" type="error" showIcon message={error} style={{ marginBottom: 16 }} />
         ) : null}
 
-        <P3BlueForceGenerator
-          sheets={sheets}
-          activeSheet={activeSheet}
-          selectedScenarioId={selectedScenarioId}
-          loadingSheets={loadingSheets}
-          generating={generating}
-          withdrawing={withdrawing}
-          error={error}
-          onGenerate={handleGenerate}
-          onScenarioChange={setSelectedScenarioId}
-          onSelectSheet={handleSelectSheet}
-          onWithdraw={handleWithdraw}
-        />
+        <Space direction="vertical" size={16} style={{ display: "flex" }}>
+          <P3AtomicToolRequestGenerator />
+          <P3BlueForceGenerator
+            sheets={sheets}
+            activeSheet={activeSheet}
+            selectedScenarioId={selectedScenarioId}
+            loadingSheets={loadingSheets}
+            generating={generating}
+            withdrawing={withdrawing}
+            error={error}
+            onGenerate={handleGenerate}
+            onScenarioChange={setSelectedScenarioId}
+            onSelectSheet={handleSelectSheet}
+            onWithdraw={handleWithdraw}
+          />
+        </Space>
       </div>
     </div>
   );

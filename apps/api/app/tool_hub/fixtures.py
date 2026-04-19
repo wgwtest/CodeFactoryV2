@@ -25,6 +25,7 @@ LIFECYCLE_STAGE_CATALOG = [
 ]
 
 TOOL_FORM_CATALOG = [
+    CatalogItem(id="frontend_component", label="前端元组件", description="以最小可复用前端组件形式交付的原子工具"),
     CatalogItem(id="skill", label="Skill", description="可被 Agent 或编排节点直接调用的技能工具"),
     CatalogItem(id="template", label="模板", description="用于生成页面、配置、脚手架或工件骨架的模板资产"),
     CatalogItem(id="service_endpoint", label="服务接口", description="通过 HTTP/RPC 等方式提供能力的服务化工具"),
@@ -34,6 +35,7 @@ TOOL_FORM_CATALOG = [
 ]
 
 RUNTIME_PLATFORM_CATALOG = [
+    CatalogItem(id="web_frontend", label="Web 前端", description="运行于 React/Vue 等前端宿主中的组件或模块"),
     CatalogItem(id="browser", label="浏览器/前端"),
     CatalogItem(id="backend_service", label="后端服务"),
     CatalogItem(id="agent_runtime", label="Agent 运行时"),
@@ -43,6 +45,8 @@ RUNTIME_PLATFORM_CATALOG = [
 ]
 
 INPUT_TYPE_CATALOG = [
+    CatalogItem(id="query_params", label="查询参数"),
+    CatalogItem(id="column_schema", label="列配置"),
     CatalogItem(id="requirement_brief", label="需求简述"),
     CatalogItem(id="process_list", label="流程清单"),
     CatalogItem(id="entity_list", label="对象清单"),
@@ -59,6 +63,8 @@ INPUT_TYPE_CATALOG = [
 ]
 
 OUTPUT_TYPE_CATALOG = [
+    CatalogItem(id="tsx_component", label="TSX 元组件"),
+    CatalogItem(id="delivery_manifest", label="交付清单"),
     CatalogItem(id="validation_report", label="验证报告"),
     CatalogItem(id="review_suggestion", label="审阅建议"),
     CatalogItem(id="template_bundle", label="模板包"),

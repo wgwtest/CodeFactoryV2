@@ -1,5 +1,6 @@
 import { Card, Space, Typography } from "antd";
 
+import { P5DeliveryManifestPanel } from "../components/p5/P5DeliveryManifestPanel";
 import { P5DemandQueryPanel } from "../components/p5/P5DemandQueryPanel";
 
 export function XXP5SimPage() {
@@ -25,8 +26,10 @@ export function XXP5SimPage() {
             </Typography.Paragraph>
           </Space>
         </Card>
-
-        <P5DemandQueryPanel />
+        <Space direction="vertical" size={16} style={{ display: "flex" }}>
+          <P5DeliveryManifestPanel />
+          <P5DemandQueryPanel />
+        </Space>
       </div>
     </div>
   );
