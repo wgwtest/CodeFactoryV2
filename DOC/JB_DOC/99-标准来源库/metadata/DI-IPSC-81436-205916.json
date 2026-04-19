@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81436",
+  "title": "Interface Design Description",
+  "ident": "205916",
+  "group": "product",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205916",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81436-205916.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5773724.205916",
+      "token_id": "5773724",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773724",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token5773724.pdf",
+      "content_type": "application/pdf",
+      "size": 12427,
+      "is_pdf": true
+    },
+    {
+      "token": "5723444.205916",
+      "token_id": "5723444",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723444",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token5723444.pdf",
+      "content_type": "application/pdf",
+      "size": 28294,
+      "is_pdf": true
+    },
+    {
+      "token": "195417.205916",
+      "token_id": "195417",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195417",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token195417.pdf",
+      "content_type": "application/pdf",
+      "size": 324713,
+      "is_pdf": true
+    },
+    {
+      "token": "161790.205916",
+      "token_id": "161790",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161790",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token161790.pdf",
+      "content_type": "application/pdf",
+      "size": 31520,
+      "is_pdf": true
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "code": "DI-IPSC-81434",
+  "title": "Interface Requirements Specification",
+  "ident": "205913",
+  "group": "product",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205913",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81434-205913.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5793546.205913",
+      "token_id": "5793546",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5793546",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token5793546.pdf",
+      "content_type": "application/pdf",
+      "size": 12758,
+      "is_pdf": true
+    },
+    {
+      "token": "5751155.205913",
+      "token_id": "5751155",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5751155",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token5751155.pdf",
+      "content_type": "application/pdf",
+      "size": 128201,
+      "is_pdf": true
+    },
+    {
+      "token": "161673.205913",
+      "token_id": "161673",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161673",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token161673.pdf",
+      "content_type": "application/pdf",
+      "size": 168783,
+      "is_pdf": true
+    }
+  ]
+}

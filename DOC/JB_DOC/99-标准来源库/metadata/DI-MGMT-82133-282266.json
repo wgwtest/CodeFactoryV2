@@ -1,0 +1,42 @@
+{
+  "code": "DI-MGMT-82133",
+  "title": "Requirements Traceability Verification Matrix",
+  "ident": "282266",
+  "group": "verification",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=282266",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-MGMT-82133-282266.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5796351.282266",
+      "token_id": "5796351",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5796351",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5796351.pdf",
+      "content_type": "application/pdf",
+      "size": 177355,
+      "is_pdf": true
+    },
+    {
+      "token": "5776362.282266",
+      "token_id": "5776362",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5776362",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5776362.pdf",
+      "content_type": "application/pdf",
+      "size": 12780,
+      "is_pdf": true
+    },
+    {
+      "token": "5747372.282266",
+      "token_id": "5747372",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5747372",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5747372.pdf",
+      "content_type": "application/pdf",
+      "size": 177780,
+      "is_pdf": true
+    }
+  ]
+}

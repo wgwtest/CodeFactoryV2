@@ -39,7 +39,7 @@
 
 | superpowers 文档 | 正式文档 | 说明 |
 | --- | --- | --- |
-| `docs/superpowers/specs/2026-04-17-xx-p3-software-design-system-design.md` | `DOC/CODEX_DOC/03_研制计划/03-WBS-P3-软件设计系统-研制计划.md` | `P3` 正式节点入口 |
+| `docs/superpowers/specs/2026-04-17-xx-p3-software-design-system-design.md` | `DOC/CODEX_DOC/02_设计说明/06-P3-软件设计系统设计.md` | `P3` 正式设计归档入口 |
 | `docs/superpowers/plans/2026-04-17-xx-p3-software-design-system.md` | `DOC/CODEX_DOC/03_研制计划/03-WBS-P3-软件设计系统-研制计划.md` | `P3` 实施计划参考 |
 | `docs/superpowers/issues/2026-04-17-p3-software-design-system-issue-tree-mirror.md` | `DOC/CODEX_DOC/03_研制计划/03-WBS-P3-软件设计系统-研制计划.md` | `P3` issue tree mirror 的正式映射 |
 

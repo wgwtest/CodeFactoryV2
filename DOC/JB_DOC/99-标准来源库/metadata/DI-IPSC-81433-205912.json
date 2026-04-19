@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81433",
+  "title": "Software Requirements Specification",
+  "ident": "205912",
+  "group": "product",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205912",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81433-205912.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5793970.205912",
+      "token_id": "5793970",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5793970",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token5793970.pdf",
+      "content_type": "application/pdf",
+      "size": 12810,
+      "is_pdf": true
+    },
+    {
+      "token": "5723437.205912",
+      "token_id": "5723437",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723437",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token5723437.pdf",
+      "content_type": "application/pdf",
+      "size": 28595,
+      "is_pdf": true
+    },
+    {
+      "token": "195394.205912",
+      "token_id": "195394",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195394",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token195394.pdf",
+      "content_type": "application/pdf",
+      "size": 634669,
+      "is_pdf": true
+    },
+    {
+      "token": "161781.205912",
+      "token_id": "161781",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161781",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token161781.pdf",
+      "content_type": "application/pdf",
+      "size": 49346,
+      "is_pdf": true
+    }
+  ]
+}

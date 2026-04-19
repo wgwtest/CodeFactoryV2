@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81427",
+  "title": "Software Development Plan",
+  "ident": "205530",
+  "group": "process",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205530",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81427-205530.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5746250.205530",
+      "token_id": "5746250",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5746250",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token5746250.pdf",
+      "content_type": "application/pdf",
+      "size": 216507,
+      "is_pdf": true
+    },
+    {
+      "token": "5723430.205530",
+      "token_id": "5723430",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723430",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token5723430.pdf",
+      "content_type": "application/pdf",
+      "size": 28283,
+      "is_pdf": true
+    },
+    {
+      "token": "195662.205530",
+      "token_id": "195662",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195662",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token195662.pdf",
+      "content_type": "application/pdf",
+      "size": 594127,
+      "is_pdf": true
+    },
+    {
+      "token": "154336.205530",
+      "token_id": "154336",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=154336",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token154336.pdf",
+      "content_type": "application/pdf",
+      "size": 657490,
+      "is_pdf": true
+    }
+  ]
+}
