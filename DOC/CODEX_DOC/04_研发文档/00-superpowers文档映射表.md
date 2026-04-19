@@ -85,12 +85,13 @@
 | `docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/05-P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/06-P4-核心业务循环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/08-P4-Backend服务边界设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/09-P4-数据与投影模型设计.md` | 自演进巡检闭环已拆分归入 `P4` 总体、循环、边界和投影设计 |
 | `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md` | `DOC/CODEX_DOC/03_研制计划/04-WBS-P4-工具仓库-研制计划.md` | `P4` issue tree mirror 的正式映射 |
 
-## 7. P6 门户与平台入口
+## 7. P6 平台门户、观察与前端展示实验层
 
 | superpowers 文档 | 正式文档 | 说明 |
 | --- | --- | --- |
-| `docs/superpowers/specs/2026-04-17-portal-home-design.md` | `DOC/CODEX_DOC/02_设计说明/10-P6-门户与平台入口设计.md` | `P6.1` 首屏观察门户与蓝图画布专项设计来源 |
+| `docs/superpowers/specs/2026-04-17-portal-home-design.md` | `DOC/CODEX_DOC/02_设计说明/10-P6-门户与平台入口设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/11-P6.1-首屏观察门户设计.md` | `P6.1` 首屏观察门户与蓝图画布专项设计来源 |
 | `docs/superpowers/specs/2026-04-19-p6-stage-reframing-design.md` | `DOC/CODEX_DOC/02_设计说明/10-P6-门户与平台入口设计.md`<br/>`DOC/CODEX_DOC/03_研制计划/06-WBS-P6-门户与平台入口-研制计划.md` | `P6` 已从“登录 / 权限优先”重排为“首屏观察 + 只读集成 + 语言统一 + 展示实验”的双层结构 |
+| `docs/superpowers/specs/2026-04-19-p6-detailed-subsystem-design.md` | `DOC/CODEX_DOC/02_设计说明/11-P6.1-首屏观察门户设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/12-P6.2-跨阶段只读集成与状态投影设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/13-P6.3-设计语言与前端展示基线设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/14-P6.4-前端展示工具化实验场设计.md`<br/>`DOC/CODEX_DOC/03_研制计划/06-WBS-P6-门户与平台入口-研制计划.md` | `P6.1 ~ P6.4` 正式专项设计的过程稿来源 |
 | `docs/superpowers/plans/2026-04-17-portal-home.md` | `DOC/CODEX_DOC/03_研制计划/06-WBS-P6-门户与平台入口-研制计划.md` | 门户实施计划 |
 | `docs/superpowers/issues/2026-04-17-p6-platform-entry-issue-tree-mirror.md` | `DOC/CODEX_DOC/03_研制计划/06-WBS-P6-门户与平台入口-研制计划.md` | 门户 issue tree mirror |
 
