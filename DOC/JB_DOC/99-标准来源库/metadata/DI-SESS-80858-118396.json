@@ -10,5 +10,8 @@
   "status": null,
   "document_date": null,
   "distribution": null,
-  "tokens": []
+  "tokens": [],
+  "source_mode": "legacy_base_entry_stale",
+  "legacy_status_note": "旧主号页无法稳定公开访问；current baseline 请改看 `DI-SESS-80858D` revision PDF + NOTICE 1 证据条目。",
+  "current_baseline_revision": "DI-SESS-80858D"
 }

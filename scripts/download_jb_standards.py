@@ -74,18 +74,19 @@ def _extract_tokens(html: str) -> list[str]:
     return ordered
 
 
-def _extract_field(html: str, field_id: str) -> str | None:
-    patterns = [
-        rf'id="{field_id}"[^>]*>(.*?)</',
-        rf'id="{field_id}"[^>]*value="(.*?)"',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, html, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            value = re.sub(r"<[^>]+>", " ", match.group(1))
-            value = re.sub(r"\s+", " ", value).strip()
-            if value:
-                return value
+def _extract_field(html: str, *field_ids: str) -> str | None:
+    for field_id in field_ids:
+        patterns = [
+            rf'id="{field_id}"[^>]*>(.*?)</',
+            rf'id="{field_id}"[^>]*value="(.*?)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                value = re.sub(r"<[^>]+>", " ", match.group(1))
+                value = re.sub(r"\s+", " ", value).strip()
+                if value:
+                    return value
     return None
 
 
@@ -159,13 +160,21 @@ def main() -> None:
             **standard,
             "detail_url": detail_url,
             "detail_file": str(detail_file.relative_to(ROOT)),
-            "detail_title": _extract_field(html, "ControlBody_lblTitle"),
-            "scope": _extract_field(html, "ControlBody_lblScope"),
-            "status": _extract_field(html, "ControlBody_lblStatus"),
-            "document_date": _extract_field(html, "ControlBody_lblDocumentDate"),
+            "detail_doc_id": _extract_field(html, "general_doc_idLabel"),
+            "detail_title": _extract_field(html, "general_titleLabel", "ControlBody_lblTitle"),
+            "scope": _extract_field(html, "scope_scope_descriptionLabel", "ControlBody_lblScope"),
+            "status": _extract_field(html, "general_statusLabel", "ControlBody_lblStatus"),
+            "document_date": _extract_field(html, "general_doc_dateLabel", "ControlBody_lblDocumentDate"),
             "distribution": _extract_field(html, "ControlBody_lblDistribution"),
+            "detail_mismatch": None,
             "tokens": downloads,
         }
+        detail_doc_id = metadata.get("detail_doc_id")
+        if detail_doc_id and not (code.startswith(detail_doc_id) or detail_doc_id.startswith(code)):
+            metadata["detail_mismatch"] = {
+                "expected_code": code,
+                "actual_doc_id": detail_doc_id,
+            }
         meta_file = META_DIR / f"{_slug(code)}-{ident}.json"
         _save_text(meta_file, json.dumps(metadata, ensure_ascii=False, indent=2))
         metadata["metadata_file"] = str(meta_file.relative_to(ROOT))

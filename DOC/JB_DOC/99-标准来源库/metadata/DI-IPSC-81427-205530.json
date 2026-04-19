@@ -47,5 +47,8 @@
       "size": 657490,
       "is_pdf": true
     }
-  ]
+  ],
+  "source_mode": "legacy_base_entry",
+  "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-IPSC-81427B` revision 证据条目。",
+  "current_baseline_revision": "DI-IPSC-81427B"
 }

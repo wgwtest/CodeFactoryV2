@@ -1,0 +1,52 @@
+{
+  "code": "DI-QCIC-81794A",
+  "title": "Quality Assurance Program Plan",
+  "group": "process",
+  "base_code": "DI-QCIC-81794",
+  "ident": null,
+  "detail_url": null,
+  "detail_file": null,
+  "detail_title": "Quality Assurance Program Plan (QAPP)",
+  "scope": null,
+  "status": "Official revision A PDF archived",
+  "document_date": "16-SEP-2019",
+  "distribution": null,
+  "source_mode": "current_baseline_revision_evidence",
+  "notes": "旧 `DI-QCIC-81794` QuickSearch 详情页本地归档已错指到无关 ASTM 文档，current baseline 改由官方 revision A PDF 直接建档。",
+  "archived_at": "2026-04-19T17:14:12.844484+00:00",
+  "tokens": [
+    {
+      "label": "official_revision_pdf",
+      "kind": "official_pdf",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5761211",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-QCIC-81794A-token5761211.pdf",
+      "content_type": "application/pdf",
+      "size": 53329,
+      "is_pdf": true,
+      "extracted_number": "DI-QCIC-81794A",
+      "extracted_approval_date": "20190916",
+      "excerpt_lines": [
+        "DATA ITEM DESCRIPTION",
+        "Title: QUALITY ASSURANCE PROGAM PLAN (QAPP)",
+        "Number: DI-QCIC-81794A",
+        "AMSC Number: F10093",
+        "DTIC Applicable: No",
+        "Preparing Activity: 11 (AFLCMC/EZSM)",
+        "Applicable Forms: N/A",
+        "Approval Date: 20190916",
+        "Limitation: N/A",
+        "GIDEP Applicable: No",
+        "Project Number: QCIC-2018-004",
+        "Use/Relationship: The Quality Assurance Program Plan (QAPP) will be used as a stand-alone",
+        "document, but it is intended to be a part of an integrated strategy, including: Manufacturing",
+        "Management; Software Quality; Reliability; Parts, Materials, and Processes; and other related",
+        "disciplines. The purpose of the QAPP is to describe how the Quality Management System",
+        "complies with the program’s contractual requirements and how the contractor ensures products",
+        "are designed and produced to meet the program’s contractual requirements. The QAPP",
+        "describes how contractor quality policies and procedures are implemented at the program level.",
+        "The QAPP contains measurable quality objectives and the metrics by which they are to be",
+        "measured. The principal use of the QAPP is to provide a detailed description of the contractor’s"
+      ]
+    }
+  ]
+}

@@ -83,7 +83,10 @@
         "is_pdf": true
       }
     ],
-    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81427-205530.json"
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81427-205530.json",
+    "source_mode": "legacy_base_entry",
+    "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-IPSC-81427B` revision 证据条目。",
+    "current_baseline_revision": "DI-IPSC-81427B"
   },
   {
     "code": "DI-SESS-81785",
@@ -126,7 +129,10 @@
         "is_pdf": true
       }
     ],
-    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-81785-276889.json"
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-81785-276889.json",
+    "source_mode": "legacy_base_entry",
+    "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-SESS-81785B` revision 证据条目。",
+    "current_baseline_revision": "DI-SESS-81785B"
   },
   {
     "code": "DI-SESS-80858",
@@ -141,7 +147,10 @@
     "document_date": null,
     "distribution": null,
     "tokens": [],
-    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-80858-118396.json"
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-80858-118396.json",
+    "source_mode": "legacy_base_entry_stale",
+    "legacy_status_note": "旧主号页无法稳定公开访问；current baseline 请改看 `DI-SESS-80858D` revision PDF + NOTICE 1 证据条目。",
+    "current_baseline_revision": "DI-SESS-80858D"
   },
   {
     "code": "DI-QCIC-81794",
@@ -156,7 +165,10 @@
     "document_date": null,
     "distribution": null,
     "tokens": [],
-    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81794-275987.json"
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81794-275987.json",
+    "source_mode": "legacy_base_entry_invalid",
+    "legacy_status_note": "旧主号页本地归档已错指到 ASTM-D2400；current baseline 请改看 `DI-QCIC-81794A` revision PDF 证据条目。",
+    "current_baseline_revision": "DI-QCIC-81794A"
   },
   {
     "code": "DI-QCIC-81795",
@@ -828,5 +840,250 @@
       }
     ],
     "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-82284-283271.json"
+  },
+  {
+    "code": "DI-IPSC-81427B",
+    "title": "Software Development Plan",
+    "group": "process",
+    "base_code": "DI-IPSC-81427",
+    "ident": "205530",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205530",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81427-205530.html",
+    "detail_title": "Software Development Plan (SDP)",
+    "scope": null,
+    "status": "Active",
+    "document_date": "13-MAR-2017",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "QuickSearch 详情页仍挂主号 `DI-IPSC-81427`，current baseline revision 以官方 PDF 头部的 `Number: DI-IPSC-81427B` 为准。",
+    "archived_at": "2026-04-19T17:13:53.901198+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5746250",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427B-token5746250.pdf",
+        "content_type": "application/pdf",
+        "size": 216921,
+        "is_pdf": true,
+        "extracted_number": "DI-IPSC-81427B",
+        "extracted_approval_date": "20170313",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: Software Development Plan (SDP)",
+          "Number: DI-IPSC-81427B",
+          "AMSC Number: N9775",
+          "DTIC Applicable: No",
+          "Preparing Activity: EC",
+          "Applicable Forms: N/A",
+          "Approval Date: 20170313",
+          "Limitation: N/A",
+          "GIDEP Applicable: No",
+          "Project Number: IPSC-2017-001",
+          "Use/relationship: The Software Development Plan (SDP) with Agile, Cyber Security and Safety",
+          "Assurance contains the format, content, and delivery timeframes for the SDP. The SDP provides",
+          "the acquirer insight into, and a tool for monitoring, the processes to be followed for software",
+          "development, the methods to be used, the approach to be followed for each activity, and project",
+          "schedules, organization, and resources. This DID is useful for new development, modification,",
+          "reuse, reengineering, maintenance, and other activities resulting in software products.",
+          "This Data Item Description contains the format, content, and intended use information for the",
+          "data product resulting from the work task described by the contract.",
+          "This DID supersedes DI-IPSC-81427A."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81427B-current-baseline.json"
+  },
+  {
+    "code": "DI-SESS-81785B",
+    "title": "Systems Engineering Management Plan",
+    "group": "process",
+    "base_code": "DI-SESS-81785",
+    "ident": "276889",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=276889",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-81785-276889.html",
+    "detail_title": "Systems Engineering Management Plan (SEMP)",
+    "scope": null,
+    "status": "Active",
+    "document_date": "08-JAN-2025",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "QuickSearch 详情页已更新到 2025 版 DID Date；官方 PDF 头部给出 `Number: DI-SESS-81785B`。",
+    "archived_at": "2026-04-19T17:13:59.833374+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5792932",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785B-token5792932.pdf",
+        "content_type": "application/pdf",
+        "size": 132110,
+        "is_pdf": true,
+        "extracted_number": "DI-SESS-81785B",
+        "extracted_approval_date": "20250108",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: Systems Engineering Management Plan (SEMP)",
+          "Number: DI-SESS-81785B",
+          "AMSC Number: 10515",
+          "DTIC Applicable: No",
+          "Preparing Activity: SE",
+          "Applicable Forms: N/A",
+          "Approval Date: 20250108",
+          "Limitation: None",
+          "GIDEP Applicable: No",
+          "Project Number: SESS-2024-043",
+          "Use/relationship: The SEMP describes the contractor's technical approach and proposed plan",
+          "for the conduct, management, and control of the integrated systems engineering (SE) effort. It",
+          "reflects the scope, purpose, and life-cycle phase(s) of the program.",
+          "This Data Item Description (DID) contains the content and intended use information for the data",
+          "deliverable resulting from the work task described in paragraph 6.3.1.4 of IEEE 24748-7:2019,",
+          "or by the specific and discrete task requirements as delineated in the contract.",
+          "This DID supersedes DI-SESS-81785A",
+          "Requirements:",
+          "1. Reference documents."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-81785B-current-baseline.json"
+  },
+  {
+    "code": "DI-SESS-80858D",
+    "title": "Supplier's Configuration Management Plan",
+    "group": "process",
+    "base_code": "DI-SESS-80858",
+    "ident": null,
+    "detail_url": null,
+    "detail_file": null,
+    "detail_title": "Supplier's Configuration Management Plan",
+    "scope": null,
+    "status": "Validated for use in acquisition (NOTICE 1, 12-MAY-2025)",
+    "document_date": "11-FEB-2020",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "稳定的 QuickSearch 详情页当前不可公开访问，改以官方 revision D PDF 与 NOTICE 1 作为 current baseline 证据。",
+    "archived_at": "2026-04-19T17:14:09.349853+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5763549",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-80858D-token5763549.pdf",
+        "content_type": "application/pdf",
+        "size": 123394,
+        "is_pdf": true,
+        "extracted_number": "DI-SESS-80858D",
+        "extracted_approval_date": "20200211",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: SUPPLIER’S CONFIGURATION MANAGEMENT PLAN",
+          "Number: DI-SESS-80858D",
+          "Approval Date: 20200211",
+          "AMSC Number: N10144",
+          "Limitation: N/A",
+          "DTIC Applicable: No",
+          "Preparing Activity: NM",
+          "GIDEP Applicable: No",
+          "Project Number: SESS-2020-007",
+          "Applicable Forms: N/A",
+          "Use/relationship: The Supplier’s Configuration Management (CM) Plan describes the organization,",
+          "procedures, and controls of the Supplier’s CM program. The principle use is to provide the",
+          "Government a basis for review, evaluation, and monitoring of the CM program and associated",
+          "proposed components.",
+          "a. This DID contains the format, content, and intended use information for the data deliverable",
+          "resulting from the work task described in EIA-649-1 and the principles of EIA-649 (Copies of these",
+          "standards are available online at www.sae.org or from SAE International, 400 Commonwealth Drive,",
+          "Warrendale, PA 15096-0001, Tel 877-606-7323 [inside USA and Canada] or 724-776-4970 [outside",
+          "USA])."
+        ]
+      },
+      {
+        "label": "official_validation_notice",
+        "kind": "official_notice",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5794369",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-80858D-NOTICE1-token5794369.pdf",
+        "content_type": "application/pdf",
+        "size": 12576,
+        "is_pdf": true,
+        "extracted_number": null,
+        "extracted_approval_date": null,
+        "excerpt_lines": [
+          "NOTICE OF",
+          "VALIDATION",
+          "NOT MEASUREMENT",
+          "SENSITIVE",
+          "DI-SESS-80858D",
+          "NOTICE 1",
+          "12-May-2025",
+          "DATA ITEM DESCRIPTION",
+          "Supplier's Configuration Management Plan",
+          "DI-SESS-80858D, dated 11-Feb-2020, has been reviewed and",
+          "determined to be valid for use in acquisition.",
+          "Preparing Activity:",
+          "Navy - NM",
+          "Reviewer Activities:",
+          "Air Force - 27",
+          "NOTE: The activities above were interested in this document as",
+          "of the date of this document. Since organizations and",
+          "responsibilities can change, you should verify the currency of",
+          "the information above using the ASSIST Online database at",
+          "https://assist.dla.mil."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-80858D-current-baseline.json"
+  },
+  {
+    "code": "DI-QCIC-81794A",
+    "title": "Quality Assurance Program Plan",
+    "group": "process",
+    "base_code": "DI-QCIC-81794",
+    "ident": null,
+    "detail_url": null,
+    "detail_file": null,
+    "detail_title": "Quality Assurance Program Plan (QAPP)",
+    "scope": null,
+    "status": "Official revision A PDF archived",
+    "document_date": "16-SEP-2019",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "旧 `DI-QCIC-81794` QuickSearch 详情页本地归档已错指到无关 ASTM 文档，current baseline 改由官方 revision A PDF 直接建档。",
+    "archived_at": "2026-04-19T17:14:12.844484+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5761211",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-QCIC-81794A-token5761211.pdf",
+        "content_type": "application/pdf",
+        "size": 53329,
+        "is_pdf": true,
+        "extracted_number": "DI-QCIC-81794A",
+        "extracted_approval_date": "20190916",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: QUALITY ASSURANCE PROGAM PLAN (QAPP)",
+          "Number: DI-QCIC-81794A",
+          "AMSC Number: F10093",
+          "DTIC Applicable: No",
+          "Preparing Activity: 11 (AFLCMC/EZSM)",
+          "Applicable Forms: N/A",
+          "Approval Date: 20190916",
+          "Limitation: N/A",
+          "GIDEP Applicable: No",
+          "Project Number: QCIC-2018-004",
+          "Use/Relationship: The Quality Assurance Program Plan (QAPP) will be used as a stand-alone",
+          "document, but it is intended to be a part of an integrated strategy, including: Manufacturing",
+          "Management; Software Quality; Reliability; Parts, Materials, and Processes; and other related",
+          "disciplines. The purpose of the QAPP is to describe how the Quality Management System",
+          "complies with the program’s contractual requirements and how the contractor ensures products",
+          "are designed and produced to meet the program’s contractual requirements. The QAPP",
+          "describes how contractor quality policies and procedures are implemented at the program level.",
+          "The QAPP contains measurable quality objectives and the metrics by which they are to be",
+          "measured. The principal use of the QAPP is to provide a detailed description of the contractor’s"
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81794A-current-baseline.json"
   }
 ]
