@@ -66,14 +66,13 @@ function MainShell() {
           <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/governance" element={<GovernancePage />} />
-          <Route path="/graph" element={<KnowledgeGraphPage />} />
-          <Route path="/requirements" element={<RequirementsPage />} />
-          <Route path="/modeling" element={<ApplicationModelerPage />} />
-          <Route path="/build" element={<BuildWorkspacePage />} />
-        </Routes>
-      </Layout.Content>
-    </Layout>
-  );
+        <Route path="/graph" element={<KnowledgeGraphPage />} />
+        <Route path="/requirements" element={<RequirementsPage />} />
+        <Route path="/modeling" element={<ApplicationModelerPage />} />
+      </Routes>
+    </Layout.Content>
+  </Layout>
+);
 }
 
 export default function App() {
@@ -114,6 +113,14 @@ export default function App() {
       <Routes>
         <Route path="/xx-p3" element={<XXP3Page />} />
         <Route path="/xx-p3/templates/:templateId" element={<P3TemplateDetailPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/build")) {
+    return (
+      <Routes>
+        <Route path="/build" element={<BuildWorkspacePage />} />
       </Routes>
     );
   }

@@ -6,7 +6,7 @@
 
 - `specs/`：设计草案、局部方案、阶段设计
 - `plans/`：实施计划、任务拆分
-- `issues/`：issue tree mirror、执行工单镜像
+- `issues/`：历史快照、执行工单镜像、过程证据
 
 ## 2. 与正式文档的关系
 
@@ -24,8 +24,14 @@
 
 1. 在 `docs/superpowers/specs/` 起草设计
 2. 在 `docs/superpowers/plans/` 拆实施计划
-3. 在 `docs/superpowers/issues/` 维护 issue mirror
+3. 如需保留过程证据，可在 `docs/superpowers/issues/` 留存执行工单镜像或历史快照
 4. 用户确认后，把正式结论回写到 `DOC/CODEX_DOC/`
+
+补充口径：
+
+- GitHub `Issues + sub-issues` 才是 WBS 树唯一事实源
+- 默认不再把 `docs/superpowers/issues/` 当作当前 WBS 树的读取入口
+- 若远端暂时不可访问，应优先回退到仓库主工作树中的 `DOC/CODEX_DOC/`，而不是读取当前隔离目录里的镜像文件
 
 ## 4. 当前执行口径
 

@@ -4,6 +4,7 @@ from app.api.routes.governance import router as governance_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.modeling import router as modeling_router
 from app.api.routes.requirements import router as requirements_router
+from app.api.routes.software_build import router as software_build_router
 from app.api.routes.software_design import router as software_design_router
 from app.api.routes.tool_hub import router as tool_hub_router
 from fastapi import FastAPI
@@ -12,7 +13,6 @@ from app.api.routes.health import router as health_router
 from app.config import settings
 from app.db.base import Base
 from app.db.session import engine
-import app.db.models  # noqa: F401
 
 
 def create_app() -> FastAPI:
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(requirements_router, prefix=settings.api_prefix)
     app.include_router(tool_hub_router, prefix=settings.api_prefix)
     app.include_router(software_design_router, prefix=settings.api_prefix)
+    app.include_router(software_build_router, prefix=settings.api_prefix)
     return app
 
 

@@ -1,0 +1,303 @@
+.p5-build-page {
+  min-height: 100vh;
+  padding: 24px 24px 36px;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 24%),
+    linear-gradient(180deg, #eef4ff 0%, #f6f8fb 42%, #edf2f7 100%);
+}
+
+.p5-build-shell {
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.p5-build-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.92)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+}
+
+.p5-build-hero-copy {
+  max-width: 900px;
+}
+
+.p5-build-kicker.ant-typography {
+  color: rgba(191, 219, 254, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.p5-build-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.p5-build-title.ant-typography {
+  margin: 0 !important;
+  color: #f8fafc;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.p5-build-description.ant-typography {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 15px;
+}
+
+.p5-build-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.p5-build-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.p5-build-metric-card {
+  min-height: 96px;
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.p5-build-metric-title.ant-typography {
+  color: rgba(191, 219, 254, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.p5-build-metric-value.ant-typography {
+  display: block;
+  margin-top: 10px;
+  color: #f8fafc;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.p5-build-loading {
+  display: flex;
+  min-height: 320px;
+  align-items: center;
+  justify-content: center;
+}
+
+.p5-build-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.p5-build-sidebar,
+.p5-build-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.p5-build-panel.ant-card {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 18px 36px rgba(15, 23, 42, 0.06);
+}
+
+.p5-build-panel > .ant-card-head {
+  min-height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+  border-radius: 24px 24px 0 0;
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.p5-build-panel > .ant-card-body {
+  padding: 18px 20px 20px;
+}
+
+.p5-build-order-card {
+  width: 100%;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.p5-build-order-card:hover {
+  border-color: rgba(37, 99, 235, 0.7);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.08);
+}
+
+.p5-build-order-card.is-active {
+  border-color: rgba(37, 99, 235, 0.84);
+  background: rgba(239, 246, 255, 0.86);
+  box-shadow: 0 16px 24px rgba(37, 99, 235, 0.1);
+}
+
+.p5-build-order-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.p5-build-context-panel .ant-card-body {
+  padding-top: 16px;
+}
+
+.p5-build-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.p5-build-context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fbff;
+  border: 1px solid rgba(191, 219, 254, 0.85);
+}
+
+.p5-build-two-column-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.p5-build-subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.p5-build-module-card {
+  padding: 14px 16px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-left-width: 5px;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.p5-build-module-card.is-bound {
+  border-left-color: #16a34a;
+}
+
+.p5-build-module-card.is-placeholder {
+  border-left-color: #f59e0b;
+}
+
+.p5-build-warning-copy.ant-typography {
+  margin: 8px 0 0;
+  color: #b45309;
+}
+
+.p5-build-stage-row,
+.p5-build-output-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.p5-build-log-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #0f172a;
+}
+
+.p5-build-log-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.p5-build-log-line .ant-typography {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.p5-build-output-dir-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.p5-build-gap-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(254, 215, 170, 0.92);
+  background: #fffaf0;
+}
+
+@media (max-width: 1180px) {
+  .p5-build-workspace,
+  .p5-build-two-column-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .p5-build-page {
+    padding: 16px 16px 28px;
+  }
+
+  .p5-build-hero {
+    padding: 18px;
+  }
+
+  .p5-build-title.ant-typography {
+    font-size: 32px;
+  }
+
+  .p5-build-order-card-row,
+  .p5-build-stage-row,
+  .p5-build-output-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

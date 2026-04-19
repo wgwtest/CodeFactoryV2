@@ -627,18 +627,6 @@ export type ToolDefinition = {
   problem_statement: string;
   primary_domain_id: string;
   tool_form_id: string;
-  tool_granularity: "atomic" | "composite" | "page_level";
-  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
-  integration_mode:
-    | "import_component"
-    | "import_module"
-    | "include_router"
-    | "call_http_api"
-    | "mount_page"
-    | "manual";
-  dependency_policy: "peer" | "bundled" | "external";
-  runtime_dependencies: string[];
-  host_constraints: Record<string, string | string[]>;
   runtime_platform_ids: string[];
   tags: string[];
   lifecycle_stage_ids: string[];
@@ -652,29 +640,7 @@ export type ToolDefinition = {
   updated_at: string;
 };
 
-type ToolDefinitionOptionalWriteFields = Pick<
-  ToolDefinition,
-  | "tool_granularity"
-  | "packaging_type"
-  | "integration_mode"
-  | "dependency_policy"
-  | "runtime_dependencies"
-  | "host_constraints"
->;
-
-export type ToolDefinitionWriteInput = Omit<
-  ToolDefinition,
-  | "tool_id"
-  | "created_at"
-  | "updated_at"
-  | "tool_granularity"
-  | "packaging_type"
-  | "integration_mode"
-  | "dependency_policy"
-  | "runtime_dependencies"
-  | "host_constraints"
-> &
-  Partial<ToolDefinitionOptionalWriteFields>;
+export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
 
 export type ToolListEnvelope = {
   items: ToolDefinition[];
@@ -987,62 +953,10 @@ export type ToolFetchManifest = {
   tool_name: string;
   tool_version: string;
   tool_form_id: string;
-  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
-  integration_mode:
-    | "import_component"
-    | "import_module"
-    | "include_router"
-    | "call_http_api"
-    | "mount_page"
-    | "manual";
-  dependency_policy: "peer" | "bundled" | "external";
-  runtime_dependencies: string[];
   runtime_platform_ids: string[];
   fetch_mode: "descriptor";
   entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
   entrypoint_locator: string;
-  contract_version: string;
-  updated_at: string;
-};
-
-export type ToolBuildRun = {
-  build_run_id: string;
-  build_request_id: string;
-  tool_id: string;
-  status: "queued" | "running" | "completed" | "failed";
-  queue_name: "p4-build";
-  artifact_version_id?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type FrontendComponentBuildRequestInput = {
-  requested_by: string;
-  component_name: string;
-  scenario_id: string;
-  tool_definition: ToolDefinitionWriteInput;
-};
-
-export type ToolDeliveryManifest = {
-  tool_id: string;
-  tool_name: string;
-  tool_form_id: string;
-  packaging_type: "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
-  integration_mode:
-    | "import_component"
-    | "import_module"
-    | "include_router"
-    | "call_http_api"
-    | "mount_page"
-    | "manual";
-  dependency_policy: "peer" | "bundled" | "external";
-  runtime_dependencies: string[];
-  import_specifier: string;
-  example_host_path: string;
-  artifact_version_id?: string | null;
-  manifest_path: string;
   contract_version: string;
   updated_at: string;
 };
@@ -1348,4 +1262,162 @@ export type P3StandardSearchResult = {
   matched_section: string;
   excerpt: string;
   official_detail_url: string;
+};
+
+export type P5DeliveryOrderStatus =
+  | "draft"
+  | "assembling"
+  | "exported_with_gaps"
+  | "completed_with_gaps"
+  | "completed"
+  | "failed";
+
+export type P5BuildOverview = {
+  metrics: {
+    order_count: number;
+    draft_count: number;
+    exported_with_gaps_count: number;
+    completed_count: number;
+    failed_count: number;
+  };
+  recent_orders: P5DeliveryOrderSummary[];
+};
+
+export type P5DeliveryOrderSummary = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  application_name: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  updated_at: string;
+};
+
+export type P5ExportConfig = {
+  export_root: string;
+  build_profile: string;
+  attempt_note: string;
+};
+
+export type P5AssemblyModule = {
+  module_id: string;
+  name: string;
+  objective: string;
+  target_directories: string[];
+  binding_status: "bound" | "placeholder";
+  bound_tool_id?: string | null;
+  bound_tool_name?: string | null;
+  gap_reason?: string | null;
+};
+
+export type P5AssemblyPlan = {
+  modules: P5AssemblyModule[];
+};
+
+export type P5GapRecord = {
+  gap_id: string;
+  kind: "design_gap" | "supply_gap" | "assembly_or_build_gap";
+  module_id?: string | null;
+  module_name?: string | null;
+  summary: string;
+  detail: string;
+};
+
+export type P5FeedbackTask = {
+  task_id: string;
+  gap_id: string;
+  kind: "design_gap" | "supply_gap" | "assembly_or_build_gap";
+  title: string;
+  detail: string;
+  status: "pending_confirmation" | "confirmed" | "dismissed";
+};
+
+export type P5ValidationReport = {
+  module_closure_status: "passed" | "warning" | "failed" | "skipped";
+  structure_status: "passed" | "warning" | "failed" | "skipped";
+  build_status: "passed" | "warning" | "failed" | "skipped";
+  summary: string;
+};
+
+export type P5InputSnapshot = {
+  design_input: {
+    source_kind: string;
+    order_id: string;
+    baseline_id: string;
+    module_count: number;
+    module_names: string[];
+  };
+  supply_input: {
+    source_kind: string;
+    tool_count: number;
+    tool_names: string[];
+    matched_tool_count: number;
+  };
+};
+
+export type P5RuntimeSnapshot = {
+  executor_name: string;
+  executor_status: "idle" | "running" | "completed" | "blocked" | "failed";
+  attempt_status: P5DeliveryOrderStatus;
+  progress_percent: number;
+  stages: Array<{
+    stage_id: string;
+    label: string;
+    status: "pending" | "running" | "completed" | "warning" | "failed";
+    detail: string;
+  }>;
+  recent_logs: Array<{
+    timestamp: string;
+    level: "info" | "warning" | "error";
+    message: string;
+  }>;
+  block_reason?: string | null;
+};
+
+export type P5OutputPreview = {
+  root_directory: string;
+  directories: string[];
+  key_files: Array<{
+    path: string;
+    kind: "file" | "directory";
+    status: "generated" | "generated_with_gaps" | "placeholder";
+    summary: string;
+  }>;
+};
+
+export type P5AssemblyAttempt = {
+  attempt_id: string;
+  delivery_order_id: string;
+  sequence: number;
+  export_config: P5ExportConfig;
+  input_snapshot: P5InputSnapshot;
+  assembly_plan: P5AssemblyPlan;
+  runtime_snapshot: P5RuntimeSnapshot;
+  validation_report: P5ValidationReport;
+  output_preview: P5OutputPreview;
+  gaps: P5GapRecord[];
+  feedback_tasks: P5FeedbackTask[];
+  export_directory: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5DeliveryOrderDetail = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  requested_by: string;
+  notes: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  formal_result_ready: boolean;
+  created_at: string;
+  updated_at: string;
+  attempts: P5AssemblyAttempt[];
+};
+
+export type P5WorkspaceBootstrapResult = {
+  delivery_order_id: string;
+  attempt_id: string;
+  created_demo_inputs: boolean;
 };

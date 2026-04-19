@@ -1,14 +1,53 @@
 import { readFileSync } from "node:fs";
 import "@testing-library/jest-dom/vitest";
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import App from "../App";
 import { P6_PORTAL_LAYOUT_STORAGE_KEY } from "../components/p6/p6PortalData";
 
+const getMock = vi.fn();
+
+vi.mock("../lib/api", () => ({
+  api: {
+    get: (...args: unknown[]) => getMock(...args),
+  },
+}));
+
 beforeEach(() => {
   window.localStorage.clear();
+  getMock.mockReset();
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-build/overview") {
+      return Promise.resolve({
+        data: {
+          data: {
+            metrics: {
+              order_count: 0,
+              draft_count: 0,
+              exported_with_gaps_count: 0,
+              completed_count: 0,
+              failed_count: 0,
+            },
+            recent_orders: [],
+          },
+        },
+      });
+    }
+
+    if (url === "/software-build/orders") {
+      return Promise.resolve({
+        data: {
+          data: {
+            items: [],
+          },
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
 });
 
 test("renders P6 portal blueprint outside MainShell on /portal route", async () => {
@@ -160,5 +199,5 @@ test("double clicking a module navigates to its target workspace", async () => {
   fireEvent.doubleClick(node);
 
   expect(await screen.findByText("软件构建系统")).toBeInTheDocument();
-  expect(await screen.findByText(/当前入口已可从门户页进入/)).toBeInTheDocument();
+  expect(await screen.findByText("P5 交付主单")).toBeInTheDocument();
 });
