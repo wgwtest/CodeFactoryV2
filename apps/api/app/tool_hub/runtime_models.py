@@ -45,3 +45,12 @@ class RuntimeLease(BaseModel):
     job_id: str
     worker_id: str
     leased_until: str
+
+
+class RuntimeCycleRunResult(BaseModel):
+    cycled_at: str = Field(default_factory=now_iso)
+    processed_job_count: int = 0
+    processed_queues: list[str] = Field(default_factory=list)
+    scheduled_job_count: int = 0
+    refreshed_projection_names: list[str] = Field(default_factory=list)
+    snapshot_id: str | None = None

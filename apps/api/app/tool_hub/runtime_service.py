@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
 from app.tool_hub.models import ToolManufacturePlan, now_iso
-from app.tool_hub.runtime_models import RuntimeJob
+from app.tool_hub.runtime_models import RuntimeCycleRunResult, RuntimeJob
 from app.tool_hub.runtime_repository import RuntimeRepository
 
 if TYPE_CHECKING:
@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
 
 class ToolHubRuntimeService:
-    def __init__(self, tool_hub_service: "ToolHubService") -> None:
+    def __init__(self, tool_hub_service: "ToolHubService", *, worker_id: str = "p4-runtime-worker") -> None:
         self.tool_hub_service = tool_hub_service
         self.runtime_repository = RuntimeRepository(tool_hub_service.root)
-        self.worker_id = "p4-runtime-worker"
+        self.worker_id = worker_id
         self.lease_seconds = 30
 
     def enqueue_manufacture_job(self, plan: ToolManufacturePlan, actor_id: str) -> RuntimeJob:
@@ -73,26 +73,85 @@ class ToolHubRuntimeService:
             )
         )
 
-    def run_once(self) -> None:
-        self._run_due_evolution_scan()
-        self._run_queue("p4-evolution", self._execute_evolution_job)
-        self._run_queue("p4-manufacture", self._execute_manufacture_job)
+    def run_once(self) -> RuntimeCycleRunResult:
+        scheduled_job_count = self._run_due_evolution_scan()
+        scheduled_job_count += self._enqueue_due_manufacture_jobs()
+        processed_queues: list[str] = []
+        evolution_count = self._run_queue("p4-evolution", self._execute_evolution_job)
+        if evolution_count > 0:
+            processed_queues.append("p4-evolution")
+        manufacture_count = self._run_queue("p4-manufacture", self._execute_manufacture_job)
+        if manufacture_count > 0:
+            processed_queues.append("p4-manufacture")
 
-    def _run_due_evolution_scan(self) -> None:
+        refresh_result = None
+        processed_job_count = evolution_count + manufacture_count
+        if processed_job_count > 0 or scheduled_job_count > 0:
+            refresh_result = self.tool_hub_service.refresh_query_projections()
+        return RuntimeCycleRunResult(
+            processed_job_count=processed_job_count,
+            processed_queues=processed_queues,
+            scheduled_job_count=scheduled_job_count,
+            refreshed_projection_names=[] if refresh_result is None else refresh_result.refreshed_projection_names,
+            snapshot_id=None if refresh_result is None else refresh_result.snapshot_id,
+        )
+
+    def _run_due_evolution_scan(self) -> int:
         config = self.tool_hub_service.repository.get_evolution_config()
         runtime_state = self.tool_hub_service.repository.get_runtime_state()
         if not config.enabled or not runtime_state.evolution_dirty:
-            return
+            return 0
 
         last_scheduled = runtime_state.last_scheduled_evolution_at
         if last_scheduled is not None:
             elapsed_seconds = (datetime.now(tz=UTC) - datetime.fromisoformat(last_scheduled)).total_seconds()
             if elapsed_seconds < max(config.interval_minutes * 60, 0):
-                return
+                return 0
 
         self.enqueue_scheduled_evolution_job()
+        return 1
 
-    def _run_queue(self, queue_name: str, executor: Callable[[RuntimeJob], None]) -> None:
+    def _enqueue_due_manufacture_jobs(self) -> int:
+        now = datetime.now(tz=UTC)
+        queued_or_released = 0
+        for plan in self.tool_hub_service.repository.list_manufacture_plans():
+            if plan.status not in {"manufacturing_pending", "manufacturing_in_progress"}:
+                continue
+            if datetime.fromisoformat(plan.estimated_ready_at) > now:
+                continue
+            existing = self._find_open_job(queue_name="p4-manufacture", aggregate_id=plan.item_id)
+            if existing is None:
+                self.runtime_repository.save_job(
+                    RuntimeJob(
+                        job_id=f"job-{uuid4().hex[:12]}",
+                        job_type="manufacture_execution",
+                        queue_name="p4-manufacture",
+                        aggregate_type="tool_manufacture_plan",
+                        aggregate_id=plan.item_id,
+                        trigger_source="runtime_due_scan",
+                        trigger_actor_id="system",
+                        payload_ref=plan.item_id,
+                    )
+                )
+                queued_or_released += 1
+                continue
+            if (
+                existing.status == "queued"
+                and existing.not_before is not None
+                and datetime.fromisoformat(existing.not_before) > now
+            ):
+                released = existing.model_copy(
+                    update={
+                        "not_before": None,
+                        "updated_at": now_iso(),
+                    }
+                )
+                self.runtime_repository.save_job(released)
+                queued_or_released += 1
+        return queued_or_released
+
+    def _run_queue(self, queue_name: str, executor: Callable[[RuntimeJob], None]) -> int:
+        processed = 0
         while True:
             leased = self.runtime_repository.acquire_job(
                 queue_name=queue_name,
@@ -100,8 +159,9 @@ class ToolHubRuntimeService:
                 lease_seconds=self.lease_seconds,
             )
             if leased is None:
-                return
+                return processed
             self._execute_job(leased, executor)
+            processed += 1
 
     def _execute_job(self, job: RuntimeJob, executor: Callable[[RuntimeJob], None]) -> None:
         started_at = job.started_at or now_iso()

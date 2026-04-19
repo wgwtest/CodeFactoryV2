@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.tool_hub.models import (
     EvolutionInspectionConfig,
@@ -9,6 +9,7 @@ from app.tool_hub.models import (
     ToolDefinition,
     ToolHubOverview,
     ToolHubSnapshotMeta,
+    now_iso,
 )
 
 
@@ -34,3 +35,9 @@ class EvolutionWorkspaceProjection(BaseModel):
     config: EvolutionInspectionConfig
     runs: list[EvolutionRun]
     tasks: list[EvolutionTask]
+
+
+class ProjectionRefreshResult(BaseModel):
+    snapshot_id: str
+    generated_at: str = Field(default_factory=now_iso)
+    refreshed_projection_names: list[str]

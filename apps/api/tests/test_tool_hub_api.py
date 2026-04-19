@@ -79,6 +79,7 @@ def _build_client(tmp_path: Path) -> TestClient:
         root=tmp_path / "tool-hub",
         archive_service=ArchiveKnowledgeService(archive_root),
         seed_demo_data=False,
+        enable_background_executor=False,
     )
     app.dependency_overrides[get_tool_hub_service] = lambda: service
     return TestClient(app)
@@ -368,3 +369,45 @@ def test_tool_hub_seeded_demo_data_is_not_rewritten_on_read(tmp_path: Path) -> N
 
     assert len(envelope.data.items) >= 1
     assert save_calls == []
+
+
+def test_tool_hub_internal_runtime_port_can_refresh_projections_and_run_cycle(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    refresh_response = client.post("/api/tool-hub/internal-runtime/projections/refresh")
+    assert refresh_response.status_code == 200
+    refresh_payload = refresh_response.json()
+    assert refresh_payload["snapshot_id"]
+    assert set(refresh_payload["refreshed_projection_names"]) == {
+        "overview",
+        "tool_list",
+        "evolution_workspace",
+    }
+
+    demand_response = client.post("/api/tool-hub/mock-generators/demand-sheets/navigation_planning")
+    assert demand_response.status_code == 201
+    demand_payload = demand_response.json()
+    target_item = next(item for item in demand_payload["items"] if item["recommendation_type"] == "manufacture_candidate")
+
+    review_response = client.post(
+        f"/api/tool-hub/demand-items/{target_item['item_id']}/review",
+        json={
+            "decision": "approve_manufacture",
+            "reviewed_by": "runtime-api-tester",
+            "review_comment": "run cycle through internal port",
+            "importance_score": 88,
+            "urgency_score": 72,
+            "rationality_verdict": "approved",
+        },
+    )
+    assert review_response.status_code == 200
+
+    cycle_response = client.post("/api/tool-hub/internal-runtime/cycles/run-once")
+    assert cycle_response.status_code == 200
+    cycle_payload = cycle_response.json()
+    assert cycle_payload["processed_job_count"] >= 1
+    assert "p4-manufacture" in cycle_payload["processed_queues"]
+
+    progress_response = client.get(f"/api/tool-hub/demand-items/{target_item['item_id']}/progress")
+    assert progress_response.status_code == 200
+    assert progress_response.json()["status"] in {"manufacturing_in_progress", "ready_for_fetch"}

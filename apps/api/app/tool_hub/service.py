@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Lock
 from typing import ClassVar
 from uuid import uuid4
 
@@ -76,6 +76,7 @@ from app.tool_hub.repository import ToolHubRepository
 from app.tool_hub.registry_service import RegistryService
 from app.tool_hub.query_service import ToolHubQueryService
 from app.tool_hub.runtime_repository import RuntimeRepository
+from app.tool_hub.runtime_worker import ToolHubRuntimeCoordinator, ToolHubRuntimeWorker
 from app.tool_hub.snapshot import (
     build_evolution_run,
     build_tool_hub_snapshot,
@@ -94,30 +95,8 @@ MIN_SIMULATION_DURATION_SECONDS = 5
 MAX_SIMULATION_DURATION_SECONDS = 2 * 60 * 60
 
 
-class _ToolHubRuntimeCoordinator:
-    def __init__(self, service_factory: Callable[[], "ToolHubService"], interval_seconds: float) -> None:
-        self.service_factory = service_factory
-        self.interval_seconds = interval_seconds
-        self._stop_event = Event()
-        self._thread = Thread(target=self._run, name="tool-hub-runtime-coordinator", daemon=True)
-
-    def start(self) -> None:
-        if self._thread.is_alive():
-            return
-        self._thread.start()
-
-    def _run(self) -> None:
-        service = self.service_factory()
-        while not self._stop_event.is_set():
-            try:
-                service.run_runtime_cycle()
-            except Exception:
-                pass
-            self._stop_event.wait(self.interval_seconds)
-
-
 class ToolHubService:
-    _executor_registry: ClassVar[dict[str, _ToolHubRuntimeCoordinator]] = {}
+    _executor_registry: ClassVar[dict[str, ToolHubRuntimeCoordinator]] = {}
     _executor_registry_lock: ClassVar[Lock] = Lock()
 
     def __init__(
@@ -128,6 +107,7 @@ class ToolHubService:
         enable_background_executor: bool = True,
         executor_tick_seconds: float = 0.1,
         simulation_profile_durations: dict[str, int | tuple[int, int]] | None = None,
+        runtime_worker_id: str = "p4-runtime-worker",
     ) -> None:
         self.root = Path(root)
         self.repository = ToolHubRepository(self.root)
@@ -136,6 +116,7 @@ class ToolHubService:
         self.seed_demo_data = seed_demo_data
         self.executor_tick_seconds = executor_tick_seconds
         self.simulation_profile_durations = simulation_profile_durations or DEFAULT_SIMULATION_PROFILE_WINDOWS
+        self.runtime_worker_id = runtime_worker_id
         self.query_service = ToolHubQueryService(self.repository)
         self.registry_service = RegistryService(self)
         self.demand_service = DemandService(self)
@@ -143,7 +124,7 @@ class ToolHubService:
         self.evolution_service = EvolutionService(self)
         from app.tool_hub.runtime_service import ToolHubRuntimeService
 
-        self.runtime_service = ToolHubRuntimeService(self)
+        self.runtime_service = ToolHubRuntimeService(self, worker_id=runtime_worker_id)
         self._ensure_demo_data()
         if enable_background_executor:
             self._ensure_background_executor()
@@ -153,12 +134,12 @@ class ToolHubService:
         with self._executor_registry_lock:
             if root_key in self._executor_registry:
                 return
-            executor = _ToolHubRuntimeCoordinator(
-                service_factory=lambda: ToolHubService(
+            executor = ToolHubRuntimeCoordinator(
+                worker_factory=lambda: ToolHubRuntimeWorker(
                     root=self.root,
                     archive_service=self.archive_service,
                     seed_demo_data=self.seed_demo_data,
-                    enable_background_executor=False,
+                    worker_id=f"{self.runtime_worker_id}-background",
                     executor_tick_seconds=self.executor_tick_seconds,
                     simulation_profile_durations=self.simulation_profile_durations,
                 ),
@@ -170,6 +151,10 @@ class ToolHubService:
     def get_snapshot(self) -> ToolHubStateSnapshot:
         self._ensure_demo_data()
         return self.query_service.get_state_snapshot()
+
+    def refresh_query_projections(self):
+        self._ensure_demo_data()
+        return self.query_service.refresh_core_projections()
 
     def get_overview(self) -> ToolHubOverviewReadEnvelope:
         projection = self.query_service.get_overview_projection()
@@ -228,7 +213,9 @@ class ToolHubService:
             candidates=sorted_candidates,
             context_summary=self._build_context_summary(request),
         )
-        return self.repository.save_match_run(run)
+        saved = self.repository.save_match_run(run)
+        self.refresh_query_projections()
+        return saved
 
     def list_evolution_runs(self) -> EvolutionRunReadEnvelope:
         return self.evolution_service.list_evolution_runs()
@@ -245,7 +232,9 @@ class ToolHubService:
         *,
         actor_id: str,
     ) -> EvolutionInspectionConfig:
-        return self.evolution_service.update_evolution_config(payload, actor_id=actor_id)
+        updated = self.evolution_service.update_evolution_config(payload, actor_id=actor_id)
+        self.refresh_query_projections()
+        return updated
 
     def list_evolution_tasks(self) -> EvolutionTaskReadEnvelope:
         return self.evolution_service.list_evolution_tasks()
@@ -259,33 +248,47 @@ class ToolHubService:
         actor_id: str = "p4-system",
         trigger_type: str = "manual",
     ) -> EvolutionRun:
-        return self.evolution_service.run_evolution(actor_id=actor_id, trigger_type=trigger_type)
+        run = self.evolution_service.run_evolution(actor_id=actor_id, trigger_type=trigger_type)
+        self.refresh_query_projections()
+        return run
 
     def decide_evolution_finding(
         self,
         finding_id: str,
         payload: EvolutionFindingDecisionRequest,
     ) -> EvolutionFinding | None:
-        return self.evolution_service.decide_evolution_finding(finding_id, payload)
+        finding = self.evolution_service.decide_evolution_finding(finding_id, payload)
+        self.refresh_query_projections()
+        return finding
 
     def rollback_evolution_task(
         self,
         task_id: str,
         payload: EvolutionTaskRollbackRequest,
     ) -> EvolutionTask | None:
-        return self.evolution_service.rollback_evolution_task(task_id, payload)
+        task = self.evolution_service.rollback_evolution_task(task_id, payload)
+        self.refresh_query_projections()
+        return task
 
     def mark_evolution_dirty(self) -> EvolutionRuntimeState:
-        return self.evolution_service.mark_dirty()
+        state = self.evolution_service.mark_dirty()
+        self.refresh_query_projections()
+        return state
 
     def create_mock_blue_force_demand_sheet(self) -> ToolDemandSheetDetail:
-        return self.demand_service.create_mock_blue_force_demand_sheet()
+        detail = self.demand_service.create_mock_blue_force_demand_sheet()
+        self.refresh_query_projections()
+        return detail
 
     def create_mock_demand_sheet(self, scenario_id: str) -> ToolDemandSheetDetail:
-        return self.demand_service.create_mock_demand_sheet(scenario_id)
+        detail = self.demand_service.create_mock_demand_sheet(scenario_id)
+        self.refresh_query_projections()
+        return detail
 
     def create_demand_sheet(self, payload: ToolDemandSheetCreateRequest) -> ToolDemandSheetDetail:
-        return self.demand_service.create_demand_sheet(payload)
+        detail = self.demand_service.create_demand_sheet(payload)
+        self.refresh_query_projections()
+        return detail
 
     def list_demand_sheets(self) -> ToolDemandSheetEnvelope:
         return self.demand_service.list_demand_sheets()
@@ -304,30 +307,40 @@ class ToolHubService:
         item_id: str,
         payload: ToolDemandReviewDecisionRequest,
     ) -> ToolDemandItem | None:
-        return self.demand_service.review_demand_item(item_id, payload)
+        item = self.demand_service.review_demand_item(item_id, payload)
+        self.refresh_query_projections()
+        return item
 
     def withdraw_demand_sheet(
         self,
         sheet_id: str,
         payload: ToolDemandSheetActionRequest,
     ) -> ToolDemandSheetDetail | None:
-        return self.demand_service.withdraw_demand_sheet(sheet_id, payload)
+        detail = self.demand_service.withdraw_demand_sheet(sheet_id, payload)
+        self.refresh_query_projections()
+        return detail
 
     def reject_demand_sheet(
         self,
         sheet_id: str,
         payload: ToolDemandSheetActionRequest,
     ) -> ToolDemandSheetDetail | None:
-        return self.demand_service.reject_demand_sheet(sheet_id, payload)
+        detail = self.demand_service.reject_demand_sheet(sheet_id, payload)
+        self.refresh_query_projections()
+        return detail
 
     def clear_demand_chain_for_testing(self) -> ToolDemandTestingClearResult:
-        return self.demand_service.clear_demand_chain_for_testing()
+        result = self.demand_service.clear_demand_chain_for_testing()
+        self.refresh_query_projections()
+        return result
 
     def clear_tool_registry_for_testing(self) -> ToolRegistryTestingClearResult:
-        return self.registry_service.clear_tool_registry_for_testing()
+        result = self.registry_service.clear_tool_registry_for_testing()
+        self.refresh_query_projections()
+        return result
 
-    def run_runtime_cycle(self) -> None:
-        self.runtime_service.run_once()
+    def run_runtime_cycle(self):
+        return self.runtime_service.run_once()
 
     def run_scheduled_evolution_cycle(self) -> None:
         self.runtime_service._run_due_evolution_scan()
@@ -896,7 +909,7 @@ class ToolHubService:
         timestamp = now_iso()
         ready_at = datetime.fromisoformat(plan.estimated_ready_at)
 
-        if plan.started_at is None:
+        if plan.started_at is None and current_time < ready_at:
             updated_plan = plan.model_copy(
                 update={
                     "status": "manufacturing_in_progress",
@@ -919,7 +932,7 @@ class ToolHubService:
             self._refresh_sheet_for_item(updated_item)
             return
 
-        started_at = datetime.fromisoformat(plan.started_at)
+        started_at = current_time if plan.started_at is None else datetime.fromisoformat(plan.started_at)
         if current_time < ready_at:
             elapsed_seconds = max((current_time - started_at).total_seconds(), 0)
             progress_ratio = min(elapsed_seconds / max(plan.target_duration_seconds, 1), 0.99)
@@ -952,6 +965,7 @@ class ToolHubService:
                 "manufactured_tool_id": manufactured_tool.tool_id,
                 "query_count": plan.query_count + 1,
                 "progress_percent": 100,
+                "started_at": plan.started_at or timestamp,
                 "completed_at": timestamp,
                 "last_progress_message": f"模拟研制完成，当前可获取工具：{manufactured_tool.name}",
                 "updated_at": timestamp,

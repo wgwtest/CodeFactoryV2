@@ -3,9 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.archive_knowledge.service import ArchiveKnowledgeService
-from app.tool_hub.models import EvolutionFindingDecisionRequest, ToolDefinitionWrite, ToolDemandReviewDecisionRequest
+from app.tool_hub.models import (
+    EvolutionFindingDecisionRequest,
+    ToolDefinitionWrite,
+    ToolDemandReviewDecisionRequest,
+)
 from app.tool_hub.runtime_repository import RuntimeRepository
 from app.tool_hub.runtime_service import ToolHubRuntimeService
+from app.tool_hub.runtime_worker import ToolHubRuntimeWorker
 from app.tool_hub.service import ToolHubService
 
 
@@ -167,3 +172,37 @@ def test_runtime_coordinator_processes_evolution_jobs(tmp_path: Path) -> None:
     updated_tool = service.get_tool(tool.tool_id)
     assert updated_tool is not None
     assert updated_tool.problem_statement
+
+
+def test_standalone_runtime_worker_can_process_jobs_from_shared_root(tmp_path: Path) -> None:
+    service = _build_service(tmp_path)
+    detail = service.create_mock_demand_sheet("navigation_planning")
+    target_item = next(item for item in detail.items if item.recommendation_type == "manufacture_candidate")
+
+    service.review_demand_item(
+        target_item.item_id,
+        ToolDemandReviewDecisionRequest(
+            decision="approve_manufacture",
+            reviewed_by="worker-tester",
+            review_comment="enqueue manufacture for standalone worker",
+            importance_score=90,
+            urgency_score=80,
+            rationality_verdict="approved",
+        ),
+    )
+
+    runtime_repository = RuntimeRepository(service.root)
+    assert any(job.aggregate_id == target_item.item_id for job in runtime_repository.list_jobs(status="queued"))
+
+    worker = ToolHubRuntimeWorker(
+        root=service.root,
+        archive_service=service.archive_service,
+        seed_demo_data=False,
+        worker_id="p4-worker-test",
+    )
+    result = worker.run_once()
+
+    assert result.processed_job_count >= 1
+    progress = service.get_demand_item_progress(target_item.item_id)
+    assert progress is not None
+    assert progress.status in {"manufacturing_in_progress", "ready_for_fetch"}
