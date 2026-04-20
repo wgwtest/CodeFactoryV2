@@ -20,13 +20,13 @@
 
 ## 3. 正式设计入口
 
-- `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
-- `DOC/CODEX_DOC/02_设计说明/05-P4-工具仓库设计.md`
-- `DOC/CODEX_DOC/02_设计说明/06-P4-核心业务循环设计.md`
-- `DOC/CODEX_DOC/02_设计说明/06-P4-真实工具落地验证设计.md`
-- `DOC/CODEX_DOC/02_设计说明/07-P4-Runtime协调器与队列设计.md`
-- `DOC/CODEX_DOC/02_设计说明/08-P4-Backend服务边界设计.md`
-- `DOC/CODEX_DOC/02_设计说明/09-P4-数据与投影模型设计.md`
+- `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-20-真实工具落地验证设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-30-Runtime协调器与队列设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md`
 
 ## 3.1 正式研发映射入口
 

@@ -22,7 +22,7 @@
 1. `DOC/CODEX_DOC/README.md`
 2. `DOC/CODEX_DOC/00-本地工程策略映射.md`
 3. `DOC/CODEX_DOC/01_需求分析/00-工程总体分析.md`
-4. `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
+4. `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
 5. `DOC/CODEX_DOC/03_研制计划/00-WBS-0-CodeFactoryV2-研发总纲-研制计划.md`
 
 ## First release capabilities
