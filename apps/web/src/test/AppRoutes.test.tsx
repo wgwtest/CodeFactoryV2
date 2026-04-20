@@ -65,6 +65,79 @@ function mockDocumentsApis() {
   });
 }
 
+function mockRequirementsApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirements/specs") {
+      return Promise.resolve({ data: [] });
+    }
+
+    if (url === "/requirements/formal-elements?item_type=entity&archive_id=20161116-nas") {
+      return Promise.resolve({
+        data: [
+          {
+            id: "entity-nas",
+            name: "国家空域系统",
+            item_type: "entity",
+            category: "system_or_service",
+            aliases: ["NAS"],
+            document_count: 11,
+            summary: "国家空域系统 是系统/服务类实体。",
+            source_archive_id: "20161116-nas",
+          },
+        ],
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
+function mockModelingApis() {
+  postMock.mockImplementation((url: string) => {
+    if (url === "/modeling/requirement-drafts") {
+      return Promise.resolve({
+        data: {
+          draft: {
+            draft_id: "draft-1",
+            archive_id: "20161116-nas",
+            status: "draft",
+            current_step: "goal",
+            application_name: "",
+            application_goal: {
+              problem_statement: "",
+              target_outcome: "",
+              success_criteria: [],
+            },
+            audiences: [],
+            roles: [],
+            business_flows: [],
+            business_objects: [],
+            key_events: [],
+            application_structure: {
+              workspaces: [],
+              pages: [],
+              permission_intents: [],
+            },
+            knowledge_references: [],
+            manual_additions: [],
+            created_at: "2026-04-13T00:00:00Z",
+            updated_at: "2026-04-13T00:00:00Z",
+          },
+          recommendations: {
+            goal: [],
+            audience: [],
+            flow: [],
+            object_event: [],
+            structure: [],
+          },
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
 function mockP3WorkspaceApis() {
   getMock.mockImplementation((url: string) => {
     if (url === "/requirements/specs") {
@@ -443,6 +516,12 @@ test("redirects / to the main default page", async () => {
     case "/documents":
       mockDocumentsApis();
       break;
+    case "/requirements":
+      mockRequirementsApis();
+      break;
+    case "/modeling":
+      mockModelingApis();
+      break;
     case "/portal":
     case "/build":
       mockSoftwareBuildApis();
@@ -468,6 +547,16 @@ test("redirects / to the main default page", async () => {
   switch (defaultRoute) {
     case "/documents":
       expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
+      expect(screen.getByText("知识仓库")).toBeInTheDocument();
+      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
+      break;
+    case "/requirements":
+      expect(await screen.findByRole("heading", { name: "应用需求建模" })).toBeInTheDocument();
+      expect(screen.getByText("知识仓库")).toBeInTheDocument();
+      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
+      break;
+    case "/modeling":
+      expect(await screen.findByText("应用需求建模器")).toBeInTheDocument();
       expect(screen.getByText("知识仓库")).toBeInTheDocument();
       expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
       break;
