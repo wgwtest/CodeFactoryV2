@@ -1,4 +1,6 @@
 import "@testing-library/jest-dom/vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
@@ -353,6 +355,74 @@ function mockP4WorkspaceApis() {
   });
 }
 
+function mockSoftwareBuildApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-build/overview") {
+      return Promise.resolve({
+        data: {
+          data: {
+            metrics: {
+              order_count: 0,
+              draft_count: 0,
+              exported_with_gaps_count: 0,
+              completed_count: 0,
+              failed_count: 0,
+            },
+            recent_orders: [],
+          },
+        },
+      });
+    }
+
+    if (url === "/software-build/orders") {
+      return Promise.resolve({
+        data: {
+          data: {
+            items: [],
+          },
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
+function parseEnvFile(filePath: string) {
+  if (!existsSync(filePath)) {
+    return {} as Record<string, string>;
+  }
+
+  return readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .reduce<Record<string, string>>((result, line) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith("#")) {
+        return result;
+      }
+
+      const separatorIndex = trimmedLine.indexOf("=");
+      if (separatorIndex < 0) {
+        return result;
+      }
+
+      const key = trimmedLine.slice(0, separatorIndex).trim();
+      const value = trimmedLine.slice(separatorIndex + 1).trim();
+      result[key] = value;
+      return result;
+    }, {});
+}
+
+function getRepositoryDefaultRoute() {
+  const repoRoot = resolve(process.cwd(), "../..");
+  const repoEnv = {
+    ...parseEnvFile(resolve(repoRoot, ".env")),
+    ...parseEnvFile(resolve(repoRoot, ".env.local")),
+    ...process.env,
+  };
+  return repoEnv.VITE_DEFAULT_ROUTE ?? "/documents";
+}
+
 test("renders documents page on /documents route", async () => {
   mockDocumentsApis();
 
@@ -367,7 +437,27 @@ test("renders documents page on /documents route", async () => {
 });
 
 test("redirects / to the main default page", async () => {
-  mockDocumentsApis();
+  const defaultRoute = getRepositoryDefaultRoute();
+
+  switch (defaultRoute) {
+    case "/documents":
+      mockDocumentsApis();
+      break;
+    case "/portal":
+    case "/build":
+      mockSoftwareBuildApis();
+      break;
+    case "/xx-p3":
+      mockP3WorkspaceApis();
+      break;
+    case "/xx-p4":
+      mockP4WorkspaceApis();
+      break;
+    case "/xx-p2-sim":
+      break;
+    default:
+      throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
+  }
 
   render(
     <MemoryRouter initialEntries={["/"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -375,9 +465,37 @@ test("redirects / to the main default page", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
-  expect(screen.getByText("知识仓库")).toBeInTheDocument();
-  expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
+  switch (defaultRoute) {
+    case "/documents":
+      expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
+      expect(screen.getByText("知识仓库")).toBeInTheDocument();
+      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
+      break;
+    case "/portal":
+      expect(await screen.findByText("图例")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/build":
+      expect(await screen.findByText("软件构建系统")).toBeInTheDocument();
+      expect(screen.getByText("P5 交付主单")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/xx-p3":
+      expect(await screen.findByText("软件设计编制与模块工单下发系统")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/xx-p4":
+      expect(await screen.findByText("XX-P4")).toBeInTheDocument();
+      expect(await screen.findByText("工具中台 / Tool Hub")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/xx-p2-sim":
+      expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    default:
+      throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
+  }
 });
 
 test("renders XX-P3 route outside the main shell", async () => {
