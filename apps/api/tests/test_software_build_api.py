@@ -100,6 +100,70 @@ def _build_client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def _create_design_input_sim(client: TestClient) -> dict[str, object]:
+    response = client.post(
+        "/api/software-build/design-inputs/sim",
+        json={
+            "application_name": "基于地理信息系统的通视分析软件",
+            "requirement_spec_id": "spec-gis-los-analysis-001",
+            "baseline_id": "baseline-gis-los-analysis-001",
+            "notes": "基于地理信息系统的通视分析软件冻结设计样例",
+            "module_specs": [
+                {
+                    "module_id": "module-ui",
+                    "name": "构建工作台",
+                    "objective": "渲染 P5 工作台前端。",
+                    "inputs": ["delivery_order"],
+                    "outputs": ["workspace_ui"],
+                    "constraints": ["必须保留独立工作台壳层"],
+                    "recommended_tools": ["ui_shell"],
+                },
+                {
+                    "module_id": "module-feedback",
+                    "name": "缺口评审留痕",
+                    "objective": "沉淀缺口与待确认反馈任务。",
+                    "inputs": ["attempt_manifest"],
+                    "outputs": ["feedback_task"],
+                    "constraints": ["评审状态必须可回看"],
+                    "recommended_tools": ["feedback_console"],
+                },
+                {
+                    "module_id": "module-docs",
+                    "name": "交付文档生成",
+                    "objective": "生成 delivery report 和 gap list。",
+                    "inputs": ["attempt_manifest"],
+                    "outputs": ["delivery_docs"],
+                    "constraints": ["输出目录必须包含 docs"],
+                    "recommended_tools": ["doc_builder"],
+                },
+            ],
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _create_supply_input_sim(client: TestClient) -> dict[str, object]:
+    response = client.post(
+        "/api/software-build/supply-inputs/sim",
+        json={
+            "snapshot_name": "通视分析软件供给样例快照",
+            "notes": "供通视分析软件样例命中使用",
+            "tools": [
+                {
+                    "tool_id": "tool-ui-shell",
+                    "tool_name": "UI Shell",
+                    "tool_slug": "ui-shell",
+                    "verification_status": "verified",
+                    "keywords": ["ui_shell", "workspace", "frontend"],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_p5_delivery_order_can_be_created_from_frozen_p3_order(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
     p3_order_id = _seed_frozen_p3_order(tmp_path)
@@ -115,10 +179,52 @@ def test_p5_delivery_order_can_be_created_from_frozen_p3_order(tmp_path: Path) -
 
     assert created.status_code == 201
     assert created.json()["status"] == "draft"
+    assert created.json()["active_input_binding"]["is_confirmed"] is False
 
     overview = client.get("/api/software-build/overview")
     assert overview.status_code == 200
     assert overview.json()["data"]["metrics"]["order_count"] == 1
+
+
+def test_p5_attempt_requires_confirmed_input_binding(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    design_input = _create_design_input_sim(client)
+    created = client.post(
+        "/api/software-build/orders",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "requested_by": "P5",
+            "notes": "最小闭环",
+        },
+    )
+
+    assert created.status_code == 201
+    delivery_order_id = created.json()["delivery_order_id"]
+
+    attempt = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/attempts",
+        json={
+            "export_root": str(tmp_path / "exports"),
+            "build_profile": "baseline",
+            "attempt_note": "attempt-1",
+        },
+    )
+
+    assert attempt.status_code == 400
+    assert attempt.json()["detail"] == "P5 input binding is not confirmed"
+
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "supply_mode": "empty",
+            "confirmed_by": "P5",
+        },
+    )
+
+    assert binding.status_code == 200
+    assert binding.json()["is_confirmed"] is True
+    assert binding.json()["supply_mode"] == "empty"
 
 
 def test_p5_attempt_exports_directory_and_gap_files(tmp_path: Path) -> None:
@@ -133,6 +239,15 @@ def test_p5_attempt_exports_directory_and_gap_files(tmp_path: Path) -> None:
         },
     )
     delivery_order_id = created.json()["delivery_order_id"]
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": created.json()["active_input_binding"]["design_input_id"],
+            "supply_mode": "empty",
+            "confirmed_by": "P5",
+        },
+    )
+    assert binding.status_code == 200
 
     attempt = client.post(
         f"/api/software-build/orders/{delivery_order_id}/attempts",
@@ -159,48 +274,32 @@ def test_p5_attempt_exports_directory_and_gap_files(tmp_path: Path) -> None:
     assert payload["output_preview"]["directories"] == ["frontend", "backend", "deploy", "docs"]
     assert payload["output_preview"]["key_files"][0]["path"] == "build-manifest.json"
     assert payload["input_snapshot"]["design_input"]["module_count"] == 1
+    assert payload["input_snapshot"]["supply_input"]["source_kind"] == "empty_supply"
 
 
 def test_p5_attempt_marks_supply_hits_and_pending_feedback(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
-    p3_order_id = _seed_frozen_p3_order(
-        tmp_path,
-        module_specs=[
-            {
-                "module_id": "module-planning",
-                "name": "规划任务管理",
-                "objective": "围绕规划任务实现核心流程。",
-                "inputs": ["planning_request"],
-                "outputs": ["planning_task"],
-                "constraints": ["关键状态变更需留痕"],
-                "recommended_tools": ["workflow_engine"],
-            },
-            {
-                "module_id": "module-reporting",
-                "name": "规划结果回流",
-                "objective": "沉淀交付缺口和回流建议。",
-                "inputs": ["planning_task"],
-                "outputs": ["feedback_task"],
-                "constraints": ["问题回流需可追踪"],
-                "recommended_tools": ["gap_reporter"],
-            },
-        ],
-    )
-    _seed_tool_hub_tool(
-        tmp_path,
-        tool_id="tool-workflow-engine",
-        slug="workflow-engine",
-        keywords=["workflow_engine", "planning"],
-    )
+    design_input = _create_design_input_sim(client)
+    supply_input = _create_supply_input_sim(client)
     created = client.post(
         "/api/software-build/orders",
         json={
-            "p3_order_id": p3_order_id,
+            "design_input_id": design_input["design_input_id"],
             "requested_by": "P5",
             "notes": "首轮组装",
         },
     )
     delivery_order_id = created.json()["delivery_order_id"]
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "supply_input_id": supply_input["supply_input_id"],
+            "supply_mode": "snapshot",
+            "confirmed_by": "P5",
+        },
+    )
+    assert binding.status_code == 200
 
     attempt = client.post(
         f"/api/software-build/orders/{delivery_order_id}/attempts",
@@ -215,7 +314,69 @@ def test_p5_attempt_marks_supply_hits_and_pending_feedback(tmp_path: Path) -> No
     payload = attempt.json()
     assert payload["assembly_plan"]["modules"][0]["binding_status"] == "bound"
     assert payload["assembly_plan"]["modules"][1]["binding_status"] == "placeholder"
+    assert payload["assembly_plan"]["modules"][2]["binding_status"] == "placeholder"
     assert payload["feedback_tasks"][0]["status"] == "pending_confirmation"
+    assert payload["input_snapshot"]["supply_input"]["source_kind"] == "xx_p4_supply_sim"
+
+
+def test_p5_manual_module_binding_and_feedback_review_are_persisted(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    design_input = _create_design_input_sim(client)
+    supply_input = _create_supply_input_sim(client)
+    created = client.post(
+        "/api/software-build/orders",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "requested_by": "P5",
+            "notes": "最小闭环",
+        },
+    )
+    delivery_order_id = created.json()["delivery_order_id"]
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "supply_input_id": supply_input["supply_input_id"],
+            "supply_mode": "snapshot",
+            "confirmed_by": "P5",
+        },
+    )
+    assert binding.status_code == 200
+
+    rebound = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/module-bindings/module-feedback",
+        json={
+            "tool_id": "tool-ui-shell",
+            "updated_by": "P5",
+        },
+    )
+
+    assert rebound.status_code == 200
+    assert rebound.json()["module_bindings"][0]["module_id"] == "module-feedback"
+
+    attempt = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/attempts",
+        json={
+            "export_root": str(tmp_path / "exports"),
+            "build_profile": "baseline",
+            "attempt_note": "attempt-1",
+        },
+    )
+
+    assert attempt.status_code == 201
+    payload = attempt.json()
+    assert payload["assembly_plan"]["modules"][1]["binding_status"] == "bound"
+    review = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/attempts/{payload['attempt_id']}/feedback-tasks/{payload['feedback_tasks'][0]['task_id']}/review",
+        json={
+            "decision": "confirmed",
+            "reviewed_by": "评审人",
+            "review_note": "进入回流确认",
+        },
+    )
+    assert review.status_code == 200
+    assert review.json()["status"] == "confirmed"
+    assert review.json()["reviewed_by"] == "评审人"
 
 
 def test_p5_bootstrap_demo_creates_operable_minimal_loop(tmp_path: Path) -> None:
@@ -243,8 +404,9 @@ def test_p5_bootstrap_demo_creates_operable_minimal_loop(tmp_path: Path) -> None
     detail = client.get(f"/api/software-build/orders/{payload['delivery_order_id']}")
     assert detail.status_code == 200
     detail_payload = detail.json()
-    assert detail_payload["attempts"][0]["input_snapshot"]["design_input"]["source_kind"] == "demo_p3_baseline"
-    assert detail_payload["attempts"][0]["input_snapshot"]["supply_input"]["source_kind"] == "demo_p4_supply"
+    assert detail_payload["active_input_binding"]["is_confirmed"] is True
+    assert detail_payload["attempts"][0]["input_snapshot"]["design_input"]["source_kind"] == "xx_p3_doc_sim"
+    assert detail_payload["attempts"][0]["input_snapshot"]["supply_input"]["source_kind"] == "xx_p4_supply_sim"
     assert detail_payload["attempts"][0]["runtime_snapshot"]["progress_percent"] == 100
     assert detail_payload["attempts"][0]["output_preview"]["key_files"][-1]["path"] == "docs/gap-list.md"
 
@@ -261,6 +423,15 @@ def test_p5_order_detail_returns_attempt_history(tmp_path: Path) -> None:
         },
     )
     delivery_order_id = created.json()["delivery_order_id"]
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": created.json()["active_input_binding"]["design_input_id"],
+            "supply_mode": "empty",
+            "confirmed_by": "P5",
+        },
+    )
+    assert binding.status_code == 200
     client.post(
         f"/api/software-build/orders/{delivery_order_id}/attempts",
         json={
@@ -276,6 +447,57 @@ def test_p5_order_detail_returns_attempt_history(tmp_path: Path) -> None:
     payload = detail.json()
     assert payload["delivery_order_id"] == delivery_order_id
     assert payload["attempts"][0]["sequence"] == 1
+    assert payload["active_input_binding"]["is_confirmed"] is True
     assert payload["attempts"][0]["gaps"][0]["kind"] == "supply_gap"
     assert payload["attempts"][0]["runtime_snapshot"]["recent_logs"][-1]["level"] == "warning"
     assert payload["attempts"][0]["output_preview"]["root_directory"].endswith("attempt-001")
+
+
+def test_p5_testing_endpoint_can_clear_delivery_runtime_without_touching_input_sources(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    design_input = _create_design_input_sim(client)
+    supply_input = _create_supply_input_sim(client)
+    created = client.post(
+        "/api/software-build/orders",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "requested_by": "P5",
+            "notes": "测试清空交付运行态",
+        },
+    )
+    delivery_order_id = created.json()["delivery_order_id"]
+    binding = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/binding/confirm",
+        json={
+            "design_input_id": design_input["design_input_id"],
+            "supply_input_id": supply_input["supply_input_id"],
+            "supply_mode": "snapshot",
+            "confirmed_by": "P5",
+        },
+    )
+    assert binding.status_code == 200
+    attempt = client.post(
+        f"/api/software-build/orders/{delivery_order_id}/attempts",
+        json={
+            "export_root": str(tmp_path / "exports"),
+            "build_profile": "baseline",
+            "attempt_note": "attempt-1",
+        },
+    )
+    assert attempt.status_code == 201
+    export_directory = Path(attempt.json()["export_directory"])
+    assert export_directory.exists()
+
+    clear_response = client.post("/api/software-build/testing/clear-deliveries")
+
+    assert clear_response.status_code == 200
+    assert clear_response.json() == {
+        "cleared_order_count": 1,
+        "cleared_attempt_count": 1,
+        "cleared_export_directory_count": 1,
+    }
+    assert client.get("/api/software-build/orders").json()["data"]["items"] == []
+    assert client.get("/api/software-build/overview").json()["data"]["metrics"]["order_count"] == 0
+    assert client.get("/api/software-build/design-inputs").json()["data"]["items"][0]["design_input_id"] == design_input["design_input_id"]
+    assert client.get("/api/software-build/supply-inputs").json()["data"]["items"][0]["supply_input_id"] == supply_input["supply_input_id"]
+    assert not export_directory.exists()

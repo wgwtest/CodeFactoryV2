@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.software_design.models import DesignModule
+
 
 def now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
@@ -19,6 +21,7 @@ P5DeliveryOrderStatus = Literal[
     "failed",
 ]
 P5BindingStatus = Literal["bound", "placeholder"]
+P5BindingSource = Literal["heuristic", "manual", "empty"]
 P5ValidationStatus = Literal["passed", "warning", "failed", "skipped"]
 P5GapKind = Literal["design_gap", "supply_gap", "assembly_or_build_gap"]
 P5FeedbackTaskStatus = Literal["pending_confirmation", "confirmed", "dismissed"]
@@ -26,12 +29,119 @@ P5RuntimeExecutorStatus = Literal["idle", "running", "completed", "blocked", "fa
 P5RuntimeStageStatus = Literal["pending", "running", "completed", "warning", "failed"]
 P5RuntimeLogLevel = Literal["info", "warning", "error"]
 P5OutputArtifactStatus = Literal["generated", "generated_with_gaps", "placeholder"]
+P5DesignInputSourceKind = Literal["p3_baseline", "xx_p3_doc_sim"]
+P5SupplyInputSourceKind = Literal["p4_supply", "xx_p4_supply_sim"]
+P5SupplyMode = Literal["snapshot", "empty"]
+
+
+class P5DesignInputSimCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    application_name: str
+    requirement_spec_id: str
+    baseline_id: str
+    notes: str = ""
+    module_specs: list[DesignModule] = Field(default_factory=list)
+
+
+class P5SupplyInputTool(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tool_id: str
+    tool_name: str
+    tool_slug: str
+    verification_status: str = "verified"
+    keywords: list[str] = Field(default_factory=list)
+
+
+class P5SupplyInputSimCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_name: str
+    notes: str = ""
+    tools: list[P5SupplyInputTool] = Field(default_factory=list)
+
+
+class P5DesignInputSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    design_input_id: str
+    source_kind: P5DesignInputSourceKind
+    source_ref_id: str
+    p3_order_id: str | None = None
+    application_name: str
+    requirement_spec_id: str
+    baseline_id: str
+    notes: str = ""
+    module_count: int = 0
+    module_names: list[str] = Field(default_factory=list)
+    modules: list[DesignModule] = Field(default_factory=list)
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class P5SupplyInputSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    supply_input_id: str
+    source_kind: P5SupplyInputSourceKind
+    source_ref_id: str
+    snapshot_name: str
+    notes: str = ""
+    tool_count: int = 0
+    tool_names: list[str] = Field(default_factory=list)
+    tools: list[P5SupplyInputTool] = Field(default_factory=list)
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class P5ModuleBindingDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module_id: str
+    tool_id: str
+    tool_name: str | None = None
+    source: Literal["manual"] = "manual"
+    updated_by: str
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class P5InputBindingConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    design_input_id: str
+    supply_input_id: str | None = None
+    supply_mode: P5SupplyMode = "empty"
+    confirmed_by: str
+
+
+class P5ModuleBindingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tool_id: str
+    updated_by: str
+
+
+class P5InputBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    binding_id: str
+    delivery_order_id: str
+    design_input_id: str
+    supply_input_id: str | None = None
+    supply_mode: P5SupplyMode = "empty"
+    module_bindings: list[P5ModuleBindingDecision] = Field(default_factory=list)
+    is_confirmed: bool = False
+    confirmed_by: str | None = None
+    confirmed_at: str | None = None
+    updated_at: str = Field(default_factory=now_iso)
 
 
 class P5DeliveryOrderCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    p3_order_id: str
+    p3_order_id: str | None = None
+    design_input_id: str | None = None
     requested_by: str
     notes: str = ""
 
@@ -48,6 +158,7 @@ class P5DeliveryOrder(BaseModel):
     status: P5DeliveryOrderStatus = "draft"
     current_attempt_count: int = 0
     formal_result_ready: bool = False
+    active_input_binding: P5InputBinding
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -68,6 +179,7 @@ class P5AssemblyModule(BaseModel):
     objective: str
     target_directories: list[str] = Field(default_factory=list)
     binding_status: P5BindingStatus = "placeholder"
+    binding_source: P5BindingSource = "empty"
     bound_tool_id: str | None = None
     bound_tool_name: str | None = None
     gap_reason: str | None = None
@@ -90,6 +202,14 @@ class P5GapRecord(BaseModel):
     detail: str
 
 
+class P5FeedbackTaskReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["confirmed", "dismissed"]
+    reviewed_by: str
+    review_note: str = ""
+
+
 class P5FeedbackTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -99,6 +219,9 @@ class P5FeedbackTask(BaseModel):
     title: str
     detail: str
     status: P5FeedbackTaskStatus = "pending_confirmation"
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_note: str | None = None
 
 
 class P5ValidationReport(BaseModel):
@@ -114,6 +237,7 @@ class P5DesignInputSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_kind: str
+    design_input_id: str
     order_id: str
     baseline_id: str
     module_count: int = 0
@@ -124,6 +248,7 @@ class P5SupplyInputSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_kind: str
+    supply_input_id: str | None = None
     tool_count: int = 0
     tool_names: list[str] = Field(default_factory=list)
     matched_tool_count: int = 0
@@ -257,3 +382,11 @@ class P5WorkspaceBootstrapResult(BaseModel):
     delivery_order_id: str
     attempt_id: str
     created_demo_inputs: bool = False
+
+
+class P5DeliveryRuntimeClearResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cleared_order_count: int = 0
+    cleared_attempt_count: int = 0
+    cleared_export_directory_count: int = 0

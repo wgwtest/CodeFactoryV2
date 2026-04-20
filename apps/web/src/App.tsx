@@ -13,8 +13,10 @@ import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
 import { XXP3Page } from "./pages/XXP3Page";
+import { XXP3DocSimPage } from "./pages/XXP3DocSimPage";
 import { XXP3SimPage } from "./pages/XXP3SimPage";
 import { XXP4Page } from "./pages/XXP4Page";
+import { XXP4SupplySimPage } from "./pages/XXP4SupplySimPage";
 import { XXP5SimPage } from "./pages/XXP5SimPage";
 
 const items = [
@@ -26,11 +28,14 @@ const items = [
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
 
+const mainShellRoutes = new Set(items.map((item) => item.key));
+
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
   const selectedMenuKey = location.pathname;
-  const defaultRoute = import.meta.env.VITE_DEFAULT_ROUTE ?? "/documents";
+  const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
+  const defaultRoute = envDefaultRoute && mainShellRoutes.has(envDefaultRoute) ? envDefaultRoute : "/documents";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -90,6 +95,20 @@ export default function App() {
     return (
       <Routes>
         <Route path="/xx-p2-sim" element={<XXP2SimPage />} />
+      </Routes>
+    );
+  }
+
+  if (
+    location.pathname.startsWith("/xx-p3-doc-sim") ||
+    location.pathname.startsWith("/xx-p4-supply-sim") ||
+    location.pathname.startsWith("/xx-p4-sim")
+  ) {
+    return (
+      <Routes>
+        <Route path="/xx-p3-doc-sim" element={<XXP3DocSimPage />} />
+        <Route path="/xx-p4-supply-sim" element={<XXP4SupplySimPage />} />
+        <Route path="/xx-p4-sim" element={<XXP4SupplySimPage />} />
       </Routes>
     );
   }

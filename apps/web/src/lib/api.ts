@@ -1292,6 +1292,78 @@ export type P5DeliveryOrderSummary = {
   updated_at: string;
 };
 
+export type P5DeliveryOrder = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  requested_by: string;
+  notes: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  formal_result_ready: boolean;
+  active_input_binding: P5InputBinding;
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5SupplyInputTool = {
+  tool_id: string;
+  tool_name: string;
+  tool_slug: string;
+  verification_status: string;
+  keywords: string[];
+};
+
+export type P5DesignInputSource = {
+  design_input_id: string;
+  source_kind: "p3_baseline" | "xx_p3_doc_sim";
+  source_ref_id: string;
+  p3_order_id?: string | null;
+  application_name: string;
+  requirement_spec_id: string;
+  baseline_id: string;
+  notes: string;
+  module_count: number;
+  module_names: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5SupplyInputSource = {
+  supply_input_id: string;
+  source_kind: "p4_supply" | "xx_p4_supply_sim";
+  source_ref_id: string;
+  snapshot_name: string;
+  notes: string;
+  tool_count: number;
+  tool_names: string[];
+  tools: P5SupplyInputTool[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5ModuleBindingDecision = {
+  module_id: string;
+  tool_id: string;
+  tool_name?: string | null;
+  source: "manual";
+  updated_by: string;
+  updated_at: string;
+};
+
+export type P5InputBinding = {
+  binding_id: string;
+  delivery_order_id: string;
+  design_input_id: string;
+  supply_input_id?: string | null;
+  supply_mode: "snapshot" | "empty";
+  module_bindings: P5ModuleBindingDecision[];
+  is_confirmed: boolean;
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
+  updated_at: string;
+};
 export type P5ExportConfig = {
   export_root: string;
   build_profile: string;
@@ -1304,6 +1376,7 @@ export type P5AssemblyModule = {
   objective: string;
   target_directories: string[];
   binding_status: "bound" | "placeholder";
+  binding_source: "heuristic" | "manual" | "empty";
   bound_tool_id?: string | null;
   bound_tool_name?: string | null;
   gap_reason?: string | null;
@@ -1329,6 +1402,9 @@ export type P5FeedbackTask = {
   title: string;
   detail: string;
   status: "pending_confirmation" | "confirmed" | "dismissed";
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
 };
 
 export type P5ValidationReport = {
@@ -1341,6 +1417,7 @@ export type P5ValidationReport = {
 export type P5InputSnapshot = {
   design_input: {
     source_kind: string;
+    design_input_id: string;
     order_id: string;
     baseline_id: string;
     module_count: number;
@@ -1348,6 +1425,7 @@ export type P5InputSnapshot = {
   };
   supply_input: {
     source_kind: string;
+    supply_input_id?: string | null;
     tool_count: number;
     tool_names: string[];
     matched_tool_count: number;
@@ -1411,6 +1489,7 @@ export type P5DeliveryOrderDetail = {
   status: P5DeliveryOrderStatus;
   current_attempt_count: number;
   formal_result_ready: boolean;
+  active_input_binding: P5InputBinding;
   created_at: string;
   updated_at: string;
   attempts: P5AssemblyAttempt[];
@@ -1420,4 +1499,10 @@ export type P5WorkspaceBootstrapResult = {
   delivery_order_id: string;
   attempt_id: string;
   created_demo_inputs: boolean;
+};
+
+export type P5DeliveryRuntimeClearResult = {
+  cleared_order_count: number;
+  cleared_attempt_count: number;
+  cleared_export_directory_count: number;
 };
