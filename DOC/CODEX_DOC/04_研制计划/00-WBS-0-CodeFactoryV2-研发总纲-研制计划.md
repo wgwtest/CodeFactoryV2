@@ -48,11 +48,11 @@
 
 ### 4.1 总体设计
 
-- `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
+- `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
 
 ### 4.2 文档治理规则
 
-- `DOC/CODEX_DOC/02_设计说明/01-文档治理与superpowers协同设计.md`
+- `DOC/CODEX_DOC/02_设计说明/00_总纲/01-文档治理与superpowers协同设计.md`
 
 ### 4.3 superpowers 映射
 
