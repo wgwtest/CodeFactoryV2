@@ -1,6 +1,6 @@
 # P5 Software Construction System Implementation Plan
 
-> 正式归档说明：`P5` 当前正式详细设计入口为 `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`。本文件作为工作层实施计划保留；若其中的实施约束、范围或结构被确认并长期复用，必须同步回 `DOC/CODEX_DOC/03_研制计划/` 与相关正式设计文档。
+> 正式归档说明：`P5` 当前正式详细设计入口为 `DOC/CODEX_DOC/02_设计说明/07-P5-软件构建系统设计.md`。本文件作为工作层实施计划保留；若其中的实施约束、范围或结构被确认并长期复用，必须同步回 `DOC/CODEX_DOC/04_研制计划/` 与相关正式设计文档。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -268,9 +268,9 @@ git commit -m "feat: add p5 build workspace shell"
 ### Task 5: Verify P5 vertical slice and update docs
 
 **Files:**
-- Modify: `DOC/CODEX_DOC/05_测试文档/01_自测报告/...` (new record if needed)
-- Modify: `DOC/CODEX_DOC/05_测试文档/02_验收清单/...` (new record if needed)
-- Modify: `DOC/CODEX_DOC/06_过程文档/01_会话交接/...` (new record if needed)
+- Modify: `DOC/CODEX_DOC/06_测试文档/01_自测报告/...` (new record if needed)
+- Modify: `DOC/CODEX_DOC/06_测试文档/05_验收清单/...` (new record if needed)
+- Modify: `DOC/CODEX_DOC/07_过程文档/01_会话交接/...` (new record if needed)
 
 - [ ] **Step 1: Run focused backend and frontend verification**
 

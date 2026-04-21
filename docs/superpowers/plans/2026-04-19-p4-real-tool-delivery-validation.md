@@ -80,7 +80,7 @@
 
 **Docs**
 
-- Modify: `DOC/CODEX_DOC/04_研发文档/01-P4-设计实现映射表.md`
+- Modify: `DOC/CODEX_DOC/03_规范与流程/03_设计实现映射/01-P4-设计实现映射表.md`
 - Modify: `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md`
 
 ### Task 1: 锁定“最小工具”契约与 fetch manifest 形态
@@ -729,7 +729,7 @@ git commit -m "feat: wire real tool delivery through P3 P4 P5 workspaces"
 ### Task 5: 回归验证、文档映射和镜像同步
 
 **Files:**
-- Modify: `DOC/CODEX_DOC/04_研发文档/01-P4-设计实现映射表.md`
+- Modify: `DOC/CODEX_DOC/03_规范与流程/03_设计实现映射/01-P4-设计实现映射表.md`
 - Modify: `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md`
 - Verify: `apps/api/tests/test_tool_hub_api.py`
 - Verify: `apps/api/tests/test_tool_hub_delivery_repository.py`
@@ -785,7 +785,7 @@ Expected: PASS
 - [ ] **Step 6: Commit the regression and doc sync**
 
 ```bash
-git add DOC/CODEX_DOC/04_研发文档/01-P4-设计实现映射表.md docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md
+git add DOC/CODEX_DOC/03_规范与流程/03_设计实现映射/01-P4-设计实现映射表.md docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md
 git commit -m "docs: sync P4.5 delivery mapping and mirror state"
 ```
 
