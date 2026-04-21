@@ -175,7 +175,7 @@
 本轮建议把以上结论回写到：
 
 - `DOC/CODEX_DOC/02_设计说明/10-P6-门户与平台入口设计.md`
-- `DOC/CODEX_DOC/03_研制计划/06-WBS-P6-门户与平台入口-研制计划.md`
+- `DOC/CODEX_DOC/04_研制计划/06-WBS-P6-门户与平台入口-研制计划.md`
 - `DOC/CODEX_DOC/02_设计说明/00-软件工厂平台总体设计.md`
 - `DOC/CODEX_DOC/README.md`
 

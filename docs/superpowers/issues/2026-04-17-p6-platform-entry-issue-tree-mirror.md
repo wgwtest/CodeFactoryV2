@@ -6,6 +6,10 @@
 >
 > 若远端暂时不可访问，应优先回退到仓库主工作树中的 `DOC/CODEX_DOC/` 正式文档根，不使用当前隔离目录中的 mirror 文件反推当前远端状态。
 
+> 2026-04-21 补充说明：本快照已被 `docs/superpowers/issues/2026-04-21-p6-remote-wbs-project-sync.md` 覆盖。
+>
+> 当前若需查询有效的 `P6` 远端树与 `Project 7` 投影，请优先查 GitHub；本文件仅保留为 2026-04-17 旧口径历史记录。
+
 > 当前文档用于同步远端 GitHub Issue 树的本地镜像，`P6` 及 `P6.1.1 ~ P6.1.4` 已完成远端回写。
 
 ## WBS Tree
