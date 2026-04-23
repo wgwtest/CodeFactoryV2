@@ -17,6 +17,12 @@ from app.archive_knowledge.runtime_contract import (
     RuntimeSummarySection,
     STAGE_DEFINITION_MAP,
 )
+from app.archive_knowledge.runtime_trace_utils import (
+    build_runtime_events,
+    build_runtime_sections,
+    merge_runtime_events,
+    merge_runtime_sections,
+)
 from app.parsing.models import ParsedDocument, ParsedSegment
 
 
@@ -27,6 +33,8 @@ def build_unified_document_object_snapshot(
     document_title: str,
     file_type: str | None,
     parsed_document: ParsedDocument,
+    runtime_trace: dict | None = None,
+    status_override: RuntimeStatus | None = None,
 ) -> RuntimeStageSnapshot:
     del archive_id
     definition = STAGE_DEFINITION_MAP["unified_document_object"]
@@ -34,7 +42,9 @@ def build_unified_document_object_snapshot(
     segment_count = len(segments)
     section_groups = _group_segments_by_section(segments)
     section_labels = list(section_groups.keys())
-    stage_status = RuntimeStatus.COMPLETED if segment_count else RuntimeStatus.WARNING
+    stage_status = status_override or (RuntimeStatus.COMPLETED if segment_count else RuntimeStatus.WARNING)
+    trace_events = build_runtime_events(runtime_trace)
+    trace_sections = build_runtime_sections(runtime_trace)
 
     unified_document_id = f"{document_id}:unified-document"
     normalization_decision_id = f"{document_id}:normalization-decision"
@@ -240,7 +250,7 @@ def build_unified_document_object_snapshot(
         title="Unified Document Object",
         subtitle=document_title,
         status=stage_status,
-        stream=[
+        stream=merge_runtime_events([
             RuntimeEvent(
                 event_id=f"{document_id}:unified:start",
                 kind="progress",
@@ -261,8 +271,8 @@ def build_unified_document_object_snapshot(
                 object_id=unified_document_id,
                 object_kind="node",
             ),
-        ],
-        sections=[
+        ], trace_events),
+        sections=merge_runtime_sections([
             RuntimeSummarySection(
                 section_id="unified-summary",
                 title="Unified Summary",
@@ -295,7 +305,7 @@ def build_unified_document_object_snapshot(
                     RuntimeSummaryField(key="file_type", label="file_type", value=file_type or "unknown"),
                 ],
             ),
-        ],
+        ], trace_sections),
         actions=[
             RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
             RuntimeAction(

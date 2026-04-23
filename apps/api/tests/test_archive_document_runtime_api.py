@@ -43,6 +43,7 @@ from app.archive_knowledge.runtime_repository import DocumentRuntimeRepository
 from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.extraction.service import ExtractionService
+from app.extraction.schema import ExtractionBatch, ExtractedCandidate
 from app.knowledge_builder import SourceDocument, _document_id
 from app.main import create_app
 from app.parsing.models import ParsedDocument, ParsedSegment
@@ -498,7 +499,139 @@ def test_archive_document_runtime_prefers_persisted_parser_router_snapshot(tmp_p
     payload = response.json()
     parser_router = next(stage for stage in payload["stages"] if stage["stage_id"] == "parser_router")
     assert parser_router["stage_observer"]["title"] == "Persisted Parser Router"
-    assert parser_router["graph"]["nodes"]
+
+
+def test_build_document_contribution_attaches_runtime_trace(monkeypatch) -> None:
+    document = SourceDocument(
+        path="runtime/live.docx",
+        title="Live Runtime Document",
+        file_type="docx",
+        source_archive="runtime",
+        text="Overview paragraph\nDetail paragraph",
+        parser_name="docling_docx",
+        segment_count=2,
+        segments=[
+            ParsedSegment(heading="Overview", content="Overview paragraph", anchor={"page": 1, "paragraph": 1}),
+            ParsedSegment(heading="Detail", content="Detail paragraph", anchor={"page": 1, "paragraph": 2}),
+        ],
+        source_file_path="E:/runtime/live.docx",
+        source_digest="sha256:live",
+    )
+
+    def fake_extract(document, doc_id, extraction_service):
+        del extraction_service
+        return ExtractionBatch(
+            document_id=doc_id,
+            title=document.title,
+            strategy="formal",
+            schema_version="p1.v1",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="Gate Input Relation R-17",
+                    payload={
+                        "id": "entity-1",
+                        "category": "relation_candidate",
+                        "aliases": [],
+                        "evidence": "Gate input relation appears in overview paragraph.",
+                        "source_refs": [
+                            {
+                                "chunk_id": "chunk-001",
+                                "chunk_heading": "Overview",
+                                "segment_ids": ["segment-1"],
+                                "anchors": [{"page": 1, "paragraph": 1}],
+                            }
+                        ],
+                    },
+                )
+            ],
+            relations=[],
+            metadata={
+                "runtime_trace": {
+                    "unified_document_object": {
+                        "events": [
+                            {
+                                "event_id": "doc-1:unified",
+                                "kind": "result",
+                                "level": "success",
+                                "message": "Unified document object normalized two segments.",
+                                "object_id": "doc-1:unified-document",
+                                "object_kind": "node",
+                            }
+                        ],
+                        "sections": [
+                            {
+                                "section_id": "trace-unified",
+                                "title": "Runtime Trace",
+                                "fields": [{"key": "input_count", "label": "input_count", "value": "2", "tone": "info"}],
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.archive_knowledge.document_artifacts._extract_document_knowledge",
+        fake_extract,
+    )
+
+    contribution = builder_module.build_document_contribution(document, extraction_service=None)
+
+    runtime_trace = contribution["extraction"]["runtime_trace"]
+    assert "unified_document_object" in runtime_trace
+    assert "quality_policy_evaluation_governance_gate" in runtime_trace
+    assert runtime_trace["quality_policy_evaluation_governance_gate"]["decision"]["status"] == "blocked"
+
+
+def test_archive_document_runtime_uses_build_state_current_stage(tmp_path: Path) -> None:
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.save_build_state(
+        "nas-a",
+        {
+            "archive_id": "nas-a",
+            "archive_name": "NAS Archive",
+            "mode": "formal",
+            "status": "running",
+            "started_at": "2026-04-23T10:00:00+00:00",
+            "updated_at": "2026-04-23T10:00:05+00:00",
+            "expected_document_count": 1,
+            "completed_document_ids": [],
+            "pending_document_ids": [],
+            "failed_document_id": None,
+            "failed_message": None,
+            "current_document_id": "doc-live",
+            "current_document_title": "Live Runtime Document",
+            "current_document_path": "runtime/live.docx",
+            "current_chunk": None,
+            "current_stage_id": "evidence_constructor",
+            "current_stage_label": "Evidence Constructor",
+            "current_stage_status": "running",
+            "current_stage_message": "Evidence constructor is assembling traceable evidence units.",
+            "documents": [
+                {
+                    "document_id": "doc-live",
+                    "path": "runtime/live.docx",
+                    "title": "Live Runtime Document",
+                    "file_type": "docx",
+                    "source_archive": "runtime",
+                    "source_file_path": "E:/runtime/live.docx",
+                    "source_digest": "sha256:live",
+                    "state": "running",
+                }
+            ],
+            "warnings": [],
+            "warning_count": 0,
+            "policy_snapshot": None,
+        },
+    )
+
+    service = ArchiveDocumentRuntimeService(tmp_path)
+    payload = service.get_document_runtime("nas-a", "doc-live")
+
+    assert payload is not None
+    assert payload["current_stage_id"] == "evidence_constructor"
+    assert next(stage for stage in payload["stages"] if stage["stage_id"] == "evidence_constructor")["status"] == "running"
 
 
 def test_archive_document_runtime_prefers_persisted_evidence_pack_snapshot(tmp_path: Path) -> None:

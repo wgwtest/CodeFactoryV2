@@ -29,6 +29,7 @@ def build_document_contribution(
 ) -> dict:
     document_id = document_id or _document_id(document.path)
     batch = _extract_document_knowledge(document, document_id, extraction_service)
+    runtime_trace = dict(batch.metadata.get("runtime_trace") or {})
 
     items_by_key: dict[tuple[str, str], dict] = {}
     for candidate in batch.candidates:
@@ -92,6 +93,12 @@ def build_document_contribution(
             **batch.metadata,
         },
     }
+    runtime_trace["quality_policy_evaluation_governance_gate"] = _build_quality_gate_runtime_trace(
+        document_id=document_id,
+        document_title=document.title,
+        contribution=contribution,
+    )
+    contribution["extraction"]["runtime_trace"] = runtime_trace
     return contribution
 
 
@@ -491,6 +498,97 @@ class DocumentArtifactRepository:
             normalized["entity_count"] + normalized["event_count"] + normalized["process_count"],
         )
         return normalized
+
+
+def _build_quality_gate_runtime_trace(
+    *,
+    document_id: str,
+    document_title: str,
+    contribution: dict,
+) -> dict:
+    knowledge_items = [
+        {"item_type": "entity", **item} for item in contribution.get("entities", [])
+    ] + [
+        {"item_type": "event", **item} for item in contribution.get("events", [])
+    ] + [
+        {"item_type": "process", **item} for item in contribution.get("processes", [])
+    ]
+    evidence_count = sum(len(item.get("evidence", [])) for item in knowledge_items)
+    pending_items = [item for item in knowledge_items if item.get("review_status", "pending") == "pending"]
+    rejected_items = [item for item in knowledge_items if item.get("review_status") == "rejected"]
+    approved_items = [item for item in knowledge_items if item.get("review_status") == "approved"]
+    should_block = evidence_count == 0 or bool(pending_items) or bool(rejected_items)
+    reason = _quality_gate_block_reason(
+        evidence_count=evidence_count,
+        pending_count=len(pending_items),
+        rejected_count=len(rejected_items),
+    )
+    return {
+        "input_count": len(knowledge_items),
+        "output_count": 1,
+        "decision_summary": "evaluate canonical knowledge candidates against evidence sufficiency and review readiness",
+        "ai_summary": "policy gate summarizes rule hits before publication eligibility is decided",
+        "rule_hits": [
+            {
+                "key": "min_supporting_documents",
+                "label": "min_supporting_documents",
+                "outcome": "blocked" if should_block else "passed",
+                "detail": f"evidence_count={evidence_count}; pending_review_count={len(pending_items)}; rejected_count={len(rejected_items)}",
+            }
+        ],
+        "decision": {
+            "status": "blocked" if should_block else "passed",
+            "reason": reason,
+            "next_action": "manual_review" if should_block else "publish_target",
+        },
+        "events": [
+            {
+                "event_id": f"{document_id}:quality-gate:rule-hit",
+                "kind": "rule",
+                "level": "warning" if should_block else "success",
+                "message": (
+                    f"Quality gate evaluated supporting evidence for {document_title}: evidence_count={evidence_count}, pending_review_count={len(pending_items)}."
+                ),
+                "object_id": f"{document_id}:quality-gate:rule-hit",
+                "object_kind": "node",
+            },
+            {
+                "event_id": f"{document_id}:quality-gate:decision",
+                "kind": "block" if should_block else "result",
+                "level": "danger" if should_block else "success",
+                "message": (
+                    f"Quality gate blocked publication because {reason}."
+                    if should_block
+                    else "Quality gate passed and the document can move toward publication outputs."
+                ),
+                "object_id": f"{document_id}:quality-gate:gate",
+                "object_kind": "node",
+            },
+        ],
+        "sections": [
+            {
+                "section_id": "trace-quality-gate",
+                "title": "Runtime Trace",
+                "fields": [
+                    {"key": "knowledge_item_count", "label": "knowledge_item_count", "value": str(len(knowledge_items)), "tone": "info"},
+                    {"key": "evidence_count", "label": "evidence_count", "value": str(evidence_count), "tone": "warning" if should_block else "success"},
+                    {"key": "approved_count", "label": "approved_count", "value": str(len(approved_items)), "tone": "success"},
+                    {"key": "pending_review_count", "label": "pending_review_count", "value": str(len(pending_items)), "tone": "warning" if pending_items else "success"},
+                    {"key": "decision", "label": "decision", "value": "blocked" if should_block else "passed", "tone": "danger" if should_block else "success"},
+                ],
+            }
+        ],
+    }
+
+
+def _quality_gate_block_reason(*, evidence_count: int, pending_count: int, rejected_count: int) -> str:
+    if evidence_count == 0:
+        return "evidence is insufficient"
+    if pending_count:
+        return "manual review is still pending"
+    if rejected_count:
+        return "rejected knowledge items remain in the candidate set"
+    return "no blocking condition"
 
 
 def _finalize_collection(items_by_key: dict[tuple[str, str], dict], item_kind: str) -> list[dict]:

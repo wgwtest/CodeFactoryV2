@@ -3,9 +3,13 @@ __pycache__/
 .pytest_cache/
 .env
 .env.local
+*.env.local
+.env.*.local
 node_modules/
 .superpowers/
 .worktrees/
+.data/
+.idea/
 20161116体系结构文献翻译汇总/
 DataSource/
 apps/web/dist/

@@ -17,6 +17,7 @@ from app.archive_knowledge.document_artifacts import (
 from app.archive_knowledge.runtime_snapshot_service import (
     DocumentRuntimeSnapshotService,
 )
+from app.archive_knowledge.runtime_contract import RuntimeStatus
 from app.archive_knowledge.runtime_parser_execution import (
     parsed_document_from_source_document,
 )
@@ -549,6 +550,10 @@ def _build_formal_archive_contributions(
         manifest_document = artifact_repository.get_document_source_info(archive_id, document_id)
         included_in_archive = manifest_document.get("included_in_archive", True) if manifest_document else True
         current_chunk: dict | None = None
+        current_stage_id: str | None = None
+        current_stage_label: str | None = None
+        current_stage_status: str | None = None
+        current_stage_message: str | None = None
         parsed_document = None
         runtime_parsed_document = None
 
@@ -568,7 +573,23 @@ def _build_formal_archive_contributions(
             intake_timestamp=started_at,
         )
 
-        def save_running_state(*, current_chunk_override: dict | None) -> None:
+        def save_running_state(
+            *,
+            current_chunk_override: dict | None,
+            current_stage_id_override: str | None = None,
+            current_stage_label_override: str | None = None,
+            current_stage_status_override: str | None = None,
+            current_stage_message_override: str | None = None,
+        ) -> None:
+            nonlocal current_stage_id, current_stage_label, current_stage_status, current_stage_message
+            if current_stage_id_override is not None:
+                current_stage_id = current_stage_id_override
+            if current_stage_label_override is not None:
+                current_stage_label = current_stage_label_override
+            if current_stage_status_override is not None:
+                current_stage_status = current_stage_status_override
+            if current_stage_message_override is not None:
+                current_stage_message = current_stage_message_override
             artifact_repository.save_build_state(
                 archive_id,
                 _build_archive_state(
@@ -585,26 +606,88 @@ def _build_formal_archive_contributions(
                     current_document_path=document.path,
                     started_at=started_at,
                     current_chunk=current_chunk_override,
+                    current_stage_id=current_stage_id,
+                    current_stage_label=current_stage_label,
+                    current_stage_status=current_stage_status,
+                    current_stage_message=current_stage_message,
                     skipped_document_ids=skipped_document_ids,
                     warnings=warnings,
                     policy_snapshot=policy_snapshot,
                 ),
             )
 
-        save_running_state(current_chunk_override=None)
+        save_running_state(
+            current_chunk_override=None,
+            current_stage_id_override="asset_intake",
+            current_stage_label_override="Asset Intake",
+            current_stage_status_override="completed",
+            current_stage_message_override="Source document has entered archive extraction.",
+        )
 
         def handle_chunk_progress(event: dict) -> None:
             nonlocal current_chunk
-            current_chunk = {
-                "chunk_id": event.get("chunk_id"),
-                "position": event.get("chunk_position"),
-                "total": event.get("chunk_total"),
-                "heading": event.get("chunk_heading"),
-                "char_count": event.get("chunk_char_count"),
-                "segment_count": event.get("chunk_segment_count"),
-                "retry_depth": event.get("retry_depth", 0),
-            }
-            save_running_state(current_chunk_override=current_chunk)
+            event_type = event.get("event")
+            if event_type == "stage_transition":
+                runtime_trace = event.get("runtime_trace")
+                stage_id = event.get("stage_id")
+                stage_label = event.get("stage_label")
+                stage_status = event.get("status")
+                stage_message = event.get("message")
+                save_running_state(
+                    current_chunk_override=current_chunk,
+                    current_stage_id_override=stage_id,
+                    current_stage_label_override=stage_label,
+                    current_stage_status_override=stage_status,
+                    current_stage_message_override=stage_message,
+                )
+                if runtime_parsed_document is not None and isinstance(runtime_trace, dict):
+                    partial_contribution = {
+                        "document": {
+                            "id": document_id,
+                            "title": document.title,
+                            "path": document.path,
+                            "file_type": document.file_type,
+                            "source_archive": document.source_archive,
+                            "source_file_path": document.source_file_path,
+                            "source_digest": document.source_digest,
+                            "character_count": len((parsed_document.text if parsed_document else "") or ""),
+                            "parser_name": getattr(runtime_parsed_document, "parser_name", None),
+                            "segment_count": len(getattr(runtime_parsed_document, "segments", []) or []),
+                        },
+                        "entities": [],
+                        "events": [],
+                        "processes": [],
+                        "relations": [],
+                        "extraction": {"runtime_trace": {stage_id: runtime_trace}},
+                    }
+                    if stage_id == "evidence_constructor":
+                        runtime_snapshot_service.persist_evidence_constructor_snapshot(
+                            archive_id,
+                            contribution=partial_contribution,
+                            parsed_document=runtime_parsed_document,
+                            runtime_trace=runtime_trace,
+                            status_override=RuntimeStatus.RUNNING,
+                        )
+                    elif stage_id == "evidence_graph_chunk_layer":
+                        runtime_snapshot_service.persist_evidence_graph_chunk_layer_snapshot(
+                            archive_id,
+                            contribution=partial_contribution,
+                            parsed_document=runtime_parsed_document,
+                            runtime_trace=runtime_trace,
+                            status_override=RuntimeStatus.RUNNING,
+                        )
+                return
+            if event_type in {None, "chunk_progress"}:
+                current_chunk = {
+                    "chunk_id": event.get("chunk_id"),
+                    "position": event.get("chunk_position"),
+                    "total": event.get("chunk_total"),
+                    "heading": event.get("chunk_heading"),
+                    "char_count": event.get("chunk_char_count"),
+                    "segment_count": event.get("chunk_segment_count"),
+                    "retry_depth": event.get("retry_depth", 0),
+                }
+                save_running_state(current_chunk_override=current_chunk)
 
         extraction_service.progress_callback = handle_chunk_progress
 
@@ -618,6 +701,13 @@ def _build_formal_archive_contributions(
                 if contribution is None:
                     raise FileNotFoundError(f"文档级正式产物缺失: {document_id}")
             else:
+                save_running_state(
+                    current_chunk_override=None,
+                    current_stage_id_override="parser_execution",
+                    current_stage_label_override="Parser Execution",
+                    current_stage_status_override="running",
+                    current_stage_message_override="Parser is reading the source document and materializing parsed segments.",
+                )
                 parsed_document = parse_discovered_document(document, formal_extraction_mode=True)
                 runtime_parsed_document = parsed_document_from_source_document(
                     parser_name=parsed_document.parser_name,
@@ -635,6 +725,13 @@ def _build_formal_archive_contributions(
                     parser_name=parsed_document.parser_name,
                     parser_version="runtime",
                 )
+                save_running_state(
+                    current_chunk_override=None,
+                    current_stage_id_override="parser_router",
+                    current_stage_label_override="Parser Router",
+                    current_stage_status_override="completed",
+                    current_stage_message_override=f"Parser router selected {parsed_document.parser_name}.",
+                )
                 if runtime_parsed_document is not None:
                     runtime_snapshot_service.persist_parser_execution_snapshot(
                         archive_id,
@@ -643,12 +740,28 @@ def _build_formal_archive_contributions(
                         file_type=parsed_document.file_type,
                         parsed_document=runtime_parsed_document,
                     )
+                    save_running_state(
+                        current_chunk_override=None,
+                        current_stage_id_override="parser_execution",
+                        current_stage_label_override="Parser Execution",
+                        current_stage_status_override="completed",
+                        current_stage_message_override=(
+                            f"Parser execution produced {parsed_document.segment_count} parsed segments."
+                        ),
+                    )
                     runtime_snapshot_service.persist_unified_document_object_snapshot(
                         archive_id,
                         document_id=document_id,
                         document_title=parsed_document.title,
                         file_type=parsed_document.file_type,
                         parsed_document=runtime_parsed_document,
+                    )
+                    save_running_state(
+                        current_chunk_override=None,
+                        current_stage_id_override="unified_document_object",
+                        current_stage_label_override="Unified Document Object",
+                        current_stage_status_override="completed",
+                        current_stage_message_override="Unified document object snapshot has been materialized.",
                     )
                 contribution = build_document_contribution(parsed_document, extraction_service, document_id=document_id)
                 artifact_repository.upsert(
@@ -704,6 +817,10 @@ def _build_formal_archive_contributions(
                     current_document_path=document.path,
                     started_at=started_at,
                     current_chunk=current_chunk,
+                    current_stage_id=current_stage_id,
+                    current_stage_label=current_stage_label,
+                    current_stage_status=current_stage_status,
+                    current_stage_message=current_stage_message,
                     skipped_document_ids=skipped_document_ids,
                     warnings=warnings,
                     policy_snapshot=policy_snapshot,
@@ -713,6 +830,13 @@ def _build_formal_archive_contributions(
         finally:
             extraction_service.progress_callback = None
 
+        save_running_state(
+            current_chunk_override=current_chunk,
+            current_stage_id_override="quality_policy_evaluation_governance_gate",
+            current_stage_label_override="Quality Policy Evaluation / Governance Gate",
+            current_stage_status_override="running",
+            current_stage_message_override="Quality gate is materializing from the completed document contribution.",
+        )
         runtime_snapshot_service.persist_document_runtime_snapshots(
             archive_id=archive_id,
             archive_name=archive_name,
@@ -780,6 +904,10 @@ def _build_archive_state(
     current_document_path: str | None,
     started_at: str | None,
     current_chunk: dict | None,
+    current_stage_id: str | None = None,
+    current_stage_label: str | None = None,
+    current_stage_status: str | None = None,
+    current_stage_message: str | None = None,
     skipped_document_ids: list[str] | None = None,
     warnings: list[dict] | None = None,
     policy_snapshot: dict | None = None,
@@ -804,6 +932,10 @@ def _build_archive_state(
         "current_document_title": current_document_title,
         "current_document_path": current_document_path,
         "current_chunk": current_chunk,
+        "current_stage_id": current_stage_id,
+        "current_stage_label": current_stage_label,
+        "current_stage_status": current_stage_status,
+        "current_stage_message": current_stage_message,
         "policy_snapshot": policy_snapshot,
         "warning_count": len(normalized_warnings),
         "warnings": normalized_warnings,

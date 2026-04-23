@@ -18,6 +18,12 @@ from app.archive_knowledge.runtime_contract import (
     RuntimeSummarySection,
     STAGE_DEFINITION_MAP,
 )
+from app.archive_knowledge.runtime_trace_utils import (
+    build_runtime_events,
+    build_runtime_sections,
+    merge_runtime_events,
+    merge_runtime_sections,
+)
 from app.parsing.models import ParsedDocument, ParsedSegment
 
 
@@ -39,14 +45,20 @@ def build_evidence_constructor_snapshot(
     document_title: str,
     contribution: dict[str, Any],
     parsed_document: ParsedDocument,
+    runtime_trace: dict[str, Any] | None = None,
+    status_override: RuntimeStatus | None = None,
 ) -> RuntimeStageSnapshot:
     del archive_id
     definition = STAGE_DEFINITION_MAP["evidence_constructor"]
-    evidence_rows = _collect_evidence_rows(document_id=document_id, contribution=contribution, parsed_document=parsed_document)
+    evidence_rows = _collect_evidence_rows_from_trace(document_id=document_id, runtime_trace=runtime_trace, parsed_document=parsed_document)
+    if not evidence_rows:
+        evidence_rows = _collect_evidence_rows(document_id=document_id, contribution=contribution, parsed_document=parsed_document)
     evidence_count = len(evidence_rows)
     anchor_count = len({_anchor_key(row) for row in evidence_rows if row.matched_segment is not None})
     span_count = evidence_count
-    status = RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING
+    status = status_override or (RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING)
+    trace_events = build_runtime_events(runtime_trace)
+    trace_sections = build_runtime_sections(runtime_trace)
 
     task_id = f"{document_id}:evidence-constructor:task"
     unit_group_id = f"{document_id}:evidence-constructor:units"
@@ -349,7 +361,7 @@ def build_evidence_constructor_snapshot(
         title="Evidence Constructor",
         subtitle=document_title,
         status=status,
-        stream=[
+        stream=merge_runtime_events([
             RuntimeEvent(
                 event_id=f"{document_id}:evidence-constructor:start",
                 kind="progress",
@@ -370,8 +382,8 @@ def build_evidence_constructor_snapshot(
                 object_id=unit_group_id,
                 object_kind="node",
             ),
-        ],
-        sections=[
+        ], trace_events),
+        sections=merge_runtime_sections([
             RuntimeSummarySection(
                 section_id="evidence-constructor-summary",
                 title="Evidence Constructor Summary",
@@ -390,7 +402,7 @@ def build_evidence_constructor_snapshot(
                     RuntimeSummaryField(key="source_items", label="source_items", value=str(_source_item_count(contribution))),
                 ],
             ),
-        ],
+        ], trace_sections),
         actions=[
             RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
             RuntimeAction(action_id="view-evidence-units", label="View Evidence Units", target_kind="node", target_id=unit_group_id),
@@ -612,6 +624,33 @@ def _collect_evidence_rows(
                         matched_segment=matched_segment,
                     )
                 )
+    return rows
+
+
+def _collect_evidence_rows_from_trace(
+    *,
+    document_id: str,
+    runtime_trace: dict[str, Any] | None,
+    parsed_document: ParsedDocument,
+) -> list[EvidenceRow]:
+    rows: list[EvidenceRow] = []
+    segments = list(parsed_document.segments or [])
+    for item in (runtime_trace or {}).get("evidence_units", []):
+        if not isinstance(item, dict):
+            continue
+        excerpt = str(item.get("excerpt") or "").strip()
+        matched_index, matched_segment = _match_segment(excerpt, segments, len(rows))
+        rows.append(
+            EvidenceRow(
+                source_item_id=str(item.get("source_item_id") or f"{document_id}:trace-source"),
+                source_item_name=str(item.get("source_item_name") or "trace evidence"),
+                source_kind=str(item.get("source_kind") or "entity"),
+                excerpt=excerpt or "not available",
+                document_id=document_id,
+                matched_segment_index=matched_index,
+                matched_segment=matched_segment,
+            )
+        )
     return rows
 
 

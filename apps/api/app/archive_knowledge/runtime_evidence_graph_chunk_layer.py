@@ -22,7 +22,14 @@ from app.archive_knowledge.runtime_evidence_constructor import (
     EvidenceRow,
     _anchor_label,
     _collect_evidence_rows,
+    _collect_evidence_rows_from_trace,
     _paragraph_label,
+)
+from app.archive_knowledge.runtime_trace_utils import (
+    build_runtime_events,
+    build_runtime_sections,
+    merge_runtime_events,
+    merge_runtime_sections,
 )
 from app.parsing.models import ParsedDocument, ParsedSegment
 
@@ -44,20 +51,32 @@ def build_evidence_graph_chunk_layer_snapshot(
     document_title: str,
     contribution: dict[str, Any],
     parsed_document: ParsedDocument,
+    runtime_trace: dict[str, Any] | None = None,
+    status_override: RuntimeStatus | None = None,
 ) -> RuntimeStageSnapshot:
     del archive_id
     definition = STAGE_DEFINITION_MAP["evidence_graph_chunk_layer"]
-    evidence_rows = _collect_evidence_rows(
+    evidence_rows = _collect_evidence_rows_from_trace(
         document_id=document_id,
-        contribution=contribution,
+        runtime_trace=runtime_trace,
         parsed_document=parsed_document,
     )
-    chunk_rows = _build_chunk_rows(evidence_rows=evidence_rows, parsed_document=parsed_document)
+    if not evidence_rows:
+        evidence_rows = _collect_evidence_rows(
+            document_id=document_id,
+            contribution=contribution,
+            parsed_document=parsed_document,
+        )
+    chunk_rows = _build_chunk_rows_from_trace(runtime_trace=runtime_trace, evidence_rows=evidence_rows, parsed_document=parsed_document)
+    if not chunk_rows:
+        chunk_rows = _build_chunk_rows(evidence_rows=evidence_rows, parsed_document=parsed_document)
     chunk_count = len(chunk_rows)
     evidence_count = len(evidence_rows)
     adjusted_chunks = [row for row in chunk_rows if row.boundary_adjusted]
     graph_link_count = max(chunk_count - 1, 0)
-    status = RuntimeStatus.COMPLETED if chunk_rows else RuntimeStatus.WARNING
+    status = status_override or (RuntimeStatus.COMPLETED if chunk_rows else RuntimeStatus.WARNING)
+    trace_events = build_runtime_events(runtime_trace)
+    trace_sections = build_runtime_sections(runtime_trace)
 
     planning_id = f"{document_id}:chunk-planning"
     evidence_unit_group_id = f"{document_id}:evidence-units"
@@ -363,7 +382,7 @@ def build_evidence_graph_chunk_layer_snapshot(
         title="Evidence Graph / Chunk Layer",
         subtitle=document_title,
         status=status,
-        stream=[
+        stream=merge_runtime_events([
             RuntimeEvent(
                 event_id=f"{document_id}:chunk-layer:start",
                 kind="progress",
@@ -392,8 +411,8 @@ def build_evidence_graph_chunk_layer_snapshot(
                 object_id=adjustment_group_id,
                 object_kind="node",
             ),
-        ],
-        sections=[
+        ], trace_events),
+        sections=merge_runtime_sections([
             RuntimeSummarySection(
                 section_id="chunk-layer-summary",
                 title="Chunk Layer Summary",
@@ -413,7 +432,7 @@ def build_evidence_graph_chunk_layer_snapshot(
                     RuntimeSummaryField(key="segment_count", label="segment_count", value=str(len(parsed_document.segments or []))),
                 ],
             ),
-        ],
+        ], trace_sections),
         actions=[
             RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
             RuntimeAction(action_id="view-chunk-group", label="View Chunk Group", target_kind="node", target_id=chunk_group_id),
@@ -708,6 +727,45 @@ def _build_chunk_rows(*, evidence_rows: list[EvidenceRow], parsed_document: Pars
                 )
             )
 
+    return chunk_rows
+
+
+def _build_chunk_rows_from_trace(
+    *,
+    runtime_trace: dict[str, Any] | None,
+    evidence_rows: list[EvidenceRow],
+    parsed_document: ParsedDocument,
+) -> list[ChunkRow]:
+    trace_chunks = (runtime_trace or {}).get("chunks", [])
+    if not isinstance(trace_chunks, list) or not trace_chunks:
+        return []
+
+    segments = list(parsed_document.segments or [])
+    rows_by_chunk_id: dict[str, list[EvidenceRow]] = {}
+    for row in evidence_rows:
+        if row.matched_segment is None:
+            continue
+        row_chunk_key = row.matched_segment.anchor.get("chunk_id") if isinstance(row.matched_segment.anchor, dict) else None
+        if row_chunk_key:
+            rows_by_chunk_id.setdefault(str(row_chunk_key), []).append(row)
+
+    chunk_rows: list[ChunkRow] = []
+    for index, trace_chunk in enumerate(trace_chunks, start=1):
+        if not isinstance(trace_chunk, dict):
+            continue
+        segment_index = index - 1
+        segment = segments[segment_index] if segment_index < len(segments) else None
+        chunk_id = str(trace_chunk.get("chunk_id") or f"trace-chunk-{index}")
+        chunk_rows.append(
+            ChunkRow(
+                chunk_index=int(trace_chunk.get("chunk_position") or index),
+                segment_index=segment_index if segment is not None else None,
+                segment=segment,
+                evidence_rows=rows_by_chunk_id.get(chunk_id, []),
+                chunk_label=str(trace_chunk.get("chunk_label") or trace_chunk.get("chunk_heading") or f"Chunk {index}"),
+                boundary_adjusted=bool(trace_chunk.get("boundary_adjusted")),
+            )
+        )
     return chunk_rows
 
 

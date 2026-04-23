@@ -29,6 +29,7 @@ from app.archive_knowledge.runtime_parser_execution import (
     parsed_document_from_source_document,
 )
 from app.archive_knowledge.runtime_parser_router import build_parser_router_snapshot
+from app.archive_knowledge.runtime_contract import RuntimeStatus
 from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapshot
 from app.archive_knowledge.runtime_relation_review_family_normalization import (
     build_relation_review_family_normalization_snapshot,
@@ -40,7 +41,7 @@ from app.archive_knowledge.runtime_unified_document_object import (
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.parsing.service import ParsingService
 
-RUNTIME_SNAPSHOT_CONTRACT_VERSION = 3
+RUNTIME_SNAPSHOT_CONTRACT_VERSION = 4
 
 
 class DocumentRuntimeSnapshotService:
@@ -64,6 +65,7 @@ class DocumentRuntimeSnapshotService:
     ) -> list[str]:
         document_payload = self._normalize_document_payload(document_source, contribution)
         document_id = document_payload["document_id"]
+        runtime_trace = ((contribution or {}).get("extraction") or {}).get("runtime_trace", {})
         source_dir = source_dir or self._resolve_source_dir(document_payload)
         intake_timestamp = intake_timestamp or datetime.now(UTC).isoformat()
         included_in_archive = (
@@ -117,6 +119,7 @@ class DocumentRuntimeSnapshotService:
                         document_title=document_payload["title"],
                         file_type=document_payload.get("file_type"),
                         parsed_document=resolved_parsed_document,
+                        runtime_trace=runtime_trace.get("unified_document_object"),
                     ),
                 ]
             )
@@ -128,11 +131,13 @@ class DocumentRuntimeSnapshotService:
                         archive_id,
                         contribution=contribution,
                         parsed_document=resolved_parsed_document,
+                        runtime_trace=runtime_trace.get("evidence_constructor"),
                     ),
                     self.persist_evidence_graph_chunk_layer_snapshot(
                         archive_id,
                         contribution=contribution,
                         parsed_document=resolved_parsed_document,
+                        runtime_trace=runtime_trace.get("evidence_graph_chunk_layer"),
                     ),
                 ]
             )
@@ -160,6 +165,7 @@ class DocumentRuntimeSnapshotService:
                     self.persist_quality_gate_snapshot(
                         archive_id,
                         contribution=contribution,
+                        runtime_trace=runtime_trace.get("quality_policy_evaluation_governance_gate"),
                     ),
                     self.persist_indexes_snapshots_apis_snapshot(
                         archive_id,
@@ -360,6 +366,8 @@ class DocumentRuntimeSnapshotService:
         document_title: str,
         file_type: str | None,
         parsed_document,
+        runtime_trace: dict[str, Any] | None = None,
+        status_override: RuntimeStatus | None = None,
     ) -> str:
         snapshot = build_unified_document_object_snapshot(
             archive_id=archive_id,
@@ -367,6 +375,8 @@ class DocumentRuntimeSnapshotService:
             document_title=document_title,
             file_type=file_type,
             parsed_document=parsed_document,
+            runtime_trace=runtime_trace,
+            status_override=status_override,
         )
         self._save_stage_snapshot(archive_id, document_id, snapshot)
         return snapshot.stage_id
@@ -377,6 +387,8 @@ class DocumentRuntimeSnapshotService:
         *,
         contribution: dict[str, Any],
         parsed_document,
+        runtime_trace: dict[str, Any] | None = None,
+        status_override: RuntimeStatus | None = None,
     ) -> str:
         document = contribution["document"]
         snapshot = build_evidence_constructor_snapshot(
@@ -385,6 +397,8 @@ class DocumentRuntimeSnapshotService:
             document_title=document["title"],
             contribution=contribution,
             parsed_document=parsed_document,
+            runtime_trace=runtime_trace,
+            status_override=status_override,
         )
         self._save_stage_snapshot(archive_id, document["id"], snapshot)
         return snapshot.stage_id
@@ -395,6 +409,8 @@ class DocumentRuntimeSnapshotService:
         *,
         contribution: dict[str, Any],
         parsed_document,
+        runtime_trace: dict[str, Any] | None = None,
+        status_override: RuntimeStatus | None = None,
     ) -> str:
         document = contribution["document"]
         snapshot = build_evidence_graph_chunk_layer_snapshot(
@@ -403,6 +419,8 @@ class DocumentRuntimeSnapshotService:
             document_title=document["title"],
             contribution=contribution,
             parsed_document=parsed_document,
+            runtime_trace=runtime_trace,
+            status_override=status_override,
         )
         self._save_stage_snapshot(archive_id, document["id"], snapshot)
         return snapshot.stage_id
@@ -412,6 +430,8 @@ class DocumentRuntimeSnapshotService:
         archive_id: str,
         *,
         contribution: dict[str, Any],
+        runtime_trace: dict[str, Any] | None = None,
+        status_override: RuntimeStatus | None = None,
     ) -> str:
         document = contribution["document"]
         knowledge_items: list[dict[str, Any]]
@@ -450,6 +470,8 @@ class DocumentRuntimeSnapshotService:
             knowledge_items=knowledge_items,
             current_version=current_version,
             document_published=document_published,
+            runtime_trace=runtime_trace,
+            status_override=status_override,
         )
         self._save_stage_snapshot(archive_id, document["id"], snapshot)
         return snapshot.stage_id

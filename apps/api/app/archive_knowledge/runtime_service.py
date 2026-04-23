@@ -275,6 +275,10 @@ class ArchiveDocumentRuntimeService:
             "build_warnings": build_state.get("warnings", []) if is_current_build_document else [],
             "build_state": build_state,
             "policy_snapshot": build_state.get("policy_snapshot"),
+            "current_stage_id": build_state.get("current_stage_id") if is_current_build_document else None,
+            "current_stage_label": build_state.get("current_stage_label") if is_current_build_document else None,
+            "current_stage_status": build_state.get("current_stage_status") if is_current_build_document else None,
+            "current_stage_message": build_state.get("current_stage_message") if is_current_build_document else None,
         }
 
     def _ordered_stage_ids(self, stage_ids: list[str]) -> list[str]:
@@ -322,6 +326,23 @@ class ArchiveDocumentRuntimeService:
             statuses["canonical_knowledge"] = RuntimeStatus.COMPLETED
         if has_relations or any(item.get("aliases") for item in context["all_items"]):
             statuses["relation_review_family_normalization"] = RuntimeStatus.COMPLETED
+
+        active_stage_id = context.get("current_stage_id")
+        if running_doc and active_stage_id:
+            active_order = next(
+                (definition.order for definition in STAGE_DEFINITIONS if definition.stage_id == active_stage_id),
+                None,
+            )
+            if active_order is not None:
+                for definition in STAGE_DEFINITIONS:
+                    if definition.order < active_order:
+                        if statuses[definition.stage_id] == RuntimeStatus.PENDING:
+                            statuses[definition.stage_id] = RuntimeStatus.COMPLETED
+                    elif definition.stage_id == active_stage_id:
+                        statuses[definition.stage_id] = RuntimeStatus.RUNNING
+                    else:
+                        statuses[definition.stage_id] = RuntimeStatus.PENDING
+                return statuses
 
         if running_doc and has_current_chunk:
             statuses["evidence_graph_chunk_layer"] = RuntimeStatus.RUNNING
@@ -698,28 +719,29 @@ class ArchiveDocumentRuntimeService:
         evidence_units = f"{context['document_id']}:evidence-units"
         anchor_group = f"{context['document_id']}:anchors"
         evidence_count = len(context["evidence"])
+        stage_status = status if status == RuntimeStatus.RUNNING else (RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING)
         nodes = [
-            self._node(evidence_units, "证据单元集合", "evidence_unit_group", definition.stage_id, RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING, True, attributes={"evidence_count": evidence_count}),
-            self._node(anchor_group, "证据锚点集合", "evidence_anchor_group", definition.stage_id, RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING, origin=RuntimeOrigin.DERIVED, attributes={"anchor_count": evidence_count}),
+            self._node(evidence_units, "证据单元集合", "evidence_unit_group", definition.stage_id, stage_status, True, attributes={"evidence_count": evidence_count}),
+            self._node(anchor_group, "证据锚点集合", "evidence_anchor_group", definition.stage_id, stage_status, origin=RuntimeOrigin.DERIVED, attributes={"anchor_count": evidence_count}),
         ]
-        edges = [self._edge(f"{evidence_units}:anchors", evidence_units, anchor_group, "anchored_at", definition.stage_id, RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING, True)]
+        edges = [self._edge(f"{evidence_units}:anchors", evidence_units, anchor_group, "anchored_at", definition.stage_id, stage_status, True)]
         return self._stage_snapshot(
             definition,
-            RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING,
+            stage_status,
             nodes,
             edges,
             self._observer_stage(
                 title="阶段视角 · 证据构造",
                 subtitle=context["document_title"],
-                status=RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING,
+                status=stage_status,
                 stream=[self._event("progress", "统一文档对象正在拆解为可追溯证据单元"), self._event("result", f"当前 evidence excerpt 数量：{evidence_count}")],
                 sections=[self._section("evidence", "证据摘要", [("evidence_count", str(evidence_count))])],
             ),
             {
-                evidence_units: self._observer_node("节点视角 · 证据单元集合", "证据构造阶段的核心产物。", RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING, [self._event("result", f"已生成 {evidence_count} 个证据单元")], [self._section("identity", "对象身份", [("evidence_count", str(evidence_count)), ("traceable", "是" if evidence_count else "否")])]),
+                evidence_units: self._observer_node("节点视角 · 证据单元集合", "证据构造阶段的核心产物。", stage_status, [self._event("result", f"已生成 {evidence_count} 个证据单元")], [self._section("identity", "对象身份", [("evidence_count", str(evidence_count)), ("traceable", "是" if evidence_count else "否")])]),
             },
             {
-                f"{evidence_units}:anchors": self._observer_edge("边视角 · anchored_at", "证据单元如何绑定到文档锚点。", RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING, [self._event("result", "证据单元已绑定锚点")], [self._section("relation", "关系摘要", [("关系类型", "anchored_at"), ("锚点数量", str(evidence_count))])]),
+                f"{evidence_units}:anchors": self._observer_edge("边视角 · anchored_at", "证据单元如何绑定到文档锚点。", stage_status, [self._event("result", "证据单元已绑定锚点")], [self._section("relation", "关系摘要", [("关系类型", "anchored_at"), ("锚点数量", str(evidence_count))])]),
             },
         )
 

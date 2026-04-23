@@ -125,6 +125,10 @@ export type KnowledgeArchiveBuildState = {
   current_document_title: string | null;
   current_document_path: string | null;
   current_chunk: KnowledgeArchiveBuildStateChunk | null;
+  current_stage_id?: string | null;
+  current_stage_label?: string | null;
+  current_stage_status?: string | null;
+  current_stage_message?: string | null;
   policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
   warning_count?: number;
   warnings?: KnowledgeArchiveBuildWarning[];
