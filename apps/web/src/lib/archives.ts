@@ -1,5 +1,12 @@
 import { api } from "./api";
-import type { ArchiveDocumentFormalizeResult, CreateKnowledgeArchiveInput, KnowledgeArchive } from "./api";
+import type {
+  ArchivePolicyConfig,
+  ArchiveDocumentFormalizeResult,
+  ArchiveDocumentImportResult,
+  CreateKnowledgeArchiveInput,
+  KnowledgeArchive,
+  UpdateArchivePolicyConfigInput,
+} from "./api";
 
 export function getKnowledgeArchives() {
   return api.get<KnowledgeArchive[]>("/archives");
@@ -17,8 +24,26 @@ export function extractKnowledgeArchive(archiveId: string) {
   return api.post<KnowledgeArchive>(`/archives/${archiveId}/extract`);
 }
 
+export function getArchivePolicyConfig(archiveId: string) {
+  return api.get<ArchivePolicyConfig>(`/archives/${archiveId}/policy-config`);
+}
+
+export function updateArchivePolicyConfig(archiveId: string, payload: UpdateArchivePolicyConfigInput) {
+  return api.put<ArchivePolicyConfig>(`/archives/${archiveId}/policy-config`, payload);
+}
+
 export function formalizeArchiveDocument(archiveId: string, documentId: string) {
   return api.post<ArchiveDocumentFormalizeResult>(`/archives/${archiveId}/documents/${documentId}/formalize`);
+}
+
+export function importArchiveDocument(archiveId: string, file: File) {
+  const payload = new FormData();
+  payload.append("file", file);
+  return api.post<ArchiveDocumentImportResult>(`/archives/${archiveId}/documents/import`, payload, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
 }
 
 export function removeArchiveDocument(archiveId: string, documentId: string) {

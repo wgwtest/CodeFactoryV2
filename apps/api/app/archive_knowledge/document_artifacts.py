@@ -221,6 +221,7 @@ def build_extraction_report_payload(
     strict_mode: bool,
     contributions: list[dict],
     summary: dict,
+    warnings: list[dict] | None = None,
 ) -> dict:
     documents = []
     for contribution in sorted(contributions, key=lambda item: item["document"]["path"]):
@@ -242,6 +243,8 @@ def build_extraction_report_payload(
         "archive_name": archive_name,
         "strict_mode": strict_mode,
         "summary": summary,
+        "warning_count": len(warnings or []),
+        "warnings": list(warnings or []),
         "documents": documents,
     }
 

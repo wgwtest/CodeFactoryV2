@@ -4,6 +4,7 @@ import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
+import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
@@ -12,7 +13,8 @@ import { XXP4Page } from "./pages/XXP4Page";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
-  { key: "/", label: <Link to="/">文档导入</Link> },
+  { key: "/", label: <Link to="/">知识库文档</Link> },
+  { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
@@ -22,7 +24,12 @@ const items = [
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
-  const selectedMenuKey = location.pathname === "/documents" ? "/" : location.pathname;
+  const selectedMenuKey =
+    location.pathname === "/" || location.pathname === "/documents"
+      ? "/"
+      : location.pathname.startsWith("/documents/intake")
+        ? "/documents/intake"
+        : location.pathname;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -57,6 +64,7 @@ function MainShell() {
           <Route path="/archives" element={<ArchiveManagementPage />} />
           <Route path="/" element={<DocumentsPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/documents/intake" element={<DocumentIntakePage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
           <Route path="/requirements" element={<RequirementsPage />} />

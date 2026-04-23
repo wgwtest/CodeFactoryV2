@@ -53,7 +53,11 @@ class Settings(BaseSettings):
     formal_chunk_char_threshold: int = 50000
     formal_chunk_char_limit: int = 32000
 
-    model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), env_prefix="KW_")
+    model_config = SettingsConfigDict(
+        env_file=str(REPO_ROOT / ".env"),
+        env_prefix="KW_",
+        extra="ignore",
+    )
 
     @model_validator(mode="after")
     def resolve_repository_relative_paths(self) -> "Settings":

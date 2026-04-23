@@ -345,6 +345,232 @@ def test_formalize_document_rebuilds_archive_from_document_artifacts(tmp_path, m
     assert any(item["name"] == "管制移交" for item in payload["processes"])
 
 
+def test_import_document_adds_uploaded_file_and_rebuilds_archive(tmp_path, monkeypatch):
+    from app.archive_knowledge.document_artifacts import aggregate_document_contributions
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    contribution_doc_1 = {
+        "document": {
+            "id": "doc-1",
+            "path": "docs/doc-1.docx",
+            "title": "Document One",
+            "file_type": "docx",
+            "source_archive": "kb",
+            "character_count": 1000,
+            "parser_name": "docling_docx",
+            "segment_count": 10,
+            "source_file_path": str(tmp_path / "doc-1.docx"),
+            "source_digest": "doc-1-digest",
+        },
+        "entities": [
+            {
+                "id": "entity-国家空域系统",
+                "name": "国家空域系统",
+                "category": "system_or_service",
+                "aliases": ["NAS"],
+                "document_ids": ["doc-1"],
+                "evidence": [{"document_id": "doc-1", "excerpt": "国家空域系统"}],
+            }
+        ],
+        "events": [],
+        "processes": [],
+        "relations": [],
+        "extraction": {
+            "strategy": "schema_rules+llm",
+            "candidate_count": 1,
+            "relation_count": 0,
+            "llm_enrichment_used": True,
+            "llm_provider": "deepseek",
+            "llm_model": "deepseek-chat",
+        },
+    }
+
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.replace_all("kb", [contribution_doc_1])
+    persist_archive_outputs(
+        archive_id="kb",
+        archive_name="测试知识库",
+        source_dir=source_dir,
+        extract_root=tmp_path,
+        output_root=tmp_path,
+        knowledge=aggregate_document_contributions([contribution_doc_1]),
+        contributions=[contribution_doc_1],
+        formal_extraction_mode=True,
+    )
+
+    def fake_parse_file(self, file_path: Path, file_name: str | None = None):
+        del self, file_name
+        assert file_path.name == "new-guide.docx"
+        return ParsedDocument(
+            parser_name="docling_docx",
+            parser_version="v1",
+            segments=[
+                ParsedSegment(
+                    heading="Section 1",
+                    content="空域协同平台支持更新后的领域协同",
+                    anchor={"page": 1, "section": "Section 1", "line_start": 1, "line_end": 1},
+                )
+            ],
+        )
+
+    def fake_extract_document(self, *, document_id, title, file_path, segments):
+        del self, title, file_path, segments
+        return ExtractionBatch(
+            document_id=document_id,
+            title="new-guide",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="空域协同平台",
+                    payload={"category": "system_or_service", "aliases": [], "evidence": "空域协同平台"},
+                )
+            ],
+            relations=[],
+            metadata={"llm_enrichment_used": True, "llm_provider": "deepseek", "llm_model": "deepseek-chat"},
+        )
+
+    monkeypatch.setattr("app.parsing.service.ParsingService.parse_file", fake_parse_file)
+    monkeypatch.setattr("app.extraction.service.ExtractionService.extract_document", fake_extract_document)
+
+    result = ArchiveExtractionService(tmp_path).import_document(
+        "kb",
+        file_name="new-guide.docx",
+        file_bytes=b"stub upload content",
+        source_dir=source_dir,
+        extract_root=tmp_path,
+        archive_name="测试知识库",
+    )
+
+    expected_stored_path = Path(result["stored_path"])
+    assert result["action"] == "include"
+    assert result["mode"] == "single_document_import"
+    assert result["document_included"] is True
+    assert expected_stored_path.as_posix().startswith("manual_uploads/")
+    assert (source_dir / expected_stored_path).exists()
+
+    payload = json.loads((tmp_path / "kb-knowledge.json").read_text(encoding="utf-8"))
+    assert payload["summary"] == {
+        "document_count": 2,
+        "entity_count": 2,
+        "event_count": 0,
+        "process_count": 0,
+        "relation_count": 2,
+    }
+    document_titles = {item["title"] for item in payload["documents"]}
+    assert document_titles == {"Document One", "new-guide"}
+    entity_names = {item["name"] for item in payload["entities"]}
+    assert entity_names == {"国家空域系统", "空域协同平台"}
+
+
+def test_import_document_is_idempotent_for_same_uploaded_file(tmp_path, monkeypatch):
+    from app.archive_knowledge.document_artifacts import aggregate_document_contributions
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    contribution_doc_1 = {
+        "document": {
+            "id": "doc-1",
+            "path": "docs/doc-1.docx",
+            "title": "Document One",
+            "file_type": "docx",
+            "source_archive": "kb",
+            "character_count": 1000,
+            "parser_name": "docling_docx",
+            "segment_count": 10,
+            "source_file_path": str(tmp_path / "doc-1.docx"),
+            "source_digest": "doc-1-digest",
+        },
+        "entities": [],
+        "events": [],
+        "processes": [],
+        "relations": [],
+        "extraction": {
+            "strategy": "schema_rules+llm",
+            "candidate_count": 0,
+            "relation_count": 0,
+            "llm_enrichment_used": True,
+            "llm_provider": "deepseek",
+            "llm_model": "deepseek-chat",
+        },
+    }
+
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.replace_all("kb", [contribution_doc_1])
+    persist_archive_outputs(
+        archive_id="kb",
+        archive_name="测试知识库",
+        source_dir=source_dir,
+        extract_root=tmp_path,
+        output_root=tmp_path,
+        knowledge=aggregate_document_contributions([contribution_doc_1]),
+        contributions=[contribution_doc_1],
+        formal_extraction_mode=True,
+    )
+
+    parse_calls: list[str] = []
+
+    def fake_parse_file(self, file_path: Path, file_name: str | None = None):
+        del self, file_name
+        parse_calls.append(file_path.name)
+        return ParsedDocument(
+            parser_name="docling_docx",
+            parser_version="v1",
+            segments=[
+                ParsedSegment(
+                    heading="Section 1",
+                    content="空域协同平台支持更新后的领域协同",
+                    anchor={"page": 1, "section": "Section 1", "line_start": 1, "line_end": 1},
+                )
+            ],
+        )
+
+    def fake_extract_document(self, *, document_id, title, file_path, segments):
+        del self, title, file_path, segments
+        return ExtractionBatch(
+            document_id=document_id,
+            title="new-guide",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="空域协同平台",
+                    payload={"category": "system_or_service", "aliases": [], "evidence": "空域协同平台"},
+                )
+            ],
+            relations=[],
+            metadata={"llm_enrichment_used": True, "llm_provider": "deepseek", "llm_model": "deepseek-chat"},
+        )
+
+    monkeypatch.setattr("app.parsing.service.ParsingService.parse_file", fake_parse_file)
+    monkeypatch.setattr("app.extraction.service.ExtractionService.extract_document", fake_extract_document)
+
+    service = ArchiveExtractionService(tmp_path)
+    first_result = service.import_document(
+        "kb",
+        file_name="new-guide.docx",
+        file_bytes=b"same upload content",
+        source_dir=source_dir,
+        extract_root=tmp_path,
+        archive_name="测试知识库",
+    )
+    second_result = service.import_document(
+        "kb",
+        file_name="new-guide.docx",
+        file_bytes=b"same upload content",
+        source_dir=source_dir,
+        extract_root=tmp_path,
+        archive_name="测试知识库",
+    )
+
+    assert first_result["document_id"] == second_result["document_id"]
+    assert first_result["stored_path"] == second_result["stored_path"]
+    assert parse_calls == ["new-guide.docx"]
+
+    payload = json.loads((tmp_path / "kb-knowledge.json").read_text(encoding="utf-8"))
+    document_titles = [item["title"] for item in payload["documents"]]
+    assert document_titles.count("new-guide") == 1
+
+
 def test_document_artifact_repository_excludes_document_without_deleting_artifact(tmp_path):
     contribution_doc_1 = {
         "document": {

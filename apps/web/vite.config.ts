@@ -1,22 +1,29 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8020";
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const apiProxyTarget =
+    process.env.VITE_API_PROXY_TARGET ??
+    env.VITE_API_PROXY_TARGET ??
+    env.VITE_DEV_API_PROXY_TARGET ??
+    "http://127.0.0.1:8020";
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      "/api": {
-        target: apiProxyTarget,
-        changeOrigin: true
+  return {
+    plugins: [react()],
+    server: {
+      proxy: {
+        "/api": {
+          target: apiProxyTarget,
+          changeOrigin: true
+        }
       }
+    },
+    test: {
+      include: ["src/test/**/*.test.ts?(x)"],
+      environment: "jsdom",
+      globals: true,
+      setupFiles: "./src/test/setup.ts"
     }
-  },
-  test: {
-    include: ["src/test/**/*.test.ts?(x)"],
-    environment: "jsdom",
-    globals: true,
-    setupFiles: "./src/test/setup.ts"
-  }
+  };
 });

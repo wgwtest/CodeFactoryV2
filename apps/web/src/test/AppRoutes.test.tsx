@@ -10,15 +10,12 @@ const getMock = vi.fn();
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
+    post: vi.fn(),
   },
 }));
 
-test("renders documents page on /documents route", async () => {
+test("renders archive-focused documents page on /documents route", async () => {
   getMock.mockImplementation((url: string) => {
-    if (url === "/documents") {
-      return Promise.resolve({ data: [] });
-    }
-
     if (url.endsWith("/summary")) {
       return Promise.resolve({
         data: {
@@ -58,6 +55,24 @@ test("renders documents page on /documents route", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
+  expect(await screen.findByText("当前知识库文档")).toBeInTheDocument();
   expect((await screen.findAllByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).length).toBeGreaterThan(0);
+});
+
+test("renders intake validation page on /documents/intake route", async () => {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/documents") {
+      return Promise.resolve({ data: [] });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/documents/intake"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("这是独立的接入验证链")).toBeInTheDocument();
 });

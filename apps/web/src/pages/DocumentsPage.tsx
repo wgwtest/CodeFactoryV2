@@ -1,22 +1,21 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { Alert, Button, Descriptions, Empty, Input, List, Space, Table, Tag, Typography } from "antd";
+import { Link } from "react-router-dom";
 
-import { DocumentUploadForm } from "../components/DocumentUploadForm";
+import { ArchiveDocumentImportForm } from "../components/ArchiveDocumentImportForm";
 import { EvidenceList } from "../components/EvidenceList";
 import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
-import { api } from "../lib/api";
 import { getArchiveDocumentDetail, getArchiveDocuments, getArchiveSummary } from "../lib/archiveKnowledge";
 import { formalizeArchiveDocument, removeArchiveDocument } from "../lib/archives";
 import type {
+  ArchiveDocumentImportResult,
   ArchiveKnowledgeDocument,
   ArchiveKnowledgeDocumentDetail,
   ArchiveKnowledgeDocumentKnowledgeItem,
   ArchiveKnowledgeSummary,
-  IntakeDocumentDetail,
-  IntakeDocumentSummary,
 } from "../lib/api";
 
 const categoryLabels: Record<string, string> = {
@@ -43,20 +42,13 @@ export function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ArchiveKnowledgeSummary | null>(null);
   const [documents, setDocuments] = useState<ArchiveKnowledgeDocument[]>([]);
-  const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocumentSummary[]>([]);
-  const [intakeLoading, setIntakeLoading] = useState(true);
-  const [intakeError, setIntakeError] = useState<string | null>(null);
-  const [selectedIntakeDocumentId, setSelectedIntakeDocumentId] = useState<string | null>(null);
-  const [intakeDocumentDetail, setIntakeDocumentDetail] = useState<IntakeDocumentDetail | null>(null);
-  const [intakeDetailLoading, setIntakeDetailLoading] = useState(false);
-  const [intakeDetailError, setIntakeDetailError] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState("");
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [documentDetail, setDocumentDetail] = useState<ArchiveKnowledgeDocumentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [documentMutation, setDocumentMutation] = useState<{ documentId: string; action: "include" | "remove" } | null>(null);
-  const [formalizeFeedback, setFormalizeFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [documentFeedback, setDocumentFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const deferredSearchValue = useDeferredValue(searchValue);
 
   async function loadArchiveDocuments(cancelled?: { current: boolean }) {
@@ -91,73 +83,13 @@ export function DocumentsPage() {
     }
   }
 
-  async function loadIntakeDocuments(cancelled?: { current: boolean }) {
-    try {
-      const response = await api.get<IntakeDocumentSummary[]>("/documents");
-      if (cancelled?.current) {
-        return;
-      }
-      setIntakeDocuments(response.data);
-      setIntakeError(null);
-    } catch (loadError) {
-      if (!cancelled?.current) {
-        setIntakeError(loadError instanceof Error ? loadError.message : "加载接入文档失败");
-      }
-    } finally {
-      if (!cancelled?.current) {
-        setIntakeLoading(false);
-      }
-    }
-  }
-
   useEffect(() => {
     const cancelled = { current: false };
-
-    void Promise.all([
-      loadArchiveDocuments(cancelled),
-      loadIntakeDocuments(cancelled),
-    ]);
+    void loadArchiveDocuments(cancelled);
     return () => {
       cancelled.current = true;
     };
   }, [activeArchiveId]);
-
-  useEffect(() => {
-    const documentId = selectedIntakeDocumentId;
-
-    if (!documentId) {
-      setIntakeDocumentDetail(null);
-      setIntakeDetailError(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadIntakeDocumentDetail() {
-      try {
-        setIntakeDetailLoading(true);
-        const response = await api.get<IntakeDocumentDetail>(`/documents/${documentId}`);
-        if (cancelled) {
-          return;
-        }
-        setIntakeDocumentDetail(response.data);
-        setIntakeDetailError(null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setIntakeDetailError(loadError instanceof Error ? loadError.message : "加载解析详情失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setIntakeDetailLoading(false);
-        }
-      }
-    }
-
-    void loadIntakeDocumentDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedIntakeDocumentId]);
 
   useEffect(() => {
     const documentId = selectedDocumentId;
@@ -231,7 +163,7 @@ export function DocumentsPage() {
     }
 
     try {
-      setFormalizeFeedback(null);
+      setDocumentFeedback(null);
       setDocumentMutation({ documentId: record.id, action });
       const response =
         action === "include"
@@ -245,12 +177,12 @@ export function DocumentsPage() {
         setDetailError(null);
       }
 
-      setFormalizeFeedback({
+      setDocumentFeedback({
         type: "success",
         message: formatDocumentMutationSuccessMessage(record.title, response.data.action, response.data.mode),
       });
     } catch (mutationError) {
-      setFormalizeFeedback({
+      setDocumentFeedback({
         type: "error",
         message:
           mutationError instanceof Error
@@ -264,21 +196,39 @@ export function DocumentsPage() {
     }
   }
 
+  async function handleImportedArchiveDocument(result: ArchiveDocumentImportResult) {
+    if (!activeArchiveId) {
+      return;
+    }
+
+    await Promise.all([loadArchiveDocuments(), refreshArchives(activeArchiveId)]);
+    setSelectedDocumentId(result.document?.id ?? result.document_id);
+    setDocumentFeedback({
+      type: "success",
+      message: formatDocumentImportSuccessMessage(result.document?.title ?? result.document_id, result.mode),
+    });
+  }
+
   return (
     <ValidationWorkspace
-      title="上传源文档"
+      title="知识库文档"
       description={
         <>
-          导入政策、手册或规程类资料，形成可追溯的文档版本，作为后续解析、抽取和治理的基础。
-          {activeArchive ? ` 当前查看知识库：${activeArchive.name}。` : ""}
+          当前页面只聚焦知识库主链文档，用于查看当前 archive 的正式文档清单，并执行单文档正式并入或移出。
+          {activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}
         </>
+      }
+      actions={
+        <Link to="/documents/intake">
+          <Button>前往接入解析验证</Button>
+        </Link>
       }
     >
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
         <WorkspaceOverviewStrip
-          badgeLabel="文档导入"
+          badgeLabel="知识库文档"
           badgeColor="blue"
-          title="档案文档总览"
+          title="知识库文档总览"
           tags={[
             { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
             {
@@ -289,154 +239,40 @@ export function DocumentsPage() {
             },
           ]}
           metrics={[
-            { title: "文档", value: summary?.document_count ?? 0 },
+            { title: "知识库文档", value: summary?.document_count ?? 0 },
             { title: "实体", value: summary?.entity_count ?? 0 },
             { title: "事件", value: summary?.event_count ?? 0 },
             { title: "流程", value: summary?.process_count ?? 0 },
           ]}
         />
-        <div>
-          <DocumentUploadForm onUploaded={() => loadIntakeDocuments()} />
-        </div>
 
-        <div>
-          <Typography.Title level={4}>接入解析验证</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            展示当前已接入文档的版本状态、最新解析批次和片段预览，用于验证 `P1.2` 的结构化解析产物。
-          </Typography.Paragraph>
-        </div>
-
-        {intakeError ? <Alert type="error" message="接入文档暂不可用" description={intakeError} showIcon /> : null}
-
-        <Table
-          rowKey="id"
-          loading={intakeLoading}
-          dataSource={intakeDocuments}
-          locale={{ emptyText: "暂无接入文档" }}
-          pagination={{ pageSize: 5 }}
-          columns={[
-            { title: "标题", dataIndex: "title" },
-            { title: "来源", dataIndex: "source_name" },
-            {
-              title: "最新版本",
-              render: (_: unknown, record: IntakeDocumentSummary) =>
-                record.latest_version ? `V${record.latest_version.version_number}` : "无版本",
-            },
-            {
-              title: "解析状态",
-              render: (_: unknown, record: IntakeDocumentSummary) => mapVersionStatus(record.latest_version?.status),
-            },
-            {
-              title: "解析器",
-              render: (_: unknown, record: IntakeDocumentSummary) => record.latest_version?.latest_parse_run?.parser_name ?? "未解析",
-            },
-            {
-              title: "片段数",
-              render: (_: unknown, record: IntakeDocumentSummary) => record.latest_version?.latest_parse_run?.segment_count ?? 0,
-            },
-            {
-              title: "操作",
-              render: (_: unknown, record: IntakeDocumentSummary) => (
-                <Button type="link" onClick={() => setSelectedIntakeDocumentId(record.id)}>
-                  查看解析
-                </Button>
-              ),
-            },
-          ]}
+        <Alert
+          type="info"
+          showIcon
+          message="知识库文档页只保留 archive 主链"
+          description="上传、解析验证和旧的 DB intake 逻辑已迁移到“接入解析验证”页面；这里仅处理当前知识库的正式文档查看、并入和移出。"
         />
 
-        <ValidationDrawer
-          title="解析详情"
-          open={selectedIntakeDocumentId !== null}
-          onClose={() => setSelectedIntakeDocumentId(null)}
-          width={760}
-          loading={intakeDetailLoading}
-          loadingText="正在加载解析详情..."
-          error={intakeDetailError}
-          errorMessage="解析详情暂不可用"
-        >
-          {intakeDocumentDetail ? (
-            <Space direction="vertical" size={16} style={{ display: "flex" }}>
-              <div>
-                <Typography.Title level={4} style={{ marginTop: 0 }}>
-                  {intakeDocumentDetail.title}
-                </Typography.Title>
-                <Typography.Text type="secondary">{intakeDocumentDetail.source_name}</Typography.Text>
-              </div>
-
-              {intakeDocumentDetail.latest_version ? (
-                <Descriptions bordered size="small" column={2}>
-                  <Descriptions.Item label="最新版本">
-                    V{intakeDocumentDetail.latest_version.version_number}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="文件名">
-                    {intakeDocumentDetail.latest_version.file_name}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="解析状态">
-                    {mapVersionStatus(intakeDocumentDetail.latest_version.status)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="解析器">
-                    {intakeDocumentDetail.latest_version.latest_parse_run?.parser_name ?? "未解析"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="解析批次">
-                    {intakeDocumentDetail.latest_version.parse_runs.length}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="片段数">
-                    {intakeDocumentDetail.latest_version.latest_parse_run?.segment_count ?? 0}
-                  </Descriptions.Item>
-                </Descriptions>
-              ) : (
-                <Empty description="暂无版本详情" />
-              )}
-
-              {intakeDocumentDetail.latest_version?.latest_parse_run?.failure_reason ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  message="解析失败原因"
-                  description={intakeDocumentDetail.latest_version.latest_parse_run.failure_reason}
-                />
-              ) : null}
-
-              <div>
-                <Typography.Title level={5}>解析片段预览</Typography.Title>
-                {intakeDocumentDetail.latest_version?.segments_preview.length ? (
-                  <List
-                    bordered
-                    dataSource={intakeDocumentDetail.latest_version.segments_preview}
-                    renderItem={(segment) => (
-                      <List.Item>
-                        <Space direction="vertical" size={4} style={{ display: "flex", width: "100%" }}>
-                          <Space wrap>
-                            <Typography.Text strong>{segment.heading}</Typography.Text>
-                            <Tag>{segment.block_type}</Tag>
-                          </Space>
-                          <Typography.Text>{segment.content}</Typography.Text>
-                        </Space>
-                      </List.Item>
-                    )}
-                  />
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无解析片段" />
-                )}
-              </div>
-            </Space>
-          ) : null}
-        </ValidationDrawer>
+        <ArchiveDocumentImportForm
+          archiveId={activeArchiveId}
+          disabled={!activeArchiveId || activeArchive?.status === "extracting" || documentMutation !== null}
+          onImported={(result) => void handleImportedArchiveDocument(result)}
+          onImportFailed={(message) => setDocumentFeedback({ type: "error", message })}
+        />
 
         <div>
-          <Typography.Title level={4}>已建库档案文档</Typography.Title>
+          <Typography.Title level={4}>当前知识库文档</Typography.Title>
           <Typography.Paragraph type="secondary">
-            当前演示清单来自 20161116 NAS 架构资料集，展示已解压并完成知识构建的真实文档。
+            这里只展示当前 archive 已经建立正式产物仓的文档视图，并支持按文档执行正式并入或正式移出。
           </Typography.Paragraph>
         </div>
 
         {error ? <Alert type="error" message="档案文档暂不可用" description={error} showIcon /> : null}
-        {formalizeFeedback ? (
+        {documentFeedback ? (
           <Alert
-            type={formalizeFeedback.type}
-            message={formalizeFeedback.type === "success" ? "正式操作已完成" : "正式操作失败"}
-            description={formalizeFeedback.message}
+            type={documentFeedback.type}
+            message={documentFeedback.type === "success" ? "正式操作已完成" : "正式操作失败"}
+            description={documentFeedback.message}
             showIcon
           />
         ) : null}
@@ -504,7 +340,7 @@ export function DocumentsPage() {
                         loading={isMutating}
                         disabled={documentMutation !== null}
                       >
-                        {isIncluded ? "移出" : "正式并入"}
+                        {isIncluded ? "从当前知识库移出" : "纳入当前知识库"}
                       </Button>
                     </Space>
                   );
@@ -539,7 +375,7 @@ export function DocumentsPage() {
               <div>
                 <Typography.Title level={5}>文档概览</Typography.Title>
                 <Descriptions column={2} bordered size="small">
-                  <Descriptions.Item label="正式状态">
+                  <Descriptions.Item label="纳入当前知识库状态">
                     <Tag color={documentDetail.document.included_in_archive !== false ? "green" : "default"}>
                       {documentDetail.document.included_in_archive !== false ? "已并入" : "未并入"}
                     </Tag>
@@ -568,19 +404,6 @@ export function DocumentsPage() {
   );
 }
 
-function mapVersionStatus(status?: string) {
-  if (status === "parsed") {
-    return "已解析";
-  }
-  if (status === "parse_failed") {
-    return "解析失败";
-  }
-  if (status === "uploaded") {
-    return "待解析";
-  }
-  return status ?? "未知";
-}
-
 function formatDocumentMutationSuccessMessage(
   title: string,
   action: "include" | "remove",
@@ -595,6 +418,15 @@ function formatDocumentMutationSuccessMessage(
   return mode === "full_rebuild_bootstrap_remove"
     ? `已完成“${title}”的正式产物仓初始化，并已将该文档正式移出当前知识库。`
     : `已完成“${title}”的正式移出，当前知识库已重算。`;
+}
+
+function formatDocumentImportSuccessMessage(
+  title: string,
+  mode: "single_document_import" | "full_rebuild_bootstrap_import",
+) {
+  return mode === "full_rebuild_bootstrap_import"
+    ? `已完成“${title}”的上传并纳入当前知识库，当前知识库已完成全库重建。`
+    : `已完成“${title}”的上传并纳入当前知识库，当前知识库已完成增量重算。`;
 }
 
 type DocumentKnowledgeSectionProps = {
@@ -613,7 +445,7 @@ function DocumentKnowledgeSection({ title, items }: DocumentKnowledgeSectionProp
       </Space>
 
       {items.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`该文档未关联此类知识`} />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该文档未关联此类知识" />
       ) : (
         <List
           bordered
