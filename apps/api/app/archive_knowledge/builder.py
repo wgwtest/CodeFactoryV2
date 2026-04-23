@@ -763,7 +763,12 @@ def _build_formal_archive_contributions(
                         current_stage_status_override="completed",
                         current_stage_message_override="Unified document object snapshot has been materialized.",
                     )
-                contribution = build_document_contribution(parsed_document, extraction_service, document_id=document_id)
+                contribution = build_document_contribution(
+                    parsed_document,
+                    extraction_service,
+                    document_id=document_id,
+                    policy_snapshot=policy_snapshot,
+                )
                 artifact_repository.upsert(
                     archive_id,
                     contribution,

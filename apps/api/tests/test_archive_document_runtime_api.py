@@ -39,6 +39,7 @@ from app.archive_knowledge.runtime_indexes_snapshots_apis import (
 from app.archive_knowledge.runtime_parser_execution import build_parser_execution_snapshot
 from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapshot
 from app.archive_knowledge.runtime_unified_document_object import build_unified_document_object_snapshot
+from app.archive_knowledge.policy_config import build_default_archive_policy_config, build_policy_run_snapshot
 from app.archive_knowledge.runtime_repository import DocumentRuntimeRepository
 from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
 from app.archive_knowledge.service import ArchiveKnowledgeService
@@ -333,7 +334,8 @@ def test_formal_archive_contributions_persist_parse_stage_snapshots_before_docum
         lambda document, formal_extraction_mode=True: parsed_source_document,
     )
 
-    def fake_build_document_contribution(document, extraction_service, *, document_id=None):
+    def fake_build_document_contribution(document, extraction_service, *, document_id=None, policy_snapshot=None):
+        del policy_snapshot
         stage_ids = runtime_repository.list_stage_snapshot_ids("nas-a", document_id or "missing")
         assert "asset_intake" in stage_ids
         assert "parser_router" in stage_ids
@@ -582,6 +584,103 @@ def test_build_document_contribution_attaches_runtime_trace(monkeypatch) -> None
     assert "unified_document_object" in runtime_trace
     assert "quality_policy_evaluation_governance_gate" in runtime_trace
     assert runtime_trace["quality_policy_evaluation_governance_gate"]["decision"]["status"] == "blocked"
+
+
+def test_quality_gate_policy_snapshot_changes_gate_decision(monkeypatch) -> None:
+    document = SourceDocument(
+        path="runtime/live.docx",
+        title="Live Runtime Document",
+        file_type="docx",
+        source_archive="runtime",
+        text="Overview paragraph\nDetail paragraph",
+        parser_name="docling_docx",
+        segment_count=2,
+        segments=[
+            ParsedSegment(heading="Overview", content="Overview paragraph", anchor={"page": 1, "paragraph": 1}),
+            ParsedSegment(heading="Detail", content="Detail paragraph", anchor={"page": 1, "paragraph": 2}),
+        ],
+        source_file_path="E:/runtime/live.docx",
+        source_digest="sha256:live",
+    )
+
+    def fake_extract(document, doc_id, extraction_service):
+        del extraction_service
+        return ExtractionBatch(
+            document_id=doc_id,
+            title=document.title,
+            strategy="formal",
+            schema_version="p1.v1",
+            candidates=[
+                ExtractedCandidate(
+                    item_type="entity",
+                    canonical_name="Gate Input Relation R-17",
+                    payload={
+                        "id": "entity-1",
+                        "category": "relation_candidate",
+                        "aliases": [],
+                        "evidence": "Gate input relation appears in overview paragraph.",
+                    },
+                )
+            ],
+            relations=[],
+            metadata={},
+        )
+
+    monkeypatch.setattr(
+        "app.archive_knowledge.document_artifacts._extract_document_knowledge",
+        fake_extract,
+    )
+
+    policy_config = build_default_archive_policy_config("nas-a")
+    quality_gate = policy_config["stages"]["quality_policy_evaluation_governance_gate"]
+    quality_gate["rules"] = [
+        {
+            "key": "gate-support",
+            "name": "supporting document minimum",
+            "meaning": "allow single-document support in this test policy",
+            "threshold": "supporting_documents >= 1",
+            "action": "block_return",
+        },
+        {
+            "key": "gate-risk",
+            "name": "risk score ceiling",
+            "meaning": "allow pending review to continue for this test policy",
+            "threshold": "risk_score < 1",
+            "action": "manual_review",
+        },
+        {
+            "key": "gate-conflict",
+            "name": "hard conflict block",
+            "meaning": "block only hard conflicts",
+            "threshold": "hard_conflict = 0",
+            "action": "block_return",
+        },
+    ]
+    policy_snapshot = build_policy_run_snapshot("nas-a", policy_config, captured_at="2026-04-23T10:00:00+00:00")
+
+    contribution = builder_module.build_document_contribution(
+        document,
+        extraction_service=None,
+        policy_snapshot=policy_snapshot,
+    )
+    quality_trace = contribution["extraction"]["runtime_trace"]["quality_policy_evaluation_governance_gate"]
+
+    assert quality_trace["policy"]["snapshot_id"] == policy_snapshot["snapshot_id"]
+    assert quality_trace["decision"]["status"] == "passed"
+    assert [hit["key"] for hit in quality_trace["rule_hits"]] == ["gate-support", "gate-risk", "gate-conflict"]
+    assert all(hit["outcome"] == "passed" for hit in quality_trace["rule_hits"])
+
+    snapshot = build_quality_gate_snapshot(
+        archive_id="nas-a",
+        document_id=contribution["document"]["id"],
+        document_title=contribution["document"]["title"],
+        contribution=contribution,
+        runtime_trace=quality_trace,
+    )
+    rule_nodes = [node for node in snapshot.graph.nodes if node.node_type == "rule_hit"]
+    assert snapshot.status == "completed"
+    assert len(rule_nodes) == 3
+    assert any(node.attributes["rule_key"] == "gate-risk" for node in rule_nodes)
 
 
 def test_archive_document_runtime_uses_build_state_current_stage(tmp_path: Path) -> None:

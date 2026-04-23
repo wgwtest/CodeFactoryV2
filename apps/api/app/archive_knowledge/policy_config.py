@@ -422,6 +422,7 @@ def build_policy_run_snapshot(
                 "ai_mode": normalized["stages"][stage_id]["ai_mode"],
                 "default_action": normalized["stages"][stage_id]["default_action"],
                 "rule_count": len(normalized["stages"][stage_id]["rules"]),
+                "rules": deepcopy(normalized["stages"][stage_id]["rules"]),
             }
             for stage_id in normalized["stage_order"]
             if stage_id in normalized["stages"]

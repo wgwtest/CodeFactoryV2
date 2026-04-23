@@ -39,42 +39,87 @@ def build_quality_gate_snapshot(
 ) -> RuntimeStageSnapshot:
     del archive_id
     definition = STAGE_DEFINITION_MAP["quality_policy_evaluation_governance_gate"]
-    evidence_count = _count_evidence(contribution)
     knowledge_items = list(knowledge_items or _derive_items_from_contribution(contribution))
     pending_items = [item for item in knowledge_items if item.get("review_status", "pending") == "pending"]
     approved_items = [item for item in knowledge_items if item.get("review_status") == "approved"]
     rejected_items = [item for item in knowledge_items if item.get("review_status") == "rejected"]
 
-    rule_hit_id = f"{document_id}:quality-gate:rule-hit"
+    trace = runtime_trace or {}
+    trace_events = build_runtime_events(trace)
+    trace_sections = build_runtime_sections(trace)
+    rule_hits = _normalize_rule_hits(trace, contribution)
+    decision = _normalize_decision(trace, contribution, pending_items, rejected_items)
+    metrics = _normalize_metrics(trace, contribution, knowledge_items)
+    gate_status = status_override or _decision_runtime_status(decision.get("status"), document_published=document_published)
+
     gate_id = f"{document_id}:quality-gate:gate"
     blocked_id = f"{document_id}:quality-gate:blocked"
     manual_review_id = f"{document_id}:quality-gate:manual-review"
     publish_target_id = f"{document_id}:quality-gate:publish-target"
+    primary_rule_node_id = _rule_node_id(document_id, rule_hits[0]) if rule_hits else gate_id
 
-    should_block = evidence_count == 0 or bool(pending_items) or bool(rejected_items)
-    gate_status = status_override or (
-        RuntimeStatus.BLOCKED if should_block else (RuntimeStatus.COMPLETED if document_published else RuntimeStatus.RUNNING)
-    )
-    trace_events = build_runtime_events(runtime_trace)
-    trace_sections = build_runtime_sections(runtime_trace)
-    trace_rule_hit = ((runtime_trace or {}).get("rule_hits") or [{}])[0]
-    rule_key = str(trace_rule_hit.get("key") or "min_supporting_documents")
-    rule_label = str(trace_rule_hit.get("label") or "minimum supporting documents")
-    trace_decision = (runtime_trace or {}).get("decision") or {}
-    block_reason = str(trace_decision.get("reason") or _block_reason(evidence_count, pending_items, rejected_items))
+    nodes: list[RuntimeGraphNode] = []
+    edges: list[RuntimeGraphEdge] = []
+    node_observers: dict[str, RuntimeObserverPayload] = {}
+    edge_observers: dict[str, RuntimeObserverPayload] = {}
 
-    nodes = [
-        RuntimeGraphNode(
-            node_id=rule_hit_id,
-            label="Rule Hit",
-            node_type="rule_hit",
-            stage_id=definition.stage_id,
-            status=RuntimeStatus.COMPLETED,
-            origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
-            metrics={"evidence_count": evidence_count, "pending_count": len(pending_items)},
-            attributes={"rule_key": rule_key, "rule_label": rule_label},
-        ),
+    for rule_hit in rule_hits:
+        rule_node_id = _rule_node_id(document_id, rule_hit)
+        rule_status = _rule_hit_runtime_status(rule_hit)
+        nodes.append(
+            RuntimeGraphNode(
+                node_id=rule_node_id,
+                label=str(rule_hit.get("label") or rule_hit.get("key") or "Rule Hit"),
+                node_type="rule_hit",
+                stage_id=definition.stage_id,
+                status=rule_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                metrics={
+                    "passed": 1 if rule_hit.get("passed") else 0,
+                    "actual": rule_hit.get("actual"),
+                },
+                attributes={
+                    "rule_key": rule_hit.get("key"),
+                    "threshold": rule_hit.get("threshold"),
+                    "action": rule_hit.get("action"),
+                    "outcome": rule_hit.get("outcome"),
+                    "detail": rule_hit.get("detail"),
+                },
+            )
+        )
+        edge_id = f"{rule_node_id}:results_in"
+        edges.append(
+            RuntimeGraphEdge(
+                edge_id=edge_id,
+                source=rule_node_id,
+                target=gate_id,
+                relation="results_in",
+                stage_id=definition.stage_id,
+                status=rule_status if rule_status != RuntimeStatus.COMPLETED else gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                attributes={"action": rule_hit.get("action"), "outcome": rule_hit.get("outcome")},
+            )
+        )
+        node_observers[rule_node_id] = _build_rule_observer(
+            document_id=document_id,
+            document_title=document_title,
+            rule_node_id=rule_node_id,
+            gate_id=gate_id,
+            rule_hit=rule_hit,
+            status=rule_status,
+        )
+        edge_observers[edge_id] = _build_rule_edge_observer(
+            document_id=document_id,
+            document_title=document_title,
+            edge_id=edge_id,
+            rule_node_id=rule_node_id,
+            gate_id=gate_id,
+            status=gate_status,
+        )
+
+    nodes.append(
         RuntimeGraphNode(
             node_id=gate_id,
             label="Gate Decision",
@@ -88,23 +133,16 @@ def build_quality_gate_snapshot(
                 "approved_count": len(approved_items),
                 "pending_count": len(pending_items),
                 "rejected_count": len(rejected_items),
+                "failed_rule_count": int(decision.get("failed_rule_count") or 0),
             },
-            attributes={"decision": trace_decision.get("status") or gate_status.value},
-        ),
-    ]
-
-    edges = [
-        RuntimeGraphEdge(
-            edge_id=f"{rule_hit_id}:results_in",
-            source=rule_hit_id,
-            target=gate_id,
-            relation="results_in",
-            stage_id=definition.stage_id,
-            status=gate_status,
-            origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
+            attributes={
+                "decision": decision.get("status"),
+                "reason": decision.get("reason"),
+                "next_action": decision.get("next_action"),
+                "policy_snapshot_id": (trace.get("policy") or {}).get("snapshot_id"),
+            },
         )
-    ]
+    )
 
     for index, item in enumerate(knowledge_items, start=1):
         item_node_id = f"{document_id}:quality-gate:item:{index}"
@@ -129,7 +167,7 @@ def build_quality_gate_snapshot(
             RuntimeGraphEdge(
                 edge_id=f"{item_node_id}:evaluated_by",
                 source=item_node_id,
-                target=rule_hit_id,
+                target=primary_rule_node_id,
                 relation="evaluated_by",
                 stage_id=definition.stage_id,
                 status=item_status,
@@ -138,289 +176,54 @@ def build_quality_gate_snapshot(
             )
         )
 
-    if should_block:
-        nodes.extend(
-            [
-                RuntimeGraphNode(
-                    node_id=manual_review_id,
-                    label="Manual Review",
-                    node_type="manual_review",
-                    stage_id=definition.stage_id,
-                    status=RuntimeStatus.WARNING,
-                    origin=RuntimeOrigin.DERIVED,
-                    metrics={"pending_count": len(pending_items)},
-                ),
-                RuntimeGraphNode(
-                    node_id=blocked_id,
-                    label="Blocked Result",
-                    node_type="blocked_result",
-                    stage_id=definition.stage_id,
-                    status=RuntimeStatus.BLOCKED,
-                    origin=RuntimeOrigin.DERIVED,
-                    is_primary=True,
-                    attributes={"reason": block_reason},
-                ),
-            ]
-        )
-        edges.extend(
-            [
-                RuntimeGraphEdge(
-                    edge_id=f"{gate_id}:reviewed_by",
-                    source=gate_id,
-                    target=manual_review_id,
-                    relation="reviewed_by",
-                    stage_id=definition.stage_id,
-                    status=RuntimeStatus.WARNING,
-                    origin=RuntimeOrigin.DERIVED,
-                ),
-                RuntimeGraphEdge(
-                    edge_id=f"{gate_id}:blocked_by",
-                    source=gate_id,
-                    target=blocked_id,
-                    relation="blocked_by",
-                    stage_id=definition.stage_id,
-                    status=RuntimeStatus.BLOCKED,
-                    origin=RuntimeOrigin.DERIVED,
-                    is_primary=True,
-                ),
-            ]
-        )
-    else:
-        nodes.append(
-            RuntimeGraphNode(
-                node_id=publish_target_id,
-                label="Publish Target",
-                node_type="publish_target",
-                stage_id=definition.stage_id,
-                status=RuntimeStatus.COMPLETED if document_published else RuntimeStatus.RUNNING,
-                origin=RuntimeOrigin.DERIVED,
-                is_primary=True,
-                attributes={"version_label": (current_version or {}).get("version_label") or "pending"},
-            )
-        )
-        edges.append(
-            RuntimeGraphEdge(
-                edge_id=f"{gate_id}:publishes_to",
-                source=gate_id,
-                target=publish_target_id,
-                relation="publishes_to",
-                stage_id=definition.stage_id,
-                status=RuntimeStatus.COMPLETED if document_published else RuntimeStatus.RUNNING,
-                origin=RuntimeOrigin.DERIVED,
-                is_primary=True,
-            )
-        )
-
-    stage_observer = RuntimeObserverPayload(
-        mode=RuntimeObserverMode.STAGE,
-        title="阶段视角 · 质量门禁",
-        subtitle=document_title,
-        status=gate_status,
-        stream=merge_runtime_events(
-            [
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:rule",
-                    kind="rule",
-                    level="warning" if should_block else "success",
-                    message=f"Rule {rule_key} evaluated evidence_count={evidence_count} and pending_review_count={len(pending_items)}.",
-                    object_id=rule_hit_id,
-                    object_kind="node",
-                ),
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:decision",
-                    kind="block" if should_block else "result",
-                    level="danger" if should_block else "success",
-                    message=(
-                        f"Quality gate blocked publication because {block_reason}."
-                        if should_block
-                        else "Quality gate passed and the document can proceed toward publication outputs."
-                    ),
-                    object_id=gate_id,
-                    object_kind="node",
-                ),
-            ],
-            trace_events,
-        ),
-        sections=merge_runtime_sections(
-            [
-                RuntimeSummarySection(
-                    section_id="gate-summary",
-                    title="Gate Summary",
-                    fields=[
-                        RuntimeSummaryField(key="knowledge_item_count", label="knowledge_item_count", value=str(len(knowledge_items)), tone="info"),
-                        RuntimeSummaryField(key="evidence_count", label="evidence_count", value=str(evidence_count), tone="warning" if evidence_count <= 1 else "success"),
-                        RuntimeSummaryField(key="pending_review_count", label="pending_review_count", value=str(len(pending_items)), tone="warning" if pending_items else "success"),
-                        RuntimeSummaryField(key="current_version", label="current_version", value=(current_version or {}).get("version_label") or "unpublished", tone="info"),
-                    ],
-                ),
-                RuntimeSummarySection(
-                    section_id="review-state",
-                    title="Review State",
-                    fields=[
-                        RuntimeSummaryField(key="approved_count", label="approved_count", value=str(len(approved_items)), tone="success"),
-                        RuntimeSummaryField(key="pending_count", label="pending_count", value=str(len(pending_items)), tone="warning" if pending_items else "success"),
-                        RuntimeSummaryField(key="rejected_count", label="rejected_count", value=str(len(rejected_items)), tone="danger" if rejected_items else "neutral"),
-                    ],
-                ),
-            ],
-            trace_sections,
-        ),
-        actions=[
-            RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
-            RuntimeAction(action_id="view-rule-hits", label="View Rule Hits", target_kind="node", target_id=rule_hit_id),
-        ],
+    outcome_node_id = _append_outcome_path(
+        nodes=nodes,
+        edges=edges,
+        gate_id=gate_id,
+        blocked_id=blocked_id,
+        manual_review_id=manual_review_id,
+        publish_target_id=publish_target_id,
+        document_id=document_id,
+        definition_stage_id=definition.stage_id,
+        decision=decision,
+        current_version=current_version,
+        document_published=document_published,
     )
 
-    node_observers = {
-        rule_hit_id: RuntimeObserverPayload(
-            mode=RuntimeObserverMode.NODE,
-            title="Rule Hit",
-            subtitle=document_title,
-            status=RuntimeStatus.COMPLETED,
-            stream=[
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:rule-hit-node",
-                    kind="rule",
-                    level="warning" if should_block else "success",
-                    message=f"Rule {rule_key} has finished evaluation and fed the gate decision.",
-                    object_id=rule_hit_id,
-                    object_kind="node",
-                )
-            ],
-            sections=[
-                RuntimeSummarySection(
-                    section_id="rule",
-                    title="Rule Information",
-                    fields=[
-                        RuntimeSummaryField(key="rule_key", label="rule_key", value=rule_key),
-                        RuntimeSummaryField(key="rule_label", label="rule_label", value=rule_label),
-                        RuntimeSummaryField(key="evidence_count", label="evidence_count", value=str(evidence_count)),
-                    ],
-                )
-            ],
-            actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
-        ),
-        gate_id: RuntimeObserverPayload(
-            mode=RuntimeObserverMode.NODE,
-            title="Gate Decision",
-            subtitle=document_title,
-            status=gate_status,
-            stream=[
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:gate-node",
-                    kind="decision",
-                    level="danger" if should_block else "success",
-                    message="Gate decision is aggregating rule hits, review state, and publication constraints.",
-                    object_id=gate_id,
-                    object_kind="node",
-                )
-            ],
-            sections=[
-                RuntimeSummarySection(
-                    section_id="decision",
-                    title="Decision Summary",
-                    fields=[
-                        RuntimeSummaryField(key="gate_status", label="gate_status", value=gate_status.value, tone="danger" if should_block else "success"),
-                        RuntimeSummaryField(key="pending_review_count", label="pending_review_count", value=str(len(pending_items)), tone="warning" if pending_items else "success"),
-                        RuntimeSummaryField(key="block_reason", label="block_reason", value=block_reason if should_block else "none"),
-                    ],
-                )
-            ],
-            actions=[RuntimeAction(action_id="view-rule-hit", label="View Rule Hit", target_kind="node", target_id=rule_hit_id)],
-        ),
-    }
+    stage_observer = _build_stage_observer(
+        document_id=document_id,
+        document_title=document_title,
+        gate_id=gate_id,
+        first_rule_node_id=primary_rule_node_id,
+        gate_status=gate_status,
+        decision=decision,
+        metrics=metrics,
+        rule_hits=rule_hits,
+        current_version=current_version,
+        trace_events=trace_events,
+        trace_sections=trace_sections,
+    )
+    node_observers[gate_id] = _build_gate_observer(
+        document_id=document_id,
+        document_title=document_title,
+        gate_id=gate_id,
+        first_rule_node_id=primary_rule_node_id,
+        gate_status=gate_status,
+        decision=decision,
+        metrics=metrics,
+    )
+    node_observers[outcome_node_id] = _build_outcome_observer(
+        document_id=document_id,
+        document_title=document_title,
+        outcome_node_id=outcome_node_id,
+        gate_id=gate_id,
+        decision=decision,
+        status=gate_status,
+        current_version=current_version,
+        document_published=document_published,
+    )
 
-    if should_block:
-        node_observers[blocked_id] = RuntimeObserverPayload(
-            mode=RuntimeObserverMode.NODE,
-            title="Blocked Result",
-            subtitle=document_title,
-            status=RuntimeStatus.BLOCKED,
-            stream=[
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:blocked-node",
-                    kind="block",
-                    level="danger",
-                    message=f"Current object is blocked because {block_reason}.",
-                    object_id=blocked_id,
-                    object_kind="node",
-                )
-            ],
-            sections=[
-                RuntimeSummarySection(
-                    section_id="blocked",
-                    title="Blocked Summary",
-                    fields=[
-                        RuntimeSummaryField(key="reason", label="reason", value=block_reason, tone="danger"),
-                        RuntimeSummaryField(key="pending_review_count", label="pending_review_count", value=str(len(pending_items))),
-                    ],
-                )
-            ],
-            actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
-        )
-    else:
-        node_observers[publish_target_id] = RuntimeObserverPayload(
-            mode=RuntimeObserverMode.NODE,
-            title="Publish Target",
-            subtitle=document_title,
-            status=RuntimeStatus.COMPLETED if document_published else RuntimeStatus.RUNNING,
-            stream=[
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:publish-node",
-                    kind="result",
-                    level="success",
-                    message="Gate pass has moved the object into the publication target path.",
-                    object_id=publish_target_id,
-                    object_kind="node",
-                )
-            ],
-            sections=[
-                RuntimeSummarySection(
-                    section_id="publish-target",
-                    title="Publish Target",
-                    fields=[
-                        RuntimeSummaryField(key="version_label", label="version_label", value=(current_version or {}).get("version_label") or "pending", tone="info"),
-                        RuntimeSummaryField(key="document_published", label="document_published", value="true" if document_published else "false", tone="success" if document_published else "warning"),
-                    ],
-                )
-            ],
-            actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
-        )
-
-    edge_observers = {
-        f"{rule_hit_id}:results_in": RuntimeObserverPayload(
-            mode=RuntimeObserverMode.EDGE,
-            title="results_in",
-            subtitle=document_title,
-            status=gate_status,
-            stream=[
-                RuntimeEvent(
-                    event_id=f"{document_id}:quality-gate:results-in",
-                    kind="result",
-                    level="danger" if should_block else "success",
-                    message="Rule evaluation results are being folded into the gate decision.",
-                    object_id=f"{rule_hit_id}:results_in",
-                    object_kind="edge",
-                )
-            ],
-            sections=[
-                RuntimeSummarySection(
-                    section_id="relation",
-                    title="Relation Summary",
-                    fields=[
-                        RuntimeSummaryField(key="relation", label="relation", value="results_in"),
-                        RuntimeSummaryField(key="source", label="source", value="Rule Hit"),
-                        RuntimeSummaryField(key="target", label="target", value="Gate Decision"),
-                    ],
-                )
-            ],
-            actions=[
-                RuntimeAction(action_id="view-source-node", label="View Source Node", target_kind="node", target_id=rule_hit_id),
-                RuntimeAction(action_id="view-target-node", label="View Target Node", target_kind="node", target_id=gate_id),
-            ],
-        )
-    }
-
+    primary_node_ids = [_rule_node_id(document_id, hit) for hit in rule_hits] + [gate_id, outcome_node_id]
     return RuntimeStageSnapshot(
         stage_id=definition.stage_id,
         label=definition.label,
@@ -430,13 +233,418 @@ def build_quality_gate_snapshot(
         graph=RuntimeStageGraph(
             nodes=nodes,
             edges=edges,
-            primary_node_ids=[rule_hit_id, gate_id, blocked_id if should_block else publish_target_id],
+            primary_node_ids=primary_node_ids,
             primary_edge_ids=[edge.edge_id for edge in edges if edge.is_primary],
         ),
         stage_observer=stage_observer,
         node_observers=node_observers,
         edge_observers=edge_observers,
     )
+
+
+def _append_outcome_path(
+    *,
+    nodes: list[RuntimeGraphNode],
+    edges: list[RuntimeGraphEdge],
+    gate_id: str,
+    blocked_id: str,
+    manual_review_id: str,
+    publish_target_id: str,
+    document_id: str,
+    definition_stage_id: str,
+    decision: dict[str, Any],
+    current_version: dict[str, Any] | None,
+    document_published: bool,
+) -> str:
+    decision_status = str(decision.get("status") or "blocked")
+    if decision_status == "blocked":
+        outcome_node_id = blocked_id
+        outcome_status = RuntimeStatus.BLOCKED
+        relation = "blocked_by"
+        label = "Blocked Result"
+        node_type = "blocked_result"
+    elif decision_status == "manual_review":
+        outcome_node_id = manual_review_id
+        outcome_status = RuntimeStatus.WARNING
+        relation = "reviewed_by"
+        label = "Manual Review"
+        node_type = "manual_review"
+    else:
+        outcome_node_id = publish_target_id
+        outcome_status = RuntimeStatus.COMPLETED if decision_status == "passed" and document_published else RuntimeStatus.WARNING if decision_status != "passed" else RuntimeStatus.RUNNING
+        relation = "publishes_to" if decision_status == "passed" else "continues_with_policy_note"
+        label = "Publish Target" if decision_status == "passed" else "Policy Continuation"
+        node_type = "publish_target"
+
+    nodes.append(
+        RuntimeGraphNode(
+            node_id=outcome_node_id,
+            label=label,
+            node_type=node_type,
+            stage_id=definition_stage_id,
+            status=outcome_status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={
+                "decision": decision_status,
+                "reason": decision.get("reason"),
+                "version_label": (current_version or {}).get("version_label") or "pending",
+                "document_published": document_published,
+            },
+        )
+    )
+    edges.append(
+        RuntimeGraphEdge(
+            edge_id=f"{gate_id}:{relation}",
+            source=gate_id,
+            target=outcome_node_id,
+            relation=relation,
+            stage_id=definition_stage_id,
+            status=outcome_status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"decision": decision_status, "next_action": decision.get("next_action")},
+        )
+    )
+    return outcome_node_id
+
+
+def _build_stage_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    gate_id: str,
+    first_rule_node_id: str,
+    gate_status: RuntimeStatus,
+    decision: dict[str, Any],
+    metrics: dict[str, Any],
+    rule_hits: list[dict[str, Any]],
+    current_version: dict[str, Any] | None,
+    trace_events: list[RuntimeEvent],
+    trace_sections: list[RuntimeSummarySection],
+) -> RuntimeObserverPayload:
+    decision_status = str(decision.get("status") or gate_status.value)
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.STAGE,
+        title="阶段视角 · 质量门禁",
+        subtitle=document_title,
+        status=gate_status,
+        stream=merge_runtime_events(
+            [
+                RuntimeEvent(
+                    event_id=f"{document_id}:quality-gate:policy-summary",
+                    kind="rule",
+                    level="danger" if decision_status == "blocked" else ("warning" if decision_status != "passed" else "success"),
+                    message=f"Quality gate evaluated {len(rule_hits)} executable policy rules and decided {decision_status}.",
+                    object_id=gate_id,
+                    object_kind="node",
+                )
+            ],
+            trace_events,
+        ),
+        sections=merge_runtime_sections(
+            [
+                RuntimeSummarySection(
+                    section_id="gate-summary",
+                    title="Gate Summary",
+                    fields=[
+                        RuntimeSummaryField(key="decision", label="decision", value=decision_status, tone=_decision_tone(decision_status)),
+                        RuntimeSummaryField(key="failed_rule_count", label="failed_rule_count", value=str(decision.get("failed_rule_count", 0)), tone="warning" if decision.get("failed_rule_count") else "success"),
+                        RuntimeSummaryField(key="reason", label="reason", value=str(decision.get("reason") or "none"), tone=_decision_tone(decision_status)),
+                        RuntimeSummaryField(key="current_version", label="current_version", value=(current_version or {}).get("version_label") or "unpublished", tone="info"),
+                    ],
+                ),
+                RuntimeSummarySection(
+                    section_id="gate-metrics",
+                    title="Gate Metrics",
+                    fields=[
+                        RuntimeSummaryField(key=key, label=key, value=str(value), tone="info")
+                        for key, value in metrics.items()
+                    ],
+                ),
+            ],
+            trace_sections,
+        ),
+        actions=[
+            RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
+            RuntimeAction(action_id="view-rule-hits", label="View Rule Hits", target_kind="node", target_id=first_rule_node_id),
+        ],
+    )
+
+
+def _build_rule_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    rule_node_id: str,
+    gate_id: str,
+    rule_hit: dict[str, Any],
+    status: RuntimeStatus,
+) -> RuntimeObserverPayload:
+    outcome = str(rule_hit.get("outcome") or "not_evaluated")
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title=str(rule_hit.get("label") or rule_hit.get("key") or "Rule Hit"),
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:rule-node:{rule_hit.get('key')}",
+                kind="rule",
+                level="success" if outcome == "passed" else "warning",
+                message=f"Rule {rule_hit.get('key')} outcome={outcome}; action={rule_hit.get('action')}.",
+                object_id=rule_node_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="rule",
+                title="Rule Information",
+                fields=[
+                    RuntimeSummaryField(key="rule_key", label="rule_key", value=str(rule_hit.get("key"))),
+                    RuntimeSummaryField(key="threshold", label="threshold", value=str(rule_hit.get("threshold"))),
+                    RuntimeSummaryField(key="action", label="action", value=str(rule_hit.get("action")), tone="info"),
+                    RuntimeSummaryField(key="outcome", label="outcome", value=outcome, tone="success" if outcome == "passed" else "warning"),
+                    RuntimeSummaryField(key="actual", label="actual", value=str(rule_hit.get("actual"))),
+                    RuntimeSummaryField(key="detail", label="detail", value=str(rule_hit.get("detail"))),
+                ],
+            )
+        ],
+        actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
+    )
+
+
+def _build_gate_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    gate_id: str,
+    first_rule_node_id: str,
+    gate_status: RuntimeStatus,
+    decision: dict[str, Any],
+    metrics: dict[str, Any],
+) -> RuntimeObserverPayload:
+    decision_status = str(decision.get("status") or gate_status.value)
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title="Gate Decision",
+        subtitle=document_title,
+        status=gate_status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:gate-node",
+                kind="decision",
+                level=_event_level(decision_status),
+                message=f"Gate decision is {decision_status}: {decision.get('reason')}.",
+                object_id=gate_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="decision",
+                title="Decision Summary",
+                fields=[
+                    RuntimeSummaryField(key="gate_status", label="gate_status", value=gate_status.value, tone=_decision_tone(decision_status)),
+                    RuntimeSummaryField(key="decision", label="decision", value=decision_status, tone=_decision_tone(decision_status)),
+                    RuntimeSummaryField(key="reason", label="reason", value=str(decision.get("reason") or "none")),
+                    RuntimeSummaryField(key="risk_score", label="risk_score", value=str(metrics.get("risk_score")), tone="info"),
+                    RuntimeSummaryField(key="supporting_documents", label="supporting_documents", value=str(metrics.get("supporting_documents")), tone="info"),
+                ],
+            )
+        ],
+        actions=[RuntimeAction(action_id="view-rule-hit", label="View Rule Hit", target_kind="node", target_id=first_rule_node_id)],
+    )
+
+
+def _build_outcome_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    outcome_node_id: str,
+    gate_id: str,
+    decision: dict[str, Any],
+    status: RuntimeStatus,
+    current_version: dict[str, Any] | None,
+    document_published: bool,
+) -> RuntimeObserverPayload:
+    decision_status = str(decision.get("status") or status.value)
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title="Gate Outcome",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:outcome-node",
+                kind="decision",
+                level=_event_level(decision_status),
+                message=f"Quality gate outcome is {decision_status}; next action is {decision.get('next_action')}.",
+                object_id=outcome_node_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="outcome",
+                title="Outcome",
+                fields=[
+                    RuntimeSummaryField(key="decision", label="decision", value=decision_status, tone=_decision_tone(decision_status)),
+                    RuntimeSummaryField(key="next_action", label="next_action", value=str(decision.get("next_action") or "none"), tone="info"),
+                    RuntimeSummaryField(key="version_label", label="version_label", value=(current_version or {}).get("version_label") or "pending", tone="info"),
+                    RuntimeSummaryField(key="document_published", label="document_published", value="true" if document_published else "false", tone="success" if document_published else "warning"),
+                ],
+            )
+        ],
+        actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
+    )
+
+
+def _build_rule_edge_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    edge_id: str,
+    rule_node_id: str,
+    gate_id: str,
+    status: RuntimeStatus,
+) -> RuntimeObserverPayload:
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.EDGE,
+        title="results_in",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:edge:{edge_id}",
+                kind="result",
+                level="danger" if status == RuntimeStatus.BLOCKED else "info",
+                message="Rule evaluation result is folded into the gate decision.",
+                object_id=edge_id,
+                object_kind="edge",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="relation",
+                title="Relation Summary",
+                fields=[
+                    RuntimeSummaryField(key="relation", label="relation", value="results_in"),
+                    RuntimeSummaryField(key="source", label="source", value="Rule Hit"),
+                    RuntimeSummaryField(key="target", label="target", value="Gate Decision"),
+                ],
+            )
+        ],
+        actions=[
+            RuntimeAction(action_id="view-source-node", label="View Source Node", target_kind="node", target_id=rule_node_id),
+            RuntimeAction(action_id="view-target-node", label="View Target Node", target_kind="node", target_id=gate_id),
+        ],
+    )
+
+
+def _normalize_rule_hits(runtime_trace: dict[str, Any], contribution: dict[str, Any]) -> list[dict[str, Any]]:
+    rule_hits = [item for item in runtime_trace.get("rule_hits", []) if isinstance(item, dict)]
+    if rule_hits:
+        return rule_hits
+    evidence_count = _count_evidence(contribution)
+    outcome = "failed" if evidence_count == 0 else "passed"
+    return [
+        {
+            "key": "min_supporting_documents",
+            "label": "minimum supporting documents",
+            "threshold": "evidence_count > 0",
+            "action": "block_return",
+            "outcome": outcome,
+            "passed": outcome == "passed",
+            "actual": evidence_count,
+            "detail": f"evidence_count actual={evidence_count} expected > 0",
+        }
+    ]
+
+
+def _normalize_decision(
+    runtime_trace: dict[str, Any],
+    contribution: dict[str, Any],
+    pending_items: list[dict[str, Any]],
+    rejected_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    decision = runtime_trace.get("decision")
+    if isinstance(decision, dict) and decision.get("status"):
+        return decision
+
+    evidence_count = _count_evidence(contribution)
+    should_block = evidence_count == 0 or bool(pending_items) or bool(rejected_items)
+    return {
+        "status": "blocked" if should_block else "passed",
+        "reason": _block_reason(evidence_count, pending_items, rejected_items),
+        "next_action": "blocked_result" if should_block else "publish_target",
+        "failed_rule_count": 1 if should_block else 0,
+    }
+
+
+def _normalize_metrics(
+    runtime_trace: dict[str, Any],
+    contribution: dict[str, Any],
+    knowledge_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    metrics = runtime_trace.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    return {
+        "knowledge_item_count": len(knowledge_items),
+        "evidence_count": _count_evidence(contribution),
+        "supporting_documents": len(
+            {
+                document_id
+                for item in knowledge_items
+                for document_id in item.get("document_ids", [])
+            }
+        ),
+        "pending_review_count": sum(1 for item in knowledge_items if item.get("review_status", "pending") == "pending"),
+        "rejected_count": sum(1 for item in knowledge_items if item.get("review_status") == "rejected"),
+        "hard_conflict": 0,
+        "risk_score": 1.0,
+    }
+
+
+def _decision_runtime_status(decision_status: Any, *, document_published: bool) -> RuntimeStatus:
+    if decision_status == "blocked":
+        return RuntimeStatus.BLOCKED
+    if decision_status in {"manual_review", "warning", "deferred"}:
+        return RuntimeStatus.WARNING
+    if decision_status == "passed":
+        return RuntimeStatus.COMPLETED if document_published else RuntimeStatus.COMPLETED
+    return RuntimeStatus.BLOCKED
+
+
+def _rule_hit_runtime_status(rule_hit: dict[str, Any]) -> RuntimeStatus:
+    if rule_hit.get("outcome") == "failed":
+        return RuntimeStatus.BLOCKED if rule_hit.get("action") == "block_return" else RuntimeStatus.WARNING
+    if rule_hit.get("outcome") == "not_evaluated":
+        return RuntimeStatus.WARNING
+    return RuntimeStatus.COMPLETED
+
+
+def _rule_node_id(document_id: str, rule_hit: dict[str, Any]) -> str:
+    key = str(rule_hit.get("key") or "rule").replace(" ", "-")
+    return f"{document_id}:quality-gate:rule-hit:{key}"
+
+
+def _decision_tone(decision_status: str) -> str:
+    if decision_status == "blocked":
+        return "danger"
+    if decision_status in {"manual_review", "warning", "deferred"}:
+        return "warning"
+    return "success"
+
+
+def _event_level(decision_status: str) -> str:
+    if decision_status == "blocked":
+        return "danger"
+    if decision_status in {"manual_review", "warning", "deferred"}:
+        return "warning"
+    return "success"
 
 
 def _count_evidence(contribution: dict[str, Any]) -> int:
@@ -463,6 +671,7 @@ def _derive_items_from_contribution(contribution: dict[str, Any]) -> list[dict[s
                     "item_type": item_type,
                     "category": item.get("category"),
                     "review_status": item.get("review_status", "pending"),
+                    "document_ids": item.get("document_ids", []),
                 }
             )
     return items

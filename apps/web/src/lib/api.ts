@@ -222,6 +222,7 @@ export type ArchivePolicyRuntimeSnapshotStage = {
   ai_mode: string;
   default_action: ArchivePolicyAction;
   rule_count: number;
+  rules?: ArchiveStagePolicyRule[];
 };
 
 export type ArchivePolicyRuntimeSnapshot = {

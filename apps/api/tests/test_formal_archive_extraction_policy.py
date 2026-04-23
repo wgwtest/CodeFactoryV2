@@ -259,7 +259,9 @@ def test_build_archive_knowledge_records_skipped_spreadsheet_warnings(tmp_path: 
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-1"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-1"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -319,7 +321,9 @@ def test_build_archive_knowledge_skips_docling_failed_pdf_and_continues(tmp_path
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-good"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-good"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -383,7 +387,9 @@ def test_build_archive_knowledge_skips_docling_failed_docx_and_continues(tmp_pat
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-good"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-good"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -450,7 +456,7 @@ def test_build_archive_knowledge_skips_doc_conversion_failure_and_continues(
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
             document, document_id="doc-good"
         ),
     )

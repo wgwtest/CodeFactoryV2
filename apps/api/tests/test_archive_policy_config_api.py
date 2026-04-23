@@ -135,6 +135,8 @@ def test_extract_archive_freezes_policy_snapshot_for_running_build(tmp_path) -> 
             assert policy_snapshot["snapshot_id"]
             assert policy_snapshot["stages"][0]["stage_id"] == "asset_intake"
             assert policy_snapshot["stages"][0]["default_action"] == "manual_review"
+            assert policy_snapshot["stages"][0]["rules"]
+            assert policy_snapshot["stages"][0]["rules"][0]["threshold"]
             return {
                 "archive_id": archive_id,
                 "source_dir": str(source_dir),
