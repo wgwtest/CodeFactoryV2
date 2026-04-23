@@ -54,7 +54,6 @@ def build_quality_gate_snapshot(
 
     gate_id = f"{document_id}:quality-gate:gate"
     blocked_id = f"{document_id}:quality-gate:blocked"
-    manual_review_id = f"{document_id}:quality-gate:manual-review"
     publish_target_id = f"{document_id}:quality-gate:publish-target"
     primary_rule_node_id = _rule_node_id(document_id, rule_hits[0]) if rule_hits else gate_id
 
@@ -181,7 +180,6 @@ def build_quality_gate_snapshot(
         edges=edges,
         gate_id=gate_id,
         blocked_id=blocked_id,
-        manual_review_id=manual_review_id,
         publish_target_id=publish_target_id,
         document_id=document_id,
         definition_stage_id=definition.stage_id,
@@ -248,7 +246,6 @@ def _append_outcome_path(
     edges: list[RuntimeGraphEdge],
     gate_id: str,
     blocked_id: str,
-    manual_review_id: str,
     publish_target_id: str,
     document_id: str,
     definition_stage_id: str,
@@ -263,12 +260,6 @@ def _append_outcome_path(
         relation = "blocked_by"
         label = "Blocked Result"
         node_type = "blocked_result"
-    elif decision_status == "manual_review":
-        outcome_node_id = manual_review_id
-        outcome_status = RuntimeStatus.WARNING
-        relation = "reviewed_by"
-        label = "Manual Review"
-        node_type = "manual_review"
     else:
         outcome_node_id = publish_target_id
         outcome_status = RuntimeStatus.COMPLETED if decision_status == "passed" and document_published else RuntimeStatus.WARNING if decision_status != "passed" else RuntimeStatus.RUNNING
@@ -546,7 +537,7 @@ def _build_rule_edge_observer(
 def _normalize_rule_hits(runtime_trace: dict[str, Any], contribution: dict[str, Any]) -> list[dict[str, Any]]:
     rule_hits = [item for item in runtime_trace.get("rule_hits", []) if isinstance(item, dict)]
     if rule_hits:
-        return rule_hits
+        return [_normalize_quality_gate_rule_hit(hit) for hit in rule_hits]
     evidence_count = _count_evidence(contribution)
     outcome = "failed" if evidence_count == 0 else "passed"
     return [
@@ -571,14 +562,16 @@ def _normalize_decision(
 ) -> dict[str, Any]:
     decision = runtime_trace.get("decision")
     if isinstance(decision, dict) and decision.get("status"):
-        return decision
+        return _normalize_quality_gate_decision(decision)
 
     evidence_count = _count_evidence(contribution)
-    should_block = evidence_count == 0 or bool(pending_items) or bool(rejected_items)
+    should_block = evidence_count == 0 or bool(rejected_items)
+    should_warn = not should_block and bool(pending_items)
+    status = "blocked" if should_block else "warning" if should_warn else "passed"
     return {
-        "status": "blocked" if should_block else "passed",
+        "status": status,
         "reason": _block_reason(evidence_count, pending_items, rejected_items),
-        "next_action": "blocked_result" if should_block else "publish_target",
+        "next_action": "blocked_result" if should_block else "continue_with_warning" if should_warn else "publish_target",
         "failed_rule_count": 1 if should_block else 0,
     }
 
@@ -647,6 +640,35 @@ def _event_level(decision_status: str) -> str:
     return "success"
 
 
+def _normalize_quality_gate_action(action: Any) -> str:
+    if action == "manual_review":
+        return "warn_continue"
+    return str(action or "block_return")
+
+
+def _normalize_quality_gate_status(status: Any) -> str:
+    if status == "manual_review":
+        return "warning"
+    return str(status or "blocked")
+
+
+def _normalize_quality_gate_rule_hit(rule_hit: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(rule_hit)
+    normalized["action"] = _normalize_quality_gate_action(normalized.get("action"))
+    return normalized
+
+
+def _normalize_quality_gate_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(decision)
+    status = _normalize_quality_gate_status(normalized.get("status"))
+    normalized["status"] = status
+    if normalized.get("next_action") == "manual_review":
+        normalized["next_action"] = "continue_with_warning"
+    elif status == "warning" and not normalized.get("next_action"):
+        normalized["next_action"] = "continue_with_warning"
+    return normalized
+
+
 def _count_evidence(contribution: dict[str, Any]) -> int:
     count = 0
     for collection_name in ("entities", "events", "processes"):
@@ -688,8 +710,8 @@ def _review_status_to_runtime(review_status: str) -> RuntimeStatus:
 def _block_reason(evidence_count: int, pending_items: list[dict[str, Any]], rejected_items: list[dict[str, Any]]) -> str:
     if evidence_count == 0:
         return "evidence is insufficient"
-    if pending_items:
-        return "manual review is still pending"
     if rejected_items:
         return "rejected knowledge items remain in the candidate set"
+    if pending_items:
+        return "items remain pending for post-publication review"
     return "no blocking condition"

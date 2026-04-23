@@ -98,6 +98,20 @@ type StageRoleLayoutBuckets = {
   outputs: ArchiveDocumentRuntimeGraphNode[];
 };
 
+const QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate";
+
+type QualityGateRuleInsight = {
+  nodeId: string;
+  label: string;
+  status: ArchiveDocumentRuntimeStatus;
+  ruleKey: string;
+  threshold: string;
+  action: string;
+  outcome: string;
+  actual: string;
+  detail: string;
+};
+
 const archiveStatusMeta: Record<KnowledgeArchive["status"], { color: string; label: string }> = {
   empty: { color: "default", label: "未抽取" },
   extracting: { color: "processing", label: "运行中" },
@@ -391,6 +405,63 @@ function formatPolicyActionLabel(action?: ArchivePolicyAction | null) {
   return policyActionMeta[action]?.label ?? action;
 }
 
+function formatRuntimeValue(value: unknown, fallback = "未记录") {
+  if (value === null || value === undefined || String(value).trim() === "") return fallback;
+  return String(value);
+}
+
+function isQualityGateStage(stage: ArchiveDocumentRuntimeStageSnapshot | null | undefined) {
+  return stage?.stage_id === QUALITY_GATE_STAGE_ID;
+}
+
+function findObserverField(
+  observer: ArchiveDocumentRuntimeObserverPayload | null | undefined,
+  keys: string[],
+) {
+  if (!observer) return null;
+  const keySet = new Set(keys);
+  for (const section of observer.sections) {
+    const field = section.fields.find((entry) => keySet.has(entry.key));
+    if (field) return field;
+  }
+  return null;
+}
+
+function buildQualityGateRuleInsights(stage: ArchiveDocumentRuntimeStageSnapshot): QualityGateRuleInsight[] {
+  return stage.graph.nodes
+    .filter((node) => node.node_type === "rule_hit")
+    .map((node) => {
+      const attributes = node.attributes ?? {};
+      return {
+        nodeId: node.node_id,
+        label: node.label,
+        status: node.status,
+        ruleKey: formatRuntimeValue(attributes.rule_key, "rule"),
+        threshold: formatRuntimeValue(attributes.threshold),
+        action: formatRuntimeValue(attributes.action),
+        outcome: formatRuntimeValue(attributes.outcome, node.status),
+        actual: formatRuntimeValue(node.metrics?.actual),
+        detail: formatRuntimeValue(attributes.detail, ""),
+      };
+    });
+}
+
+function qualityGateOutcomeMeta(outcome: string, status?: ArchiveDocumentRuntimeStatus) {
+  const normalized = outcome.toLowerCase();
+  if (normalized === "passed" || status === "completed") return { color: "success", label: "通过" };
+  if (normalized === "failed" && status === "blocked") return { color: "error", label: "阻断" };
+  if (normalized === "failed") return { color: "warning", label: "未通过" };
+  if (normalized === "not_evaluated") return { color: "default", label: "未执行" };
+  return { color: runtimeStatusMeta[status ?? "unavailable"].color, label: outcome || runtimeStatusMeta[status ?? "unavailable"].label };
+}
+
+function getQualityGateDecisionTone(decision: string) {
+  if (decision === "blocked") return "error";
+  if (decision === "manual_review" || decision === "warning" || decision === "deferred") return "warning";
+  if (decision === "passed") return "success";
+  return "default";
+}
+
 function formatRuntimeRelationLabel(relation: string) {
   return runtimeRelationLabelMap[relation] ?? relation.split("_").join(" ");
 }
@@ -516,16 +587,18 @@ function buildRuntimeNodeLayouts(stage: ArchiveDocumentRuntimeStageSnapshot) {
   return new Map(
     stage.graph.nodes.map((node) => {
       const primary = primaryNodeIds.has(node.node_id) || node.is_primary;
-      const summary = summarizeRecord(node.metrics) ?? summarizeRecord(node.attributes);
+      const summary = summarizeRuntimeNode(node);
       const labelLines = estimateWrappedLineCount(node.label, primary ? 11 : 10);
       const summaryLines = summary ? Math.min(primary ? 3 : 2, estimateWrappedLineCount(summary, primary ? 18 : 14)) : 0;
+      const isRuleNode = node.node_type === "rule_hit";
       const width = clampNumber(
-        (primary ? 188 : 146) + Math.max(0, Array.from(node.label).length - (primary ? 10 : 8)) * (primary ? 4 : 3),
-        primary ? 188 : 146,
-        primary ? 268 : 214,
+        (isRuleNode ? 230 : primary ? 188 : 146) +
+          Math.max(0, Array.from(node.label).length - (primary ? 10 : 8)) * (primary ? 4 : 3),
+        isRuleNode ? 230 : primary ? 188 : 146,
+        isRuleNode ? 310 : primary ? 268 : 214,
       );
       const height =
-        (primary ? 76 : 54) +
+        (isRuleNode ? 112 : primary ? 76 : 54) +
         Math.max(0, labelLines - 1) * (primary ? 18 : 16) +
         summaryLines * (primary ? 15 : 13);
 
@@ -1778,6 +1851,26 @@ function summarizeRecord(record: Record<string, unknown> | undefined, limit = 2)
     .join(" / ");
 }
 
+function summarizeRuntimeNode(node: ArchiveDocumentRuntimeGraphNode) {
+  if (node.node_type === "rule_hit") {
+    const threshold = formatRuntimeValue(node.attributes?.threshold, "");
+    const actual = formatRuntimeValue(node.metrics?.actual, "");
+    const outcome = formatRuntimeValue(node.attributes?.outcome, "");
+    const parts = [
+      actual ? `actual ${actual}` : "",
+      threshold ? `threshold ${threshold}` : "",
+      outcome ? `outcome ${outcome}` : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" / ") : summarizeRecord(node.attributes);
+  }
+  if (node.node_type === "gate_decision") {
+    const decision = formatRuntimeValue(node.attributes?.decision, "");
+    const reason = formatRuntimeValue(node.attributes?.reason, "");
+    return [decision, reason].filter(Boolean).join(" / ") || summarizeRecord(node.attributes);
+  }
+  return summarizeRecord(node.metrics) ?? summarizeRecord(node.attributes);
+}
+
 function getPrimaryGraphNodes(stage: ArchiveDocumentRuntimeStageSnapshot) {
   const primaryNodeIds = stage.graph.primary_node_ids.length
     ? stage.graph.primary_node_ids
@@ -1940,12 +2033,15 @@ function getDirectionalHandlePair(source: NodePosition, target: NodePosition) {
 
 type RuntimeFlowNodeData = {
   label: string;
+  nodeType: string;
   status: ArchiveDocumentRuntimeStatus;
   primary: boolean;
   highlightLevel: "selected" | "related" | "default" | "muted";
   selectionBadge?: string | null;
   animationKind?: "enter" | "status-change" | "reflow" | null;
   summary?: string | null;
+  attributes?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
 };
 
 type RuntimeClusterNodeData = {
@@ -1976,6 +2072,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
   const isRelated = data.highlightLevel === "related";
   const backgroundTone = isSelected ? "#8a4327" : data.primary ? "#8a4327" : "#475569";
   const summaryTone = isSelected ? "#7c5a4a" : data.primary ? "#7c5a4a" : "#94a3b8";
+  const isRuleNode = data.nodeType === "rule_hit";
+  const ruleOutcome = formatRuntimeValue(data.attributes?.outcome, "");
+  const ruleOutcomeMeta = qualityGateOutcomeMeta(ruleOutcome, data.status);
+  const ruleActual = formatRuntimeValue(data.metrics?.actual, "");
+  const ruleThreshold = formatRuntimeValue(data.attributes?.threshold, "");
+  const ruleAction = formatRuntimeValue(data.attributes?.action, "");
 
   return (
     <div className={shellClassName}>
@@ -1996,7 +2098,7 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
           borderRadius: data.primary ? 24 : 18,
           border: `${data.primary ? 3 : 2}px solid ${borderColor}`,
           background,
-          padding: data.primary ? "14px 16px" : "10px 12px",
+          padding: isRuleNode ? "12px 14px" : data.primary ? "14px 16px" : "10px 12px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -2013,6 +2115,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
         }}
       >
         {data.selectionBadge ? <div className="runtime-graph-selection-badge">{data.selectionBadge}</div> : null}
+        {isRuleNode ? (
+          <div className="runtime-graph-rule-execution-ribbon">
+            <span>{ruleOutcomeMeta.label}</span>
+            {ruleAction ? <span>{formatPolicyActionLabel(ruleAction as ArchivePolicyAction)}</span> : null}
+          </div>
+        ) : null}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%" }}>
           <div
             className="runtime-graph-node-status-dot"
@@ -2048,6 +2156,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
                 }}
               >
                 {data.summary}
+              </div>
+            ) : null}
+            {isRuleNode && (ruleActual || ruleThreshold) ? (
+              <div className="runtime-graph-rule-threshold">
+                {ruleActual ? <span>actual {ruleActual}</span> : null}
+                {ruleThreshold ? <span>{ruleThreshold}</span> : null}
               </div>
             ) : null}
           </div>
@@ -2154,12 +2268,15 @@ function buildStageFlowNodes(
       selectable: true,
       data: {
         label: node.label,
+        nodeType: node.node_type,
         status: node.status,
         primary,
         highlightLevel,
         selectionBadge: selectionState.nodeBadges.get(node.node_id) ?? null,
         animationKind: nodeAnimationFlags[node.node_id] ?? null,
         summary: layout.summary,
+        attributes: node.attributes,
+        metrics: node.metrics,
       },
       style: {
         width: layout.width,
@@ -2392,6 +2509,116 @@ function RuntimeContractCard({ runtime }: { runtime: ArchiveDocumentRuntimeContr
         </Col>
       </Row>
     </Card>
+  );
+}
+
+function QualityGateRuntimeInsight({
+  stage,
+  observer,
+  selectedNodeId,
+  onSelectRule,
+  compact = false,
+}: {
+  stage: ArchiveDocumentRuntimeStageSnapshot;
+  observer: ArchiveDocumentRuntimeObserverPayload | null;
+  selectedNodeId?: string | null;
+  onSelectRule?: (nodeId: string) => void;
+  compact?: boolean;
+}) {
+  const decision = findObserverField(observer, ["decision", "gate_status"])?.value ?? stage.status;
+  const reason = findObserverField(observer, ["reason"])?.value ?? "当前没有记录阻断原因";
+  const failedRuleCount = findObserverField(observer, ["failed_rule_count"])?.value ?? "0";
+  const supportingDocuments = findObserverField(observer, ["supporting_documents"])?.value ?? "未记录";
+  const riskScore = findObserverField(observer, ["risk_score"])?.value ?? "未记录";
+  const hardConflict = findObserverField(observer, ["hard_conflict"])?.value ?? "未记录";
+  const decisionTone = getQualityGateDecisionTone(String(decision));
+  const rules = buildQualityGateRuleInsights(stage);
+
+  return (
+    <div
+      style={{
+        borderRadius: compact ? 14 : 16,
+        border: "1px solid rgba(217, 93, 57, 0.24)",
+        background:
+          decisionTone === "error"
+            ? "linear-gradient(180deg, rgba(255,247,237,0.98) 0%, rgba(255,255,255,0.98) 100%)"
+            : "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(255,255,255,0.98) 100%)",
+        padding: compact ? 14 : 16,
+      }}
+    >
+      <Space direction="vertical" size={compact ? 10 : 14} style={{ display: "flex" }}>
+        <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+          <Space wrap size={[8, 8]}>
+            <Text strong>{compact ? "门禁策略命中" : "质量门禁判定链"}</Text>
+            <Tag color={decisionTone}>决策：{formatRuntimeValue(decision)}</Tag>
+            <Tag color={Number(failedRuleCount) > 0 ? "error" : "success"}>未通过规则 {failedRuleCount}</Tag>
+          </Space>
+          {!compact ? <Text type="secondary">policy / metrics / rule_hits / decision</Text> : null}
+        </Space>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: compact ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+          }}
+        >
+          <SummaryMetricTile label="支撑文档" value={supportingDocuments} hint="supporting_documents" />
+          <SummaryMetricTile label="风险分数" value={riskScore} hint="risk_score" />
+          <SummaryMetricTile label="硬冲突" value={hardConflict} hint="hard_conflict" />
+        </div>
+
+        <div
+          style={{
+            borderRadius: 12,
+            border: "1px solid rgba(217, 93, 57, 0.16)",
+            background: "rgba(255,255,255,0.78)",
+            padding: "10px 12px",
+          }}
+        >
+          <Text type={decisionTone === "error" ? "danger" : decisionTone === "warning" ? "warning" : "secondary"}>
+            {reason}
+          </Text>
+        </div>
+
+        <Space direction="vertical" size={8} style={{ display: "flex" }}>
+          {rules.map((rule) => {
+            const outcomeMeta = qualityGateOutcomeMeta(rule.outcome, rule.status);
+            const isSelected = selectedNodeId === rule.nodeId;
+            return (
+              <button
+                key={rule.nodeId}
+                type="button"
+                disabled={!onSelectRule}
+                onClick={() => onSelectRule?.(rule.nodeId)}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  borderRadius: 12,
+                  border: `1px solid ${isSelected ? "#d95d39" : "rgba(148,163,184,0.22)"}`,
+                  background: isSelected ? "rgba(255,247,237,0.98)" : "#fff",
+                  padding: "10px 12px",
+                  cursor: onSelectRule ? "pointer" : "default",
+                  boxShadow: isSelected ? "0 10px 24px rgba(217,93,57,0.12)" : "none",
+                }}
+              >
+                <Space direction="vertical" size={6} style={{ display: "flex" }}>
+                  <Space wrap size={[8, 8]}>
+                    <Tag color={outcomeMeta.color}>{outcomeMeta.label}</Tag>
+                    <Text strong>{rule.label}</Text>
+                    <Tag color="default">{formatPolicyActionLabel(rule.action as ArchivePolicyAction)}</Tag>
+                  </Space>
+                  <Text type="secondary">
+                    实际值 {rule.actual}；阈值 {rule.threshold}
+                  </Text>
+                  {rule.detail ? <Text style={{ color: "#8a4b2d" }}>{rule.detail}</Text> : null}
+                </Space>
+              </button>
+            );
+          })}
+        </Space>
+      </Space>
+    </div>
   );
 }
 
@@ -3140,6 +3367,8 @@ function DocumentGraphControlPanel({
   focusHint,
   focusSummary,
   selectionInsight,
+  selectedNodeId,
+  onSelectRuleNode,
   onResetFocus,
 }: {
   stage: ArchiveDocumentRuntimeStageSnapshot;
@@ -3151,6 +3380,8 @@ function DocumentGraphControlPanel({
   focusHint?: string;
   focusSummary?: string | null;
   selectionInsight: { headline: string; detail: string; tags: string[] };
+  selectedNodeId: string | null;
+  onSelectRuleNode: (nodeId: string) => void;
   onResetFocus: () => void;
 }) {
   const primaryNodeCount =
@@ -3202,6 +3433,15 @@ function DocumentGraphControlPanel({
             <Text strong>阶段导览</Text>
             <Text>{primaryTrail || "当前阶段主路径将在这里串联显示。"}</Text>
           </div>
+
+          {isQualityGateStage(stage) ? (
+            <QualityGateRuntimeInsight
+              stage={stage}
+              observer={stage.stage_observer}
+              selectedNodeId={selectedNodeId}
+              onSelectRule={onSelectRuleNode}
+            />
+          ) : null}
 
           <div
             style={{
@@ -3590,6 +3830,9 @@ function DocumentObserverPanel({
   focusHint,
   focusSummary,
   scopeLabel,
+  stage,
+  selectedNodeId,
+  onSelectNode,
 }: {
   observer: ArchiveDocumentRuntimeObserverPayload | null;
   mode: ObserverMode;
@@ -3598,6 +3841,9 @@ function DocumentObserverPanel({
   focusHint?: string;
   focusSummary?: string | null;
   scopeLabel: string;
+  stage?: ArchiveDocumentRuntimeStageSnapshot | null;
+  selectedNodeId?: string | null;
+  onSelectNode?: (nodeId: string) => void;
 }) {
   if (!observer) {
     return (
@@ -3667,6 +3913,16 @@ function DocumentObserverPanel({
             {focusHint ? <Tag>{focusHint}</Tag> : null}
           </Space>
         </div>
+
+        {stage && isQualityGateStage(stage) ? (
+          <QualityGateRuntimeInsight
+            stage={stage}
+            observer={observer}
+            selectedNodeId={selectedNodeId}
+            onSelectRule={onSelectNode}
+            compact
+          />
+        ) : null}
 
         <div
           style={{
@@ -4295,6 +4551,12 @@ function DocumentView(props: {
                   focusHint={focusHint}
                   focusSummary={focusSummary}
                   selectionInsight={selectionInsight}
+                  selectedNodeId={props.selectedNodeId}
+                  onSelectRuleNode={(id) => {
+                    props.setSelectedNodeId(id);
+                    props.setSelectedEdgeId(null);
+                    props.setObserverMode("node");
+                  }}
                   onResetFocus={() => {
                     props.setSelectedNodeId(null);
                     props.setSelectedEdgeId(null);
@@ -4334,6 +4596,13 @@ function DocumentView(props: {
                   focusHint={focusHint}
                   focusSummary={focusSummary}
                   scopeLabel={`单文档 · ${props.document.title}`}
+                  stage={inspectedStage}
+                  selectedNodeId={props.selectedNodeId}
+                  onSelectNode={(id) => {
+                    props.setSelectedNodeId(id);
+                    props.setSelectedEdgeId(null);
+                    props.setObserverMode("node");
+                  }}
                 />
               </Col>
             </Row>
@@ -4546,18 +4815,18 @@ function PolicyWorkbenchView({
       observability: ["canonical_name", "citation_index", "merge_similarity", "canonical_object_score"],
     },
     quality_policy_evaluation_governance_gate: {
-      objective: "集中执行质量门禁，决定当前对象是直接进入发布、告警继续还是阻断。",
-      aiMode: "质量门禁决策辅助",
+      objective: "集中执行质量门禁，决定当前对象是直接进入发布、告警继续还是阻断；本阶段不交由人工参与。",
+      aiMode: "质量门禁规则执行",
       defaultAction: "阻断并回退",
       inputs: ["规范知识对象", "质量策略集", "阶段级风险信号"],
-      aiAdaptation: "AI 根据前序阶段风险信号给出门禁建议，但最终仍由策略阈值决定阻断、告警或延迟发布。",
+      aiAdaptation: "AI 只负责整理前序风险信号和指标，最终由策略阈值确定通过、告警继续、延迟发布或阻断。",
       rules: [
         { key: "gate-1", name: "支撑文档下限", meaning: "支撑证据不足时直接阻断", threshold: "supporting_documents >= 2", action: "阻断并回退" },
-        { key: "gate-2", name: "风险信号汇总", meaning: "风险分过高则转人工复核或延迟发布", threshold: "risk_score < 0.65", action: "转人工复核" },
+        { key: "gate-2", name: "风险信号汇总", meaning: "风险分过高则记录告警并继续发布链", threshold: "risk_score < 0.65", action: "告警继续" },
         { key: "gate-3", name: "发布前冲突清零", meaning: "存在未解决硬冲突则禁止进入发布链", threshold: "hard_conflict = 0", action: "阻断并回退" },
       ],
-      branches: ["门禁通过 -> 发布/API", "风险中等 -> 人工复核", "硬冲突或支撑不足 -> 阻断并回退规范知识"],
-      outputs: ["Gate 决策", "阻断/告警原因", "人工复核转交建议"],
+      branches: ["门禁通过 -> 发布/API", "风险中等 -> 带告警继续发布链", "硬冲突或支撑不足 -> 阻断并回退规范知识"],
+      outputs: ["Gate 决策", "阻断/告警原因", "发布链策略标记"],
       observability: ["supporting_documents", "risk_score", "hard_conflict", "gate_decision"],
     },
     indexes_snapshots_apis: {
@@ -5017,6 +5286,10 @@ function PolicyWorkbenchRuntimeView({
   };
 
   const selectedStageConfig = selectedStageId ? policyConfig?.stages[selectedStageId] ?? null : null;
+  const selectedPolicyActionOptions =
+    selectedStageId === QUALITY_GATE_STAGE_ID
+      ? policyActionOptions.filter((item) => item.value !== "manual_review")
+      : policyActionOptions;
   const stageGroups = (Object.keys(flowLaneStageIds) as FlowLaneId[]).map((laneId) => ({
     laneId,
     title: flowLaneMeta[laneId].title,
@@ -5177,7 +5450,7 @@ function PolicyWorkbenchRuntimeView({
                           <Col xs={24} md={8}>
                             <Form.Item name="default_action" label="默认动作" rules={[{ required: true, message: "请选择默认动作" }]}>
                               <Select
-                                options={policyActionOptions.map((item) => ({
+                                options={selectedPolicyActionOptions.map((item) => ({
                                   value: item.value,
                                   label: item.label,
                                 }))}
@@ -5259,7 +5532,7 @@ function PolicyWorkbenchRuntimeView({
                                         rules={[{ required: true, message: "请选择命中动作" }]}
                                       >
                                         <Select
-                                          options={policyActionOptions.map((item) => ({
+                                          options={selectedPolicyActionOptions.map((item) => ({
                                             value: item.value,
                                             label: item.label,
                                           }))}
@@ -5315,7 +5588,7 @@ function PolicyWorkbenchRuntimeView({
 function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => void; onOpenGlobal: () => void }) {
   const data = [
     { key: "1", group: "知识项级", name: "canonical_name_present", meaning: "规范名称必须存在", threshold: "true", action: "阻断" },
-    { key: "2", group: "知识项级", name: "definition_present", meaning: "定义字段不能为空", threshold: "true", action: "人工复核" },
+    { key: "2", group: "知识项级", name: "definition_present", meaning: "定义字段不能为空", threshold: "true", action: "告警继续" },
     { key: "3", group: "关系级", name: "relation_evidence_required", meaning: "关系必须带证据", threshold: "true", action: "阻断" },
     { key: "4", group: "发布批次级", name: "approved_only", meaning: "发布态只允许已批准项", threshold: "true", action: "阻断" },
   ];
@@ -5336,7 +5609,7 @@ function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => vo
           <Col span={6}><Card><Statistic title="抽取蓝图" value="知识抽取蓝图 v1" /></Card></Col>
           <Col span={6}><Card><Statistic title="质量策略" value="内容质量策略 v1" /></Card></Col>
           <Col span={6}><Card><Statistic title="规则覆盖层级" value="知识项 / 关系 / 发布" /></Card></Col>
-          <Col span={6}><Card><Statistic title="模式" value="严格 · 默认动作：人工复核" /></Card></Col>
+          <Col span={6}><Card><Statistic title="模式" value="严格 · 默认动作：规则执行" /></Card></Col>
         </Row>
         <Row gutter={16}>
           <Col xs={24} xl={6}>
@@ -5362,7 +5635,7 @@ function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => vo
                     title: "动作",
                     dataIndex: "action",
                     key: "action",
-                    render: (value: string) => <Tag color={value === "阻断" ? "error" : value === "人工复核" ? "warning" : "default"}>{value}</Tag>,
+                    render: (value: string) => <Tag color={value === "阻断" ? "error" : value === "告警继续" ? "warning" : "default"}>{value}</Tag>,
                   },
                 ]}
               />

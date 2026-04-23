@@ -11,7 +11,6 @@ ACTION_PRIORITY = {
     "auto_pass": 0,
     "warn_continue": 10,
     "defer_publish": 20,
-    "manual_review": 30,
     "block_return": 40,
 }
 
@@ -19,7 +18,6 @@ ACTION_DECISION_STATUS = {
     "auto_pass": "passed",
     "warn_continue": "warning",
     "defer_publish": "deferred",
-    "manual_review": "manual_review",
     "block_return": "blocked",
 }
 
@@ -131,7 +129,7 @@ def _resolve_quality_gate_policy(policy_snapshot: dict[str, Any] | None) -> dict
 def _evaluate_rule(rule: dict[str, Any], metrics: dict[str, Any], *, default_action: str) -> dict[str, Any]:
     threshold = str(rule.get("threshold") or "")
     parsed = THRESHOLD_PATTERN.match(threshold)
-    action = str(rule.get("action") or default_action)
+    action = _normalize_quality_gate_action(str(rule.get("action") or default_action))
     if not parsed:
         return _rule_hit(rule, action=action, outcome="not_evaluated", detail="threshold is not executable")
 
@@ -202,7 +200,7 @@ def _select_gate_decision(rule_hits: list[dict[str, Any]]) -> dict[str, Any]:
         }
 
     decisive_hit = max(failed_hits, key=lambda hit: ACTION_PRIORITY.get(str(hit.get("action")), 0))
-    decisive_action = str(decisive_hit.get("action") or "block_return")
+    decisive_action = _normalize_quality_gate_action(str(decisive_hit.get("action") or "block_return"))
     status = ACTION_DECISION_STATUS.get(decisive_action, "blocked")
     return {
         "status": status,
@@ -216,13 +214,21 @@ def _select_gate_decision(rule_hits: list[dict[str, Any]]) -> dict[str, Any]:
 def _next_action_for_status(status: str) -> str:
     if status == "blocked":
         return "blocked_result"
-    if status == "manual_review":
-        return "manual_review"
     if status == "deferred":
         return "defer_publish"
     if status == "warning":
         return "continue_with_warning"
     return "publish_target"
+
+
+def _normalize_quality_gate_action(action: str) -> str:
+    # Quality gate is a deterministic machine gate. Any legacy/manual action is
+    # converted to a rule warning so human review remains after publication.
+    if action == "manual_review":
+        return "warn_continue"
+    if action in ACTION_DECISION_STATUS:
+        return action
+    return "block_return"
 
 
 def _parse_literal(value: str) -> Any:

@@ -37,6 +37,7 @@ from app.archive_knowledge.runtime_indexes_snapshots_apis import (
     build_indexes_snapshots_apis_snapshot,
 )
 from app.archive_knowledge.runtime_parser_execution import build_parser_execution_snapshot
+from app.archive_knowledge.quality_gate_policy import build_quality_gate_runtime_trace
 from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapshot
 from app.archive_knowledge.runtime_unified_document_object import build_unified_document_object_snapshot
 from app.archive_knowledge.policy_config import build_default_archive_policy_config, build_policy_run_snapshot
@@ -681,6 +682,59 @@ def test_quality_gate_policy_snapshot_changes_gate_decision(monkeypatch) -> None
     assert snapshot.status == "completed"
     assert len(rule_nodes) == 3
     assert any(node.attributes["rule_key"] == "gate-risk" for node in rule_nodes)
+
+
+def test_quality_gate_does_not_route_to_manual_review_for_warning_policy() -> None:
+    contribution = _sample_contribution("doc-qg-warning")
+    policy_config = build_default_archive_policy_config("nas-a")
+    quality_gate = policy_config["stages"]["quality_policy_evaluation_governance_gate"]
+    quality_gate["rules"] = [
+        {
+            "key": "gate-support",
+            "name": "supporting document minimum",
+            "meaning": "single source is enough for this policy",
+            "threshold": "supporting_documents >= 1",
+            "action": "block_return",
+        },
+        {
+            "key": "gate-risk",
+            "name": "risk score ceiling",
+            "meaning": "legacy manual review action must become a gate warning",
+            "threshold": "risk_score < 0.1",
+            "action": "manual_review",
+        },
+        {
+            "key": "gate-conflict",
+            "name": "hard conflict block",
+            "meaning": "block only hard conflicts",
+            "threshold": "hard_conflict = 0",
+            "action": "block_return",
+        },
+    ]
+    policy_snapshot = build_policy_run_snapshot("nas-a", policy_config, captured_at="2026-04-23T10:00:00+00:00")
+
+    trace = build_quality_gate_runtime_trace(
+        document_id="doc-qg-warning",
+        document_title="Quality Gate Warning",
+        contribution=contribution,
+        policy_snapshot=policy_snapshot,
+    )
+
+    risk_hit = next(hit for hit in trace["rule_hits"] if hit["key"] == "gate-risk")
+    assert risk_hit["outcome"] == "failed"
+    assert risk_hit["action"] == "warn_continue"
+    assert trace["decision"]["status"] == "warning"
+    assert trace["decision"]["next_action"] == "continue_with_warning"
+
+    snapshot = build_quality_gate_snapshot(
+        archive_id="nas-a",
+        document_id="doc-qg-warning",
+        document_title="Quality Gate Warning",
+        contribution=contribution,
+        runtime_trace=trace,
+    )
+    assert snapshot.status == "warning"
+    assert all(node.node_type != "manual_review" for node in snapshot.graph.nodes)
 
 
 def test_archive_document_runtime_uses_build_state_current_stage(tmp_path: Path) -> None:

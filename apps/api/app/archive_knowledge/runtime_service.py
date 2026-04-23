@@ -926,26 +926,24 @@ class ArchiveDocumentRuntimeService:
         gate_id = f"{context['document_id']}:qg:gate"
         blocked_id = f"{context['document_id']}:qg:blocked"
         publish_target_id = f"{context['document_id']}:qg:publish-target"
-        manual_review_id = f"{context['document_id']}:qg:manual-review"
         nodes = [
             self._node(rule_hit_id, "规则命中", "rule_hit", definition.stage_id, RuntimeStatus.COMPLETED, True, origin=RuntimeOrigin.DERIVED, attributes={"rule_key": "min_supporting_documents", "evidence_count": evidence_count}),
             self._node(gate_id, "门禁决策", "gate_decision", definition.stage_id, RuntimeStatus.RUNNING if not has_publication else RuntimeStatus.COMPLETED, True, origin=RuntimeOrigin.DERIVED, attributes={"pending_review_count": len(pending_reviews)}),
         ]
         edges = [self._edge(f"{rule_hit_id}:gate", rule_hit_id, gate_id, "results_in", definition.stage_id, RuntimeStatus.RUNNING if not has_publication else RuntimeStatus.COMPLETED, True)]
-        if pending_reviews or not evidence_count:
+        if not evidence_count:
             nodes.extend([
-                self._node(manual_review_id, "人工复核", "manual_review", definition.stage_id, RuntimeStatus.WARNING, origin=RuntimeOrigin.DERIVED, attributes={"pending_review_count": len(pending_reviews)}),
-                self._node(blocked_id, "阻断结果", "blocked_result", definition.stage_id, RuntimeStatus.BLOCKED, origin=RuntimeOrigin.DERIVED, attributes={"reason": "待人工复核" if pending_reviews else "证据不足"}),
+                self._node(blocked_id, "阻断结果", "blocked_result", definition.stage_id, RuntimeStatus.BLOCKED, origin=RuntimeOrigin.DERIVED, attributes={"reason": "证据不足"}),
             ])
             edges.extend([
-                self._edge(f"{gate_id}:manual", gate_id, manual_review_id, "reviewed_by", definition.stage_id, RuntimeStatus.WARNING),
                 self._edge(f"{gate_id}:blocked", gate_id, blocked_id, "blocked_by", definition.stage_id, RuntimeStatus.BLOCKED, True),
             ])
             gate_status = RuntimeStatus.BLOCKED
         else:
-            nodes.append(self._node(publish_target_id, "发布目标", "publish_target", definition.stage_id, RuntimeStatus.COMPLETED if has_publication else RuntimeStatus.RUNNING, origin=RuntimeOrigin.DERIVED, attributes={"version_label": (context["published_current_version"] or {}).get("version_label")}))
-            edges.append(self._edge(f"{gate_id}:publish", gate_id, publish_target_id, "publishes_to", definition.stage_id, RuntimeStatus.COMPLETED if has_publication else RuntimeStatus.RUNNING, True))
-            gate_status = RuntimeStatus.COMPLETED if has_publication else RuntimeStatus.RUNNING
+            publish_status = RuntimeStatus.COMPLETED if has_publication else RuntimeStatus.WARNING if pending_reviews else RuntimeStatus.RUNNING
+            nodes.append(self._node(publish_target_id, "发布目标", "publish_target", definition.stage_id, publish_status, origin=RuntimeOrigin.DERIVED, attributes={"version_label": (context["published_current_version"] or {}).get("version_label"), "pending_review_count": len(pending_reviews)}))
+            edges.append(self._edge(f"{gate_id}:publish", gate_id, publish_target_id, "publishes_to", definition.stage_id, publish_status, True, attributes={"policy_note": "pending_review_after_publish" if pending_reviews else "ready"}))
+            gate_status = publish_status
         return self._stage_snapshot(
             definition,
             gate_status,
@@ -955,7 +953,7 @@ class ArchiveDocumentRuntimeService:
                 title="阶段视角 · 质量门禁",
                 subtitle=context["document_title"],
                 status=gate_status,
-                stream=[self._event("rule", f"命中规则：min_supporting_documents，当前证据数 {evidence_count}", level="warning" if evidence_count <= 1 else "success"), self._event("block" if gate_status == RuntimeStatus.BLOCKED else "result", "当前对象进入待人工复核，阻断发布" if gate_status == RuntimeStatus.BLOCKED else "当前对象可进入发布目标", level="danger" if gate_status == RuntimeStatus.BLOCKED else "success")],
+                stream=[self._event("rule", f"命中规则：min_supporting_documents，当前证据数 {evidence_count}", level="warning" if evidence_count <= 1 else "success"), self._event("block" if gate_status == RuntimeStatus.BLOCKED else "result", "当前对象因证据不足被规则阻断" if gate_status == RuntimeStatus.BLOCKED else "当前对象按规则进入发布目标，正式入库前再进入人工审核", level="danger" if gate_status == RuntimeStatus.BLOCKED else "success")],
                 sections=[self._section("gate", "门禁摘要", [("evidence_count", str(evidence_count)), ("pending_review_count", str(len(pending_reviews))), ("current_version", (context["published_current_version"] or {}).get("version_label") or "未发布")])],
             ),
             {
