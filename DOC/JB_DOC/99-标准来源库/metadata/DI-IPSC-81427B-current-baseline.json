@@ -1,0 +1,52 @@
+{
+  "code": "DI-IPSC-81427B",
+  "title": "Software Development Plan",
+  "group": "process",
+  "base_code": "DI-IPSC-81427",
+  "ident": "205530",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205530",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81427-205530.html",
+  "detail_title": "Software Development Plan (SDP)",
+  "scope": null,
+  "status": "Active",
+  "document_date": "13-MAR-2017",
+  "distribution": null,
+  "source_mode": "current_baseline_revision_evidence",
+  "notes": "QuickSearch 详情页仍挂主号 `DI-IPSC-81427`，current baseline revision 以官方 PDF 头部的 `Number: DI-IPSC-81427B` 为准。",
+  "archived_at": "2026-04-19T17:13:53.901198+00:00",
+  "tokens": [
+    {
+      "label": "official_revision_pdf",
+      "kind": "official_pdf",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5746250",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427B-token5746250.pdf",
+      "content_type": "application/pdf",
+      "size": 216921,
+      "is_pdf": true,
+      "extracted_number": "DI-IPSC-81427B",
+      "extracted_approval_date": "20170313",
+      "excerpt_lines": [
+        "DATA ITEM DESCRIPTION",
+        "Title: Software Development Plan (SDP)",
+        "Number: DI-IPSC-81427B",
+        "AMSC Number: N9775",
+        "DTIC Applicable: No",
+        "Preparing Activity: EC",
+        "Applicable Forms: N/A",
+        "Approval Date: 20170313",
+        "Limitation: N/A",
+        "GIDEP Applicable: No",
+        "Project Number: IPSC-2017-001",
+        "Use/relationship: The Software Development Plan (SDP) with Agile, Cyber Security and Safety",
+        "Assurance contains the format, content, and delivery timeframes for the SDP. The SDP provides",
+        "the acquirer insight into, and a tool for monitoring, the processes to be followed for software",
+        "development, the methods to be used, the approach to be followed for each activity, and project",
+        "schedules, organization, and resources. This DID is useful for new development, modification,",
+        "reuse, reengineering, maintenance, and other activities resulting in software products.",
+        "This Data Item Description contains the format, content, and intended use information for the",
+        "data product resulting from the work task described by the contract.",
+        "This DID supersedes DI-IPSC-81427A."
+      ]
+    }
+  ]
+}

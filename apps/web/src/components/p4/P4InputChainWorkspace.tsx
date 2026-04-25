@@ -1,162 +1,330 @@
-import { Alert, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Alert, Button, Card, Col, Empty, Input, List, Row, Space, Tag, Typography } from "antd";
 
-import type { ToolHubCatalogs, ToolMatchRequestInput, ToolMatchRun } from "../../lib/api";
+import type { ToolDemandReviewDecisionInput, ToolDemandSheet } from "../../lib/api";
+import { P4DemandItemBoard } from "./P4DemandItemBoard";
+import { P4DemandSheetTree } from "./P4DemandSheetTree";
+import { P4SupplyResultPreview } from "./P4SupplyResultPreview";
 
 type P4InputChainWorkspaceProps = {
-  catalogs: ToolHubCatalogs;
-  activeArchiveId?: string | null;
-  running: boolean;
-  run: ToolMatchRun | null;
-  onRun: (request: ToolMatchRequestInput) => Promise<void>;
+  sheets: ToolDemandSheet[];
+  activeSheet: ToolDemandSheet | null;
+  selectedItemId: string | null;
+  refreshingItemId: string | null;
+  reviewingItemId: string | null;
+  rejectingCurrentSheet: boolean;
+  clearingDemandSheets: boolean;
+  error: string | null;
+  onSelectSheet: (sheetId: string) => Promise<void>;
+  onSelectItem: (itemId: string) => void;
+  onRefreshProgress: (itemId: string) => Promise<void>;
+  onReviewItem: (itemId: string, payload: ToolDemandReviewDecisionInput) => Promise<void>;
+  onRejectCurrentSheet: () => Promise<void>;
+  onClearDemandSheets: () => Promise<void>;
 };
 
-type MatchFormValues = {
-  scenario_text: string;
-  target_stage: string;
-  required_input_types: string[];
-  expected_output_types: string[];
-  preferred_tags: string[];
-};
+function renderLifecycleTag(status: string) {
+  if (status === "accepted" || status === "submitted") {
+    return <Tag color="blue">{status}</Tag>;
+  }
+  if (status === "withdrawn") {
+    return <Tag color="orange">{status}</Tag>;
+  }
+  if (status === "rejected") {
+    return <Tag color="red">{status}</Tag>;
+  }
+  if (status === "closed") {
+    return <Tag>{status}</Tag>;
+  }
+  return <Tag color="gold">{status}</Tag>;
+}
+
+function renderReviewTag(status: string) {
+  if (status === "reviewed") {
+    return <Tag color="green">{status}</Tag>;
+  }
+  if (status === "reviewing") {
+    return <Tag color="blue">{status}</Tag>;
+  }
+  return <Tag color="gold">{status}</Tag>;
+}
+
+function renderDeliveryTag(status: string) {
+  if (status === "delivered") {
+    return <Tag color="green">{status}</Tag>;
+  }
+  if (status === "delivering") {
+    return <Tag color="blue">{status}</Tag>;
+  }
+  return <Tag color="gold">{status}</Tag>;
+}
 
 export function P4InputChainWorkspace({
-  catalogs,
-  activeArchiveId,
-  running,
-  run,
-  onRun,
+  sheets,
+  activeSheet,
+  selectedItemId,
+  refreshingItemId,
+  reviewingItemId,
+  rejectingCurrentSheet,
+  clearingDemandSheets,
+  error,
+  onSelectSheet,
+  onSelectItem,
+  onRefreshProgress,
+  onReviewItem,
+  onRejectCurrentSheet,
+  onClearDemandSheets,
 }: P4InputChainWorkspaceProps) {
-  const [form] = Form.useForm<MatchFormValues>();
-  const [error, setError] = useState<string | null>(null);
+  const activeItem = activeSheet?.items?.find((item) => item.item_id === selectedItemId) ?? null;
+  const [importanceScore, setImportanceScore] = useState("3");
+  const [urgencyScore, setUrgencyScore] = useState("3");
+  const [rationalityVerdict, setRationalityVerdict] = useState("合理");
+  const [reviewComment, setReviewComment] = useState("");
 
-  async function handleFinish(values: MatchFormValues) {
-    try {
-      setError(null);
-      await onRun({
-        scenario_text: values.scenario_text,
-        target_stage: values.target_stage,
-        required_input_types: values.required_input_types ?? [],
-        expected_output_types: values.expected_output_types ?? [],
-        preferred_tags: values.preferred_tags ?? [],
-        knowledge_context: {
-          archive_id: activeArchiveId ?? null,
-          entity_ids: [],
-          process_ids: [],
-          snapshot_version: "v1",
-        },
-      });
-    } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "运行匹配失败");
+  useEffect(() => {
+    if (!activeItem) {
+      return;
     }
+    setImportanceScore(String(activeItem.importance_score ?? 3));
+    setUrgencyScore(String(activeItem.urgency_score ?? 3));
+    setRationalityVerdict(activeItem.rationality_verdict || "合理");
+    setReviewComment(activeItem.review_comment || "");
+  }, [activeItem?.item_id]);
+
+  async function submitReview(decision: ToolDemandReviewDecisionInput["decision"]) {
+    if (!activeItem) {
+      return;
+    }
+    await onReviewItem(activeItem.item_id, {
+      decision,
+      importance_score: importanceScore ? Number(importanceScore) : null,
+      urgency_score: urgencyScore ? Number(urgencyScore) : null,
+      rationality_verdict: rationalityVerdict,
+      review_comment: reviewComment,
+      reviewed_by: "p4-reviewer",
+    });
   }
 
   return (
-    <Row gutter={[16, 16]}>
-      <Col xs={24} xl={10}>
-        <Card title="输入工具链" style={{ borderRadius: 18 }}>
-          {error ? <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} /> : null}
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={{
-              target_stage: "modeling",
-              required_input_types: ["process_list"],
-              expected_output_types: ["validation_report"],
-              preferred_tags: ["capability:process-analysis"],
-            }}
-            onFinish={(values) => void handleFinish(values)}
-          >
-            <Form.Item label="输入场景" name="scenario_text" rules={[{ required: true, message: "请输入场景描述" }]}>
-              <Input.TextArea aria-label="输入场景" rows={5} placeholder="描述当前任务场景、希望得到的工具能力和验证目标" />
-            </Form.Item>
-            <Form.Item label="目标阶段" name="target_stage">
-              <Select
-                aria-label="目标阶段"
-                options={catalogs.stages.map((item) => ({ label: item.label, value: item.id }))}
-              />
-            </Form.Item>
-            <Form.Item label="需要的输入类型" name="required_input_types">
-              <Select
-                aria-label="需要的输入类型"
-                mode="multiple"
-                options={catalogs.input_types.map((item) => ({ label: item.label, value: item.id }))}
-              />
-            </Form.Item>
-            <Form.Item label="期望的输出类型" name="expected_output_types">
-              <Select
-                aria-label="期望的输出类型"
-                mode="multiple"
-                options={catalogs.output_types.map((item) => ({ label: item.label, value: item.id }))}
-              />
-            </Form.Item>
-            <Form.Item label="偏好标签" name="preferred_tags">
-              <Select
-                aria-label="偏好标签"
-                mode="tags"
-                tokenSeparators={[","]}
-                options={[
-                  { label: "process-analysis", value: "capability:process-analysis" },
-                  { label: "coverage-analysis", value: "capability:coverage-analysis" },
-                  { label: "entity-normalization", value: "capability:entity-normalization" },
-                ]}
-              />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={running}>
-              运行匹配
-            </Button>
-          </Form>
-        </Card>
-      </Col>
+    <div id="xx-p4-input-chain-workspace" className="xx-p4-pane-stack">
+      {error ? <Alert id="xx-p4-input-chain-error" type="error" showIcon message={error} /> : null}
 
-      <Col xs={24} xl={14}>
-        <Card title="匹配结果" style={{ borderRadius: 18 }}>
-          {run ? (
-            <Space direction="vertical" size={16} style={{ display: "flex" }}>
-              <Alert type="info" showIcon message={run.context_summary} />
-              {run.candidates.map((candidate) => (
-                <Card key={candidate.tool_id} size="small" style={{ borderRadius: 14, background: "#f8fafc" }}>
-                  <Space direction="vertical" size={10} style={{ display: "flex" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-                      <Typography.Title level={5} style={{ margin: 0 }}>
-                        {candidate.name}
-                      </Typography.Title>
-                      <Tag color="blue">得分 {candidate.match_score}</Tag>
-                    </div>
-                    <div>
-                      {candidate.matched_dimensions.map((item) => (
-                        <Tag key={item} color="cyan">
-                          {item}
-                        </Tag>
-                      ))}
-                      <Tag color={candidate.verification_status === "verified" ? "green" : "gold"}>
-                        {candidate.verification_status}
-                      </Tag>
-                    </div>
-                    <Typography.Text strong>命中原因</Typography.Text>
-                    <ul style={{ margin: 0, paddingLeft: 18 }}>
-                      {candidate.reasons.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    {candidate.gaps.length > 0 ? (
-                      <>
-                        <Typography.Text strong>缺口</Typography.Text>
-                        <ul style={{ margin: 0, paddingLeft: 18 }}>
-                          {candidate.gaps.map((item) => (
-                            <li key={item}>{item}</li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
+      <Card id="xx-p4-demand-sheet-intake-card" title="工序单受理区" className="xx-p4-panel-card">
+        <Space direction="vertical" size={16} style={{ display: "flex" }}>
+          <Typography.Paragraph style={{ margin: 0, color: "#475569" }}>
+            P4 只受理已经提交的工具需求单，不在当前页内发起 P3 模拟发生，也不承载 P5 模拟消费。
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ margin: 0, color: "#475569" }}>新建总单请前往 /xx-p3-sim</Typography.Paragraph>
+          <Typography.Paragraph style={{ margin: 0, color: "#475569" }}>
+            结果消费与进度决策请前往 /xx-p5-sim
+          </Typography.Paragraph>
+          <Typography.Paragraph id="xx-p4-testing-clear-note" style={{ margin: 0, color: "#8b949e" }}>
+            `测试一键清理全部工单` 仅用于当前联调闭环，会同时清空 P3 生成与 P4 受理的共享工单数据。
+          </Typography.Paragraph>
+
+          <Space id="xx-p4-demand-sheet-actions" wrap>
+            <Button
+              id="xx-p4-clear-all-demand-sheets-button"
+              danger
+              ghost
+              loading={clearingDemandSheets}
+              onClick={() => void onClearDemandSheets()}
+            >
+              测试一键清理全部工单
+            </Button>
+            {activeSheet &&
+            activeSheet.lifecycle_status !== "withdrawn" &&
+            activeSheet.lifecycle_status !== "rejected" ? (
+              <Button
+                id="xx-p4-reject-current-sheet-button"
+                danger
+                loading={rejectingCurrentSheet}
+                onClick={() => void onRejectCurrentSheet()}
+              >
+                驳回当前工单
+              </Button>
+            ) : null}
+          </Space>
+
+          <div id="xx-p4-demand-sheet-list">
+            {sheets.length === 0 ? (
+              <Empty description="当前没有工具需求单" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <List
+                size="small"
+                dataSource={sheets}
+                renderItem={(sheet) => {
+                  const selected = sheet.sheet_id === activeSheet?.sheet_id;
+                  return (
+                    <List.Item key={sheet.sheet_id}>
+                      <Space
+                        align="center"
+                        style={{ display: "flex", justifyContent: "space-between", width: "100%" }}
+                        wrap
+                      >
+                        <Space direction="vertical" size={2} style={{ display: "flex" }}>
+                          <Typography.Text strong>{`工单：${sheet.sheet_name}`}</Typography.Text>
+                          <Typography.Text type="secondary">{`工单 ID：${sheet.sheet_id}`}</Typography.Text>
+                        </Space>
+                        <Space align="center" wrap>
+                          {renderLifecycleTag(sheet.lifecycle_status)}
+                          {renderReviewTag(sheet.review_status)}
+                          {renderDeliveryTag(sheet.delivery_status)}
+                          <Button
+                            id={`xx-p4-view-sheet-${sheet.sheet_id}`}
+                            type={selected ? "primary" : "default"}
+                            onClick={() => void onSelectSheet(sheet.sheet_id)}
+                          >
+                            查看工单 {sheet.sheet_id}
+                          </Button>
+                        </Space>
+                      </Space>
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </div>
+
+          {activeSheet ? (
+            <Space id="xx-p4-active-sheet-status-strip" wrap>
+              <Typography.Text strong>{activeSheet.sheet_name}</Typography.Text>
+              {renderLifecycleTag(activeSheet.lifecycle_status)}
+              {renderReviewTag(activeSheet.review_status)}
+              {renderDeliveryTag(activeSheet.delivery_status)}
+              <Tag color="gold">待审 {activeSheet.pending_review_count}</Tag>
+              <Tag color="green">直接交付 {activeSheet.approved_delivery_count}</Tag>
+              <Tag color="blue">进入研制 {activeSheet.approved_manufacture_count}</Tag>
+            </Space>
+          ) : null}
+        </Space>
+      </Card>
+
+      <Row id="xx-p4-input-chain-grid" className="xx-p4-input-chain-grid" gutter={[20, 20]}>
+        <Col xs={24} xl={10}>
+          <Card id="xx-p4-demand-item-board-card" title="工具需求列表" className="xx-p4-panel-card" style={{ height: "100%" }}>
+            <P4DemandItemBoard
+              items={activeSheet?.items ?? []}
+              selectedItemId={selectedItemId}
+              refreshingItemId={refreshingItemId}
+              onSelectItem={onSelectItem}
+              onRefreshProgress={onRefreshProgress}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={14}>
+          <Card id="xx-p4-review-panel-card" title="需求审批与处置面板" className="xx-p4-panel-card" style={{ height: "100%" }}>
+            {activeItem ? (
+              <Space id="xx-p4-review-panel" direction="vertical" size={16} style={{ display: "flex" }}>
+                <Card id="xx-p4-review-summary" size="small" title="需求摘要" className="xx-p4-subcard">
+                  <Space direction="vertical" size={8} style={{ display: "flex" }}>
+                    <Space wrap>
+                      <Typography.Text strong>{activeItem.component_name}</Typography.Text>
+                      <Tag color="cyan">{activeItem.recommendation_type}</Tag>
+                      <Tag color="gold">{activeItem.review_status}</Tag>
+                    </Space>
+                    <Typography.Text>{activeItem.recommendation_summary}</Typography.Text>
+                    <Typography.Text type="secondary">{activeItem.ancestry.join(" / ")}</Typography.Text>
                   </Space>
                 </Card>
-              ))}
-            </Space>
-          ) : (
-            <Typography.Text type="secondary">运行一次匹配后，这里会展示候选工具、命中解释和缺口。</Typography.Text>
-          )}
-        </Card>
-      </Col>
-    </Row>
+
+                <Card id="xx-p4-review-decision" size="small" title="审批决策" className="xx-p4-subcard">
+                  <Space direction="vertical" size={12} style={{ display: "flex" }}>
+                    <label htmlFor="xx-p4-importance-score">
+                      <Typography.Text>重要性评分</Typography.Text>
+                    </label>
+                    <Input
+                      id="xx-p4-importance-score"
+                      aria-label="重要性评分"
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={importanceScore}
+                      onChange={(event) => setImportanceScore(event.target.value)}
+                    />
+
+                    <label htmlFor="xx-p4-urgency-score">
+                      <Typography.Text>紧急性评分</Typography.Text>
+                    </label>
+                    <Input
+                      id="xx-p4-urgency-score"
+                      aria-label="紧急性评分"
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={urgencyScore}
+                      onChange={(event) => setUrgencyScore(event.target.value)}
+                    />
+
+                    <label htmlFor="xx-p4-rationality-verdict">
+                      <Typography.Text>合理性判断</Typography.Text>
+                    </label>
+                    <Input
+                      id="xx-p4-rationality-verdict"
+                      aria-label="合理性判断"
+                      value={rationalityVerdict}
+                      onChange={(event) => setRationalityVerdict(event.target.value)}
+                    />
+
+                    <label htmlFor="xx-p4-review-comment">
+                      <Typography.Text>审定备注</Typography.Text>
+                    </label>
+                    <Input.TextArea
+                      id="xx-p4-review-comment"
+                      aria-label="审定备注"
+                      rows={3}
+                      value={reviewComment}
+                      onChange={(event) => setReviewComment(event.target.value)}
+                    />
+
+                    <Space wrap>
+                      <Button
+                        type="primary"
+                        loading={reviewingItemId === activeItem.item_id}
+                        disabled={activeItem.review_status !== "pending_review" || activeItem.recommendation_type !== "existing_tool"}
+                        onClick={() => void submitReview("approve_delivery")}
+                      >
+                        批准并直接交付
+                      </Button>
+                      <Button
+                        type="primary"
+                        ghost
+                        loading={reviewingItemId === activeItem.item_id}
+                        disabled={
+                          activeItem.review_status !== "pending_review" ||
+                          activeItem.recommendation_type !== "manufacture_candidate"
+                        }
+                        onClick={() => void submitReview("approve_manufacture")}
+                      >
+                        批准并进入研制
+                      </Button>
+                      <Button
+                        danger
+                        loading={reviewingItemId === activeItem.item_id}
+                        disabled={activeItem.review_status !== "pending_review"}
+                        onClick={() => void submitReview("reject")}
+                      >
+                        驳回需求项
+                      </Button>
+                    </Space>
+                  </Space>
+                </Card>
+
+                <Card id="xx-p4-review-supply-card" size="small" title="供给与交付结果" className="xx-p4-subcard">
+                  <P4SupplyResultPreview item={activeItem} />
+                </Card>
+
+                <Card id="xx-p4-review-source-card" size="small" title="辅助来源信息" className="xx-p4-subcard">
+                  <P4DemandSheetTree sheet={activeSheet} selectedItemId={selectedItemId} onSelectItem={onSelectItem} />
+                </Card>
+              </Space>
+            ) : (
+              <Empty description="请选择一个需求项开始审批与处置" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </Card>
+        </Col>
+      </Row>
+    </div>
   );
 }

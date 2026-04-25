@@ -413,24 +413,24 @@
 
 ### 一、三张页面分别对应三种颗粒度
 
-1. `02-run-center-global-v1`  
+1. `02-run-center-global-v1`
    对应第一颗粒度：全局并行运行视图。
 
-2. `03-run-center-archive-v1`  
+2. `03-run-center-archive-v1`
    对应第二颗粒度：单知识库运行视图。
 
-3. `04-run-center-document-drilldown-v1`  
+3. `04-run-center-document-drilldown-v1`
    对应第三颗粒度：单文档处理下钻视图。
 
 ### 二、默认跳转规则
 
-1. 从“知识库总览”点击某个知识库  
+1. 从“知识库总览”点击某个知识库
    默认进入 `03-run-center-archive-v1`，而不是 `02-run-center-global-v1`。
 
-2. `02-run-center-global-v1`  
+2. `02-run-center-global-v1`
    只作为抽取运行中心的总入口、顶层导航入口或返回入口，不作为从总览进入具体知识库时的默认着陆页。
 
-3. `04-run-center-document-drilldown-v1`  
+3. `04-run-center-document-drilldown-v1`
    只能从 `03-run-center-archive-v1` 的文档队列进入。
 
 ### 三、后续线稿调整原则

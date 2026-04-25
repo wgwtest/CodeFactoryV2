@@ -1,19 +1,28 @@
 import { Layout, Menu, Select, Space, Typography } from "antd";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
+import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { P6PortalPage } from "./pages/P6PortalPage";
+import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP2SimPage } from "./pages/XXP2SimPage";
+import { XXP3Page } from "./pages/XXP3Page";
+import { XXP3DocSimPage } from "./pages/XXP3DocSimPage";
+import { XXP3SimPage } from "./pages/XXP3SimPage";
 import { XXP4Page } from "./pages/XXP4Page";
+import { XXP4SupplySimPage } from "./pages/XXP4SupplySimPage";
+import { XXP5SimPage } from "./pages/XXP5SimPage";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
-  { key: "/", label: <Link to="/">知识库文档</Link> },
+  { key: "/documents", label: <Link to="/documents">知识库文档</Link> },
   { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
@@ -21,12 +30,16 @@ const items = [
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
 
+const mainShellRoutes = new Set(items.map((item) => item.key));
+
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
+  const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
+  const defaultRoute = envDefaultRoute && mainShellRoutes.has(envDefaultRoute) ? envDefaultRoute : "/documents";
   const selectedMenuKey =
-    location.pathname === "/" || location.pathname === "/documents"
-      ? "/"
+    location.pathname === "/"
+      ? defaultRoute
       : location.pathname.startsWith("/documents/intake")
         ? "/documents/intake"
         : location.pathname;
@@ -62,7 +75,7 @@ function MainShell() {
       <Layout.Content style={{ padding: 24 }}>
         <Routes>
           <Route path="/archives" element={<ArchiveManagementPage />} />
-          <Route path="/" element={<DocumentsPage />} />
+          <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/documents/intake" element={<DocumentIntakePage />} />
           <Route path="/governance" element={<GovernancePage />} />
@@ -78,10 +91,63 @@ function MainShell() {
 export default function App() {
   const location = useLocation();
 
-  if (location.pathname.startsWith("/xx-p4")) {
+  if (location.pathname.startsWith("/portal")) {
     return (
       <Routes>
+        <Route path="/portal" element={<P6PortalPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p2-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p2-sim" element={<XXP2SimPage />} />
+      </Routes>
+    );
+  }
+
+  if (
+    location.pathname.startsWith("/xx-p3-doc-sim") ||
+    location.pathname.startsWith("/xx-p4-supply-sim") ||
+    location.pathname.startsWith("/xx-p4-sim")
+  ) {
+    return (
+      <Routes>
+        <Route path="/xx-p3-doc-sim" element={<XXP3DocSimPage />} />
+        <Route path="/xx-p4-supply-sim" element={<XXP4SupplySimPage />} />
+        <Route path="/xx-p4-sim" element={<XXP4SupplySimPage />} />
+      </Routes>
+    );
+  }
+
+  if (
+    location.pathname.startsWith("/xx-p3-sim") ||
+    location.pathname.startsWith("/xx-p4") ||
+    location.pathname.startsWith("/xx-p5-sim")
+  ) {
+    return (
+      <Routes>
+        <Route path="/xx-p3-sim" element={<XXP3SimPage />} />
         <Route path="/xx-p4" element={<XXP4Page />} />
+        <Route path="/xx-p5-sim" element={<XXP5SimPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p3")) {
+    return (
+      <Routes>
+        <Route path="/xx-p3" element={<XXP3Page />} />
+        <Route path="/xx-p3/templates/:templateId" element={<P3TemplateDetailPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/build")) {
+    return (
+      <Routes>
+        <Route path="/build" element={<BuildWorkspacePage />} />
       </Routes>
     );
   }

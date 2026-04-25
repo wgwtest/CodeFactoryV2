@@ -853,6 +853,18 @@ export type ApplicationRequirementDraftExport = {
 
 export type ToolStatus = "draft" | "active" | "archived";
 export type ToolVerificationStatus = "unverified" | "verified" | "warning" | "failed";
+export type SupportedSource = "p1_readonly_api" | "frozen_snapshot" | "manual_input" | "tool_hub_snapshot";
+export type ToolGranularity = "atomic" | "composite" | "page_level";
+export type ToolPackagingType = "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
+export type ToolIntegrationMode =
+  | "import_component"
+  | "import_module"
+  | "include_router"
+  | "call_http_api"
+  | "mount_page"
+  | "manual";
+export type ToolDependencyPolicy = "peer" | "bundled" | "external";
+export type ToolBuildRunStatus = "queued" | "running" | "completed" | "failed";
 
 export type ToolHubCatalogItem = {
   id: string;
@@ -874,12 +886,20 @@ export type ToolDefinition = {
   status: ToolStatus;
   summary: string;
   problem_statement: string;
-  primary_category_id: string;
+  primary_domain_id: string;
+  tool_form_id: string;
+  tool_granularity: ToolGranularity;
+  packaging_type: ToolPackagingType;
+  integration_mode: ToolIntegrationMode;
+  dependency_policy: ToolDependencyPolicy;
+  runtime_dependencies: string[];
+  host_constraints: Record<string, string | string[]>;
+  runtime_platform_ids: string[];
   tags: string[];
-  applicable_stages: string[];
+  lifecycle_stage_ids: string[];
   input_types: string[];
   output_types: string[];
-  supported_sources: string[];
+  supported_sources: SupportedSource[];
   usage_notes: string;
   keywords: string[];
   verification: ToolVerification;
@@ -887,7 +907,64 @@ export type ToolDefinition = {
   updated_at: string;
 };
 
-export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
+export type ToolDefinitionWriteInput = Omit<
+  ToolDefinition,
+  | "tool_id"
+  | "created_at"
+  | "updated_at"
+  | "tool_granularity"
+  | "packaging_type"
+  | "integration_mode"
+  | "dependency_policy"
+  | "runtime_dependencies"
+  | "host_constraints"
+  | "supported_sources"
+> & {
+  tool_granularity?: ToolGranularity;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
+  host_constraints?: Record<string, string | string[]>;
+  supported_sources?: string[];
+};
+
+export type ToolBuildRun = {
+  build_run_id: string;
+  build_request_id: string;
+  tool_id: string;
+  status: ToolBuildRunStatus;
+  queue_name: string;
+  payload: Record<string, unknown>;
+  artifact_version_id?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolDeliveryManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_form_id: string;
+  packaging_type: ToolPackagingType;
+  integration_mode: ToolIntegrationMode;
+  dependency_policy: ToolDependencyPolicy;
+  runtime_dependencies: string[];
+  import_specifier: string;
+  example_host_path: string;
+  artifact_version_id?: string | null;
+  manifest_path: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type FrontendComponentBuildRequestInput = {
+  requested_by: string;
+  component_name: string;
+  scenario_id: string;
+  tool_definition: ToolDefinitionWriteInput;
+};
 
 export type ToolListEnvelope = {
   items: ToolDefinition[];
@@ -906,8 +983,10 @@ export type ToolHubReadEnvelope<T> = {
 };
 
 export type ToolHubCatalogs = {
-  categories: ToolHubCatalogItem[];
-  stages: ToolHubCatalogItem[];
+  domains: ToolHubCatalogItem[];
+  lifecycle_stages: ToolHubCatalogItem[];
+  tool_forms: ToolHubCatalogItem[];
+  runtime_platforms: ToolHubCatalogItem[];
   input_types: ToolHubCatalogItem[];
   output_types: ToolHubCatalogItem[];
   supported_sources: ToolHubCatalogItem[];
@@ -930,12 +1009,15 @@ export type ToolHubOverviewMetrics = {
 };
 
 export type ToolHubCoverageMatrix = {
-  stages: ToolHubCatalogItem[];
+  title: string;
+  x_axis_label: string;
+  y_axis_label: string;
+  columns: ToolHubCatalogItem[];
   rows: Array<{
-    category_id: string;
-    category_label: string;
+    row_id: string;
+    row_label: string;
     cells: Array<{
-      stage_id: string;
+      column_id: string;
       value: number;
     }>;
   }>;
@@ -985,9 +1067,12 @@ export type ToolMatchKnowledgeContext = {
 
 export type ToolMatchRequestInput = {
   scenario_text: string;
-  target_stage: string;
+  target_domain_ids: string[];
+  lifecycle_stage_ids: string[];
   required_input_types: string[];
   expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
   preferred_tags: string[];
   knowledge_context: ToolMatchKnowledgeContext;
 };
@@ -1013,17 +1098,33 @@ export type ToolMatchRun = {
 
 export type EvolutionFinding = {
   finding_id: string;
+  run_id: string;
   kind: "missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap";
   title: string;
   description: string;
   severity: "info" | "warning" | "critical";
   tool_ids: string[];
+  evidence: Record<string, unknown>;
+  decision_status: "pending" | "accepted_to_task" | "ignored";
+  decision_by: string | null;
+  decision_at: string | null;
+  decision_note: string;
+  linked_task_id: string | null;
+  updated_at: string;
 };
 
 export type EvolutionRun = {
   run_id: string;
-  status: "completed";
+  status: "queued" | "running" | "completed" | "failed";
+  trigger_type: "manual" | "scheduled";
+  triggered_by: string;
   created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  snapshot_id: string | null;
+  error_message: string;
   summary: {
     tool_count: number;
     finding_count: number;
@@ -1031,6 +1132,9 @@ export type EvolutionRun = {
     taxonomy_issue_count: number;
     overlap_risk_count: number;
     coverage_gap_count: number;
+    accepted_count: number;
+    ignored_count: number;
+    generated_task_count: number;
   };
   findings: EvolutionFinding[];
 };
@@ -1039,13 +1143,694 @@ export type EvolutionRunEnvelope = {
   items: EvolutionRun[];
 };
 
+export type EvolutionInspectionConfig = {
+  config_id: string;
+  enabled: boolean;
+  schedule_mode: "manual_and_scheduled";
+  interval_minutes: number;
+  include_draft_tools: boolean;
+  focus_rule_ids: Array<"missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap">;
+  overlap_threshold: number;
+  max_run_history: number;
+  auto_apply_rule_ids: Array<"missing_description" | "taxonomy_issue" | "overlap_risk" | "coverage_gap">;
+  updated_by: string;
+  updated_at: string;
+};
+
+export type EvolutionConfigUpdateInput = Partial<
+  Pick<
+    EvolutionInspectionConfig,
+    | "enabled"
+    | "interval_minutes"
+    | "include_draft_tools"
+    | "focus_rule_ids"
+    | "overlap_threshold"
+    | "max_run_history"
+    | "auto_apply_rule_ids"
+  >
+>;
+
+export type EvolutionRunCreateInput = {
+  actor_id: string;
+};
+
+export type EvolutionFindingDecisionInput = {
+  actor_id: string;
+  decision: "accept" | "ignore";
+  note: string;
+};
+
+export type EvolutionTask = {
+  task_id: string;
+  source_run_id: string;
+  source_finding_id: string;
+  task_type: "auto_apply" | "manual_followup";
+  task_status: "queued" | "running" | "completed" | "failed" | "rolled_back";
+  priority: "low" | "medium" | "high";
+  planned_action: string;
+  target_tool_ids: string[];
+  result_summary: string;
+  change_count: number;
+  rollback_available: boolean;
+  created_by: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+export type EvolutionTaskEnvelope = {
+  items: EvolutionTask[];
+};
+
+export type EvolutionTaskRollbackInput = {
+  actor_id: string;
+  note: string;
+};
+
 export type ToolHubOverview = {
   metrics: ToolHubOverviewMetrics;
   run_monitor: ToolHubRunMonitor;
   coverage_matrix: ToolHubCoverageMatrix;
   risk_summary: ToolHubRiskSummaryItem[];
   pending_suggestions: PendingSuggestionItem[];
+  recent_demand_sheets?: ToolDemandSheet[];
   recent_match_runs: ToolHubRecentRunSummary[];
   recent_evolution_runs: ToolHubRecentRunSummary[];
   catalogs: ToolHubCatalogs;
+};
+
+export type ToolDemandSheetLifecycleStatus = "submitted" | "accepted" | "rejected" | "withdrawn" | "closed";
+export type ToolDemandSheetReviewStatus = "pending_review" | "reviewing" | "reviewed";
+export type ToolDemandSheetDeliveryStatus = "not_delivered" | "delivering" | "delivered";
+export type ToolDemandSheetProcessingStatus = "not_started" | "processing" | "partially_ready" | "ready" | "failed";
+export type ToolDemandItemRecommendationType = "existing_tool" | "manufacture_candidate" | "insufficient_info";
+export type ToolDemandItemReviewStatus = "pending_review" | "approved_delivery" | "approved_manufacture" | "rejected";
+export type ToolDemandItemProcessingStatus =
+  | "accepted"
+  | "analyzing"
+  | "checking"
+  | "matched_existing"
+  | "manufacturing_pending"
+  | "manufacturing_in_progress"
+  | "ready_for_fetch"
+  | "failed";
+export type ToolSupplyResultType = "existing_tool" | "pending_manufacture" | "manufactured_tool";
+export type ToolManufacturePlanStatus = "manufacturing_pending" | "manufacturing_in_progress" | "ready_for_fetch" | "failed";
+export type ToolManufactureSimulationProfile = "fast" | "normal" | "slow";
+export type MockDemandScenarioId = "simulated_blue_force" | "navigation_planning" | "data_governance";
+
+export type ToolDemandSource = {
+  phase: string;
+  producer: string;
+  business_case: string;
+  scenario_id: string;
+  scenario_name: string;
+};
+
+export type ComponentSpec = {
+  component_name: string;
+  component_code: string;
+  problem_statement: string;
+  required_input_types: string[];
+  expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
+  lifecycle_stage_ids: string[];
+  keywords: string[];
+  acceptance_notes: string;
+};
+
+export type ToolDemandNode = {
+  node_id: string;
+  node_type: "system" | "subsystem" | "sub_subsystem" | "module" | "component";
+  node_name: string;
+  node_code: string;
+  description?: string;
+  business_domain_id: string;
+  children: ToolDemandNode[];
+  component_spec?: ComponentSpec | null;
+};
+
+export type ToolFetchManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_version: string;
+  tool_form_id: string;
+  packaging_type: ToolPackagingType;
+  integration_mode: ToolIntegrationMode;
+  dependency_policy: ToolDependencyPolicy;
+  runtime_dependencies: string[];
+  runtime_platform_ids: string[];
+  fetch_mode: "descriptor";
+  entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
+  entrypoint_locator: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type ToolSupplyResult = {
+  result_type: ToolSupplyResultType;
+  item_id: string;
+  tool_ref?: string | null;
+  fetch_interface?: ToolFetchManifest | null;
+  progress_query_interface?: string | null;
+  estimated_ready_at?: string | null;
+  suggested_poll_after_seconds?: number | null;
+  available_at?: string | null;
+  last_message: string;
+};
+
+export type ToolDemandLifecycleEvent = {
+  event_id: string;
+  event_type: ToolDemandSheetLifecycleStatus;
+  actor_phase: string;
+  actor_id: string;
+  from_status?: ToolDemandSheetLifecycleStatus | null;
+  to_status: ToolDemandSheetLifecycleStatus;
+  reason_code: string;
+  reason_message: string;
+  occurred_at: string;
+};
+
+export type ToolDemandItem = {
+  item_id: string;
+  sheet_id: string;
+  source_node_id: string;
+  ancestry: string[];
+  business_domain_id: string;
+  component_name: string;
+  component_code: string;
+  problem_statement: string;
+  required_input_types: string[];
+  expected_output_types: string[];
+  preferred_tool_forms: string[];
+  preferred_runtime_platforms: string[];
+  lifecycle_stage_ids: string[];
+  keywords: string[];
+  acceptance_notes: string;
+  recommendation_type: ToolDemandItemRecommendationType;
+  recommendation_summary: string;
+  recommended_tool_id?: string | null;
+  recommended_tool_name?: string | null;
+  review_status: ToolDemandItemReviewStatus;
+  importance_score?: number | null;
+  urgency_score?: number | null;
+  rationality_verdict: string;
+  review_comment: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  processing_status: ToolDemandItemProcessingStatus;
+  analysis_result: string;
+  check_result: string;
+  match_result: string;
+  supply_result?: ToolSupplyResult | null;
+  submitted_at: string;
+  updated_at: string;
+};
+
+export type ToolDemandSheet = {
+  sheet_id: string;
+  sheet_name: string;
+  lifecycle_status: ToolDemandSheetLifecycleStatus;
+  review_status: ToolDemandSheetReviewStatus;
+  delivery_status: ToolDemandSheetDeliveryStatus;
+  processing_status: ToolDemandSheetProcessingStatus;
+  source: ToolDemandSource;
+  requested_by: string;
+  business_case: string;
+  root_node: ToolDemandNode;
+  item_ids: string[];
+  item_count: number;
+  pending_review_count: number;
+  approved_delivery_count: number;
+  approved_manufacture_count: number;
+  rejected_item_count: number;
+  matched_existing_count: number;
+  manufacturing_count: number;
+  ready_for_fetch_count: number;
+  failed_count: number;
+  lifecycle_events: ToolDemandLifecycleEvent[];
+  last_actor_phase?: string | null;
+  last_actor_id?: string | null;
+  terminal_reason_code?: string | null;
+  terminal_reason_message?: string | null;
+  items?: ToolDemandItem[];
+  submitted_at: string;
+  updated_at: string;
+};
+
+export type ToolDemandSheetCreateRequestInput = {
+  sheet_name: string;
+  source: ToolDemandSource;
+  requested_by: string;
+  root_node: ToolDemandNode;
+  notes?: string;
+};
+
+export type ToolDemandSheetEnvelope = {
+  items: ToolDemandSheet[];
+};
+
+export type ToolManufacturePlanView = {
+  plan_id: string;
+  item_id: string;
+  sheet_id: string;
+  component_name: string;
+  planned_tool_name: string;
+  status: ToolManufacturePlanStatus;
+  progress_percent: number;
+  simulation_profile: ToolManufactureSimulationProfile;
+  target_duration_seconds: number;
+  estimated_ready_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  last_progress_message: string;
+  updated_at: string;
+};
+
+export type ToolManufacturePlanEnvelope = {
+  items: ToolManufacturePlanView[];
+};
+
+export type ToolRegistryDeleteResult = {
+  removed_tool_id: string;
+  remaining_tool_count: number;
+};
+
+export type ToolRegistryTestingClearResult = {
+  cleared_tool_count: number;
+  cleared_match_run_count: number;
+  cleared_evolution_run_count: number;
+};
+
+export type ToolDemandTestingClearResult = {
+  cleared_sheet_count: number;
+  cleared_item_count: number;
+  cleared_manufacture_plan_count: number;
+};
+
+export type ToolDemandSheetActionInput = {
+  actor_id: string;
+  reason_code: string;
+  reason_message: string;
+  actor_phase?: string;
+};
+
+export type ToolDemandReviewDecisionInput = {
+  decision: "approve_delivery" | "approve_manufacture" | "reject";
+  importance_score?: number | null;
+  urgency_score?: number | null;
+  rationality_verdict: string;
+  review_comment: string;
+  reviewed_by: string;
+};
+
+export type ItemProgressView = {
+  item_id: string;
+  sheet_id: string;
+  status: ToolDemandItemProcessingStatus;
+  sheet_lifecycle_status: ToolDemandSheetLifecycleStatus;
+  sheet_review_status: ToolDemandSheetReviewStatus;
+  sheet_delivery_status: ToolDemandSheetDeliveryStatus;
+  review_status: ToolDemandItemReviewStatus;
+  result_type?: ToolSupplyResultType | null;
+  progress_percent: number;
+  estimated_ready_at?: string | null;
+  suggested_poll_after_seconds?: number | null;
+  fetch_interface?: ToolFetchManifest | null;
+  last_message: string;
+  updated_at: string;
+};
+
+export type P3OrderStatus =
+  | "pending_approval"
+  | "rejected"
+  | "approved_for_generation"
+  | "generating"
+  | "draft_ready"
+  | "in_revision"
+  | "pending_review"
+  | "changes_requested"
+  | "frozen"
+  | "package_ready"
+  | "pushed_to_p4";
+
+export type P3OrderSummary = {
+  order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  status: P3OrderStatus;
+  updated_at: string;
+};
+
+export type SoftwareDesignOverview = {
+  metrics: {
+    order_count: number;
+    pending_approval_count: number;
+    frozen_count: number;
+    package_ready_count: number;
+    pushed_count: number;
+  };
+  recent_orders: P3OrderSummary[];
+  recent_packages: Array<{
+    package_id: string;
+    order_id: string;
+    item_count: number;
+    push_status: string;
+  }>;
+};
+
+export type P3ReviewThread = {
+  thread_id: string;
+  topic: string;
+  anchor: string;
+  status: "open" | "resolved";
+  messages: string[];
+};
+
+export type P3WorkorderBatch = {
+  package_id?: string;
+  package_overview: {
+    architecture_recommendation: string;
+    interaction_mode: string;
+    deployment_hint?: string;
+    tool_recommendations?: string[];
+    design_notes?: string[];
+  };
+  items: Array<{ item_id: string; title: string }>;
+  push_status?: string;
+};
+
+export type P3OrderDetail = {
+  order_id: string;
+  status: P3OrderStatus;
+  requirement_spec_summary: {
+    application_name: string;
+    domain_name: string;
+    status: string;
+  };
+  design_description: {
+    sections: Array<{ id: string; title: string; summary: string; body?: string }>;
+    modules?: Array<{ module_id: string; name: string; objective: string }>;
+  } | null;
+  review_threads: P3ReviewThread[];
+  workorder_batch: P3WorkorderBatch | null;
+};
+
+export type P3ReferenceSection = {
+  section_id: string;
+  title: string;
+  summary: string;
+};
+
+export type P3ReferenceTemplate = {
+  template_id: string;
+  title: string;
+  source_doc_id: string;
+  document_type: "software_design_description";
+  version: string;
+  format: "pdf";
+  summary: string;
+  recommendation: string;
+  official_detail_url: string;
+  pdf_asset_name: string;
+  pdf_url: string | null;
+  sections: P3ReferenceSection[];
+};
+
+export type P3StandardReference = {
+  doc_id: string;
+  title: string;
+  category: string;
+  scope: string;
+  summary: string;
+  official_detail_url: string;
+  recommended_use: string;
+  tags: string[];
+  sections: P3ReferenceSection[];
+};
+
+export type P3TemplateStandardMapping = {
+  template_id: string;
+  doc_id: string;
+  rationale: string;
+  section_pairs: Array<{ template_section: string; standard_section: string }>;
+};
+
+export type P3ReferenceCenter = {
+  templates: P3ReferenceTemplate[];
+  standards: P3StandardReference[];
+  mappings: P3TemplateStandardMapping[];
+};
+
+export type P3StandardSearchResult = {
+  doc_id: string;
+  title: string;
+  matched_section: string;
+  excerpt: string;
+  official_detail_url: string;
+};
+
+export type P5DeliveryOrderStatus =
+  | "draft"
+  | "assembling"
+  | "exported_with_gaps"
+  | "completed_with_gaps"
+  | "completed"
+  | "failed";
+
+export type P5BuildOverview = {
+  metrics: {
+    order_count: number;
+    draft_count: number;
+    exported_with_gaps_count: number;
+    completed_count: number;
+    failed_count: number;
+  };
+  recent_orders: P5DeliveryOrderSummary[];
+};
+
+export type P5DeliveryOrderSummary = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  application_name: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  updated_at: string;
+};
+
+export type P5DeliveryOrder = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  requested_by: string;
+  notes: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  formal_result_ready: boolean;
+  active_input_binding: P5InputBinding;
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5SupplyInputTool = {
+  tool_id: string;
+  tool_name: string;
+  tool_slug: string;
+  verification_status: string;
+  keywords: string[];
+};
+
+export type P5DesignInputSource = {
+  design_input_id: string;
+  source_kind: "p3_baseline" | "xx_p3_doc_sim";
+  source_ref_id: string;
+  p3_order_id?: string | null;
+  application_name: string;
+  requirement_spec_id: string;
+  baseline_id: string;
+  notes: string;
+  module_count: number;
+  module_names: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5SupplyInputSource = {
+  supply_input_id: string;
+  source_kind: "p4_supply" | "xx_p4_supply_sim";
+  source_ref_id: string;
+  snapshot_name: string;
+  notes: string;
+  tool_count: number;
+  tool_names: string[];
+  tools: P5SupplyInputTool[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5ModuleBindingDecision = {
+  module_id: string;
+  tool_id: string;
+  tool_name?: string | null;
+  source: "manual";
+  updated_by: string;
+  updated_at: string;
+};
+
+export type P5InputBinding = {
+  binding_id: string;
+  delivery_order_id: string;
+  design_input_id: string;
+  supply_input_id?: string | null;
+  supply_mode: "snapshot" | "empty";
+  module_bindings: P5ModuleBindingDecision[];
+  is_confirmed: boolean;
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
+  updated_at: string;
+};
+export type P5ExportConfig = {
+  export_root: string;
+  build_profile: string;
+  attempt_note: string;
+};
+
+export type P5AssemblyModule = {
+  module_id: string;
+  name: string;
+  objective: string;
+  target_directories: string[];
+  binding_status: "bound" | "placeholder";
+  binding_source: "heuristic" | "manual" | "empty";
+  bound_tool_id?: string | null;
+  bound_tool_name?: string | null;
+  gap_reason?: string | null;
+};
+
+export type P5AssemblyPlan = {
+  modules: P5AssemblyModule[];
+};
+
+export type P5GapRecord = {
+  gap_id: string;
+  kind: "design_gap" | "supply_gap" | "assembly_or_build_gap";
+  module_id?: string | null;
+  module_name?: string | null;
+  summary: string;
+  detail: string;
+};
+
+export type P5FeedbackTask = {
+  task_id: string;
+  gap_id: string;
+  kind: "design_gap" | "supply_gap" | "assembly_or_build_gap";
+  title: string;
+  detail: string;
+  status: "pending_confirmation" | "confirmed" | "dismissed";
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+};
+
+export type P5ValidationReport = {
+  module_closure_status: "passed" | "warning" | "failed" | "skipped";
+  structure_status: "passed" | "warning" | "failed" | "skipped";
+  build_status: "passed" | "warning" | "failed" | "skipped";
+  summary: string;
+};
+
+export type P5InputSnapshot = {
+  design_input: {
+    source_kind: string;
+    design_input_id: string;
+    order_id: string;
+    baseline_id: string;
+    module_count: number;
+    module_names: string[];
+  };
+  supply_input: {
+    source_kind: string;
+    supply_input_id?: string | null;
+    tool_count: number;
+    tool_names: string[];
+    matched_tool_count: number;
+  };
+};
+
+export type P5RuntimeSnapshot = {
+  executor_name: string;
+  executor_status: "idle" | "running" | "completed" | "blocked" | "failed";
+  attempt_status: P5DeliveryOrderStatus;
+  progress_percent: number;
+  stages: Array<{
+    stage_id: string;
+    label: string;
+    status: "pending" | "running" | "completed" | "warning" | "failed";
+    detail: string;
+  }>;
+  recent_logs: Array<{
+    timestamp: string;
+    level: "info" | "warning" | "error";
+    message: string;
+  }>;
+  block_reason?: string | null;
+};
+
+export type P5OutputPreview = {
+  root_directory: string;
+  directories: string[];
+  key_files: Array<{
+    path: string;
+    kind: "file" | "directory";
+    status: "generated" | "generated_with_gaps" | "placeholder";
+    summary: string;
+  }>;
+};
+
+export type P5AssemblyAttempt = {
+  attempt_id: string;
+  delivery_order_id: string;
+  sequence: number;
+  export_config: P5ExportConfig;
+  input_snapshot: P5InputSnapshot;
+  assembly_plan: P5AssemblyPlan;
+  runtime_snapshot: P5RuntimeSnapshot;
+  validation_report: P5ValidationReport;
+  output_preview: P5OutputPreview;
+  gaps: P5GapRecord[];
+  feedback_tasks: P5FeedbackTask[];
+  export_directory: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type P5DeliveryOrderDetail = {
+  delivery_order_id: string;
+  p3_order_id: string;
+  requirement_spec_id: string;
+  application_name: string;
+  requested_by: string;
+  notes: string;
+  status: P5DeliveryOrderStatus;
+  current_attempt_count: number;
+  formal_result_ready: boolean;
+  active_input_binding: P5InputBinding;
+  created_at: string;
+  updated_at: string;
+  attempts: P5AssemblyAttempt[];
+};
+
+export type P5WorkspaceBootstrapResult = {
+  delivery_order_id: string;
+  attempt_id: string;
+  created_demo_inputs: boolean;
+};
+
+export type P5DeliveryRuntimeClearResult = {
+  cleared_order_count: number;
+  cleared_attempt_count: number;
+  cleared_export_directory_count: number;
 };

@@ -1,0 +1,807 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head><title>
+	ASSIST-QuickSearch Document Details
+</title><link href="css/MicStyleSheet.css" rel="stylesheet" /><link href="css/AccessibilityStyles.css" rel="stylesheet" />
+    <script type="text/javascript" language="javascript">
+
+        function jumpSavedSearches() {
+            try {
+                var page = "SavedQueries.aspx";
+                var winName = "SavedSearches";
+                var features = "width=600,height=700,scrollbars=1,toolbar=0,resizable=1,locationbar=0,status=1"
+                //              window.showModalDialog(page, winName, "dialogHeight: 341px; dialogWidth: 421px; dialogTop: 661px; dialogLeft: 1075px; edge: Raised; center: Yes; resizable: Yes; status: Yes;");
+                onTop(page, winName, features);
+            }
+            catch (e) {
+            }
+
+        }
+
+        function openWin(windowURL, windowName, windowFeatures) {
+            return window.open(windowURL, windowName, windowFeatures);
+        }
+
+        var spawn = null;
+
+        function winNow(page, winName, features) {
+            spawn = window.open(page, winName, features);
+        }
+
+        function onTop(page, winName, features) {
+            if (spawn == null || spawn.closed) {
+                winNow(page, winName, features);
+                spawn.focus();
+            }
+            else {
+                spawn.close();
+                winNow(page, winName, features);
+            }
+        }
+    </script>
+      <script  type="text/javascript" language="javascript">
+          function onlyNumbers(stext, e) {
+              var check = false;
+              try {
+                  var ev = window.event ? event : e
+                  var unicode = ev.charCode ? ev.charCode : ev.keyCode
+                  var ch = String.fromCharCode(unicode);
+                  var num = "0123456789";
+                  for (var i = 0; i < num.length; i++) {
+                      if (num.charAt(i) == ch) {
+                          check = true;
+                      }
+                  }
+                  if (unicode == 8) {
+                      check = true;
+                  }
+                  ev.returnValue = check;
+              }
+              catch (ex) {
+
+              }
+              return check;
+          }
+          function numbersonly(e) {
+              var unicode = e.charCode ? e.charCode : e.keyCode;
+              if (unicode != 8) { //if the key isn't the backspace key (which we should allow)
+                  if (unicode < 48 || unicode > 57) { //if not a number
+                      return false //disable key press
+                  }
+              }
+          }
+
+          function isNumber(ch) {
+              try {
+                  var num = "0123456789";
+                  for (var i = 0; i < num.length; i++) {
+                      if (num.charAt(i) == ch) {
+                          return true;
+                      }
+                  }
+              }
+              catch (ex) {
+
+              }
+              return false;
+          }
+          function isEmptyText(text) {
+              try {
+                  if (text.length > 0) {
+                      return true;
+                  }
+              }
+              catch (ex) {
+
+              }
+              return false;
+          }
+
+          function FinishDrag(stext) {
+              try {
+                  window.event.returnValue = false;
+                  var sstring = event.dataTransfer.getData("Text");
+                  setIt(stext, sstring)
+
+              }
+              catch (ex) {
+                  alert(ex);
+              }
+              return false;
+          }
+          function OverDrag() {
+              window.event.returnValue = false;
+              return false;
+          }
+
+          function setIt(stext, sstring) {
+              var num = '0123456789';
+              var cb = sstring;
+              var tb = 5;
+              if (tb > cb.length) {
+                  tb = cb.length;
+              }
+              var check = false;
+              for (var i = 0; i < tb; i++) {
+                  check = false;
+                  var ch = cb.charAt(i);
+                  for (var j = 0; j < num.length; j++) {
+                      if (num.charAt(j) == ch) {
+                          check = true;
+                      }
+                  }
+                  if (!check) {
+                      break;
+                  }
+              }
+              if (check) {
+                  stext.value = sstring;
+              }
+          }
+          function setZero(oSrc) {
+
+              if (oSrc.value.length == 0) {
+                  sb.value = "0";
+              }
+          }
+
+          function pasteIt(sender) {
+              var check = false;
+              try {
+                  var num = '0123456789';
+                  var cb = window.clipboardData.getData("Text");
+                  var tb = 5;
+                  if (tb > cb.length)
+                      tb = cb.length;
+
+                  for (i = 0; i < tb; i++) {
+                      check = false;
+                      var ch = cb.charAt(i);
+                      for (j = 0; j < num.length; j++) {
+                          if (num.charAt(j) == ch) {
+                              check = true;
+                          }
+                      }
+                      if (!check) {
+                          break;
+                      }
+                  }
+                  window.event.returnValue = check;
+                  pasteItChangeContentExEx(sender);
+              }
+              catch (ex) {
+
+              }
+              return check;
+          }
+          function convertIt(stext) {
+              var check = "";
+              try {
+                  var num = '0123456789';
+                  var cb = stext;
+                  var tb = 5;
+                  if (tb > cb.length)
+                      tb = cb.length;
+                  for (i = 0; i < tb; i++) {
+
+                      var ch = cb.charAt(i);
+                      for (j = 0; j < num.length; j++) {
+                          if (num.charAt(j) == ch) {
+                              check += ch;
+                          }
+                      }
+                  }
+              }
+              catch (ex) {
+
+              }
+              return check;
+          }
+    </script>
+    <script language="javascript" type="text/javascript"> 
+<!--
+        function CheckSubmit() {
+            noerror = false;
+            try {
+                var source = "H";
+                try {
+                    for (var i = 0; i < document.frmSearch.DropDownListSource.options.length; i++) {
+                        if (document.frmSearch.DropDownListSource.options[i].selected) {
+                            source = document.frmSearch.DropDownListSource.options[i].value;
+                            break;
+                        }
+                    }
+                }
+                catch (ex) {
+
+                }
+                if (source == "H") {
+                    noerror = true;
+                }
+                else {
+                    var all_words_string = document.frmSearch.strAllTheseWordsTextBox.value;
+                    var vExactPhraseTextBox = document.frmSearch.strExactPhraseTextBox;
+                    if (vExactPhraseTextBox != null) {
+                        var exact_phrase_string = document.frmSearch.strExactPhraseTextBox.value;
+                        var oneormore_words_string = document.frmSearch.strOneOrMoreWordsTextBox.value;
+                        var without_words_string = document.frmSearch.strWithoutWordsTextBox.value;
+
+                        if ((all_words_string == '') && (exact_phrase_string == '') &&
+		         (oneormore_words_string == '')) {
+                            alert('At least one of the first three search parameters must be provided!');
+                            document.frmSearch.strAllTheseWordsTextBox.focus();
+                        }
+                        else {
+                            noerror = true;
+                        }
+                    }
+                    else {
+                        if (all_words_string == '') {
+                            alert('Text for search must be provided!');
+                            document.frmSearch.strAllTheseWordsTextBox.focus();
+                        }
+                        else {
+
+                            noerror = true;
+                        }
+
+
+
+                    }
+                }
+            }
+            catch (e) {
+
+
+            }
+            return noerror;
+        }
+
+        function resetForm() {
+            try {
+                document.frmSearch.strAllTheseWordsTextBox.value = '';
+                document.frmSearch.strExactPhraseTextBox.value = '';
+                document.frmSearch.strOneOrMoreWordsTextBox.value = '';
+                document.frmSearch.strWithoutWordsTextBox.value = '';
+                document.frmSearch.strAllTheseWordsTextBox.focus();
+                document.frmSearch.DropDownListStatus.options[0].selected = true;
+                document.frmSearch.DropDownListPS.options[0].selected = true;
+                document.frmSearch.DropDownListPA.options[0].selected = true;
+                document.frmSearch.DropDownListFSC.options[0].selected = true;
+            }
+            catch (e) {
+            }
+            return true;
+        }
+        function spawnPDFWindow(strDestURL, dmxid) {
+            var intAvailWidth = screen.availWidth;
+            var intAvailHeight = screen.availHeight;
+            var intWidth = intAvailWidth - 40;
+            var intHeight = intAvailHeight - 60;
+            var intScreenX = 20;
+            var intScreenY = 20;
+
+            var strFeatures = 'status=0,menubar=0,scrollbars=1,resizable=1,titlebar=0';
+            strFeatures = strFeatures + ',left=' + intScreenX + ',top=' + intScreenY;
+            strFeatures = strFeatures + ',screenX=' + intScreenX + ',screenY=' + intScreenY;
+            strFeatures = strFeatures + ',width=' + intWidth + ',height=' + intHeight;
+            var PDFWindow = window.open(strDestURL, dmxid, strFeatures, 0);
+            PDFWindow.focus();
+        }
+        
+
+// -->
+    </script>
+    <link href="css/MicStyleSheet.css" rel="stylesheet" />
+    <style type="text/css">
+    .highlight
+    {
+	    background-color:Yellow;
+	    /*font-size:70%;*/
+    }
+    </style>
+<link href="App_Themes/Theme/Site.css" type="text/css" rel="stylesheet" /></head>
+<body>
+<form name="form1" method="post" action="./qsDocDetails.aspx?ident_number=205919" id="form1">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="KyxOvo+27zAiewVe42iPSb0XbrU7k393n6XssGnXEYAwxB6pDS3zWXH8bmfV+EDoUc/Fd9JL0vjdQTBBsBUNTGh2OHmAKsEeWLO4Z2xt9yTRSkO2E6BHwvbvPYlzbEgszJLy8eYgtFwWGFPV8Mk06IsF9XAdV4ELXbu72mcXqwIxTW5mfBmh9XvQcLbFS7E5pkTjri4oL1cUTvkFnstt2dkF0lb+wUu+t9sKuysfGT5dj7KTwvPWdF2Jat3Ru8CpT3VJ/nhF0U5+Amki8ZD46g8Sf7NgG9zSg98Ukiv4TvWRcRLFBaF57bg4ALFXpF7+UjKhxVf9JRiffBltF7Nc/FHBLqlqtMbIsf7APXKILvLkb/boMNwdb9n0alhP8GkGioqbgSYRKSuM5DHrcceI/ITTH+2OPBAElUHG87/FNPrhih/WJ0F6mDphm6CJkitxo4EJwW/1EIfeYNb4Pu5McF8WCRX0tVxtqyRzIBrBBhJuqoU/9lU7d5XlJhBXA9P52D/OwjBXPDXiUWOHpBg5WMH3V6qmWlU4O7z5bDgyJVON0swbEw9eGYEZq9Xvik6hBiMk9UOBcLW5H99DmPrRkea8AAJ3sHmhAGvsWTcY23VhQIeEBsCGLKEOmQYX6BKACDA+lcXYdxKbDLcfzCTUPjzM+kL172CG/AZh0093rxTio2w+TfuzbkL2Rsax2fMQFU2pb1lFberjKqYc1hY67OfeLDYQwIjQbAatS7kM3fDPEYvRmMOQLdoyYLblLKZLqi5ASv+3kkQCXQgasjQy6cY7tgYQiymG680tqKO/eS8uQn/E7G+6yZEumznQcEo8XjHJqR1ZW6aOirSBrHLiaWb+mRR7PVyEfJSCNRufv6qqb+xATTpXV0QHG+0/ZPePt84MYHDQ+q1vFBWKI7BIoPlaaZ7xVBBh+sRvGoKuG4j9+VTqkHXEAvEWJ1cHHnxuCC5mS1KDctkgoJhKoPch7ujX64VNcntEkmIPUxi7BMgC6qAIX2g6cDCa0kuwZpxqjI4L8R+Sn3ccuGgezQdf33TLsfkvxnr2xfvGzfJhlXmteG7HRM0/VlFweQdfePr8sgR+g0I1BDhQfCfi0unEpoaGWrBi0rHZHfkVTpWrxwrK9gBgbd8EF+jeyct2jiLRSkE9k3JBpjHZ53/AKhxKMp96QOuYJPyaEWZ9pXpykt14glCDU4XIYW/8HATghHX/k6Tis3+T0k5l6p13hk474FgbvatUJ7F/rioRYhUW5iw0Dh0Smf6Lk4Qk3oLRxDWEmEZuBtBkH567hOaxfoLbPTIbm+z3AlHQgjEqaoiDUJScd3FrnuwtOjnfyHz5PjVxaUBS2Vq9NUgy5DbsHAQ6k4FntLsx3W32MJBCb6M8OksnQE8sX/YhIHDugCWa9p0aWgu6+ImMw6rH7GJ8QwpJlKb4wurYKoBqn4m4UwLATwnf7Z1n6jSo+R8NTm9dlW5rTZuYA8A1c7bK7LutzmmKLIprWby4KdSPNcAHY/3eXHZZWuosE4qF5IVTl87Fn1q8Jrku8gDDCgclKpp2wvO6R92LdWZ+AQl4xj6EJ+NdMuTs0JssyHwd6b7wn4MELa6GBQS6TPeWSjUAyZRF/zqA5KLN0gvfWa+5zJC7iIIDGeGAUgq8dADXG1w+sQbLc+uPSzHU2SDF0AHMvjvWb2h2ZRlAFIOrMfBTw3M9EA8B/jbAM6vo9A+N9HM+gbTZtUSTFvve2c4QMOMlLNiKTGwpUAnqLZDjj8gsDtXNJzB87rMKxWzzrjgi342mbMKlg8ETWRJs8L0KLJsJeHK4HW62ORi9IewcnKHshsARlI1jskZb26QvrQsA9/jKYzi+1wljTSfqE20bnebm4aPshFvhJNC45gcIaN3OINzXT+L5JZzluwxY/B3xaaP+EwtVg/fgR6XCUGK1Vy/MpD2VpjU1ZIsJA7HXh15SU5Pn5VCmIKvlJweM5PsDjFTEKwbfTCqClwEqOqhA8qGn9BLRoYnHD/apZaru0jL2ZnQZhYRpzNCLdGiz/oTMPzyk5XMcbZYt0iqIRtmyecKMIunUvqA7A5gBVu/HPyc5KG2eC10CRM/9kciSNdMDs9WWaRZP/iPzpAyyOtVf1ijQCir612flTYe1xUEZio8SxKWiCZnNZYEW+TX9ZKESwXdO7bn5X/6SFVFlmD+LVphQuMQ4iROY5e/GoeSUGNYJLs6h17m7fXs9001ZGRuXPgqKewFfLEZjmW7TrZGuwQj8Y+AK7RBtq9hXFiLyl642Y18EUUMO4JXTnzvonrMoWEZpN8IfZGbY3ZobiYlzzUXjOrRT2184wQfzvAGx66DO7s7lsZgqNLB9hVQGecw5/x67tT+gxlt0s9pOuzlPXEerw8/NrT6GbnT1cOgIPmxMyehaCdPKECazF2V84W7KdiCumU0NKoI4PHz4DWnY9duoExOyNzCMD0IyWzKa0eYpP3Zh02OqwmozOstxep+nRuzkJG+SEe5GzpCAj2gIUqRRoNGQs9aESWqtuEk/6g53CBZeX6Xc0QCAG/gZ/BLxX39jezQ9FF3WIIpfaSFfBj34/2opijojZWEnNzoYfzJoD/BVvfKCK5aIYqhJV8BHKMsKvVw1XYUAE+cZ6Z9wtt+lBvNUFV7LlAiTBWoaKZgDN9hS8EXV5satN5SqSmzudvRsbcl7BvwQNOM4LZXPUsP3bFkd2sJq7PsWUFLanNB9PVIFC094JcwiZv06DGyDtNDDS2peBqXQn0UhDtT0MjlVpuXUUJMOl+/b4NwjfHrOf+mKkXw7GkxGff2HQ1kcVhydJIs/jPkI/ahbpHgFodu2sZHElWNWl56OB4Wd+eqHePWP6tjRwkmjWhvlxJbB1M9FG1kPJ7SmbxM3voTEeJnxTVovgL4JChWjA2/yqo1s/QILWPdMa5SEKl3ajCWDbvRJf18W36c+e19rT70z7OrUMaSSiyEg+Ak2DEwIbnGJg6D32RB0/DT5anFerEMEc+m2maC8Fz3qQuqjI5CwULgH2Z42a31qu3szAkkgHom32XfVWJCZEcPdp9lrcZbXT3EIVdpswl2m016c4fn2VmAXHJLmzTqRMFnkAlADO5EWzX+gWFGo16IPIGbpS6iKUj2bNFciAI5MSoa6g3lGdVo2fIyOnqMFEYcJ6rHkxhtwCeENjjLqRHAft0qltwajT2SEFOUoDQBfMZj2rkObl8LBBJ6Us3SzKwhLimWxcJIpwUP0c1kCxyxw1PyHL5FVwWRK5n6USPoHLI/s2I9x2xNgMfyideVYcOnDq0VYxIJQT0edI0c6VIHzKCqn54cKWcn3C3ExBAmd74xRnqxRsnxM+Eq72e5QZLZYVvwZGEqayW+rf5fDFCl0LL33vORdv94LIbWIKqmAn6eP+NtEHGIWGc1pBWTcWxekXxmldJcHUi5KP+uuvRyTkn4A8SGmXvaiBiGjGOZkcwya3wJVGVCleg2xq3vCtakNi+a4LHgIdxZRT3JhjLSvcNVmKd/0Ii3veDN/P7rur+/oHS1UfI77nw8GCEmTwIwfHB8iVdOLhDSaY/ngXGd6eQm1Fub1wmGhPa6j30IC7K7JNS5Rzet4dX5CKrZw8vNo1i4thnzvuLfv8OF28qfO/vfkds3h3SduEVSM7ext530MZ6AisqysWksmjGefHcdvfrrIktjhf8tBQSfGBDlHp2RfVrkd6DgaLUhIFjCtklwQkG1K7czn4PJS/TbV8cLdrM8kZm8FSv2bmNETQwVYVlQQGY/1dLrfbUGe5ESlPLnXnNKxWPnRusTXLoBJ7b3JJBGoJUzWEN+8BgHWHunV1GzonirMSuEj9Jod52Thr8yfy5cVv2MCshy9LQBY/BmuJ4AaKkix3vV0HYnYKg+yh7+p5BUR4wGMSdJd5rLWoF1ufHyfg6ZRR9Vu+3XubCMabAWiLqj3LNLJQSU+3hagiwE0svYARaqCC08e3G5zl4J3ckG9FOmmudlI9UIJfE1pU7r9PQlc+pJhSmj+y8dBWH1G9vc7pzqVqduHnHVPOP6ESZl6SMEGErfcpTFFOlTBEO7i+A2CLd6eEhs9C+TR+0b+iabuye/Fbmo4OmbMcICJL4fqn1iCv2iCmmEWkMzXwMi+HDph/Bj5vG50gTbVvC4IntN60HxabSAke98tCYhVWiwU2+4sFPASE+xy6cKYj9lEvh2EkGu35bD55W3GlQGi4QH1rc3WFpCgTZ3V34M/HFJXzst5oQ5qtZGisVflEVAbIid1Ad1BKZ4uliVy2WGDSohVfSRho0trcfeFsP9cdfcpuQkBOjQkVtMyBfzV7nJDj6P99l65RAf3pi1Xvyaw1BjYhINohTdWygsM+kq/GSTord6YA/3tgKsfumfBAIeESs913MaFmsd09+mtBg9TUQFD79J2Pkobz8LmBzn2incgP0JV2NPafJStah8I52w4cKddr4aK6vnDFwP5Wx4tgFRVPyQEKkTePCQLbVZjd5cm6SFQPmTyYzu7T4suevkqqVPbYjb6iTIVtin30CEpLNGUmlrbowjZ6OEBvsePjpqs88aETyygTKaIfeQOscxU/g2uJEkf6ctn2oxDbQ7xAp2Ej5Dvuo5jcunyeM4Ar1d+b3vjtTVUHjiID9ElxdFe11dwVDuGEtGfXQ24S843sszN3xVJwWBzSC6gkiF67mRhxRQAaP9eap/aGNuTXKbrAY++wxqWas+DDSOggCiKTMsLooCvpqXrlxtCQS10nliGsFdsgEpA7mT20u3Qhfl2wPlklZKS/SAetBZmMoLcbte8WO8vWFOSxJlibAiEa8kjB0Jcn1NGcjswZHSx3ljK8o0CS1cJh8RvonnFK79qdQ0Y6nYiqA0ymbHvzO/MAl5vNEndFBtNZeQ+u5kVZnB6FKs/zybfaZK7LhfT+zzac6UUc3bkS3liQGHCmGUGCClkctqbXT5UrXBCYqtCKi3k+Qrt6AFpUtcrYmZSmVmOvkOZYB9BN/p85yznNmkkTcjrHRp/BUT/3A1d66NK94SOiGCeQtYFUwAFuBevdTG9ukCY5kwa+E98oRo1FmsfNh6pikbnh6exVwDQQ08sGhjexxVIZMlfJiDtFMmkeRkMpdXG5RuOAwIzAOvxgbxS1rCA30nn9Xwe6LlLSDMxOaqcY7xXbue9GktjOAHnI1HsER0YcPf9NoKwzIBQKabG3z0u5UmcsUoq0MCg//qjOKf8OR+XBLqANqdCBZVY29/pt1xlfD+RnCjIQiyYxaBk8/GfI2dJh9sn1om7Lst6MXL6XXDegK9cmvxmradc5/VLGY6eA2WQNsBamid64sy5Wo4r0wQYZhA8YgYCWIU3RtAssQNR7Jc/ottggzrz0NmWMYT2CGtdwIYYOIcdP8WlffxPw1U7CNKkfIGOt0D9NJgJRYfWrAgaVZ5zHgXr9KYT9cOk4iyBZAZL8IkNgHFAXaPmSZZwnAaYNyhj7+YqzfgilbGYGZ99o35PmGBsi0JjJUSetPfc/ZSDdFAMPObn+eYM3vIzLXj8VbQ/Q4OwwQjUxprQdVtq9oBPwbFXSEadWJkQShWsrJ1IOdyA+USjO1GU35S2W8ud1UC0Zj+CnAPpqd45BwSkdOdN+TSYdi6iSWOkz8/nW82A7EySU69Y6VC+SeQ2Pw+gtRwcBQ/Alp2jlNpQ7gi6CUW9qH9WHUG9cb+6epidERjV8EOCOFJMZuhnNpvgxgUbdpuVJb+2/HiXLqSkkwWUr6bZ9Km57IfabuCXKn4wr9HdCdTd/drFitsJJlvgO+AiQQ4dT6eUOoELOL8SjKoYvcG8D8KIThh5D4cOpERovj+izUMBLD8zcisTnAOF56bjygr7tggjtJF0t/qUnkqi5qzLoX1pmHqA3lx3bsixweDqZit7eZZLA0N41QYi4UIBfdh37IL4gz+yn2L9yw0dYOTNItvntVBpNfAZLCssPZa1KdecqWvwemLAHdLsAdcOk6RSDmablrmVRs4NfGNPi4jsrHHn9DL+dwYa+iImZIjuS1xDJY2CUWhP6VEMnxkk2ZI8EDIeImkYMjJwQrgI3P6FBgcM+j99ZNgfWtpXnxMRr6nJK5eQvnm0dD4j/MlmkiqGzPCSFYZzbZCc+DxhZrWxyZJ+71qncfkmL4APW+/mwxC/Ms7gLr64oytaPRyhDrfEio0dcMJhWi3ickwtZVrZAnBFF34w/uplOcoCkAx/qcubCk7Cqf0Nmh3wL48BCoyRmmwmmOuJcMF49WbU9EhNrxN2ouCDmx/jq6LSfx4vNMz4UeNuMSIWSbn3mlNEXz8S+2M+LhebtOLnp6oPTXOg71kL1DlyGRtzUbGxdIfk+ZMa3GzMA7X2tklud3yySsczU21YJkD0MzHKO6V3ndPjk/VxOglrw5atMWzelColxgdAdrLb2qxeyGTwDpOkwVVMLT6u81Ckb1DriPu8V3AfrskowxGPUMEElcI6p2fm5F4dLDYrGAml5p50r71dIXe57YqLhhya26pl1rRLq1EjCUDBeD/nDNfojULHp+wPj7oD8qzsVjPELty4laQSwYqOy+NvWRb6Xj/9DEtTQlBhY7wTrm1WWQ4IC45OKrBaUiN0LE8N1kR1iKDoK1eOAm2OHMkkg2wm1dJIUIKu4k0eAAHlrQ5jlxktrQHfOkx2uv/d" />
+
+
+<script src="/WebResource.axd?d=Za-FjSKrSE3WRhbDFWspb2BVPJThA-fzaL2R8tGxYq2iGRC03IT0v5LGUi5u886CXNjlsJFkU6VahWvGMSTBCT4gV9jBNfUzbCzSnLqo1dylDSc1LHE__OomdJtFpizldC1oLIq3e2aYtuIR6zgMOQ2&amp;t=638901382312636832" type="text/javascript"></script>
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="2706D97D" />
+<input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="" />
+ <div>
+   <center>
+    <table border="0" width="800">
+   <tr><td align="center" colspan="2"> 
+   
+
+<div id="ControlHeader_qsFontPanel" class="qsfont_panel">
+	
+
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+      <tr>
+      <td align="left" style="font-size:larger" width="30">
+      <a href="#ControlHeader_Menu1_SkipLink"><img alt="Skip Navigation Links" src="/WebResource.axd?d=V468-DuqRbi5-T47b-nJKo33f7zYC-ERpDCIBR2X6-xV51zKpr_liYdEj7AE-y8NI1tL1ZP-ezeeSdl5sCMn2ktheFN-j3Ddx3vxrxg9k-hXusnojQ2D_Eo2VkjTUG5zM7pt1nQfaF8BRNxN-7XG2g2&amp;t=638901382312636832" width="0" height="0" border="0" /></a><table id="ControlHeader_Menu1" cellpadding="0" cellspacing="0" border="0">
+		<tr onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" title="Menu" id="ControlHeader_Menu1n0">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="javascript:return false;"><img src="images/TopMenu.jpg" alt="Menu" valign="middle" /></a></td><td width="0"><img src="/WebResource.axd?d=GEH7tD0ehJFYlU7XN0uY9Ehr3Mha5xksh-nAYBANGsu9FHw0Q_vaizttFm9JNzaQrVxgmB7U1dYW3nrDb5yVaTyhMkVCje3HbgnhbBnYALnjAcv6DHiZJKM6Kox2hxeLt3b9Rr-wxiBDlcGqY_8ioQ2&amp;t=638901382312636832" alt="Expand " valign="middle" /></td>
+				</tr>
+			</table></td>
+		</tr>
+	</table><div id="ControlHeader_Menu1n0Items" style="display:none;">
+		<table border="0" cellpadding="0" cellspacing="0">
+			<tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" title="Go to Basic Search" id="ControlHeader_Menu1n1">
+				<td><table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="White">
+					<tr>
+						<td nowrap="nowrap" width="100%"><a href="qsSearch.aspx"><span class="menuitem_text">Basic Search</span></a></td>
+					</tr>
+				</table></td>
+			</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" title="Go to Text Search" id="ControlHeader_Menu1n2">
+				<td><table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="White">
+					<tr>
+						<td nowrap="nowrap" width="100%"><a href="qsText.aspx"><span class="menuitem_text">Text Search</span></a></td>
+					</tr>
+				</table></td>
+			</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" title="A bi-monthly summary of changes to the ASSIST document database" id="ControlHeader_Menu1n3">
+				<td><table cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="White">
+					<tr>
+						<td nowrap="nowrap" width="100%"><a href="qsUpdates.aspx"><span class="menuitem_text">ASSIST Updates</span></a></td>
+					</tr>
+				</table></td>
+			</tr>
+		</table><div id="ControlHeader_Menu1n0ItemsUp" onmouseover="PopOut_Up(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+			<img src="/WebResource.axd?d=F9ft6P7jUqsLIAg7NCUhhq56zXE9swesOY4TQOJBPLkkcBkDCnNuYJf63ZgV8fNSIwRi-_-dLx4Q6FTB7WZGZWLpS7xFAMSnIqcuS3Bu_5PhXQVajcNKwi09J77HqMY_vGoFk50OHxEvYriyI-4yig2&amp;t=638901382312636832" alt="Scroll up" />
+		</div><div id="ControlHeader_Menu1n0ItemsDn" onmouseover="PopOut_Down(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+			<img src="/WebResource.axd?d=C3YlKjyXokd4x7mcCZjsw70Hrs3dYazRwl5CXJP4L7pkR-30UMowq9bN_5wO1jlIVDWIjhscZjq7wvEv7s7IvLvLTlJ9j0uhavVh4n8Q-gBm2MpsX0xR1GN_B7b_nhnFt0ZJZieUYoKMS3FJM9kXTw2&amp;t=638901382312636832" alt="Scroll down" />
+		</div>
+	</div><a id="ControlHeader_Menu1_SkipLink"></a>
+      </td>
+		<td align="center" valign="middle">
+		
+        <img src="gifs/welcome_new_top.gif" alt="ASSIST" border="0"/>
+		</td>
+        <td align="left" style="font-size:larger" width="30">
+        </td>
+	  </tr>
+  <tr>
+    <td align="center" colspan="3" >
+	<table width="100%" cellspacing="0" cellpadding="0" border="0" >
+	  <tr>
+	    <td align="left" nowrap="nowrap">
+		&nbsp;&nbsp;        <span id="ControlHeader_DateLabel">Data updated: 17 Apr 2026.</span>
+		</td>
+		<td align="right" nowrap="nowrap" style="display:none;" >
+        <a href="./" onmouseover="window.status='Home';return true" onmouseout="window.status=''" title="Home">Home</a>&nbsp;|&nbsp;
+        <a href="./qsOverview.aspx" target="top" onmouseover="window.status='Click here to see an overview about Quick Search.';return true" onmouseout="window.status=''" title="Click here to see an overview about Quick Search">About Quick Search</a>&nbsp;|&nbsp;
+        <a href="https://assist.dla.mil/online/start/index.cfm" target="top" onmouseover="window.status='Click here to go to ASSIST.';return true" onmouseout="window.status=''" title="Click here to go to ASSIST">ASSIST</a>&nbsp;|&nbsp;
+
+	    <a href="./qsUpdates.aspx" onmouseover="window.status='A bi-monthly summary of changes to the ASSIST document database.';return true" onmouseout="window.status=''" title="A bi-monthly summary of changes to the ASSIST document database">ASSIST Updates</a>
+		</td>
+        <td align="right" nowrap="nowrap"  >
+         <span id="ControlHeader_LabelTitle"><b><font color="Navy">Document Details</font></b></span>
+        </td>
+	  </tr>
+      </table>
+     
+      </td>
+	  </tr>
+ 	</table>
+     <hr width="100%" class="hrclass"/>
+  
+</div>
+  </td>
+  </tr>
+<tr>
+<td align="left">
+
+ <div id="Div1" class="qsfont_panel" style="width:100%;">  
+<table width="100%" cellspacing="0" cellpadding="0" border="0" style="display:none">
+		    <tr>
+              <td width="600">&nbsp;</td>
+			  
+              <td valign="middle" nowrap="nowrap" align="right">
+              <a id="HyperLink1" title="Go to Basic Search" href="./"><b><font face="Verdana" color="Navy" size="1">Basic Search</font></b></a>
+              </td>
+			  
+              <td  valign="middle" nowrap="nowrap" align="right">
+              <a id="HyperLinkTextSearch" title="Go to Text Search" href="qsText.aspx"><b><font face="Verdana" color="Navy" size="1">Text Search</font></b></a>
+			  </td>
+			
+			</tr>
+			
+ </table>
+ </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+   <div id="Div2" class="qsfont_panel" style="width:100%;">
+    <div>
+        <table width="800" cellspacing="0" cellpadding="0" border="0">
+            <tr id="trDocumentId">
+	<td align="right" valign="middle" width="200">
+                    <a href="qsHelp.aspx#documentid" onmouseover="window.status='Click here for more information about Document ID.';return true"
+                        onmouseout="window.status=''" style="font-weight:bold;color:Navy;"
+                        title="Click here for more information about Document ID" >
+                        Document ID:</a>
+                        &nbsp;
+                </td>
+	<td align="left" valign="middle">
+                    <b>
+                        <span id="general_doc_idLabel">DI-IPSC-81440</span>
+                    </b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span id="general_image_existsLabel">Scroll down to access document images</span>
+                </td>
+</tr>
+
+            <tr><td><span style="height:2px;display:block;"></span></td></tr>
+            
+            
+            
+        </table>
+
+<br/>
+
+        <table id="overviewTable" width="800" cellspacing="0" cellpadding="0" border="0">
+	<tr>
+		<td align="left">
+                    <span id="OverviewLabel"><b><i><font color="Maroon">Overview</font></i></b></span>
+                </td>
+	</tr>
+	<tr>
+		<td>
+                    <table width="100%" border="1" bordercolor="navy" cellpadding="2" cellspacing="0">
+                        <tr>
+                            <td align="center">
+                                <table align="center" cellpadding="0" border="0" width="99%">
+                                    <tr id="trgenerl_title">
+			<td align="right" valign="TOP">
+                                            <a href="qsHelp.aspx#title" onmouseover="window.status='Click here for more information about the Title.';return true"
+                                                onmouseout="window.status=''" style="font-weight:bold;color:Navy;" 
+                                                title="Click here for more information about the Title">Title:</a>&nbsp;
+                                        </td>
+			<td colspan="5" align="left">
+                                                <span id="general_titleLabel">Software Test Report (STR)</span>
+                                        </td>
+		</tr>
+		
+                                    <tr id="trscope_scope_description">
+			<td align="right" valign="TOP">
+                                            <a href="qsHelp.aspx#scope" onmouseover="window.status='Click here for more information about the Scope.';return true"
+                                                onmouseout="window.status=''" style="font-weight:bold;color:Navy;" 
+                                                title="Click here for more information about the Scope">Scope:</a>&nbsp;
+                                        </td>
+			<td colspan="5" valign="top" align="left">
+                                                <span id="scope_scope_descriptionLabel">The Software Test Report (STR) is a record of the qualification testing performed on a Computer Software Configuration Item (CSCI), a software system or subsystem, or other software-related item.  The STR enables the acquirer to assess the testing and its results.<BR><BR>This DID is used when the developer is tasked to analyze and record the results of CSCI qualification testing, system qualification testing of a software system, or other testing identified in the contract.</span>
+                                        </td>
+		</tr>
+		
+                                    <tr>
+                                        <td align="right">
+                                            <a href="qsHelp.aspx#status" id="astatus" onmouseover="window.status=&#39;Click here for more information about Status.&#39;;return true" onmouseout="window.status=&#39;&#39;" style="font-weight:bold;color:Navy;" title="Click here for more information about Status">Status:</a>&nbsp;
+                                        </td>
+                                        <td align="left">
+                                                <span id="general_statusLabel"><font color="Black">Active</font></span>
+                                        </td>
+                                        <td align="right" nowrap="nowrap">
+                                            <span id="dateSpan"><a href="qsHelp.aspx#DID Date" onmouseover="window.status='Click here for more information about the DID Date';return true" onmouseout="window.status=''" style="font-weight:bold;color:navy" title="Click here for more information about the DID Date" >DID Date:</a></span>
+                                        </td>
+                                        <td align="left" nowrap="nowrap">
+                                            &nbsp;<span id="general_doc_dateLabel">03-SEP-2021</span>
+                                        </td>
+                                        <td align="right">
+                                            &nbsp;
+                                            &nbsp;
+                                        </td>
+                                        <td align="left" nowrap="nowrap">
+                                            &nbsp;
+                                                <span id="getNATO_ratified_dateLabel"></span>
+                                        </td>
+                                    </tr>
+                                    <tr id="trNextReviewDue">
+			<td align="right">
+                                            
+                                        </td>
+			<td align="left">
+                                               
+                                        </td>
+			<td align="right" nowrap="nowrap">
+                                            <span id="Span1">
+                                            &nbsp;
+                                            <a href="qsHelp.aspx#NextReviewDueDate" id="a1" onmouseover="window.status=&#39;Click here for more information about the Next Review Due Date.&#39;;return true" onmouseout="window.status=&#39;&#39;" style="font-weight:bold;color:Navy;" title="Click here for more information about the Next Review Due Date">
+                                                Next Review Due:</a>
+                                            </span>
+                                        </td>
+			<td align="left" nowrap="nowrap">
+                                            &nbsp;<span id="LabelNextReviewDueDate">02-SEP-2026</span>
+                                        </td>
+			<td align="right">
+                                            
+                                        </td>
+			<td align="left" nowrap="nowrap">
+                                           
+                                        </td>
+		</tr>
+		
+                                    <tr>
+                                        <td id="tdfscarealink" align="right">
+                                            <a href="qsHelp.aspx#fscarea" onmouseover="window.status='Click here for more information about FSC/Area.';return true"
+                                                onmouseout="window.status=''" style="font-weight:bold;color:Navy;" 
+                                                title="Click here for more information about FSC/Area">FSC/Area:</a>&nbsp;
+                                        </td>
+		
+                                        <td id="tdgeneral_fsc_code" align="left">
+                                         <span id="general_fsc_codeLabel">IPSC</span>
+                                                
+                                        </td>
+		
+                                        <td align="right" nowrap="nowrap">
+                                            <a href="qsHelp.aspx#doccategory" onmouseover="window.status='Click here for help on the Document Category.';return true"
+                                                style="font-weight:bold;color:Navy;"  onmouseout="window.status=''"
+                                                title="Click here for help on the Document Category">Doc Category:</a>
+                                        </td>
+                                        <td align="left">
+                                            &nbsp;
+                                                <span id="doc_categoryLabel">Data Item Description</span>
+                                        </td>
+                                        <td align="right">
+                                            
+                                          &nbsp;
+                                        </td>
+                                        <td align="left">
+                                                
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        
+                                        
+                                        
+                                        
+              </tr>
+             
+                                    
+                                    
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+	</tr>
+</table>
+
+
+<br/>
+
+        <table id="responsibilitiesTable" width="800" cellspacing="0" cellpadding="0" border="0">
+	<tr>
+		<td align="left">
+                   <span id="Label1"><b><i><font color="Maroon">Responsibilities</font></i></b></span>
+                </td>
+	</tr>
+	<tr>
+		<td>
+                    <table width="100%" border="1" bordercolor="navy" cellspacing="0" cellpadding="2">
+                        
+                        <tr id="trisNotISATable">
+			<td align="center">
+                                <table width="99%" border="0" cellpadding="0" align="center">
+                                    <tr id="trDAAcode">
+				<td align="right" nowrap="nowrap" width="20%">
+                                            <a href="qsHelp.aspx#daa" onmouseover="window.status='Click here for help on DID Approval Authority.';return true"
+                                                onmouseout="window.status=''" style="font-weight:bold;color:Navy;" 
+                                                title="Click here for help on DID Approval Authority">DID Approval Authority:</a>&nbsp;
+                                        </td>
+				<td align="left">
+                                            <a href="javascript:void()" id="astrDAAcode" onclick="onTop(&#39;qsPopUp.aspx&#39;,&#39;Information&#39;,&#39;resizable,scrollbars,left=10,top=10,width=800&#39;);" onmouseover="window.status=&#39;Click here to view the DID Approval Authority.&#39;;return true" onmouseout="window.status=&#39;&#39;" title="Click here to view the DID Approval Authority">SA</a>
+                                                
+                                        </td>
+				<td align="left">
+                                            &nbsp;<span id="val_daa_custLabel">Navy Supply Systems Command</span>
+                                        </td>
+			</tr>
+			
+                                    
+                                    <tr id="trgeneral_prep_acty">
+				<td align="right" nowrap="nowrap" width="20%">
+                                            &nbsp; 
+                                                <a href="qsHelp.aspx#prepacty" id="a3general_prep_acty" onmouseover="window.status=&#39;Click here for more information about Preparing Activity.&#39;;return true" onmouseout="window.status=&#39;&#39;" style="font-weight:bold;color:Navy;" title="Click here for more information about Preparing Activity">Preparing Activity:</a>
+                                        </td>
+				<td align="left">
+                                            <a href="javascript:void()" id="a0general_prep_acty" onclick="onTop(&#39;qsPopUp.aspx&#39;,&#39;Information&#39;,&#39;resizable,scrollbars,left=10,top=10,width=800&#39;);" onmouseover="window.status=&#39;Click here to view the Preparing Activity.&#39;;return true" onmouseout="window.status=&#39;&#39;" title="Click here to view the Preparing Activity">EC</a>
+                                        </td>
+				<td align="left">
+                                            &nbsp;<span id="Prep_acty_descrip_activityLabel1">Naval Information Warfare Systems Command</span>
+                                        </td>
+			</tr>
+			
+                                    
+                                    <tr id="trcoordination_coord">
+				<td align="right" nowrap="nowrap">
+                                            <a href="qsHelp.aspx#coordlevel" onmouseover="window.status='Click here for more information about Coordination Level.';return true"
+                                                onmouseout="window.status=''" style="font-weight:bold;color:Navy;" 
+                                                title="Click here for more information about Coordination Level">Coordination:</a>&nbsp;
+                                        </td>
+				<td align="left">
+                                                <span id="coordination_coordLabel">Full</span>
+                                        </td>
+				<td align="left">
+                                            &nbsp;
+                                        </td>
+			</tr>
+			
+                                    
+                               
+                                    
+                                    
+                                    
+                         
+                                    
+                                    
+                                    
+                                </table>
+                            </td>
+		</tr>
+		
+                    </table>
+                </td>
+	</tr>
+</table>
+
+
+<br/>
+
+
+        
+  <center>
+	  	
+      
+      	
+  
+ 
+  
+  </center>
+   
+    <div id="dt91div" align="left">
+    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+      <tr>
+        <td align="left">
+        
+        </td>
+      </tr>
+    </table>
+    </div>
+        <table id="revhisttable" width="800" border="0" cellspacing="0" cellpadding="0">
+	<tr>
+		<td align="left" valign="bottom">
+                        <span id="Label3"><b><i><font color="Maroon">Revision History</font></i></b></span>
+                </td>
+		<td id="revhisttd" align="center" valign="bottom">
+                        <span id="Label6" class="red">Click on column headings for a description of column content.</span>
+                </td>
+	</tr>
+</table>
+
+     
+  
+
+   
+
+ <div>
+	<table class="gridviewDefNoBorder" cellspacing="0" rules="all" border="1" id="GVRevisionHistory" width="100%">
+		<tr class="grid_header">
+			<th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#media" onmouseover="window.status='Click here for more information about Media';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about Media">Media</a></th><th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#docpartdesc" onmouseover="window.status='Click here for more information about the Document Part Description';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about the Document Part Description">Document Part Description</a></th><th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#distribution" onmouseover="window.status='Click here for more information about Distribution Statements';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about Distribution Statements">Dist Stmt</a></th><th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#Document Date" onmouseover="window.status='Click here for more information about Document Date';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about Document Dates">Document Date</a></th><th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#pages" onmouseover="window.status='Click here for more information about Pages';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about Pages">Pages</a></th><th scope="col" nowrap="nowrap"><a href="qsHelp.aspx#size" onmouseover="window.status='Click here for more information about Size';return true" onmouseout="window.status=''" class="qsfontTableHeader" title="Click here for more information about Size">Size</a></th>
+		</tr><tr class="grid_item">
+			<td align="center"><font face="Arial" size="1"><a href="javascript:spawnPDFWindow('./ImageRedirector.aspx?token=5773728.205919',5773728);" title="Click here to view the Document Image" ><img src="./gifs/pdf.gif" border=0 alt="Document Image"/></a></font></td><td align="left"><font face="Arial" size="1">Revision A Notice 2 - Validation</font></td><td align="center"><font face="Arial" size="1">A</font></td><td align="center"><font face="Arial" size="1">03-SEP-2021</font></td><td align="center"><font face="Arial" size="1">1</font></td><td align="center"><font face="Arial" size="1">1.9 KB</font></td>
+		</tr><tr class="grid_alternate">
+			<td align="center"><font face="Arial" size="1"><a href="javascript:spawnPDFWindow('./ImageRedirector.aspx?token=5723447.205919',5723447);" title="Click here to view the Document Image" ><img src="./gifs/pdf.gif" border=0 alt="Document Image"/></a></font></td><td align="left"><font face="Arial" size="1">Revision A Notice 1 - Validation</font></td><td align="center"><font face="Arial" size="1">A</font></td><td align="center"><font face="Arial" size="1">08-JUL-2013</font></td><td align="center"><font face="Arial" size="1">1</font></td><td align="center"><font face="Arial" size="1">14.9 KB</font></td>
+		</tr><tr class="grid_item">
+			<td align="center"><font face="Arial" size="1"><a href="javascript:spawnPDFWindow('./ImageRedirector.aspx?token=195405.205919',195405);" title="Click here to view the Document Image" ><img src="./gifs/pdf.gif" border=0 alt="Document Image"/></a></font></td><td align="left"><font face="Arial" size="1">Revision A </font></td><td align="center"><font face="Arial" size="1">A</font></td><td align="center"><font face="Arial" size="1">15-DEC-1999</font></td><td align="center"><font face="Arial" size="1">5</font></td><td align="center"><font face="Arial" size="1">239.6 KB</font></td>
+		</tr><tr class="grid_alternate">
+			<td align="center"><font face="Arial" size="1"><a href="javascript:spawnPDFWindow('./ImageRedirector.aspx?token=161799.205919',161799);" title="Click here to view the Document Image" ><img src="./gifs/pdf.gif" border=0 alt="Document Image"/></a></font></td><td align="left"><font face="Arial" size="1">Base Document  </font></td><td align="center"><font face="Arial" size="1">A</font></td><td align="center"><font face="Arial" size="1">05-DEC-1994</font></td><td align="center"><font face="Arial" size="1">5</font></td><td align="center"><font face="Arial" size="1">17.0 KB</font></td>
+		</tr>
+	</table>
+</div>
+    <br />
+  <!--- Added for Adobe Reader detection. CTF: 2005-06-14 --->
+  
+
+  <table id="tablerecommend" width="800" border="0" cellspacing="0" cellpadding="1">
+	<tr>
+		<td valign="top" align="left">
+      <span id="Label7" class="red">NOTE: It is recommended that you use Adobe Reader v7.0 or higher for optimal download performance;  
+	  older versions should continue to work, but downloading large files may appear to take longer, 
+	  so please be patient in those cases.</span>
+      <br/>
+	  </td>
+	</tr>
+</table>
+ 
+
+  
+  <br/>
+    </div>
+    </div>
+    </td>
+</tr>
+
+ <tr>
+ <td >
+ <div id="Div3" class="qsfont_panel" style="width:100%;">
+  
+
+<div id="qsFooter_qsFontPanel" class="qsfont_panel">
+	
+    <hr width="100%" class="hrclass"/>
+    <table width="99%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+            <td>&nbsp;</td>
+            <td align="center" valign="middle">
+                <font face="Arial" size="-2">
+	
+	<a onmouseover="window.status='Click here for more information about Quick Search.';return true" onmouseout="window.status=''" class="footer_labels" href="./qsOverview.aspx" title="Click here for more information about Quick Search." target="new">About Quick Search</a>&nbsp;&nbsp;|&nbsp;
+        <a onmouseover="window.status='Click here for to contact us.';return true" onmouseout="window.status=''" class="footer_labels" href="./qsContactUs.aspx" title="Click here to contact us." target="new">Contact Us</a>&nbsp;&nbsp;|&nbsp;
+    <a href="https://quicksearch.dla.mil/Transient/FAQ/ASSIST_FAQs.pdf" id="qsFooter_a6" onmouseover="window.status=&#39;Click here to view Frequently Asked Questions about ASSIST.&#39;;return true" onmouseout="window.status=&#39;&#39;" class="footer_labels" title="Click here to view Frequently Asked Questions about ASSIST, last updated on 08-Jul-2025." target="new">FAQ</a>&nbsp;&nbsp;|&nbsp;
+                    <a onmouseover="window.status='Click here for to go to ASSIST.';return true" onmouseout="window.status=''" class="footer_labels" href="https://assist.dla.mil/online/start/" title="Click here to go to ASSIST." target="new">ASSIST</a>&nbsp;&nbsp;|&nbsp;
+
+	<a onmouseover="window.status='Click here for more information about Privacy and Security.';return true" onmouseout="window.status=''" class="footer_labels" href="./qsPrivacy.aspx" title="Click here for more information about Privacy and Security." target="new">Privacy and Security</a>&nbsp;&nbsp;|&nbsp;
+	<a onmouseover="window.status='Click here for more information about Section 508 Compliance.';return true" onmouseout="window.status=''" class="footer_labels" href="http://dodcio.defense.gov/DoDSection508/Std_Stmt.aspx" target="new" title="Click here for more information about Section 508 Compliance.">Section 508 Compliance</a>&nbsp;&nbsp;|&nbsp;
+    <a onmouseover="window.status='Go to Defense Standardization Program.';return true" onmouseout="window.status=''" target="new" href="https://www.dsp.dla.mil" class="footer_labels" title="Click here to go to the Defense Standardization Program web site">Defense Standardization Program</a>
+	
+  </font>
+            </td>
+            <td>&nbsp;</td>
+        </tr>
+    </table>
+    <div align="center">
+       <hr width="100%" class="hrclass"/>
+        <table width="99%" border="0" cellspacing="0" cellpadding="0" align="center">
+            <tr>
+                <td>
+                    <table width="100%" border="0" align="center">
+                        <tr>
+                            <td>
+                                <font face="Arial" size="-3" color="Black">
+		WARNING: UNAUTHORIZED ACCESS TO THIS UNITED STATES GOVERNMENT COMPUTER SYSTEM
+		AND SOFTWARE IS PROHIBITED BY PUBLIC LAW 99-474 (THE COMPUTER FRAUD AND ABUSE
+		ACT OF 1986) AND CAN RESULT IN ADMINISTRATIVE, DISCIPLINARY OR CRIMINAL PROCEEDINGS.
+		</font>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+
+
+
+
+</div>
+  
+  </div> 
+</td>
+</tr>   
+</table>
+    
+    </center>
+   
+    </div>
+ 
+ 
+
+<script type="text/javascript">
+//<![CDATA[
+var ControlHeader_Menu1_Data = new Object();
+ControlHeader_Menu1_Data.disappearAfter = 500;
+ControlHeader_Menu1_Data.horizontalOffset = -32;
+ControlHeader_Menu1_Data.verticalOffset = 13;
+ControlHeader_Menu1_Data.iframeUrl = '/WebResource.axd?d=vV-b0q0g26E8tza315O-MYKJkNYbulcYC4to8MzvESa3fPZi-bRIRirg_YUXtKF2DEm5Gfi1omjbtz4eWftuoOPdKwRISLLqINkD0AojViW0Ogz5KcZF-RYzellZjf3CWsPKmzX0oYmeLVshz8VVVw2&t=638901382312636832';
+//]]>
+</script>
+</form>
+</body>
+</html>

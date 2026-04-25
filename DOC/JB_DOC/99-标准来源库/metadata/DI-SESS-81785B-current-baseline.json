@@ -1,0 +1,52 @@
+{
+  "code": "DI-SESS-81785B",
+  "title": "Systems Engineering Management Plan",
+  "group": "process",
+  "base_code": "DI-SESS-81785",
+  "ident": "276889",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=276889",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-81785-276889.html",
+  "detail_title": "Systems Engineering Management Plan (SEMP)",
+  "scope": null,
+  "status": "Active",
+  "document_date": "08-JAN-2025",
+  "distribution": null,
+  "source_mode": "current_baseline_revision_evidence",
+  "notes": "QuickSearch 详情页已更新到 2025 版 DID Date；官方 PDF 头部给出 `Number: DI-SESS-81785B`。",
+  "archived_at": "2026-04-19T17:13:59.833374+00:00",
+  "tokens": [
+    {
+      "label": "official_revision_pdf",
+      "kind": "official_pdf",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5792932",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785B-token5792932.pdf",
+      "content_type": "application/pdf",
+      "size": 132110,
+      "is_pdf": true,
+      "extracted_number": "DI-SESS-81785B",
+      "extracted_approval_date": "20250108",
+      "excerpt_lines": [
+        "DATA ITEM DESCRIPTION",
+        "Title: Systems Engineering Management Plan (SEMP)",
+        "Number: DI-SESS-81785B",
+        "AMSC Number: 10515",
+        "DTIC Applicable: No",
+        "Preparing Activity: SE",
+        "Applicable Forms: N/A",
+        "Approval Date: 20250108",
+        "Limitation: None",
+        "GIDEP Applicable: No",
+        "Project Number: SESS-2024-043",
+        "Use/relationship: The SEMP describes the contractor's technical approach and proposed plan",
+        "for the conduct, management, and control of the integrated systems engineering (SE) effort. It",
+        "reflects the scope, purpose, and life-cycle phase(s) of the program.",
+        "This Data Item Description (DID) contains the content and intended use information for the data",
+        "deliverable resulting from the work task described in paragraph 6.3.1.4 of IEEE 24748-7:2019,",
+        "or by the specific and discrete task requirements as delineated in the contract.",
+        "This DID supersedes DI-SESS-81785A",
+        "Requirements:",
+        "1. Reference documents."
+      ]
+    }
+  ]
+}

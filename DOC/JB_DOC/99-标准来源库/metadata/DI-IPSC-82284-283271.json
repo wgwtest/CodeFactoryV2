@@ -1,0 +1,33 @@
+{
+  "code": "DI-IPSC-82284",
+  "title": "Software/Hardware Design Description",
+  "ident": "283271",
+  "group": "product",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=283271",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-82284-283271.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5788803.283271",
+      "token_id": "5788803",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5788803",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-82284-token5788803.pdf",
+      "content_type": "application/pdf",
+      "size": 12495,
+      "is_pdf": true
+    },
+    {
+      "token": "5759448.283271",
+      "token_id": "5759448",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5759448",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-82284-token5759448.pdf",
+      "content_type": "application/pdf",
+      "size": 466924,
+      "is_pdf": true
+    }
+  ]
+}

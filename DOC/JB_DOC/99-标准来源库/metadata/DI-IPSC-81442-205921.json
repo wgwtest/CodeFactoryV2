@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81442",
+  "title": "Software Version Description",
+  "ident": "205921",
+  "group": "delivery",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205921",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81442-205921.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5773729.205921",
+      "token_id": "5773729",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773729",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token5773729.pdf",
+      "content_type": "application/pdf",
+      "size": 12423,
+      "is_pdf": true
+    },
+    {
+      "token": "5723449.205921",
+      "token_id": "5723449",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723449",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token5723449.pdf",
+      "content_type": "application/pdf",
+      "size": 28326,
+      "is_pdf": true
+    },
+    {
+      "token": "195729.205921",
+      "token_id": "195729",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195729",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token195729.pdf",
+      "content_type": "application/pdf",
+      "size": 242484,
+      "is_pdf": true
+    },
+    {
+      "token": "161803.205921",
+      "token_id": "161803",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161803",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token161803.pdf",
+      "content_type": "application/pdf",
+      "size": 27035,
+      "is_pdf": true
+    }
+  ]
+}

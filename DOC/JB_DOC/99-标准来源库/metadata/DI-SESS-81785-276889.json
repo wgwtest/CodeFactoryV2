@@ -1,0 +1,45 @@
+{
+  "code": "DI-SESS-81785",
+  "title": "Systems Engineering Management Plan",
+  "ident": "276889",
+  "group": "process",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=276889",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-81785-276889.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5792932.276889",
+      "token_id": "5792932",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5792932",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token5792932.pdf",
+      "content_type": "application/pdf",
+      "size": 131674,
+      "is_pdf": true
+    },
+    {
+      "token": "5737041.276889",
+      "token_id": "5737041",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5737041",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token5737041.pdf",
+      "content_type": "application/pdf",
+      "size": 29670,
+      "is_pdf": true
+    },
+    {
+      "token": "4648945.276889",
+      "token_id": "4648945",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=4648945",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token4648945.pdf",
+      "content_type": "application/pdf",
+      "size": 29941,
+      "is_pdf": true
+    }
+  ],
+  "source_mode": "legacy_base_entry",
+  "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-SESS-81785B` revision 证据条目。",
+  "current_baseline_revision": "DI-SESS-81785B"
+}

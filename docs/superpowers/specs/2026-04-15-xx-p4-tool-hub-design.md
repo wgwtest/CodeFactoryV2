@@ -6,6 +6,8 @@
 - `P4` 工具仓库 / 工具中台
 - `P4.1` 第一批最小闭环
 - `P4.1.6` 统一数据层与同源快照验证
+- `P4.2` 输入工序链闭环探索
+- `P4.2.1` 工具需求单生命周期与协议对象
 
 ## 1. 设计目标
 
@@ -70,7 +72,7 @@
 总览层负责回答：
 
 - 当前一共有多少工具
-- 覆盖了哪些阶段与能力域
+- 覆盖了哪些业务域与工具形态
 - 当前是否存在明显重叠或空白
 - 最近工具链任务与巡检任务运行情况如何
 
@@ -80,14 +82,14 @@
 
 典型路径：
 
-`输入场景 -> 阶段定位 -> 约束补充 -> 工具匹配 -> 命中解释 -> 人工结论`
+`P3/P3-sim 发出工具需求单 -> P4 受理并拆叶子项 -> 系统推荐 -> 人工逐项审定 -> 直接交付或进入研制 -> P5/P5-sim 查询与获取`
 
 首版目标：
 
-- 让用户能够输入一个业务场景
-- 根据场景与上下文得到候选工具列表
-- 解释每个候选为何命中、缺了什么
-- 形成可见的本轮结论
+- 把 `工具需求单` 固定为跨 `P3 / P4 / P5` 的主干交付对象
+- 让 `P4` 能逐项展示推荐、审定、供给与交付结果
+- 让“命中现有工具”和“进入研制”都先经过人工批准
+- 让 `P5` 只通过查询接口获取结果，而不是反向改写 `P4`
 
 ### 3.3 生命周期 B：自演进巡检链
 
@@ -95,13 +97,29 @@
 
 典型路径：
 
-`定时/手动触发 -> 当前工具扫描 -> 重叠/缺口/规范性分析 -> 演进建议 -> 待确认项`
+`定时/手动触发 -> 当前工具扫描 -> 发现项 -> 采纳/忽略 -> P4 内部任务 -> 自动改写或人工跟进 -> 留痕/回退`
 
 首版目标：
 
 - 对现有工具定义做基本质量巡检
 - 暴露疑似重复、标签不规范、描述缺失、覆盖空白
-- 形成建议项与可人工确认的结果集
+- 形成“发现项 -> 内部任务 -> 自动改写/人工跟进 -> 回退”的闭环
+
+补充说明：
+
+- 自 `2026-04-18` 起，`P4.3` 的详细协议、状态机与运行边界以 `docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md` 为准
+- 本文保留总设计层的角色定位与页面边界，不再重复展开 `P4.3` 的全部细节
+
+### 3.4 工单主干流定位
+
+从 `P4.2` 起，`工具需求单` 不再只是“输入工具链里的一个临时对象”，而是 `P3 -> P4 -> P5` 的主干协议流。
+
+因此必须同时满足：
+
+- 在总设计层能看见它的角色与页面边界
+- 在 `P4.2` 设计文档中能看见它的对象模型与闭环流程
+- 在 `P4.2.1` 设计文档中能看见它的生命周期、撤销/驳回边界与完成判定
+- 在本地 issue 树镜像中能追溯到对应设计文档和执行文档
 
 ## 4. 页面方案
 
@@ -127,7 +145,7 @@
 
 - 页面标题：`XX-P4`
 - 页面副标题：`工具中台 / Tool Hub`
-- 当前运行上下文：当前知识库、最近巡检时间、任务状态摘要
+- 当前运行上下文：当前工作区说明、最近巡检时间、任务状态摘要
 
 视觉原则：
 
@@ -156,9 +174,9 @@
 
 第一版矩阵定义：
 
-- 横轴：`P4` 业务阶段
-- 纵轴：能力域或工具分类
-- 单元格值：当前工具覆盖数量或命中连接数
+- 横轴：工具形态
+- 纵轴：业务能力域
+- 单元格值：当前激活工具在“业务域 × 工具形态”上的覆盖数量
 
 第一版健康摘要至少解释：
 
@@ -196,36 +214,37 @@
 
 目标：
 
-- 承载“输入场景 -> 匹配 -> 解释 -> 结论”最小闭环
+- 承载“工单受理 -> 推荐 -> 审定 -> 交付”最小闭环
 
 首版必须包括：
 
-- 场景输入表单
-- 阶段选择
-- 输入/输出约束选择
-- 匹配候选列表
-- 命中原因、缺口与验证状态说明
-- 本轮结论卡片
+- 工序单受理区
+- 工具需求列表
+- 需求审批与处置面板
+- 审定结论与供给结果展示
+- 与 `/xx-p3-sim`、`/xx-p5-sim` 的页面边界说明
 
 #### 4.3.3 `自演进巡检`
 
 目标：
 
-- 承载“扫描 -> 分析 -> 建议 -> 待确认项”闭环
+- 承载“巡检配置 -> 巡检轮次 -> 发现项 -> 内部任务 -> 已完成项 -> 回退”闭环
 
 首版只巡检以下 4 类问题：
 
 - 工具描述缺失
-- 标签/分类不规范
+- 标签/域模型不规范
 - 工具能力疑似重叠
-- 阶段/能力域覆盖不足
+- 业务域覆盖不足
 
 首版必须包括：
 
-- 巡检任务列表
-- 本轮发现摘要
-- 建议项列表
-- 人工确认状态
+- 巡检配置卡
+- 巡检轮次列表卡
+- 本轮发现摘要卡
+- 发现项处置卡
+- 内部任务队列卡
+- 已完成优化项与回退卡
 
 #### 4.3.4 `工具仓库`
 
@@ -237,7 +256,7 @@
 
 - 工具列表
 - 创建/编辑/归档
-- 分类与标签维护
+- 业务域、形态、平台与标签维护
 - 验证状态查看
 - 样例记录关联
 
@@ -249,40 +268,58 @@
 
 ```yaml
 tool_id: tool_xxx
-name: 知识实体归一建议器
-slug: entity-normalization-advisor
+name: 审批规则校验器
+slug: approval-rule-validator
 status: active
-summary: 针对实体候选执行归一建议和风险提示
-problem_statement: 减少人工归并时的重复判断与漏判
-primary_category_id: knowledge_governance
+summary: 针对审批路径和规则集生成结构化校验结论
+problem_statement: 降低审批方案设计阶段的人工比对成本
+primary_domain_id: workflow_approval
+tool_form_id: skill
+runtime_platform_ids:
+  - agent_runtime
+  - backend_service
 tags:
-  - stage:governance
-  - capability:entity-normalization
-  - input:entity-list
-  - output:review-suggestion
+  - domain:workflow_approval
+  - form:skill
+  - runtime:agent_runtime
+  - lifecycle:solution_design
+  - input:process_list
+  - output:validation_report
   - risk:manual-review-required
-applicable_stages:
-  - governance
+lifecycle_stage_ids:
+  - solution_design
+  - verification_release
 input_types:
-  - entity_list
+  - process_list
+  - rule_set
 output_types:
-  - review_suggestion
+  - validation_report
+  - structured_json
 supported_sources:
-  - p1_readonly_api
   - frozen_snapshot
-usage_notes: 优先用于候选实体量较大的场景
+  - manual_input
+usage_notes: 优先用于审批链路设计前后的快速规则校验
 keywords:
-  - 实体归并
-  - 别名归一
+  - 审批
+  - 规则
 verification:
   status: verified
   last_verified_at: 2026-04-15T08:00:00Z
   last_verified_result: 通过基线样例验证
   sample_case_ids:
-    - sample-entity-review
+    - sample-approval-validation
 ```
 
-### 5.1 状态定义
+### 5.1 核心字段语义
+
+第一版把以下字段视为核心结构化字段，而不是只靠自由标签表达：
+
+- `primary_domain_id`：工具主要服务的业务能力域
+- `tool_form_id`：工具交付形态，例如 `skill / template / service_endpoint / static_library / dynamic_library`
+- `runtime_platform_ids`：工具运行平台或宿主环境
+- `lifecycle_stage_ids`：工具适用的项目/方案生命周期环节
+
+### 5.2 状态定义
 
 第一版工具状态固定为：
 
@@ -290,7 +327,7 @@ verification:
 - `active`
 - `archived`
 
-### 5.2 验证状态定义
+### 5.3 验证状态定义
 
 第一版验证状态固定为：
 
@@ -301,35 +338,37 @@ verification:
 
 ## 6. 分类与标签体系
 
-### 6.1 分类
+### 6.1 业务域与目录
 
-分类负责稳定导航和统计，不承担全部语义表达。
+第一版不再把“资料接入 / 知识处理 / 知识治理”之类的平台建设能力当成工具仓库主分类。
 
-第一版一级分类固定为：
+目录负责稳定导航和统计，不承担全部语义表达。第一版固定目录至少包括：
 
-- `knowledge_ingestion`
-- `knowledge_processing`
-- `knowledge_governance`
-- `knowledge_query`
-- `application_modeling`
-- `validation_support`
+- 业务域：`case_management / workflow_approval / scheduling_dispatch / alert_response / reporting_audit / master_data / cross_domain_shared`
+- 生命周期环节：`domain_discovery / solution_design / build_integration / verification_release / operation_optimization`
+- 工具形态：`skill / template / service_endpoint / package_bundle / static_library / dynamic_library`
+- 运行平台：`browser / backend_service / agent_runtime / container / local_cli / embedded_sdk`
 
 ### 6.2 标签
 
 标签负责灵活表达匹配语义，第一版采用命名空间前缀：
 
-- `stage:*`
-- `capability:*`
+- `domain:*`
+- `lifecycle:*`
+- `form:*`
+- `runtime:*`
 - `input:*`
 - `output:*`
 - `risk:*`
 
 示例：
 
-- `stage:extraction`
-- `capability:entity-normalization`
-- `input:entity-list`
-- `output:review-suggestion`
+- `domain:workflow_approval`
+- `lifecycle:solution_design`
+- `form:skill`
+- `runtime:agent_runtime`
+- `input:process_list`
+- `output:validation_report`
 - `risk:manual-review-required`
 
 ## 7. 匹配规则 MVP
@@ -339,14 +378,21 @@ verification:
 第一版匹配请求对象：`ToolMatchRequest`
 
 ```yaml
-scenario_text: 需要针对流程梳理场景快速判断哪些工具适合做结构化验证
-target_stage: modeling
+scenario_text: 需要针对审批流设计场景快速判断哪些工具适合做规则校验
+target_domain_ids:
+  - workflow_approval
+lifecycle_stage_ids:
+  - solution_design
 required_input_types:
   - process_list
 expected_output_types:
   - validation_report
+preferred_tool_forms:
+  - skill
+preferred_runtime_platforms:
+  - agent_runtime
 preferred_tags:
-  - capability:process-analysis
+  - domain:workflow_approval
 knowledge_context:
   archive_id: 20161116-nas
   entity_ids: []
@@ -359,11 +405,14 @@ knowledge_context:
 
 第一版匹配只做可解释规则打分：
 
-- 阶段命中：30
-- 输入类型命中：25
-- 输出类型命中：20
-- 标签/分类命中：15
-- 场景关键词命中：10
+- 业务域命中：25
+- 生命周期环节命中：20
+- 输入类型命中：15
+- 输出类型命中：10
+- 工具形态命中：10
+- 运行平台命中：10
+- 标签命中：5
+- 场景关键词命中：5
 
 总分上限 100。
 
@@ -383,17 +432,23 @@ knowledge_context:
 
 ## 8. 自演进巡检模型
 
-第一版巡检结果对象：`EvolutionRun`
+自 `2026-04-18` 起，`P4.3` 不再只输出单一 `EvolutionRun` 报告对象，而是升级为一组闭环协议对象：
 
-至少包含：
+- `EvolutionInspectionConfig`
+- `EvolutionRun`
+- `EvolutionFinding`
+- `EvolutionTask`
+- `EvolutionChangeSet`
+- `EvolutionRollbackRecord`
 
-- `run_id`
-- `status`
-- `created_at`
-- `summary`
-- `findings`
+其中：
 
-第一版 `findings` 类型固定为：
+- `EvolutionRun` 负责承载本轮巡检与聚合摘要
+- `EvolutionFinding` 负责承载发现项与 `采纳 / 忽略` 决策
+- `EvolutionTask` 负责承载内部执行任务
+- `EvolutionChangeSet` 与 `EvolutionRollbackRecord` 负责留痕与回退
+
+第一版 `finding.rule_id` 固定为：
 
 - `missing_description`
 - `taxonomy_issue`
@@ -429,6 +484,23 @@ knowledge_context:
 - `GET /api/tool-hub/evolution-runs`
 - `POST /api/tool-hub/evolution-runs`
 
+其中自 `2026-04-18` 起，`P4.3` 详细 API 补充为：
+
+- `GET /api/tool-hub/evolution/config`
+- `PATCH /api/tool-hub/evolution/config`
+- `GET /api/tool-hub/evolution/runs`
+- `POST /api/tool-hub/evolution/runs`
+- `GET /api/tool-hub/evolution/runs/{run_id}`
+- `POST /api/tool-hub/evolution/findings/{finding_id}/decision`
+- `GET /api/tool-hub/evolution/tasks`
+- `GET /api/tool-hub/evolution/tasks/{task_id}`
+- `POST /api/tool-hub/evolution/tasks/{task_id}/rollback`
+
+兼容性要求：
+
+- 继续保留旧版 `/api/tool-hub/evolution-runs` 读写端点作为兼容入口
+- `P4.3` 具体对象结构和交互语义以 `2026-04-18` 专项设计文档为准
+
 `overview` 返回：
 
 - 指标
@@ -447,6 +519,11 @@ knowledge_context:
 - `.data/tool_hub/runs/match/`
 - `.data/tool_hub/runs/evolution/`
 - `.data/tool_hub/catalogs/`
+- `.data/tool_hub/evolution/config/`
+- `.data/tool_hub/evolution/tasks/`
+- `.data/tool_hub/evolution/change_sets/`
+- `.data/tool_hub/evolution/rollbacks/`
+- `.data/tool_hub/runtime/`
 
 目标：
 
@@ -511,8 +588,8 @@ knowledge_context:
 2. 页面具备“总览 + 输入工具链 + 自演进巡检 + 工具仓库”4 个页内工作区
 3. 工具仓库支持文件型 CRUD
 4. 工具分类与标签可维护、可展示、可用于匹配
-5. 输入工具链支持场景输入、规则打分、命中解释与结论输出
-6. 自演进巡检支持输出基础发现项与建议项
+5. 输入工具链支持工单受理、逐项审定、供给结果输出与完成状态判定
+6. 自演进巡检支持配置、发现项处置、内部任务推进与任务级回退
 7. 驾驶舱页能展示覆盖热力矩阵与风险摘要
 8. 前后端均有自动化测试覆盖最小主路径
 

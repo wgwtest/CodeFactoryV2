@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81435",
+  "title": "Software Design Description",
+  "ident": "205915",
+  "group": "product",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205915",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81435-205915.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5775133.205915",
+      "token_id": "5775133",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5775133",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token5775133.pdf",
+      "content_type": "application/pdf",
+      "size": 386716,
+      "is_pdf": true
+    },
+    {
+      "token": "5723443.205915",
+      "token_id": "5723443",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723443",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token5723443.pdf",
+      "content_type": "application/pdf",
+      "size": 28245,
+      "is_pdf": true
+    },
+    {
+      "token": "195415.205915",
+      "token_id": "195415",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195415",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token195415.pdf",
+      "content_type": "application/pdf",
+      "size": 539140,
+      "is_pdf": true
+    },
+    {
+      "token": "161787.205915",
+      "token_id": "161787",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161787",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token161787.pdf",
+      "content_type": "application/pdf",
+      "size": 44210,
+      "is_pdf": true
+    }
+  ]
+}

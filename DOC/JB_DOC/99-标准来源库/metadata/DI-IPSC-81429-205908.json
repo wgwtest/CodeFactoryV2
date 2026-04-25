@@ -1,0 +1,51 @@
+{
+  "code": "DI-IPSC-81429",
+  "title": "Software Transition Plan",
+  "ident": "205908",
+  "group": "delivery",
+  "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205908",
+  "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81429-205908.html",
+  "detail_title": null,
+  "scope": null,
+  "status": null,
+  "document_date": null,
+  "distribution": null,
+  "tokens": [
+    {
+      "token": "5773737.205908",
+      "token_id": "5773737",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773737",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token5773737.pdf",
+      "content_type": "application/pdf",
+      "size": 12506,
+      "is_pdf": true
+    },
+    {
+      "token": "5723432.205908",
+      "token_id": "5723432",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723432",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token5723432.pdf",
+      "content_type": "application/pdf",
+      "size": 28284,
+      "is_pdf": true
+    },
+    {
+      "token": "195657.205908",
+      "token_id": "195657",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195657",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token195657.pdf",
+      "content_type": "application/pdf",
+      "size": 340142,
+      "is_pdf": true
+    },
+    {
+      "token": "161770.205908",
+      "token_id": "161770",
+      "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161770",
+      "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token161770.pdf",
+      "content_type": "application/pdf",
+      "size": 33579,
+      "is_pdf": true
+    }
+  ]
+}

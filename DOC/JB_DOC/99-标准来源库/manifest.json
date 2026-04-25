@@ -1,0 +1,1089 @@
+[
+  {
+    "code": "MIL-STD-498",
+    "title": "Software Development and Documentation",
+    "ident": "114847",
+    "group": "lifecycle",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=114847",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/MIL-STD-498-114847.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "105323.114847",
+        "token_id": "105323",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=105323",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/MIL-STD-498-token105323.pdf",
+        "content_type": "application/pdf",
+        "size": 13915,
+        "is_pdf": true
+      },
+      {
+        "token": "108107.114847",
+        "token_id": "108107",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=108107",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/MIL-STD-498-token108107.pdf",
+        "content_type": "application/pdf",
+        "size": 14135661,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/MIL-STD-498-114847.json"
+  },
+  {
+    "code": "DI-IPSC-81427",
+    "title": "Software Development Plan",
+    "ident": "205530",
+    "group": "process",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205530",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81427-205530.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5746250.205530",
+        "token_id": "5746250",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5746250",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token5746250.pdf",
+        "content_type": "application/pdf",
+        "size": 216507,
+        "is_pdf": true
+      },
+      {
+        "token": "5723430.205530",
+        "token_id": "5723430",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723430",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token5723430.pdf",
+        "content_type": "application/pdf",
+        "size": 28283,
+        "is_pdf": true
+      },
+      {
+        "token": "195662.205530",
+        "token_id": "195662",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195662",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token195662.pdf",
+        "content_type": "application/pdf",
+        "size": 594127,
+        "is_pdf": true
+      },
+      {
+        "token": "154336.205530",
+        "token_id": "154336",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=154336",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427-token154336.pdf",
+        "content_type": "application/pdf",
+        "size": 657490,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81427-205530.json",
+    "source_mode": "legacy_base_entry",
+    "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-IPSC-81427B` revision 证据条目。",
+    "current_baseline_revision": "DI-IPSC-81427B"
+  },
+  {
+    "code": "DI-SESS-81785",
+    "title": "Systems Engineering Management Plan",
+    "ident": "276889",
+    "group": "process",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=276889",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-81785-276889.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5792932.276889",
+        "token_id": "5792932",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5792932",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token5792932.pdf",
+        "content_type": "application/pdf",
+        "size": 131674,
+        "is_pdf": true
+      },
+      {
+        "token": "5737041.276889",
+        "token_id": "5737041",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5737041",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token5737041.pdf",
+        "content_type": "application/pdf",
+        "size": 29670,
+        "is_pdf": true
+      },
+      {
+        "token": "4648945.276889",
+        "token_id": "4648945",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=4648945",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785-token4648945.pdf",
+        "content_type": "application/pdf",
+        "size": 29941,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-81785-276889.json",
+    "source_mode": "legacy_base_entry",
+    "legacy_status_note": "主号详情页保留；current baseline 请改看 `DI-SESS-81785B` revision 证据条目。",
+    "current_baseline_revision": "DI-SESS-81785B"
+  },
+  {
+    "code": "DI-SESS-80858",
+    "title": "Supplier's Configuration Management Plan",
+    "ident": "118396",
+    "group": "process",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=118396",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-80858-118396.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-80858-118396.json",
+    "source_mode": "legacy_base_entry_stale",
+    "legacy_status_note": "旧主号页无法稳定公开访问；current baseline 请改看 `DI-SESS-80858D` revision PDF + NOTICE 1 证据条目。",
+    "current_baseline_revision": "DI-SESS-80858D"
+  },
+  {
+    "code": "DI-QCIC-81794",
+    "title": "Quality Assurance Program Plan",
+    "ident": "275987",
+    "group": "process",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=275987",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-QCIC-81794-275987.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81794-275987.json",
+    "source_mode": "legacy_base_entry_invalid",
+    "legacy_status_note": "旧主号页本地归档已错指到 ASTM-D2400；current baseline 请改看 `DI-QCIC-81794A` revision PDF 证据条目。",
+    "current_baseline_revision": "DI-QCIC-81794A"
+  },
+  {
+    "code": "DI-QCIC-81795",
+    "title": "Software Quality Assurance Report",
+    "ident": "275988",
+    "group": "process",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=275988",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-QCIC-81795-275988.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81795-275988.json"
+  },
+  {
+    "code": "DI-MGMT-82133",
+    "title": "Requirements Traceability Verification Matrix",
+    "ident": "282266",
+    "group": "verification",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=282266",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-MGMT-82133-282266.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5796351.282266",
+        "token_id": "5796351",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5796351",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5796351.pdf",
+        "content_type": "application/pdf",
+        "size": 177355,
+        "is_pdf": true
+      },
+      {
+        "token": "5776362.282266",
+        "token_id": "5776362",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5776362",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5776362.pdf",
+        "content_type": "application/pdf",
+        "size": 12780,
+        "is_pdf": true
+      },
+      {
+        "token": "5747372.282266",
+        "token_id": "5747372",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5747372",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-MGMT-82133-token5747372.pdf",
+        "content_type": "application/pdf",
+        "size": 177780,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-MGMT-82133-282266.json"
+  },
+  {
+    "code": "DI-IPSC-81433",
+    "title": "Software Requirements Specification",
+    "ident": "205912",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205912",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81433-205912.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5793970.205912",
+        "token_id": "5793970",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5793970",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token5793970.pdf",
+        "content_type": "application/pdf",
+        "size": 12810,
+        "is_pdf": true
+      },
+      {
+        "token": "5723437.205912",
+        "token_id": "5723437",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723437",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token5723437.pdf",
+        "content_type": "application/pdf",
+        "size": 28595,
+        "is_pdf": true
+      },
+      {
+        "token": "195394.205912",
+        "token_id": "195394",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195394",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token195394.pdf",
+        "content_type": "application/pdf",
+        "size": 634669,
+        "is_pdf": true
+      },
+      {
+        "token": "161781.205912",
+        "token_id": "161781",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161781",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81433-token161781.pdf",
+        "content_type": "application/pdf",
+        "size": 49346,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81433-205912.json"
+  },
+  {
+    "code": "DI-IPSC-81434",
+    "title": "Interface Requirements Specification",
+    "ident": "205913",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205913",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81434-205913.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5793546.205913",
+        "token_id": "5793546",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5793546",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token5793546.pdf",
+        "content_type": "application/pdf",
+        "size": 12758,
+        "is_pdf": true
+      },
+      {
+        "token": "5751155.205913",
+        "token_id": "5751155",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5751155",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token5751155.pdf",
+        "content_type": "application/pdf",
+        "size": 128201,
+        "is_pdf": true
+      },
+      {
+        "token": "161673.205913",
+        "token_id": "161673",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161673",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81434-token161673.pdf",
+        "content_type": "application/pdf",
+        "size": 168783,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81434-205913.json"
+  },
+  {
+    "code": "DI-IPSC-81435",
+    "title": "Software Design Description",
+    "ident": "205915",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205915",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81435-205915.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5775133.205915",
+        "token_id": "5775133",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5775133",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token5775133.pdf",
+        "content_type": "application/pdf",
+        "size": 386716,
+        "is_pdf": true
+      },
+      {
+        "token": "5723443.205915",
+        "token_id": "5723443",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723443",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token5723443.pdf",
+        "content_type": "application/pdf",
+        "size": 28245,
+        "is_pdf": true
+      },
+      {
+        "token": "195415.205915",
+        "token_id": "195415",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195415",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token195415.pdf",
+        "content_type": "application/pdf",
+        "size": 539140,
+        "is_pdf": true
+      },
+      {
+        "token": "161787.205915",
+        "token_id": "161787",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161787",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81435-token161787.pdf",
+        "content_type": "application/pdf",
+        "size": 44210,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81435-205915.json"
+  },
+  {
+    "code": "DI-IPSC-81436",
+    "title": "Interface Design Description",
+    "ident": "205916",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205916",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81436-205916.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773724.205916",
+        "token_id": "5773724",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773724",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token5773724.pdf",
+        "content_type": "application/pdf",
+        "size": 12427,
+        "is_pdf": true
+      },
+      {
+        "token": "5723444.205916",
+        "token_id": "5723444",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723444",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token5723444.pdf",
+        "content_type": "application/pdf",
+        "size": 28294,
+        "is_pdf": true
+      },
+      {
+        "token": "195417.205916",
+        "token_id": "195417",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195417",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token195417.pdf",
+        "content_type": "application/pdf",
+        "size": 324713,
+        "is_pdf": true
+      },
+      {
+        "token": "161790.205916",
+        "token_id": "161790",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161790",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81436-token161790.pdf",
+        "content_type": "application/pdf",
+        "size": 31520,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81436-205916.json"
+  },
+  {
+    "code": "DI-IPSC-81437",
+    "title": "Database Design Description",
+    "ident": "205914",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205914",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81437-205914.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5723442.205914",
+        "token_id": "5723442",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723442",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81437-token5723442.pdf",
+        "content_type": "application/pdf",
+        "size": 28320,
+        "is_pdf": true
+      },
+      {
+        "token": "195398.205914",
+        "token_id": "195398",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195398",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81437-token195398.pdf",
+        "content_type": "application/pdf",
+        "size": 392295,
+        "is_pdf": true
+      },
+      {
+        "token": "161783.205914",
+        "token_id": "161783",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161783",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81437-token161783.pdf",
+        "content_type": "application/pdf",
+        "size": 35370,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81437-205914.json"
+  },
+  {
+    "code": "DI-IPSC-81438",
+    "title": "Software Test Plan",
+    "ident": "205917",
+    "group": "verification",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205917",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81438-205917.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773726.205917",
+        "token_id": "5773726",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773726",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81438-token5773726.pdf",
+        "content_type": "application/pdf",
+        "size": 12461,
+        "is_pdf": true
+      },
+      {
+        "token": "5723445.205917",
+        "token_id": "5723445",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723445",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81438-token5723445.pdf",
+        "content_type": "application/pdf",
+        "size": 28271,
+        "is_pdf": true
+      },
+      {
+        "token": "195400.205917",
+        "token_id": "195400",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195400",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81438-token195400.pdf",
+        "content_type": "application/pdf",
+        "size": 391659,
+        "is_pdf": true
+      },
+      {
+        "token": "161794.205917",
+        "token_id": "161794",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161794",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81438-token161794.pdf",
+        "content_type": "application/pdf",
+        "size": 35504,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81438-205917.json"
+  },
+  {
+    "code": "DI-IPSC-81439",
+    "title": "Software Test Description",
+    "ident": "205918",
+    "group": "verification",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205918",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81439-205918.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773727.205918",
+        "token_id": "5773727",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773727",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81439-token5773727.pdf",
+        "content_type": "application/pdf",
+        "size": 12686,
+        "is_pdf": true
+      },
+      {
+        "token": "5723446.205918",
+        "token_id": "5723446",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723446",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81439-token5723446.pdf",
+        "content_type": "application/pdf",
+        "size": 28553,
+        "is_pdf": true
+      },
+      {
+        "token": "195402.205918",
+        "token_id": "195402",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195402",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81439-token195402.pdf",
+        "content_type": "application/pdf",
+        "size": 374098,
+        "is_pdf": true
+      },
+      {
+        "token": "161797.205918",
+        "token_id": "161797",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161797",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81439-token161797.pdf",
+        "content_type": "application/pdf",
+        "size": 37031,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81439-205918.json"
+  },
+  {
+    "code": "DI-IPSC-81440",
+    "title": "Software Test Report",
+    "ident": "205919",
+    "group": "verification",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205919",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81440-205919.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773728.205919",
+        "token_id": "5773728",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773728",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81440-token5773728.pdf",
+        "content_type": "application/pdf",
+        "size": 12640,
+        "is_pdf": true
+      },
+      {
+        "token": "5723447.205919",
+        "token_id": "5723447",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723447",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81440-token5723447.pdf",
+        "content_type": "application/pdf",
+        "size": 28518,
+        "is_pdf": true
+      },
+      {
+        "token": "195405.205919",
+        "token_id": "195405",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195405",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81440-token195405.pdf",
+        "content_type": "application/pdf",
+        "size": 258274,
+        "is_pdf": true
+      },
+      {
+        "token": "161799.205919",
+        "token_id": "161799",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161799",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81440-token161799.pdf",
+        "content_type": "application/pdf",
+        "size": 29982,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81440-205919.json"
+  },
+  {
+    "code": "DI-IPSC-81441",
+    "title": "Software Product Specification",
+    "ident": "205920",
+    "group": "delivery",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205920",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81441-205920.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5793968.205920",
+        "token_id": "5793968",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5793968",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81441-token5793968.pdf",
+        "content_type": "application/pdf",
+        "size": 12711,
+        "is_pdf": true
+      },
+      {
+        "token": "5723448.205920",
+        "token_id": "5723448",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723448",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81441-token5723448.pdf",
+        "content_type": "application/pdf",
+        "size": 28531,
+        "is_pdf": true
+      },
+      {
+        "token": "195409.205920",
+        "token_id": "195409",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195409",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81441-token195409.pdf",
+        "content_type": "application/pdf",
+        "size": 339483,
+        "is_pdf": true
+      },
+      {
+        "token": "161801.205920",
+        "token_id": "161801",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161801",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81441-token161801.pdf",
+        "content_type": "application/pdf",
+        "size": 31671,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81441-205920.json"
+  },
+  {
+    "code": "DI-IPSC-81442",
+    "title": "Software Version Description",
+    "ident": "205921",
+    "group": "delivery",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205921",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81442-205921.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773729.205921",
+        "token_id": "5773729",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773729",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token5773729.pdf",
+        "content_type": "application/pdf",
+        "size": 12423,
+        "is_pdf": true
+      },
+      {
+        "token": "5723449.205921",
+        "token_id": "5723449",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723449",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token5723449.pdf",
+        "content_type": "application/pdf",
+        "size": 28326,
+        "is_pdf": true
+      },
+      {
+        "token": "195729.205921",
+        "token_id": "195729",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195729",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token195729.pdf",
+        "content_type": "application/pdf",
+        "size": 242484,
+        "is_pdf": true
+      },
+      {
+        "token": "161803.205921",
+        "token_id": "161803",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161803",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81442-token161803.pdf",
+        "content_type": "application/pdf",
+        "size": 27035,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81442-205921.json"
+  },
+  {
+    "code": "DI-IPSC-81429",
+    "title": "Software Transition Plan",
+    "ident": "205908",
+    "group": "delivery",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205908",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81429-205908.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5773737.205908",
+        "token_id": "5773737",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5773737",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token5773737.pdf",
+        "content_type": "application/pdf",
+        "size": 12506,
+        "is_pdf": true
+      },
+      {
+        "token": "5723432.205908",
+        "token_id": "5723432",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5723432",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token5723432.pdf",
+        "content_type": "application/pdf",
+        "size": 28284,
+        "is_pdf": true
+      },
+      {
+        "token": "195657.205908",
+        "token_id": "195657",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=195657",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token195657.pdf",
+        "content_type": "application/pdf",
+        "size": 340142,
+        "is_pdf": true
+      },
+      {
+        "token": "161770.205908",
+        "token_id": "161770",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=161770",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81429-token161770.pdf",
+        "content_type": "application/pdf",
+        "size": 33579,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81429-205908.json"
+  },
+  {
+    "code": "DI-IPSC-82259",
+    "title": "Software/Hardware Requirements Specification",
+    "ident": "283189",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=283189",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-82259-283189.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5756260.283189",
+        "token_id": "5756260",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5756260",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-82259-token5756260.pdf",
+        "content_type": "application/pdf",
+        "size": 266753,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-82259-283189.json"
+  },
+  {
+    "code": "DI-IPSC-82284",
+    "title": "Software/Hardware Design Description",
+    "ident": "283271",
+    "group": "product",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=283271",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-82284-283271.html",
+    "detail_title": null,
+    "scope": null,
+    "status": null,
+    "document_date": null,
+    "distribution": null,
+    "tokens": [
+      {
+        "token": "5788803.283271",
+        "token_id": "5788803",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5788803",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-82284-token5788803.pdf",
+        "content_type": "application/pdf",
+        "size": 12495,
+        "is_pdf": true
+      },
+      {
+        "token": "5759448.283271",
+        "token_id": "5759448",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5759448",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-82284-token5759448.pdf",
+        "content_type": "application/pdf",
+        "size": 466924,
+        "is_pdf": true
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-82284-283271.json"
+  },
+  {
+    "code": "DI-IPSC-81427B",
+    "title": "Software Development Plan",
+    "group": "process",
+    "base_code": "DI-IPSC-81427",
+    "ident": "205530",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=205530",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-IPSC-81427-205530.html",
+    "detail_title": "Software Development Plan (SDP)",
+    "scope": null,
+    "status": "Active",
+    "document_date": "13-MAR-2017",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "QuickSearch 详情页仍挂主号 `DI-IPSC-81427`，current baseline revision 以官方 PDF 头部的 `Number: DI-IPSC-81427B` 为准。",
+    "archived_at": "2026-04-19T17:13:53.901198+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5746250",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-IPSC-81427B-token5746250.pdf",
+        "content_type": "application/pdf",
+        "size": 216921,
+        "is_pdf": true,
+        "extracted_number": "DI-IPSC-81427B",
+        "extracted_approval_date": "20170313",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: Software Development Plan (SDP)",
+          "Number: DI-IPSC-81427B",
+          "AMSC Number: N9775",
+          "DTIC Applicable: No",
+          "Preparing Activity: EC",
+          "Applicable Forms: N/A",
+          "Approval Date: 20170313",
+          "Limitation: N/A",
+          "GIDEP Applicable: No",
+          "Project Number: IPSC-2017-001",
+          "Use/relationship: The Software Development Plan (SDP) with Agile, Cyber Security and Safety",
+          "Assurance contains the format, content, and delivery timeframes for the SDP. The SDP provides",
+          "the acquirer insight into, and a tool for monitoring, the processes to be followed for software",
+          "development, the methods to be used, the approach to be followed for each activity, and project",
+          "schedules, organization, and resources. This DID is useful for new development, modification,",
+          "reuse, reengineering, maintenance, and other activities resulting in software products.",
+          "This Data Item Description contains the format, content, and intended use information for the",
+          "data product resulting from the work task described by the contract.",
+          "This DID supersedes DI-IPSC-81427A."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-IPSC-81427B-current-baseline.json"
+  },
+  {
+    "code": "DI-SESS-81785B",
+    "title": "Systems Engineering Management Plan",
+    "group": "process",
+    "base_code": "DI-SESS-81785",
+    "ident": "276889",
+    "detail_url": "https://quicksearch.dla.mil/qsDocDetails.aspx?ident_number=276889",
+    "detail_file": "DOC/JB_DOC/99-标准来源库/detail_pages/DI-SESS-81785-276889.html",
+    "detail_title": "Systems Engineering Management Plan (SEMP)",
+    "scope": null,
+    "status": "Active",
+    "document_date": "08-JAN-2025",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "QuickSearch 详情页已更新到 2025 版 DID Date；官方 PDF 头部给出 `Number: DI-SESS-81785B`。",
+    "archived_at": "2026-04-19T17:13:59.833374+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5792932",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-81785B-token5792932.pdf",
+        "content_type": "application/pdf",
+        "size": 132110,
+        "is_pdf": true,
+        "extracted_number": "DI-SESS-81785B",
+        "extracted_approval_date": "20250108",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: Systems Engineering Management Plan (SEMP)",
+          "Number: DI-SESS-81785B",
+          "AMSC Number: 10515",
+          "DTIC Applicable: No",
+          "Preparing Activity: SE",
+          "Applicable Forms: N/A",
+          "Approval Date: 20250108",
+          "Limitation: None",
+          "GIDEP Applicable: No",
+          "Project Number: SESS-2024-043",
+          "Use/relationship: The SEMP describes the contractor's technical approach and proposed plan",
+          "for the conduct, management, and control of the integrated systems engineering (SE) effort. It",
+          "reflects the scope, purpose, and life-cycle phase(s) of the program.",
+          "This Data Item Description (DID) contains the content and intended use information for the data",
+          "deliverable resulting from the work task described in paragraph 6.3.1.4 of IEEE 24748-7:2019,",
+          "or by the specific and discrete task requirements as delineated in the contract.",
+          "This DID supersedes DI-SESS-81785A",
+          "Requirements:",
+          "1. Reference documents."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-81785B-current-baseline.json"
+  },
+  {
+    "code": "DI-SESS-80858D",
+    "title": "Supplier's Configuration Management Plan",
+    "group": "process",
+    "base_code": "DI-SESS-80858",
+    "ident": null,
+    "detail_url": null,
+    "detail_file": null,
+    "detail_title": "Supplier's Configuration Management Plan",
+    "scope": null,
+    "status": "Validated for use in acquisition (NOTICE 1, 12-MAY-2025)",
+    "document_date": "11-FEB-2020",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "稳定的 QuickSearch 详情页当前不可公开访问，改以官方 revision D PDF 与 NOTICE 1 作为 current baseline 证据。",
+    "archived_at": "2026-04-19T17:14:09.349853+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5763549",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-80858D-token5763549.pdf",
+        "content_type": "application/pdf",
+        "size": 123394,
+        "is_pdf": true,
+        "extracted_number": "DI-SESS-80858D",
+        "extracted_approval_date": "20200211",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: SUPPLIER’S CONFIGURATION MANAGEMENT PLAN",
+          "Number: DI-SESS-80858D",
+          "Approval Date: 20200211",
+          "AMSC Number: N10144",
+          "Limitation: N/A",
+          "DTIC Applicable: No",
+          "Preparing Activity: NM",
+          "GIDEP Applicable: No",
+          "Project Number: SESS-2020-007",
+          "Applicable Forms: N/A",
+          "Use/relationship: The Supplier’s Configuration Management (CM) Plan describes the organization,",
+          "procedures, and controls of the Supplier’s CM program. The principle use is to provide the",
+          "Government a basis for review, evaluation, and monitoring of the CM program and associated",
+          "proposed components.",
+          "a. This DID contains the format, content, and intended use information for the data deliverable",
+          "resulting from the work task described in EIA-649-1 and the principles of EIA-649 (Copies of these",
+          "standards are available online at www.sae.org or from SAE International, 400 Commonwealth Drive,",
+          "Warrendale, PA 15096-0001, Tel 877-606-7323 [inside USA and Canada] or 724-776-4970 [outside",
+          "USA])."
+        ]
+      },
+      {
+        "label": "official_validation_notice",
+        "kind": "official_notice",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5794369",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-SESS-80858D-NOTICE1-token5794369.pdf",
+        "content_type": "application/pdf",
+        "size": 12576,
+        "is_pdf": true,
+        "extracted_number": null,
+        "extracted_approval_date": null,
+        "excerpt_lines": [
+          "NOTICE OF",
+          "VALIDATION",
+          "NOT MEASUREMENT",
+          "SENSITIVE",
+          "DI-SESS-80858D",
+          "NOTICE 1",
+          "12-May-2025",
+          "DATA ITEM DESCRIPTION",
+          "Supplier's Configuration Management Plan",
+          "DI-SESS-80858D, dated 11-Feb-2020, has been reviewed and",
+          "determined to be valid for use in acquisition.",
+          "Preparing Activity:",
+          "Navy - NM",
+          "Reviewer Activities:",
+          "Air Force - 27",
+          "NOTE: The activities above were interested in this document as",
+          "of the date of this document. Since organizations and",
+          "responsibilities can change, you should verify the currency of",
+          "the information above using the ASSIST Online database at",
+          "https://assist.dla.mil."
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-SESS-80858D-current-baseline.json"
+  },
+  {
+    "code": "DI-QCIC-81794A",
+    "title": "Quality Assurance Program Plan",
+    "group": "process",
+    "base_code": "DI-QCIC-81794",
+    "ident": null,
+    "detail_url": null,
+    "detail_file": null,
+    "detail_title": "Quality Assurance Program Plan (QAPP)",
+    "scope": null,
+    "status": "Official revision A PDF archived",
+    "document_date": "16-SEP-2019",
+    "distribution": null,
+    "source_mode": "current_baseline_revision_evidence",
+    "notes": "旧 `DI-QCIC-81794` QuickSearch 详情页本地归档已错指到无关 ASTM 文档，current baseline 改由官方 revision A PDF 直接建档。",
+    "archived_at": "2026-04-19T17:14:12.844484+00:00",
+    "tokens": [
+      {
+        "label": "official_revision_pdf",
+        "kind": "official_pdf",
+        "download_url": "https://quicksearch.dla.mil/WMX/Default.aspx?token=5761211",
+        "file": "DOC/JB_DOC/99-标准来源库/raw/DI-QCIC-81794A-token5761211.pdf",
+        "content_type": "application/pdf",
+        "size": 53329,
+        "is_pdf": true,
+        "extracted_number": "DI-QCIC-81794A",
+        "extracted_approval_date": "20190916",
+        "excerpt_lines": [
+          "DATA ITEM DESCRIPTION",
+          "Title: QUALITY ASSURANCE PROGAM PLAN (QAPP)",
+          "Number: DI-QCIC-81794A",
+          "AMSC Number: F10093",
+          "DTIC Applicable: No",
+          "Preparing Activity: 11 (AFLCMC/EZSM)",
+          "Applicable Forms: N/A",
+          "Approval Date: 20190916",
+          "Limitation: N/A",
+          "GIDEP Applicable: No",
+          "Project Number: QCIC-2018-004",
+          "Use/Relationship: The Quality Assurance Program Plan (QAPP) will be used as a stand-alone",
+          "document, but it is intended to be a part of an integrated strategy, including: Manufacturing",
+          "Management; Software Quality; Reliability; Parts, Materials, and Processes; and other related",
+          "disciplines. The purpose of the QAPP is to describe how the Quality Management System",
+          "complies with the program’s contractual requirements and how the contractor ensures products",
+          "are designed and produced to meet the program’s contractual requirements. The QAPP",
+          "describes how contractor quality policies and procedures are implemented at the program level.",
+          "The QAPP contains measurable quality objectives and the metrics by which they are to be",
+          "measured. The principal use of the QAPP is to provide a detailed description of the contractor’s"
+        ]
+      }
+    ],
+    "metadata_file": "DOC/JB_DOC/99-标准来源库/metadata/DI-QCIC-81794A-current-baseline.json"
+  }
+]

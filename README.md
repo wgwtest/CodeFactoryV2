@@ -1,6 +1,13 @@
-# Knowledge Warehouse Foundation
+# CodeFactoryV2
 
-First shippable vertical slice for the Software Factory knowledge warehouse. This workspace ingests `PDF/DOC/DOCX`, stores versioned source material, extracts candidate knowledge, supports review and publish workflows, and exposes graph and process exploration views.
+`CodeFactoryV2` 是一个知识驱动的软件工厂项目。当前仓库已经落地 `P1` 业务知识库的首个可运行闭环，并在此基础上继续推进 `P2` 需求分析系统、`P3` 软件设计系统、`P4` 工具仓库、`P5` 软件构建系统和 `P6` 门户入口层的正式规划与实施。
+
+## Formal docs
+
+- 正式文档根：`DOC/CODEX_DOC/`
+- 正式阅读入口：`DOC/CODEX_DOC/README.md`
+- 本地工程策略映射：`DOC/CODEX_DOC/00-本地工程策略映射.md`
+- `docs/superpowers/` 为工作文档层，不再单独承担正式权威文档根职责
 
 ## Development policy
 - This project must not use `git worktree` as the default development mode.
@@ -9,6 +16,14 @@ First shippable vertical slice for the Software Factory knowledge warehouse. Thi
 - Local runtime data under `.data/` is part of the active root workspace context and must not be split across separate worktrees.
 
 中文说明见：[docs/development-policy.md](docs/development-policy.md)
+
+## Reading order
+
+1. `DOC/CODEX_DOC/README.md`
+2. `DOC/CODEX_DOC/00-本地工程策略映射.md`
+3. `DOC/CODEX_DOC/01_需求分析/00-工程总体分析.md`
+4. `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
+5. `DOC/CODEX_DOC/04_研制计划/00-WBS-0-CodeFactoryV2-研发总纲-研制计划.md`
 
 ## First release capabilities
 - Upload and version source documents.
