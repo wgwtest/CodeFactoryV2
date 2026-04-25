@@ -5,6 +5,7 @@ from typing import Any
 
 from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
 from app.archive_knowledge.repository import JsonPublishedKnowledgeRepository
+from app.archive_knowledge.runtime_indexes_snapshots_apis import build_indexes_snapshots_apis_snapshot
 from app.archive_knowledge.runtime_repository import DocumentRuntimeRepository
 from app.archive_knowledge.runtime_snapshot_service import (
     DocumentRuntimeSnapshotService,
@@ -80,11 +81,16 @@ class ArchiveDocumentRuntimeService:
             and not context["is_current_build_document"]
         ):
             needs_backfill = not persisted_stage_ids
-            needs_refresh = bool(persisted_stage_ids) and self._persisted_snapshots_need_refresh(
-                archive_id,
-                document_id,
-                persisted_stage_ids,
+            stale_stage_ids = (
+                self._persisted_snapshots_requiring_refresh(
+                    archive_id,
+                    document_id,
+                    persisted_stage_ids,
+                )
+                if persisted_stage_ids
+                else []
             )
+            needs_refresh = bool(stale_stage_ids)
             if needs_backfill or needs_refresh:
                 parsed_document = self.runtime_snapshot_service.load_or_derive_parsed_document(document_source or {})
                 can_refresh_parse_stages = (
@@ -103,6 +109,16 @@ class ArchiveDocumentRuntimeService:
                     persisted_stage_ids = self._ordered_stage_ids(
                         self.runtime_repository.list_stage_snapshot_ids(archive_id, document_id)
                     )
+                elif needs_refresh:
+                    refreshed_stage_ids = self.runtime_snapshot_service.refresh_runtime_stage_snapshots(
+                        archive_id=archive_id,
+                        contribution=contribution,
+                        stage_ids=stale_stage_ids,
+                    )
+                    if refreshed_stage_ids:
+                        persisted_stage_ids = self._ordered_stage_ids(
+                            self.runtime_repository.list_stage_snapshot_ids(archive_id, document_id)
+                        )
         stage_statuses = self._infer_stage_statuses(context)
         current_stage_id = self._select_current_stage_id(stage_statuses)
         stages = [
@@ -129,19 +145,89 @@ class ArchiveDocumentRuntimeService:
             stages=stages,
         ).model_dump(mode="json")
 
-    def _persisted_snapshots_need_refresh(
+    def _persisted_snapshots_requiring_refresh(
         self,
         archive_id: str,
         document_id: str,
         persisted_stage_ids: list[str],
-    ) -> bool:
+    ) -> list[str]:
+        stale_stage_ids: list[str] = []
         for stage_id in persisted_stage_ids:
             snapshot = self.runtime_repository.load_stage_snapshot(archive_id, document_id, stage_id)
             if snapshot is None:
-                return True
+                stale_stage_ids.append(stage_id)
+                continue
             if int(snapshot.get("snapshot_contract_version") or 0) < RUNTIME_SNAPSHOT_CONTRACT_VERSION:
+                stale_stage_ids.append(stage_id)
+                continue
+            if stage_id == "indexes_snapshots_apis" and self._publication_snapshot_needs_refresh(
+                archive_id,
+                document_id,
+                snapshot,
+            ):
+                stale_stage_ids.append(stage_id)
+        return stale_stage_ids
+
+    def _publication_snapshot_needs_refresh(
+        self,
+        archive_id: str,
+        document_id: str,
+        snapshot: dict[str, Any],
+    ) -> bool:
+        current_version, document_published = self.runtime_snapshot_service._build_publication_context(
+            archive_id,
+            document_id,
+        )
+        fields = self._extract_observer_fields(snapshot)
+        formally_admitted = document_published and bool(current_version)
+        expected_formal_entry = "已正式入库" if formally_admitted else "尚未正式入库"
+        expected_governance = "治理已确认" if formally_admitted else None
+        expected_version = (current_version or {}).get("version_label")
+        expected_review_counts = self._load_document_review_counts(archive_id, document_id)
+
+        if fields.get("formal_entry_status") != expected_formal_entry:
+            return True
+        if expected_governance and fields.get("governance_confirmation_status") != expected_governance:
+            return True
+        if expected_version and fields.get("version_label") != expected_version:
+            return True
+        if not expected_version and fields.get("formal_entry_status") == "已正式入库":
+            return True
+        if expected_review_counts is not None:
+            if fields.get("pending_review_count") != str(expected_review_counts["pending_count"]):
+                return True
+            if fields.get("approved_count") != str(expected_review_counts["approved_count"]):
+                return True
+            if fields.get("rejected_count") != str(expected_review_counts["rejected_count"]):
                 return True
         return False
+
+    @staticmethod
+    def _extract_observer_fields(snapshot: dict[str, Any]) -> dict[str, Any]:
+        stage_observer = snapshot.get("stage_observer") or {}
+        fields: dict[str, Any] = {}
+        for section in stage_observer.get("sections", []):
+            for field in section.get("fields", []):
+                key = field.get("key")
+                if key:
+                    fields[key] = field.get("value")
+        return fields
+
+    def _load_document_review_counts(self, archive_id: str, document_id: str) -> dict[str, int] | None:
+        try:
+            payload = self.knowledge_service._load_raw(archive_id)
+        except FileNotFoundError:
+            return None
+        document_index = self.knowledge_service._build_document_index(payload)
+        document = document_index.get(document_id)
+        if document is None:
+            return None
+        knowledge_items = self.knowledge_service._build_document_knowledge_items(payload, document_id, document)
+        return {
+            "pending_count": sum(1 for item in knowledge_items if item.get("review_status", "pending") == "pending"),
+            "approved_count": sum(1 for item in knowledge_items if item.get("review_status") == "approved"),
+            "rejected_count": sum(1 for item in knowledge_items if item.get("review_status") == "rejected"),
+        }
 
     def _load_build_state_document_source(self, build_state: dict[str, Any], document_id: str) -> dict[str, Any] | None:
         for document in build_state.get("documents", []):
@@ -361,6 +447,9 @@ class ArchiveDocumentRuntimeService:
         if has_items:
             statuses["quality_policy_evaluation_governance_gate"] = RuntimeStatus.RUNNING
         if has_publication:
+            # Once a formal version exists, the earlier definition warning should no longer
+            # outrank the terminal publication stage as the "current" runtime location.
+            statuses["definition_summary_conflict_consolidation"] = RuntimeStatus.COMPLETED
             statuses["quality_policy_evaluation_governance_gate"] = RuntimeStatus.COMPLETED
             statuses["indexes_snapshots_apis"] = RuntimeStatus.COMPLETED
         return statuses
@@ -966,36 +1055,13 @@ class ArchiveDocumentRuntimeService:
         )
 
     def _build_indexes_snapshots_apis_stage(self, definition, context, status):
-        published = context["published_current_version"]
-        snapshot_id = f"{context['document_id']}:publication-snapshot"
-        index_id = f"{context['document_id']}:search-index"
-        api_id = f"{context['document_id']}:api-payload"
-        stage_status = RuntimeStatus.COMPLETED if published else RuntimeStatus.PENDING
-        nodes = [
-            self._node(snapshot_id, "发布快照", "publication_snapshot", definition.stage_id, stage_status, True, origin=RuntimeOrigin.DERIVED, attributes={"version_label": (published or {}).get("version_label")}),
-            self._node(index_id, "索引写入", "search_index", definition.stage_id, stage_status, origin=RuntimeOrigin.DERIVED),
-            self._node(api_id, "API 载荷", "api_payload", definition.stage_id, stage_status, origin=RuntimeOrigin.DERIVED),
-        ]
-        edges = [
-            self._edge(f"{snapshot_id}:index", snapshot_id, index_id, "indexed_as", definition.stage_id, stage_status, True),
-            self._edge(f"{snapshot_id}:api", snapshot_id, api_id, "served_by", definition.stage_id, stage_status, True),
-        ]
-        return self._stage_snapshot(
-            definition,
-            stage_status,
-            nodes,
-            edges,
-            self._observer_stage(
-                title="阶段视角 · 发布/API",
-                subtitle=context["document_title"],
-                status=stage_status,
-                stream=[self._event("progress", "发布快照、索引与 API 载荷正在准备" if not published else "已存在发布快照与 API 载荷"), self._event("result", f"current_version: {(published or {}).get('version_label') or '未发布'}")],
-                sections=[self._section("publish", "发布摘要", [("current_version", (published or {}).get("version_label") or "未发布")])],
-            ),
-            {
-                snapshot_id: self._observer_node("节点视角 · 发布快照", "当前文档进入发布层后的快照对象。", stage_status, [self._event("result", "发布快照已生成" if published else "尚未生成发布快照")], [self._section("snapshot", "快照摘要", [("version_label", (published or {}).get("version_label") or "未发布")])]),
-            },
-            {
-                f"{snapshot_id}:api": self._observer_edge("边视角 · served_by", "发布快照如何对外服务为 API 载荷。", stage_status, [self._event("result", "发布快照与 API 载荷已建立关系" if published else "API 载荷尚未就绪")], [self._section("relation", "关系摘要", [("关系类型", "served_by"), ("current_version", (published or {}).get("version_label") or "未发布")])]),
-            },
+        document_published = bool(context["published_current_version"])
+        return build_indexes_snapshots_apis_snapshot(
+            archive_id=context["archive_id"],
+            document_id=context["document_id"],
+            document_title=context["document_title"],
+            current_version=context["published_current_version"],
+            document_published=document_published,
+            knowledge_items=context["all_items"],
+            status_override=status if status == RuntimeStatus.RUNNING else None,
         )

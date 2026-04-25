@@ -42,6 +42,7 @@ from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapsh
 from app.archive_knowledge.runtime_unified_document_object import build_unified_document_object_snapshot
 from app.archive_knowledge.policy_config import build_default_archive_policy_config, build_policy_run_snapshot
 from app.archive_knowledge.runtime_repository import DocumentRuntimeRepository
+from app.archive_knowledge.runtime_snapshot_service import RUNTIME_SNAPSHOT_CONTRACT_VERSION
 from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.extraction.service import ExtractionService
@@ -107,6 +108,30 @@ def _sample_contribution(document_id: str = "doc-1") -> dict:
     }
 
 
+def _sample_parsed_document() -> ParsedDocument:
+    return ParsedDocument(
+        parser_name="docling.docx",
+        parser_version="1.0.0",
+        segments=[
+            ParsedSegment(heading="Overview", content="National Airspace System overview.", anchor={"page": 1, "paragraph": 1}),
+            ParsedSegment(heading="Mission", content="Mission orchestration depends on evidence packs.", anchor={"page": 1, "paragraph": 2}),
+            ParsedSegment(heading="Outputs", content="Publishable knowledge candidates are prepared.", anchor={"page": 2, "paragraph": 1}),
+        ],
+    )
+
+
+def _save_runtime_stage_snapshot(
+    runtime_repository: DocumentRuntimeRepository,
+    archive_id: str,
+    document_id: str,
+    stage_id: str,
+    payload: dict,
+) -> None:
+    snapshot_payload = dict(payload)
+    snapshot_payload["snapshot_contract_version"] = RUNTIME_SNAPSHOT_CONTRACT_VERSION
+    runtime_repository.save_stage_snapshot(archive_id, document_id, stage_id, snapshot_payload)
+
+
 def test_archive_document_runtime_endpoint_returns_13_stage_contract(tmp_path: Path) -> None:
     repository = DocumentArtifactRepository(tmp_path)
     repository.upsert("nas-a", _sample_contribution(), included_in_archive=True)
@@ -169,6 +194,190 @@ def test_unified_document_snapshot_covers_all_sections_and_paragraphs() -> None:
     assert {node.node_id for node in section_nodes}.issubset(snapshot.node_observers.keys())
     assert {node.node_id for node in paragraph_nodes}.issubset(snapshot.node_observers.keys())
     assert any(edge.target == "doc-1:unified-paragraph:8" for edge in snapshot.graph.edges)
+    assert {node.node_type for node in snapshot.graph.nodes} >= {"parsed_segment_group", "normalization_policy"}
+    assert any(edge.relation == "governs" for edge in snapshot.graph.edges)
+    assert snapshot.graph.primary_node_ids[:4] == [
+        "doc-1:parsed-segments",
+        "doc-1:normalization-policy",
+        "doc-1:normalization-decision",
+        "doc-1:unified-document",
+    ]
+
+
+def test_evidence_constructor_snapshot_explains_input_policy_and_output() -> None:
+    snapshot = build_evidence_constructor_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+        parsed_document=_sample_parsed_document(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"source_paragraph_group", "evidence_selection_policy", "evidence_constructor_task", "evidence_unit_group"}.issubset(node_types)
+    assert {"consumed_by", "governs", "results_in"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:4] == [
+        "doc-1:evidence-constructor:paragraphs",
+        "doc-1:evidence-constructor:policy",
+        "doc-1:evidence-constructor:task",
+        "doc-1:evidence-constructor:units",
+    ]
+
+
+def test_evidence_graph_chunk_layer_snapshot_explains_input_policy_and_output() -> None:
+    snapshot = build_evidence_graph_chunk_layer_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+        parsed_document=_sample_parsed_document(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"evidence_unit_group", "chunking_policy", "chunk_planning_task", "chunk_group"}.issubset(node_types)
+    assert {"feeds_planning", "governs", "grouped_into"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:4] == [
+        "doc-1:evidence-units",
+        "doc-1:chunk-policy",
+        "doc-1:chunk-planning",
+        "doc-1:chunk-group",
+    ]
+
+
+def test_evidence_pack_snapshot_explains_input_policy_and_output() -> None:
+    snapshot = build_evidence_pack_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"evidence_unit_input_set", "evidence_pack_policy", "retrieval_query", "evidence_pack", "rerank_result", "pack_target"}.issubset(node_types)
+    assert {"feeds_policy", "governs", "selected_into", "reranked_to", "supports"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:6] == [
+        "doc-1:evidence-pack:evidence-input-set",
+        "doc-1:evidence-pack:pack-policy",
+        "doc-1:evidence-pack:query",
+        "doc-1:evidence-pack:pack",
+        "doc-1:evidence-pack:rerank",
+        "doc-1:evidence-pack:targets",
+    ]
+    assert all(not node.is_primary for node in snapshot.graph.nodes if node.node_type == "evidence_unit")
+
+
+def test_concept_review_snapshot_explains_policy_before_candidates() -> None:
+    snapshot = build_concept_candidate_review_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"evidence_pack_input", "concept_review_policy", "concept_candidate_set", "category_group", "alias_group"}.issubset(node_types)
+    assert {"feeds_policy", "governs", "categorized_as", "aliased_as"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:3] == [
+        "doc-1:concept-review:evidence-pack",
+        "doc-1:concept-review:review-policy",
+        "doc-1:concept-review:candidate-set",
+    ]
+    assert all(
+        not node.is_primary
+        for node in snapshot.graph.nodes
+        if node.node_type.startswith("concept_candidate_") and node.node_type != "concept_candidate_set"
+    )
+
+
+def test_relation_review_snapshot_explains_policy_before_family_normalization() -> None:
+    snapshot = build_relation_review_family_normalization_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"relation_candidate_set", "relation_review_policy", "family_normalization", "family_group_root"}.issubset(node_types)
+    assert {"feeds_policy", "governs", "normalized_by", "contains"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:4] == [
+        "doc-1:relation-review:set",
+        "doc-1:relation-review:review-policy",
+        "doc-1:relation-review:family-normalization",
+        "doc-1:relation-review:family-groups",
+    ]
+    assert all(not node.is_primary for node in snapshot.graph.nodes if node.node_type in {"relation_candidate", "family_group"})
+
+
+def test_definition_consolidation_snapshot_explains_policy_and_aggregate_outputs() -> None:
+    snapshot = build_definition_summary_conflict_consolidation_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=_sample_contribution(),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {
+        "relation_review_input",
+        "definition_consolidation_policy",
+        "consolidation_decisions",
+        "definition_candidate_set",
+        "summary_candidate_set",
+        "conflict_candidate_set",
+    }.issubset(node_types)
+    assert {"feeds_policy", "governs", "contains", "proposes", "resolved_by", "conflicts_with"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:3] == [
+        "doc-1:definition-stage:relation-input",
+        "doc-1:definition-stage:consolidation-policy",
+        "doc-1:definition-stage:consolidation",
+    ]
+    assert all(
+        not node.is_primary
+        for node in snapshot.graph.nodes
+        if node.node_type in {"definition_candidate", "summary_candidate", "conflict_candidate"}
+    )
+
+
+def test_canonical_knowledge_snapshot_explains_canonicalization_policy() -> None:
+    contribution = _sample_contribution()
+    snapshot = build_canonical_knowledge_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        contribution=contribution,
+        knowledge_items=ArchiveKnowledgeService._build_document_knowledge_items_from_contribution(
+            contribution,
+            contribution["document"],
+        ),
+    )
+
+    node_types = {node.node_type for node in snapshot.graph.nodes}
+    relations = {edge.relation for edge in snapshot.graph.edges}
+
+    assert {"canonical_candidate_input_set", "canonicalization_policy", "merge_decision_group", "canonical_item_set", "canonical_relation_set"}.issubset(node_types)
+    assert {"feeds_policy", "governs", "results_in", "supports"}.issubset(relations)
+    assert snapshot.graph.primary_node_ids[:5] == [
+        "doc-1:canonical:input-set",
+        "doc-1:canonical:canonicalization-policy",
+        "doc-1:canonical:merge-decisions",
+        "doc-1:canonical:item-set",
+        "doc-1:canonical:relation-set",
+    ]
+    assert all(not node.is_primary for node in snapshot.graph.nodes if node.node_type.startswith("canonical_") and node.node_type not in {"canonical_candidate_input_set", "canonical_item_set", "canonical_relation_set"})
+    assert all(not edge.is_primary for edge in snapshot.graph.edges if edge.edge_id.startswith("doc-1:canonical:relation:"))
 
 
 def test_archive_document_runtime_stream_endpoint_emits_initial_runtime_event(tmp_path: Path) -> None:
@@ -460,7 +669,7 @@ def test_archive_document_runtime_prefers_persisted_asset_intake_snapshot(tmp_pa
         intake_timestamp="2026-04-21T10:00:00+00:00",
     )
     snapshot.stage_observer.title = "Persisted Asset Intake"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "asset_intake", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "asset_intake", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -491,7 +700,7 @@ def test_archive_document_runtime_prefers_persisted_parser_router_snapshot(tmp_p
         parser_version="9.9.9",
     )
     snapshot.stage_observer.title = "Persisted Parser Router"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "parser_router", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "parser_router", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -679,9 +888,13 @@ def test_quality_gate_policy_snapshot_changes_gate_decision(monkeypatch) -> None
         runtime_trace=quality_trace,
     )
     rule_nodes = [node for node in snapshot.graph.nodes if node.node_type == "rule_hit"]
+    candidate_set = next(node for node in snapshot.graph.nodes if node.node_type == "quality_candidate_set")
     assert snapshot.status == "completed"
     assert len(rule_nodes) == 3
     assert any(node.attributes["rule_key"] == "gate-risk" for node in rule_nodes)
+    assert candidate_set.node_id == snapshot.graph.primary_node_ids[0]
+    assert any(edge.source == candidate_set.node_id and edge.relation == "evaluated_by" for edge in snapshot.graph.edges)
+    assert any(edge.target == candidate_set.node_id and edge.relation == "feeds_candidate_set" for edge in snapshot.graph.edges)
 
 
 def test_quality_gate_does_not_route_to_manual_review_for_warning_policy() -> None:
@@ -800,7 +1013,7 @@ def test_archive_document_runtime_prefers_persisted_evidence_pack_snapshot(tmp_p
         contribution=contribution,
     )
     snapshot.stage_observer.title = "Persisted Evidence Pack"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "evidence_pack", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "evidence_pack", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -827,7 +1040,8 @@ def test_archive_document_runtime_prefers_persisted_concept_candidate_review_sna
         contribution=contribution,
     )
     snapshot.stage_observer.title = "Persisted Concept Candidate Review"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "concept_candidate_review",
@@ -864,7 +1078,8 @@ def test_archive_document_runtime_prefers_persisted_relation_review_family_norma
         contribution=contribution,
     )
     snapshot.stage_observer.title = "Persisted Relation Review / Family Normalization"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "relation_review_family_normalization",
@@ -899,7 +1114,8 @@ def test_archive_document_runtime_prefers_persisted_definition_summary_conflict_
         contribution=contribution,
     )
     snapshot.stage_observer.title = "Persisted Definition / Summary / Conflict Consolidation"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "definition_summary_conflict_consolidation",
@@ -944,7 +1160,7 @@ def test_archive_document_runtime_prefers_persisted_parser_execution_snapshot(tm
         ),
     )
     snapshot.stage_observer.title = "Persisted Parser Execution"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "parser_execution", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "parser_execution", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -981,7 +1197,7 @@ def test_archive_document_runtime_prefers_persisted_unified_document_snapshot(tm
         ),
     )
     snapshot.stage_observer.title = "Persisted Unified Document"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "unified_document_object", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "unified_document_object", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -1024,7 +1240,7 @@ def test_archive_document_runtime_prefers_persisted_evidence_constructor_snapsho
         ),
     )
     snapshot.stage_observer.title = "Persisted Evidence Constructor"
-    runtime_repository.save_stage_snapshot("nas-a", "doc-1", "evidence_constructor", snapshot.model_dump(mode="json"))
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "evidence_constructor", snapshot.model_dump(mode="json"))
 
     app = create_app()
     app.dependency_overrides[get_archive_document_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
@@ -1067,7 +1283,8 @@ def test_archive_document_runtime_prefers_persisted_evidence_graph_chunk_layer_s
         ),
     )
     snapshot.stage_observer.title = "Persisted Evidence Graph / Chunk Layer"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "evidence_graph_chunk_layer",
@@ -1104,7 +1321,8 @@ def test_archive_document_runtime_prefers_persisted_quality_gate_snapshot(tmp_pa
         ),
     )
     snapshot.stage_observer.title = "Persisted Quality Gate"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "quality_policy_evaluation_governance_gate",
@@ -1142,7 +1360,8 @@ def test_archive_document_runtime_prefers_persisted_canonical_knowledge_snapshot
         ),
     )
     snapshot.stage_observer.title = "Persisted Canonical Knowledge"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "canonical_knowledge",
@@ -1167,16 +1386,46 @@ def test_archive_document_runtime_prefers_persisted_indexes_snapshots_apis_snaps
     contribution = _sample_contribution()
     repository.upsert("nas-a", contribution, included_in_archive=True)
 
+    knowledge_service = ArchiveKnowledgeService(tmp_path)
+    knowledge_service._save_payload(
+        "nas-a",
+        {
+            "documents": [
+                {
+                    "id": contribution["document"]["id"],
+                    "title": contribution["document"]["title"],
+                    "path": contribution["document"]["path"],
+                    "file_type": contribution["document"]["file_type"],
+                    "source_archive": contribution["document"]["source_archive"],
+                    "character_count": contribution["document"]["character_count"],
+                }
+            ],
+            "entities": [{**item, "review_status": "approved"} for item in contribution["entities"]],
+            "events": [{**item, "review_status": "approved"} for item in contribution["events"]],
+            "processes": [{**item, "review_status": "approved"} for item in contribution["processes"]],
+            "relations": [],
+        },
+    )
+    knowledge_service.publish_snapshot("nas-a", version_label="v2026.04", publisher="tester")
+
     runtime_repository = DocumentRuntimeRepository(tmp_path)
+    approved_contribution = {
+        **contribution,
+        "entities": [{**item, "review_status": "approved"} for item in contribution["entities"]],
+        "events": [{**item, "review_status": "approved"} for item in contribution["events"]],
+        "processes": [{**item, "review_status": "approved"} for item in contribution["processes"]],
+    }
     snapshot = build_indexes_snapshots_apis_snapshot(
         archive_id="nas-a",
         document_id="doc-1",
         document_title="SV-2 Translation",
         current_version={"version_label": "v2026.04"},
         document_published=True,
+        contribution=approved_contribution,
     )
     snapshot.stage_observer.title = "Persisted Indexes / Snapshots / APIs"
-    runtime_repository.save_stage_snapshot(
+    _save_runtime_stage_snapshot(
+        runtime_repository,
         "nas-a",
         "doc-1",
         "indexes_snapshots_apis",
@@ -1194,8 +1443,128 @@ def test_archive_document_runtime_prefers_persisted_indexes_snapshots_apis_snaps
         stage for stage in payload["stages"] if stage["stage_id"] == "indexes_snapshots_apis"
     )
     assert indexes_snapshots_apis["stage_observer"]["title"] == "Persisted Indexes / Snapshots / APIs"
-    assert indexes_snapshots_apis["graph"]["nodes"]
-    assert indexes_snapshots_apis["graph"]["edges"]
+    node_labels = {node["label"] for node in indexes_snapshots_apis["graph"]["nodes"]}
+    assert {"门禁决策", "发布候选快照", "索引/API 暴露范围", "待治理确认"}.issubset(node_labels)
+    edge_relations = {edge["relation"] for edge in indexes_snapshots_apis["graph"]["edges"]}
+    assert {
+        "authorizes_candidate_snapshot",
+        "exposes_scope",
+        "awaits_governance_confirmation",
+    }.issubset(edge_relations)
+
+
+def test_indexes_snapshots_apis_snapshot_exposes_candidate_governance_boundary() -> None:
+    snapshot = build_indexes_snapshots_apis_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        current_version=None,
+        document_published=False,
+        contribution=_sample_contribution(),
+    )
+    payload = snapshot.model_dump(mode="json")
+
+    assert payload["stage_id"] == "indexes_snapshots_apis"
+    assert payload["stage_observer"]["title"] == "阶段视角 · 发布候选快照"
+    assert payload["status"] == "warning"
+    assert payload["graph"]["primary_node_ids"] == [
+        "doc-1:publish-layer:gate-decision",
+        "doc-1:publish-layer:candidate-snapshot",
+        "doc-1:publish-layer:exposure-scope",
+        "doc-1:publish-layer:governance-confirmation",
+    ]
+    boundary_fields = {
+        field["key"]: field["value"]
+        for section in payload["stage_observer"]["sections"]
+        for field in section["fields"]
+    }
+    assert boundary_fields["gate_decision"] == "告警继续"
+    assert boundary_fields["machine_candidate_status"] == "机器已发布候选"
+    assert boundary_fields["governance_confirmation_status"] == "等待治理确认"
+    assert boundary_fields["formal_entry_status"] == "尚未正式入库"
+
+
+def test_indexes_snapshots_apis_snapshot_respects_blocked_quality_gate_decision() -> None:
+    snapshot = build_indexes_snapshots_apis_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        current_version=None,
+        document_published=False,
+        contribution=_sample_contribution(),
+        gate_decision_status="blocked",
+        gate_decision_reason="支撑文档下限未满足",
+    )
+    payload = snapshot.model_dump(mode="json")
+    boundary_fields = {
+        field["key"]: field["value"]
+        for section in payload["stage_observer"]["sections"]
+        for field in section["fields"]
+    }
+
+    assert payload["status"] == "blocked"
+    assert boundary_fields["gate_decision"] == "规则阻断"
+    assert boundary_fields["machine_candidate_status"] == "机器尚未发布候选"
+    assert boundary_fields["governance_confirmation_status"] == "未进入治理确认"
+    assert boundary_fields["formal_entry_status"] == "尚未正式入库"
+
+
+def test_archive_document_runtime_refreshes_publication_snapshot_after_publish(tmp_path: Path) -> None:
+    repository = DocumentArtifactRepository(tmp_path)
+    contribution = _sample_contribution()
+    repository.upsert("nas-a", contribution, included_in_archive=True)
+
+    knowledge_service = ArchiveKnowledgeService(tmp_path)
+    knowledge_service._save_payload(
+        "nas-a",
+        {
+            "documents": [
+                {
+                    "id": contribution["document"]["id"],
+                    "title": contribution["document"]["title"],
+                    "path": contribution["document"]["path"],
+                    "file_type": contribution["document"]["file_type"],
+                    "source_archive": contribution["document"]["source_archive"],
+                    "character_count": contribution["document"]["character_count"],
+                }
+            ],
+            "entities": [{**item, "review_status": "pending"} for item in contribution["entities"]],
+            "events": [{**item, "review_status": "pending"} for item in contribution["events"]],
+            "processes": [{**item, "review_status": "pending"} for item in contribution["processes"]],
+            "relations": [],
+        },
+    )
+    knowledge_service.batch_approve("nas-a", ["entity-1", "process-1"])
+
+    runtime_repository = DocumentRuntimeRepository(tmp_path)
+    stale_snapshot = build_indexes_snapshots_apis_snapshot(
+        archive_id="nas-a",
+        document_id="doc-1",
+        document_title="SV-2 Translation",
+        current_version=None,
+        document_published=False,
+        contribution=contribution,
+    ).model_dump(mode="json")
+    _save_runtime_stage_snapshot(runtime_repository, "nas-a", "doc-1", "indexes_snapshots_apis", stale_snapshot)
+
+    knowledge_service.publish_snapshot("nas-a", version_label="v2026.04", publisher="tester")
+
+    service = ArchiveDocumentRuntimeService(tmp_path)
+    payload = service.get_document_runtime("nas-a", "doc-1")
+
+    assert payload is not None
+    publication_stage = next(stage for stage in payload["stages"] if stage["stage_id"] == "indexes_snapshots_apis")
+    publication_fields = {
+        field["key"]: field["value"]
+        for section in publication_stage["stage_observer"]["sections"]
+        for field in section["fields"]
+    }
+    assert publication_fields["governance_confirmation_status"] == "治理已确认"
+    assert publication_fields["formal_entry_status"] == "已正式入库"
+    assert publication_fields["version_label"] == "v2026.04"
+    assert publication_fields["pending_review_count"] == "0"
+    assert publication_fields["approved_count"] == "2"
+    assert payload["current_stage_id"] == "indexes_snapshots_apis"
 
 
 def test_import_document_persists_asset_intake_snapshot(tmp_path: Path, monkeypatch) -> None:
@@ -1380,9 +1749,16 @@ def test_import_document_persists_asset_intake_snapshot(tmp_path: Path, monkeypa
     )
     assert indexes_snapshot is not None
     assert indexes_snapshot["stage_id"] == "indexes_snapshots_apis"
-    assert indexes_snapshot["stage_observer"]["title"] == "Indexes / Snapshots / APIs"
+    assert indexes_snapshot["stage_observer"]["title"] == "阶段视角 · 发布候选快照"
     assert indexes_snapshot["graph"]["nodes"]
     assert indexes_snapshot["graph"]["edges"]
+    indexes_fields = {
+        field["key"]: field["value"]
+        for section in indexes_snapshot["stage_observer"]["sections"]
+        for field in section["fields"]
+    }
+    assert indexes_fields["machine_candidate_status"] == "机器已发布候选"
+    assert indexes_fields["governance_confirmation_status"] == "等待治理确认"
 
 
 def test_archive_document_runtime_falls_back_to_legacy_archive_payload(tmp_path: Path) -> None:

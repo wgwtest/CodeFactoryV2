@@ -46,6 +46,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
     )
 
     relation_input_id = f"{document_id}:definition-stage:relation-input"
+    policy_node_id = f"{document_id}:definition-stage:consolidation-policy"
     definition_set_id = f"{document_id}:definition-stage:definition-set"
     summary_set_id = f"{document_id}:definition-stage:summary-set"
     conflict_set_id = f"{document_id}:definition-stage:conflict-set"
@@ -55,7 +56,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
     nodes: list[RuntimeGraphNode] = [
         RuntimeGraphNode(
             node_id=relation_input_id,
-            label="Relation Review Input",
+            label="关系审查输入",
             node_type="relation_review_input",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if relations else RuntimeStatus.WARNING,
@@ -64,8 +65,27 @@ def build_definition_summary_conflict_consolidation_snapshot(
             metrics={"relation_count": len(relations)},
         ),
         RuntimeGraphNode(
+            node_id=policy_node_id,
+            label="定义/冲突整合策略",
+            node_type="definition_consolidation_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={
+                "definition_count": len(definition_candidates),
+                "summary_count": len(summary_candidates),
+                "conflict_count": len(conflict_candidates),
+            },
+            attributes={
+                "rule_key": "definition_summary_conflict.consolidation_policy",
+                "default_action": "consolidate_supported_definitions",
+                "review_scope": "definitions_summaries_conflicts",
+            },
+        ),
+        RuntimeGraphNode(
             node_id=definition_set_id,
-            label="Definition Candidate Set",
+            label="定义候选集合",
             node_type="definition_candidate_set",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if definition_candidates else RuntimeStatus.WARNING,
@@ -75,7 +95,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
         ),
         RuntimeGraphNode(
             node_id=summary_set_id,
-            label="Summary Candidate Set",
+            label="摘要候选集合",
             node_type="summary_candidate_set",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if summary_candidates else RuntimeStatus.WARNING,
@@ -85,7 +105,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
         ),
         RuntimeGraphNode(
             node_id=conflict_set_id,
-            label="Conflict Candidate Set",
+            label="冲突候选集合",
             node_type="conflict_candidate_set",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if conflict_candidates else RuntimeStatus.WARNING,
@@ -95,7 +115,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
         ),
         RuntimeGraphNode(
             node_id=consolidation_id,
-            label="Consolidation Decisions",
+            label="整合决策",
             node_type="consolidation_decisions",
             stage_id=definition.stage_id,
             status=status,
@@ -111,6 +131,28 @@ def build_definition_summary_conflict_consolidation_snapshot(
 
     edges: list[RuntimeGraphEdge] = [
         RuntimeGraphEdge(
+            edge_id=f"{relation_input_id}:feeds-policy",
+            source=relation_input_id,
+            target=policy_node_id,
+            relation="feeds_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "normalized relations and candidate families"},
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{policy_node_id}:governs-consolidation",
+            source=policy_node_id,
+            target=consolidation_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "definition support, summary coverage, and conflict detection"},
+        ),
+        RuntimeGraphEdge(
             edge_id=f"{relation_input_id}:proposes:definitions",
             source=relation_input_id,
             target=definition_set_id,
@@ -118,7 +160,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if definition_candidates else RuntimeStatus.WARNING,
             origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
         ),
         RuntimeGraphEdge(
             edge_id=f"{relation_input_id}:resolved_by:summaries",
@@ -128,7 +169,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if summary_candidates else RuntimeStatus.WARNING,
             origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
         ),
         RuntimeGraphEdge(
             edge_id=f"{relation_input_id}:conflicts_with",
@@ -138,7 +178,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if conflict_candidates else RuntimeStatus.WARNING,
             origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
         ),
         RuntimeGraphEdge(
             edge_id=f"{consolidation_id}:contains:definitions",
@@ -173,6 +212,37 @@ def build_definition_summary_conflict_consolidation_snapshot(
     ]
 
     node_observers: dict[str, RuntimeObserverPayload] = {
+        policy_node_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="定义/冲突整合策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:definition-stage:policy",
+                    kind="decision",
+                    level="success" if definition_candidates or summary_candidates else "warning",
+                    message="定义/冲突整合策略决定关系审查输出如何分流为定义、摘要或冲突记录。",
+                    object_id=policy_node_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-basis",
+                    title="策略 / 动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="definition_summary_conflict.consolidation_policy", tone="info"),
+                        RuntimeSummaryField(key="default_action", label="default_action", value="consolidate_supported_definitions", tone="info"),
+                        RuntimeSummaryField(key="conflict_count", label="conflict_count", value=str(len(conflict_candidates)), tone="warning" if conflict_candidates else "info"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-relation-input", label="查看关系输入", target_kind="node", target_id=relation_input_id),
+                RuntimeAction(action_id="view-consolidation", label="查看整合决策", target_kind="node", target_id=consolidation_id),
+            ],
+        ),
         definition_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Definition Candidate Set",
@@ -203,7 +273,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
                     ],
                 )
             ],
-            actions=[RuntimeAction(action_id="view-stage-graph", label="View stage graph", target_kind="graph")],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph")],
         ),
         summary_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
@@ -234,7 +304,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
                     ],
                 )
             ],
-            actions=[RuntimeAction(action_id="view-stage-graph", label="View stage graph", target_kind="graph")],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph")],
         ),
         conflict_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
@@ -265,7 +335,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
                     ],
                 )
             ],
-            actions=[RuntimeAction(action_id="view-stage-graph", label="View stage graph", target_kind="graph")],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph")],
         ),
         consolidation_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
@@ -302,14 +372,74 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 )
             ],
             actions=[
-                RuntimeAction(action_id="view-definition-set", label="View definition set", target_kind="node", target_id=definition_set_id),
-                RuntimeAction(action_id="view-summary-set", label="View summary set", target_kind="node", target_id=summary_set_id),
-                RuntimeAction(action_id="view-conflict-set", label="View conflict set", target_kind="node", target_id=conflict_set_id),
+                RuntimeAction(action_id="view-definition-set", label="查看定义集合", target_kind="node", target_id=definition_set_id),
+                RuntimeAction(action_id="view-summary-set", label="查看摘要集合", target_kind="node", target_id=summary_set_id),
+                RuntimeAction(action_id="view-conflict-set", label="查看冲突集合", target_kind="node", target_id=conflict_set_id),
             ],
         ),
     }
 
     edge_observers: dict[str, RuntimeObserverPayload] = {
+        f"{relation_input_id}:feeds-policy": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="送入策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:definition-stage:feeds-policy",
+                    kind="decision",
+                    level="success" if definition_candidates or summary_candidates else "warning",
+                    message="关系审查输出先进入整合策略，再分流为定义、摘要和冲突集合。",
+                    object_id=f"{relation_input_id}:feeds-policy",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="feeds_policy"),
+                        RuntimeSummaryField(key="basis", label="basis", value="normalized relations and candidate families"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=relation_input_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        f"{policy_node_id}:governs-consolidation": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:definition-stage:governs-consolidation",
+                    kind="decision",
+                    level="success" if definition_candidates or summary_candidates else "warning",
+                    message="整合策略决定哪些输入进入支撑定义、生成摘要或冲突集合。",
+                    object_id=f"{policy_node_id}:governs-consolidation",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="策略决策",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="definition_summary_conflict.consolidation_policy"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=policy_node_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=consolidation_id),
+            ],
+        ),
         f"{relation_input_id}:proposes:definitions": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="proposes",
@@ -388,7 +518,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=_review_status_to_runtime(candidate["review_status"]),
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
                 metrics={"evidence_count": candidate["evidence_count"]},
                 attributes={
                     "item_id": candidate["item_id"],
@@ -406,7 +535,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=_review_status_to_runtime(candidate["review_status"]),
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
             )
         )
 
@@ -420,7 +548,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=index <= 3,
                 metrics={"support_count": candidate["support_count"]},
                 attributes={"summary_type": candidate["summary_type"]},
             )
@@ -434,7 +561,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=index <= 3,
             )
         )
 
@@ -448,7 +574,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.WARNING,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=index <= 3,
                 attributes={"reason": conflict["reason"], "scope": conflict["scope"]},
             )
         )
@@ -461,7 +586,6 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.WARNING,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=index <= 3,
             )
         )
 
@@ -527,7 +651,7 @@ def build_definition_summary_conflict_consolidation_snapshot(
                 section_id="current-focus",
                 title="Current Focus",
                 fields=[
-                    RuntimeSummaryField(key="primary_path", label="primary_path", value="Relation Review Input -> Definition/Summary/Conflict Sets -> Consolidation Decisions", tone="info"),
+                    RuntimeSummaryField(key="primary_path", label="primary_path", value="Relation Review Input -> Definition Consolidation Policy -> Consolidation Decisions -> Definition/Summary/Conflict Sets", tone="info"),
                 ],
             ),
         ],
@@ -549,15 +673,18 @@ def build_definition_summary_conflict_consolidation_snapshot(
             edges=edges,
             primary_node_ids=[
                 relation_input_id,
+                policy_node_id,
+                consolidation_id,
                 definition_set_id,
                 summary_set_id,
                 conflict_set_id,
-                consolidation_id,
             ],
             primary_edge_ids=[
-                f"{relation_input_id}:proposes:definitions",
-                f"{relation_input_id}:resolved_by:summaries",
-                f"{relation_input_id}:conflicts_with",
+                f"{relation_input_id}:feeds-policy",
+                f"{policy_node_id}:governs-consolidation",
+                f"{consolidation_id}:contains:definitions",
+                f"{consolidation_id}:contains:summaries",
+                f"{consolidation_id}:contains:conflicts",
             ],
         ),
         stage_observer=stage_observer,

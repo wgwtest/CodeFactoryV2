@@ -339,7 +339,7 @@ export function GovernancePage() {
       await loadPublication();
       setActionError(null);
     } catch (loadError) {
-      setActionError(loadError instanceof Error ? loadError.message : "发布知识版本失败");
+      setActionError(loadError instanceof Error ? loadError.message : "生成正式入库版本失败");
     } finally {
       setDrawerSaving(false);
     }
@@ -347,18 +347,26 @@ export function GovernancePage() {
 
   return (
     <ValidationWorkspace
-      title="知识审核发布"
-      description={`审核机器抽取出的候选知识，并将修正直接应用到当前知识库。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
+      title="发布候选治理确认"
+      description={`治理页读取的是发布阶段产出的候选知识快照，用于人工确认后生成正式入库版本；不直接审核抽取中的临时图谱节点。${activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}`}
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
         <WorkspaceOverviewStrip
-          badgeLabel="审核发布"
+          badgeLabel="治理确认"
           badgeColor="gold"
-          title="审核发布总览"
+          title="发布候选治理总览"
           tags={[
             { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
             {
-              label: `发布状态：${publicationOverview?.current_version ? "已发布" : "未发布"}`,
+              label: `机器发布：${publicationOverview?.machine_publication_label ?? "机器尚未发布候选"}`,
+              color: publicationOverview?.machine_publication_status === "candidate_available" ? "success" : "default",
+            },
+            {
+              label: `治理确认：${publicationOverview?.governance_confirmation_label ?? "未进入治理确认"}`,
+              color: publicationOverview?.governance_confirmation_status === "confirmed" ? "success" : "warning",
+            },
+            {
+              label: `正式入库：${publicationOverview?.formal_entry_label ?? "尚未正式入库"}`,
               color: publicationOverview?.current_version ? "success" : "default",
             },
             { label: `当前筛选：${reviewStatusSummaryLabel}` },
@@ -366,30 +374,36 @@ export function GovernancePage() {
           metrics={[
             { title: "候选总数", value: candidates.length },
             { title: "当前筛出", value: filteredCandidates.length },
-            { title: "已选中", value: selectedRowKeys.length },
-            { title: "当前版本", value: publicationOverview?.current_version?.version_label ?? "未发布" },
+            { title: "待治理确认", value: publicationOverview?.review_summary?.pending_count ?? 0 },
+            { title: "正式版本", value: publicationOverview?.current_version?.version_label ?? "尚未入库" },
           ]}
         />
         <div>
           <Typography.Paragraph type="secondary">
-            支持改名、改类、别名编辑、单项通过、驳回、批量通过和同类知识合并。
+            支持改名、改类、别名编辑、单项通过、驳回、批量通过和同类知识合并；确认完成后再生成正式入库版本。
           </Typography.Paragraph>
         </div>
 
         <div>
-          <Typography.Title level={5}>发布当前已通过知识</Typography.Title>
+          <Typography.Title level={5}>确认发布候选并生成正式入库版本</Typography.Title>
           <Space direction="vertical" size={12} style={{ display: "flex" }}>
             <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="当前发布版本">
-                {publicationOverview?.current_version?.version_label ?? "尚未发布"}
+              <Descriptions.Item label="候选来源">
+                {publicationOverview?.candidate_source ?? "publication_candidate_snapshot"}
+              </Descriptions.Item>
+              <Descriptions.Item label="候选范围">
+                {publicationOverview?.candidate_scope ?? "post_quality_gate_publication_candidate"}
+              </Descriptions.Item>
+              <Descriptions.Item label="当前正式版本">
+                {publicationOverview?.current_version?.version_label ?? "尚未正式入库"}
               </Descriptions.Item>
               <Descriptions.Item label="发布人">
                 {publicationOverview?.current_version?.publisher ?? "无"}
               </Descriptions.Item>
-              <Descriptions.Item label="工作集实体数">
+              <Descriptions.Item label="候选实体数">
                 {publicationOverview?.working_summary.entity_count ?? 0}
               </Descriptions.Item>
-              <Descriptions.Item label="工作集流程数">
+              <Descriptions.Item label="候选流程数">
                 {publicationOverview?.working_summary.process_count ?? 0}
               </Descriptions.Item>
             </Descriptions>
@@ -407,7 +421,7 @@ export function GovernancePage() {
                 style={{ width: 180 }}
               />
               <Button type="primary" loading={drawerSaving} onClick={handlePublish}>
-                发布当前已通过知识
+                确认并生成正式入库版本
               </Button>
             </Space>
           </Space>

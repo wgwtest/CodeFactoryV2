@@ -104,6 +104,38 @@ def test_discover_documents_skips_spreadsheets_for_formal_extraction_and_records
     ]
 
 
+def test_load_runtime_acceptance_slow_profile_reads_source_config(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / archive_builder.RUNTIME_SLOW_PROFILE_FILENAME).write_text(
+        json.dumps(
+            {
+                "enabled": True,
+                "stage_delay_ms": 900,
+                "chunk_delay_ms": 180,
+                "document_delay_ms": 600,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile = archive_builder.load_runtime_acceptance_slow_profile(source_root)
+
+    assert profile.enabled is True
+    assert profile.stage_delay_seconds == 0.9
+    assert profile.chunk_delay_seconds == 0.18
+    assert profile.document_delay_seconds == 0.6
+
+
+def test_load_runtime_acceptance_slow_profile_defaults_to_disabled(tmp_path: Path) -> None:
+    profile = archive_builder.load_runtime_acceptance_slow_profile(tmp_path)
+
+    assert profile.enabled is False
+    assert profile.stage_delay_seconds == 0
+    assert profile.chunk_delay_seconds == 0
+    assert profile.document_delay_seconds == 0
+
+
 def test_formal_extraction_requires_structured_llm(monkeypatch) -> None:
     segments = [_segment("国家空域系统运行协调说明")]
 

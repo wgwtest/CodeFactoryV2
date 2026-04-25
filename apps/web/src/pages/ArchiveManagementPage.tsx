@@ -99,6 +99,7 @@ type StageRoleLayoutBuckets = {
 };
 
 const QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate";
+const PUBLICATION_STAGE_ID = "indexes_snapshots_apis";
 
 type QualityGateRuleInsight = {
   nodeId: string;
@@ -184,6 +185,11 @@ const runtimeRelationLabelMap: Record<string, string> = {
   results_in: "形成",
   classified_as: "识别为",
   evaluated_by: "由此评估",
+  feeds_candidate_set: "汇入候选集",
+  feeds_policy: "送入策略",
+  governs: "策略约束",
+  consumed_by: "作为输入",
+  feeds_planning: "送入规划",
   selects: "选择",
   considered: "候选考虑",
   warned_by: "产生告警",
@@ -207,6 +213,9 @@ const runtimeRelationLabelMap: Record<string, string> = {
   reviewed_by: "转人工复核",
   blocked_by: "阻断为",
   publishes_to: "进入发布",
+  authorizes_candidate_snapshot: "生成候选快照",
+  exposes_scope: "暴露范围",
+  awaits_governance_confirmation: "等待治理确认",
 };
 
 const stageGroupMeta: Record<string, { tone: string; background: string; border: string }> = {
@@ -412,6 +421,10 @@ function formatRuntimeValue(value: unknown, fallback = "未记录") {
 
 function isQualityGateStage(stage: ArchiveDocumentRuntimeStageSnapshot | null | undefined) {
   return stage?.stage_id === QUALITY_GATE_STAGE_ID;
+}
+
+function isPublicationStage(stage: ArchiveDocumentRuntimeStageSnapshot | null | undefined) {
+  return stage?.stage_id === PUBLICATION_STAGE_ID;
 }
 
 function findObserverField(
@@ -912,7 +925,11 @@ function buildStageAnchorDistanceMap(
 function isPolicySupportNode(node: ArchiveDocumentRuntimeGraphNode) {
   const nodeType = node.node_type.toLowerCase();
   if (
+    nodeType.includes("policy") ||
+    nodeType.includes("strategy") ||
+    nodeType.includes("decision") ||
     nodeType.includes("warning") ||
+    nodeType.includes("rule") ||
     nodeType.includes("rule_hit") ||
     nodeType.includes("manual_review") ||
     nodeType.includes("boundary_adjustment") ||
@@ -1439,6 +1456,8 @@ function buildUnifiedDocumentStagePositions(
 ) {
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
+  const parsedSegmentGroupNode = typeMap.get("parsed_segment_group")?.[0] ?? null;
+  const policyNode = typeMap.get("normalization_policy")?.[0] ?? null;
   const decisionNode = typeMap.get("normalization_decision")?.[0] ?? null;
   const documentNode = typeMap.get("unified_document")?.[0] ?? null;
   const sectionGroupNode = typeMap.get("unified_section_group")?.[0] ?? null;
@@ -1447,16 +1466,18 @@ function buildUnifiedDocumentStagePositions(
   const sectionNodes = sortStageNodesForLayout(typeMap.get("unified_section") ?? []);
   const paragraphNodes = sortStageNodesForLayout(typeMap.get("unified_paragraph") ?? []);
 
-  if (decisionNode) positions.set(decisionNode.node_id, { x: 260, y: 420 });
-  if (documentNode) positions.set(documentNode.node_id, { x: 620, y: 420 });
-  if (sectionGroupNode) positions.set(sectionGroupNode.node_id, { x: 980, y: 220 });
-  if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 980, y: 560 });
+  if (parsedSegmentGroupNode) positions.set(parsedSegmentGroupNode.node_id, { x: 150, y: 420 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 450, y: 190 });
+  if (decisionNode) positions.set(decisionNode.node_id, { x: 450, y: 420 });
+  if (documentNode) positions.set(documentNode.node_id, { x: 790, y: 420 });
+  if (sectionGroupNode) positions.set(sectionGroupNode.node_id, { x: 1130, y: 220 });
+  if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 1130, y: 560 });
 
   if (warningNodes.length) {
     const totalWidth =
       warningNodes.reduce((sum, node) => sum + getRuntimeNodeLayout(nodeLayouts, node.node_id).width, 0) +
       Math.max(0, warningNodes.length - 1) * 24;
-    let cursorX = 620 - totalWidth / 2;
+    let cursorX = 790 - totalWidth / 2;
     warningNodes.forEach((node) => {
       const layout = getRuntimeNodeLayout(nodeLayouts, node.node_id);
       positions.set(node.node_id, { x: cursorX + layout.width / 2, y: 110 });
@@ -1482,7 +1503,7 @@ function buildUnifiedDocumentStagePositions(
   chunkItems(sectionNodes, sectionsPerRow).forEach((sectionRow) => {
     let rowBottom = rowTopY;
     sectionRow.forEach((sectionNode, index) => {
-      const laneLeftX = 1220 + index * (laneWidth + laneGap);
+      const laneLeftX = 1370 + index * (laneWidth + laneGap);
       const laneCenterX = laneLeftX + laneWidth / 2;
       const sectionLayout = getRuntimeNodeLayout(nodeLayouts, sectionNode.node_id);
       positions.set(sectionNode.node_id, {
@@ -1522,6 +1543,7 @@ function buildEvidenceConstructorStagePositions(
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
   const taskNode = typeMap.get("evidence_constructor_task")?.[0] ?? null;
+  const policyNode = typeMap.get("evidence_selection_policy")?.[0] ?? null;
   const paragraphGroupNode = typeMap.get("source_paragraph_group")?.[0] ?? null;
   const unitGroupNode = typeMap.get("evidence_unit_group")?.[0] ?? null;
   const anchorGroupNode = typeMap.get("evidence_anchor_group")?.[0] ?? null;
@@ -1533,6 +1555,7 @@ function buildEvidenceConstructorStagePositions(
   const warningNodes = sortStageNodesForLayout(typeMap.get("evidence_warning") ?? []);
 
   if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 220, y: 520 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 620, y: 250 });
   if (taskNode) positions.set(taskNode.node_id, { x: 620, y: 520 });
   if (unitGroupNode) positions.set(unitGroupNode.node_id, { x: 980, y: 520 });
   if (anchorGroupNode) positions.set(anchorGroupNode.node_id, { x: 1200, y: 170 });
@@ -1559,6 +1582,7 @@ function buildEvidenceGraphChunkLayerStagePositions(
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
   const evidenceGroupNode = typeMap.get("evidence_unit_group")?.[0] ?? null;
+  const policyNode = typeMap.get("chunking_policy")?.[0] ?? null;
   const planningNode = typeMap.get("chunk_planning_task")?.[0] ?? null;
   const chunkGroupNode = typeMap.get("chunk_group")?.[0] ?? null;
   const graphLayerNode = typeMap.get("evidence_graph_layer")?.[0] ?? null;
@@ -1569,6 +1593,7 @@ function buildEvidenceGraphChunkLayerStagePositions(
   const warningNodes = sortStageNodesForLayout(typeMap.get("chunk_warning") ?? []);
 
   if (evidenceGroupNode) positions.set(evidenceGroupNode.node_id, { x: 220, y: 520 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 620, y: 250 });
   if (planningNode) positions.set(planningNode.node_id, { x: 620, y: 520 });
   if (chunkGroupNode) positions.set(chunkGroupNode.node_id, { x: 980, y: 520 });
   if (graphLayerNode) positions.set(graphLayerNode.node_id, { x: 1600, y: 520 });
@@ -1592,13 +1617,17 @@ function buildQualityGateStagePositions(
 ) {
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
-  const ruleHitNode = typeMap.get("rule_hit")?.[0] ?? null;
+  const candidateSetNode =
+    typeMap.get("quality_candidate_set")?.[0] ?? typeMap.get("canonical_candidate_set")?.[0] ?? null;
+  const ruleHitNodes = sortStageNodesForLayout(typeMap.get("rule_hit") ?? []);
   const gateNode = typeMap.get("gate_decision")?.[0] ?? null;
   const manualReviewNode = typeMap.get("manual_review")?.[0] ?? null;
   const blockedNode = typeMap.get("blocked_result")?.[0] ?? null;
   const publishTargetNode = typeMap.get("publish_target")?.[0] ?? null;
   const candidateNodes = sortStageNodesForLayout(
-    stage.graph.nodes.filter((node) => node.node_type.startsWith("canonical_")),
+    stage.graph.nodes.filter(
+      (node) => node.node_type.startsWith("canonical_") && node.node_type !== "canonical_candidate_set",
+    ),
   );
   const approvedNodes = candidateNodes.filter((node) => node.attributes.review_status === "approved");
   const pendingNodes = candidateNodes.filter((node) => node.attributes.review_status === "pending");
@@ -1610,17 +1639,29 @@ function buildQualityGateStagePositions(
       node.attributes.review_status !== "rejected",
   );
 
-  if (ruleHitNode) positions.set(ruleHitNode.node_id, { x: 700, y: 520 });
-  if (gateNode) positions.set(gateNode.node_id, { x: 1040, y: 520 });
-  if (manualReviewNode) positions.set(manualReviewNode.node_id, { x: 1420, y: 280 });
-  if (blockedNode) positions.set(blockedNode.node_id, { x: 1420, y: 620 });
-  if (publishTargetNode) positions.set(publishTargetNode.node_id, { x: 1420, y: 620 });
+  if (candidateSetNode) positions.set(candidateSetNode.node_id, { x: 430, y: 520 });
+  if (ruleHitNodes.length) {
+    const ruleGap = 28;
+    const rulesHeight =
+      ruleHitNodes.reduce((sum, node) => sum + getRuntimeNodeLayout(nodeLayouts, node.node_id).height, 0) +
+      Math.max(0, ruleHitNodes.length - 1) * ruleGap;
+    let cursorY = 520 - rulesHeight / 2;
+    ruleHitNodes.forEach((node) => {
+      const layout = getRuntimeNodeLayout(nodeLayouts, node.node_id);
+      positions.set(node.node_id, { x: 760, y: cursorY + layout.height / 2 });
+      cursorY += layout.height + ruleGap;
+    });
+  }
+  if (gateNode) positions.set(gateNode.node_id, { x: 1120, y: 520 });
+  if (manualReviewNode) positions.set(manualReviewNode.node_id, { x: 1500, y: 280 });
+  if (blockedNode) positions.set(blockedNode.node_id, { x: 1500, y: 620 });
+  if (publishTargetNode) positions.set(publishTargetNode.node_id, { x: 1500, y: 620 });
 
   placeNodeColumns(positions, chunkItems(approvedNodes, 5), 20, 120, nodeLayouts, 26, 18);
   placeNodeColumns(positions, chunkItems(pendingNodes, 5), 20, 400, nodeLayouts, 26, 18);
   placeNodeColumns(positions, chunkItems(rejectedNodes, 5), 20, 720, nodeLayouts, 26, 18);
   if (remainingNodes.length) {
-    placeNodeColumns(positions, chunkItems(remainingNodes, 5), 360, 400, nodeLayouts, 24, 18);
+    placeNodeColumns(positions, chunkItems(remainingNodes, 5), 20, 980, nodeLayouts, 24, 18);
   }
 
   placeUnassignedStageNodes(stage, positions, nodeLayouts);
@@ -1852,6 +1893,7 @@ function summarizeRecord(record: Record<string, unknown> | undefined, limit = 2)
 }
 
 function summarizeRuntimeNode(node: ArchiveDocumentRuntimeGraphNode) {
+  const nodeType = node.node_type.toLowerCase();
   if (node.node_type === "rule_hit") {
     const threshold = formatRuntimeValue(node.attributes?.threshold, "");
     const actual = formatRuntimeValue(node.metrics?.actual, "");
@@ -1867,6 +1909,12 @@ function summarizeRuntimeNode(node: ArchiveDocumentRuntimeGraphNode) {
     const decision = formatRuntimeValue(node.attributes?.decision, "");
     const reason = formatRuntimeValue(node.attributes?.reason, "");
     return [decision, reason].filter(Boolean).join(" / ") || summarizeRecord(node.attributes);
+  }
+  if (nodeType.includes("policy")) {
+    const ruleKey = formatRuntimeValue(node.attributes?.rule_key, "");
+    const decisionSummary = formatRuntimeValue(node.attributes?.decision_summary, "");
+    const aiSummary = formatRuntimeValue(node.attributes?.ai_summary, "");
+    return [ruleKey, decisionSummary, aiSummary].filter(Boolean).slice(0, 2).join(" / ") || summarizeRecord(node.attributes);
   }
   return summarizeRecord(node.metrics) ?? summarizeRecord(node.attributes);
 }
@@ -2002,6 +2050,66 @@ function buildGraphSelectionState(
     nodeBadges,
     hasExplicitSelection: Boolean(explicitNode || explicitEdge),
   };
+}
+
+function getPrimaryNodeIdSet(stage: ArchiveDocumentRuntimeStageSnapshot) {
+  return new Set(
+    stage.graph.primary_node_ids.length
+      ? stage.graph.primary_node_ids
+      : stage.graph.nodes.filter((node) => node.is_primary).map((node) => node.node_id),
+  );
+}
+
+function getPrimaryEdgeIdSet(stage: ArchiveDocumentRuntimeStageSnapshot) {
+  return new Set(
+    stage.graph.primary_edge_ids.length
+      ? stage.graph.primary_edge_ids
+      : stage.graph.edges.filter((edge) => edge.is_primary).map((edge) => edge.edge_id),
+  );
+}
+
+function buildSemanticVisibleNodeIds(
+  stage: ArchiveDocumentRuntimeStageSnapshot,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
+) {
+  if (graphLens === "all") {
+    return new Set(stage.graph.nodes.map((node) => node.node_id));
+  }
+
+  const visibleNodeIds = getPrimaryNodeIdSet(stage);
+  const primaryEdgeIds = getPrimaryEdgeIdSet(stage);
+
+  stage.graph.edges.forEach((edge) => {
+    if (!primaryEdgeIds.has(edge.edge_id) && !edge.is_primary) return;
+    visibleNodeIds.add(edge.source);
+    visibleNodeIds.add(edge.target);
+  });
+
+  selectionState.activeNodeIds.forEach((nodeId) => visibleNodeIds.add(nodeId));
+  if (selectionState.hasExplicitSelection) {
+    selectionState.relatedNodeIds.forEach((nodeId) => visibleNodeIds.add(nodeId));
+  }
+
+  return visibleNodeIds;
+}
+
+function buildSemanticVisibleEdgeIds(
+  stage: ArchiveDocumentRuntimeStageSnapshot,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
+) {
+  if (graphLens === "all") {
+    return new Set(stage.graph.edges.map((edge) => edge.edge_id));
+  }
+
+  const visibleEdgeIds = getPrimaryEdgeIdSet(stage);
+  if (selectionState.hasExplicitSelection) {
+    selectionState.activeEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
+    selectionState.relatedEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
+  }
+
+  return visibleEdgeIds;
 }
 
 function getHandlePosition(side: GraphHandleSide) {
@@ -2236,8 +2344,9 @@ function buildStageFlowNodes(
       ? stage.graph.primary_node_ids
       : stage.graph.nodes.filter((node) => node.is_primary).map((node) => node.node_id),
   );
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
 
-  const graphNodes: FlowNode[] = stage.graph.nodes.map((node) => {
+  const graphNodes: FlowNode[] = stage.graph.nodes.filter((node) => visibleNodeIds.has(node.node_id)).map((node) => {
     const pos = positions.get(node.node_id) ?? { x: 320, y: 280 };
     const primary = primaryNodeSet.has(node.node_id) || node.is_primary;
     const layout = nodeLayouts.get(node.node_id) ?? {
@@ -2296,8 +2405,15 @@ function buildStageClusterFlowNodes(
   stage: ArchiveDocumentRuntimeStageSnapshot,
   positions: Map<string, NodePosition>,
   nodeLayouts: Map<string, RuntimeNodeLayout>,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
 ): FlowNode[] {
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
   return buildStageGraphClusters(stage, positions)
+    .map((cluster) => ({
+      ...cluster,
+      nodes: cluster.nodes.filter((node) => visibleNodeIds.has(node.node_id)),
+    }))
     .filter((cluster) => cluster.nodes.length >= 3)
     .map((cluster) => {
       let minX = Number.POSITIVE_INFINITY;
@@ -2367,8 +2483,12 @@ function buildStageFlowEdges(
       : stage.graph.edges.filter((edge) => edge.is_primary).map((edge) => edge.edge_id),
   );
   const nodeById = new Map(stage.graph.nodes.map((node) => [node.node_id, node] as const));
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
+  const visibleEdgeIds = buildSemanticVisibleEdgeIds(stage, graphLens, selectionState);
 
-  return stage.graph.edges.map((edge) => {
+  return stage.graph.edges.filter((edge) => {
+    return visibleEdgeIds.has(edge.edge_id) && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+  }).map((edge) => {
     const primary = primaryEdgeSet.has(edge.edge_id) || edge.is_primary;
     const isSelected = selectionState.activeEdgeIds.has(edge.edge_id);
     const isRelated = selectionState.relatedEdgeIds.has(edge.edge_id);
@@ -2617,6 +2737,73 @@ function QualityGateRuntimeInsight({
             );
           })}
         </Space>
+      </Space>
+    </div>
+  );
+}
+
+function PublicationRuntimeInsight({
+  observer,
+  compact = false,
+}: {
+  observer: ArchiveDocumentRuntimeObserverPayload | null;
+  compact?: boolean;
+}) {
+  const gateDecision = findObserverField(observer, ["gate_decision"])?.value ?? "未记录";
+  const machineCandidateStatus =
+    findObserverField(observer, ["machine_candidate_status"])?.value ?? "机器尚未发布候选";
+  const governanceStatus =
+    findObserverField(observer, ["governance_confirmation_status"])?.value ?? "未进入治理确认";
+  const formalEntryStatus = findObserverField(observer, ["formal_entry_status"])?.value ?? "尚未正式入库";
+  const candidateCount = findObserverField(observer, ["candidate_count"])?.value ?? "0";
+  const pendingReviewCount = findObserverField(observer, ["pending_review_count"])?.value ?? "0";
+  const versionLabel = findObserverField(observer, ["version_label"])?.value ?? "未发布";
+  const exposureScope = findObserverField(observer, ["exposure_scope"])?.value ?? "索引/API 暴露范围等待发布候选快照";
+  const formallyAdmitted = String(formalEntryStatus).includes("已正式入库");
+
+  return (
+    <div
+      style={{
+        borderRadius: compact ? 14 : 16,
+        border: "1px solid rgba(14, 116, 144, 0.22)",
+        background: "linear-gradient(180deg, rgba(236,254,255,0.72) 0%, rgba(255,255,255,0.98) 100%)",
+        padding: compact ? 14 : 16,
+      }}
+    >
+      <Space direction="vertical" size={compact ? 10 : 14} style={{ display: "flex" }}>
+        <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+          <Space wrap size={[8, 8]}>
+            <Text strong>{compact ? "发布候选边界" : "发布候选快照链"}</Text>
+            <Tag color="cyan">{gateDecision}</Tag>
+            <Tag color={formallyAdmitted ? "success" : "warning"}>{formalEntryStatus}</Tag>
+          </Space>
+          {!compact ? <Text type="secondary">门禁决策 → 发布快照 → 索引/API → 治理确认</Text> : null}
+        </Space>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: compact ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+          }}
+        >
+          <SummaryMetricTile label="机器发布候选" value={machineCandidateStatus} hint={`候选对象 ${candidateCount}`} />
+          <SummaryMetricTile label="治理确认" value={governanceStatus} hint={`待确认 ${pendingReviewCount}`} />
+          <SummaryMetricTile label="正式入库" value={formalEntryStatus} hint={`正式版本 ${versionLabel}`} />
+        </div>
+
+        {!compact ? (
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(14, 116, 144, 0.16)",
+              background: "rgba(255,255,255,0.82)",
+              padding: "10px 12px",
+            }}
+          >
+            <Text type="secondary">{exposureScope}</Text>
+          </div>
+        ) : null}
       </Space>
     </div>
   );
@@ -3012,7 +3199,7 @@ function GraphCanvas({
             </Space>
           </Col>
           <Col xs={24} md={4}>
-              <Text type="secondary">默认展开全部节点，可切回主路径聚焦主干</Text>
+            <Text type="secondary">默认语义聚合，明细通过点击或“全部”展开</Text>
           </Col>
         </Row>
       </div>
@@ -3443,6 +3630,8 @@ function DocumentGraphControlPanel({
             />
           ) : null}
 
+          {isPublicationStage(stage) ? <PublicationRuntimeInsight observer={stage.stage_observer} /> : null}
+
           <div
             style={{
               display: "grid",
@@ -3599,7 +3788,10 @@ function DocumentStageGraphCanvas({
   const [nodeAnimationFlags, setNodeAnimationFlags] = useState<Record<string, "enter" | "status-change" | "reflow">>({});
   const animationTimerIdsRef = useRef<number[]>([]);
   const previousNodeStatusRef = useRef<Map<string, ArchiveDocumentRuntimeStatus>>(new Map());
-  const clusterFlowNodes = useMemo(() => buildStageClusterFlowNodes(stage, positions, nodeLayouts), [nodeLayouts, positions, stage]);
+  const clusterFlowNodes = useMemo(
+    () => buildStageClusterFlowNodes(stage, positions, nodeLayouts, graphLens, selectionState),
+    [graphLens, nodeLayouts, positions, selectionState, stage],
+  );
   const flowNodeBlueprint = useMemo(
     () => [
       ...clusterFlowNodes,
@@ -3615,13 +3807,16 @@ function DocumentStageGraphCanvas({
     () =>
       JSON.stringify({
         stageId: stage.stage_id,
+        lens: graphLens,
+        selectedNodeId,
+        selectedEdgeId,
         nodes: stage.graph.nodes.map((node) => {
           const layout = nodeLayouts.get(node.node_id);
           return [node.node_id, node.label, node.status, layout?.width ?? 0, layout?.height ?? 0, layout?.summary ?? ""];
         }),
         edges: stage.graph.edges.map((edge) => [edge.edge_id, edge.source, edge.target, edge.status]),
       }),
-    [nodeLayouts, stage],
+    [graphLens, nodeLayouts, selectedEdgeId, selectedNodeId, stage],
   );
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(flowNodeBlueprint);
   const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState(initialFlowEdges);
@@ -3721,7 +3916,8 @@ function DocumentStageGraphCanvas({
               display: "flex",
               flexDirection: "column",
               gap: 10,
-              zIndex: 3,
+              zIndex: 20,
+              pointerEvents: "auto",
             }}
           >
             <Button
@@ -3814,7 +4010,7 @@ function DocumentStageGraphCanvas({
               fontSize: 12,
             }}
           >
-            滚轮可缩放，拖动画布可平移；默认展示当前阶段的全部节点与关系。
+            滚轮可缩放，拖动画布可平移；默认展示语义聚合主路径，点击聚合节点可局部展开明细，切到“全部”查看全量关系。
           </div>
         </div>
       </div>
@@ -3923,6 +4119,8 @@ function DocumentObserverPanel({
             compact
           />
         ) : null}
+
+        {stage && isPublicationStage(stage) ? <PublicationRuntimeInsight observer={observer} compact /> : null}
 
         <div
           style={{
@@ -4360,7 +4558,7 @@ function DocumentView(props: {
   onBackGlobal: () => void;
   onOpenPolicy: () => void;
 }) {
-  const [graphLens, setGraphLens] = useState<GraphLens>("all");
+  const [graphLens, setGraphLens] = useState<GraphLens>("primary");
   const liveCurrentStage = props.runtime ? getLiveCurrentStage(props.runtime) : null;
   const inspectedStage = props.runtime ? getInspectedStage(props.runtime, props.inspectedStageId) : null;
   const inspectedStagePolicyConfig = inspectedStage ? getStagePolicyConfig(props.policyConfig, inspectedStage.stage_id) : null;
@@ -4376,6 +4574,10 @@ function DocumentView(props: {
     () => (inspectedStage ? buildGraphSelectionState(inspectedStage, props.selectedNodeId, props.selectedEdgeId) : null),
     [inspectedStage, props.selectedEdgeId, props.selectedNodeId],
   );
+
+  useEffect(() => {
+    setGraphLens("primary");
+  }, [inspectedStage?.stage_id]);
 
   const observer = useMemo(() => {
     if (!inspectedStage) return null;
@@ -5683,6 +5885,19 @@ export function ArchiveManagementPage() {
   const pendingItems = useMemo(() => buildPendingItems(archives), [archives]);
   const selectedArchive = archives.find((archive) => archive.archive_id === selectedArchiveId) ?? activeArchive ?? archives[0] ?? null;
   const selectedDocument = selectedArchive?.build_state?.documents.find((item) => item.document_id === selectedDocumentId) ?? null;
+  const selectedDocumentIsCurrentRunning =
+    selectedArchive?.build_state?.status === "running" &&
+    Boolean(selectedDocumentId) &&
+    selectedArchive.build_state.current_document_id === selectedDocumentId;
+
+  useEffect(() => {
+    if (!activeArchiveId) return;
+    setSelectedArchiveId((currentArchiveId) => (currentArchiveId === activeArchiveId ? currentArchiveId : activeArchiveId));
+    setSelectedDocumentId(null);
+    setRuntime(null);
+    setRuntimeError(null);
+    setRuntimeTransportState("snapshot");
+  }, [activeArchiveId]);
 
   useEffect(() => {
     if (view !== "document" || !selectedArchiveId) {
@@ -5784,7 +5999,7 @@ export function ArchiveManagementPage() {
         return;
       }
 
-      if (runtimeNeedsLiveUpdates(selectedDocument?.state, latestRuntime)) {
+      if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, latestRuntime)) {
         schedulePoll(0);
       }
     };
@@ -5814,7 +6029,7 @@ export function ArchiveManagementPage() {
               setRuntimeTransportState("stream_connected");
               applyRuntime(nextRuntime);
 
-              if (!runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
+              if (!selectedDocumentIsCurrentRunning && !runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
                 setRuntimeTransportState("snapshot");
                 closeRuntimeStream();
                 clearPollTimer();
@@ -5858,7 +6073,10 @@ export function ArchiveManagementPage() {
 
         applyRuntime(response.data);
 
-        if (allowStreamUpgrade && runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
+        if (
+          allowStreamUpgrade &&
+          (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data))
+        ) {
           startRuntimeStream();
           return;
         }
@@ -5866,7 +6084,7 @@ export function ArchiveManagementPage() {
         closeRuntimeStream();
         clearStreamBootstrapTimer();
 
-        if (runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
+        if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
           schedulePoll(4000);
         } else {
           setRuntimeTransportState("snapshot");
@@ -5886,7 +6104,7 @@ export function ArchiveManagementPage() {
       }
     };
 
-    if (selectedDocument?.state === "running") {
+    if (selectedDocument?.state === "running" || selectedDocumentIsCurrentRunning) {
       startRuntimeStream();
     } else {
       setRuntimeTransportState("snapshot");
@@ -5899,7 +6117,7 @@ export function ArchiveManagementPage() {
       clearStreamBootstrapTimer();
       closeRuntimeStream();
     };
-  }, [selectedArchiveId, selectedDocumentId, selectedDocument?.state, view]);
+  }, [selectedArchiveId, selectedDocumentId, selectedDocument?.state, selectedDocumentIsCurrentRunning, view]);
 
   async function handleCreateArchive() {
     const values = await createForm.validateFields();

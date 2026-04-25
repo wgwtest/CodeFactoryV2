@@ -79,6 +79,7 @@ def build_evidence_graph_chunk_layer_snapshot(
     trace_sections = build_runtime_sections(runtime_trace)
 
     planning_id = f"{document_id}:chunk-planning"
+    chunk_policy_id = f"{document_id}:chunk-policy"
     evidence_unit_group_id = f"{document_id}:evidence-units"
     chunk_group_id = f"{document_id}:chunk-group"
     graph_layer_id = f"{document_id}:evidence-graph-layer"
@@ -100,6 +101,30 @@ def build_evidence_graph_chunk_layer_snapshot(
                 "graph_link_count": graph_link_count,
             },
             attributes={"document_title": document_title},
+        ),
+        RuntimeGraphNode(
+            node_id=chunk_policy_id,
+            label="Chunking Policy",
+            node_type="chunking_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            metrics={
+                "input_count": (runtime_trace or {}).get("input_count", len(parsed_document.segments or [])),
+                "output_count": (runtime_trace or {}).get("output_count", chunk_count),
+                "adjusted_chunk_count": len(adjusted_chunks),
+            },
+            attributes={
+                "decision_summary": (runtime_trace or {}).get(
+                    "decision_summary",
+                    "group evidence units into chunk windows and connect the graph layer",
+                ),
+                "ai_summary": (runtime_trace or {}).get(
+                    "ai_summary",
+                    f"planned {chunk_count} chunk windows with {len(adjusted_chunks)} boundary adjustments",
+                ),
+                "rule_key": "chunk-window-policy",
+            },
         ),
         RuntimeGraphNode(
             node_id=evidence_unit_group_id,
@@ -147,6 +172,30 @@ def build_evidence_graph_chunk_layer_snapshot(
     ]
 
     edges: list[RuntimeGraphEdge] = [
+        RuntimeGraphEdge(
+            edge_id=f"{evidence_unit_group_id}:feeds_planning",
+            source=evidence_unit_group_id,
+            target=planning_id,
+            relation="feeds_planning",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.SOURCE,
+            is_primary=True,
+            attributes={
+                "reason": "evidence units are the input objects for chunk planning",
+                "rule_key": "chunk-window-policy",
+            },
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{chunk_policy_id}:governs",
+            source=chunk_policy_id,
+            target=planning_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            attributes={"rule_key": "chunk-window-policy"},
+        ),
         RuntimeGraphEdge(
             edge_id=f"{planning_id}:results_in",
             source=planning_id,
@@ -440,6 +489,70 @@ def build_evidence_graph_chunk_layer_snapshot(
     )
 
     node_observers: dict[str, RuntimeObserverPayload] = {
+        evidence_unit_group_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Evidence Unit Set",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:chunk-layer:evidence-input",
+                    kind="progress",
+                    level="info",
+                    message=f"{evidence_count} evidence units are available to the chunk planner.",
+                    object_id=evidence_unit_group_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="evidence-input-summary",
+                    title="Input Objects",
+                    fields=[
+                        RuntimeSummaryField(key="input_object", label="input_object", value="evidence_units"),
+                        RuntimeSummaryField(key="evidence_unit_count", label="evidence_unit_count", value=str(evidence_count)),
+                        RuntimeSummaryField(key="planned_chunk_count", label="planned_chunk_count", value=str(chunk_count)),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-planning", label="View Chunk Planning", target_kind="node", target_id=planning_id)],
+        ),
+        chunk_policy_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Chunking Policy",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:chunk-layer:policy",
+                    kind="rule",
+                    level="info",
+                    message=str((runtime_trace or {}).get("decision_summary") or "Evidence units are grouped into chunk windows."),
+                    object_id=chunk_policy_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="chunking-policy",
+                    title="Policy Basis",
+                    fields=[
+                        RuntimeSummaryField(
+                            key="decision_summary",
+                            label="decision_summary",
+                            value=str((runtime_trace or {}).get("decision_summary") or "group evidence units into chunk windows"),
+                        ),
+                        RuntimeSummaryField(
+                            key="ai_summary",
+                            label="ai_summary",
+                            value=str((runtime_trace or {}).get("ai_summary") or "none"),
+                        ),
+                        RuntimeSummaryField(key="adjusted_chunk_count", label="adjusted_chunk_count", value=str(len(adjusted_chunks))),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-planning", label="View Chunk Planning", target_kind="node", target_id=planning_id)],
+        ),
         chunk_group_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Chunk Group",
@@ -545,6 +658,61 @@ def build_evidence_graph_chunk_layer_snapshot(
         )
 
     edge_observers: dict[str, RuntimeObserverPayload] = {
+        f"{evidence_unit_group_id}:feeds_planning": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="feeds_planning",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:chunk-layer:evidence-feeds-planning",
+                    kind="progress",
+                    level="info",
+                    message="Evidence unit input feeds the chunk planning task.",
+                    object_id=f"{evidence_unit_group_id}:feeds_planning",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="feeds-planning-summary",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="feeds_planning"),
+                        RuntimeSummaryField(key="evidence_unit_count", label="evidence_unit_count", value=str(evidence_count)),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="chunk-window-policy"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
+        f"{chunk_policy_id}:governs": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:chunk-layer:policy-governs",
+                    kind="rule",
+                    level="info",
+                    message="Chunking policy governs chunk planning and boundary adjustment.",
+                    object_id=f"{chunk_policy_id}:governs",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-governs",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="chunk-window-policy"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
         f"{planning_id}:results_in": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="results_in",
@@ -667,6 +835,8 @@ def build_evidence_graph_chunk_layer_snapshot(
         )
 
     primary_node_ids = [
+        evidence_unit_group_id,
+        chunk_policy_id,
         planning_id,
         chunk_group_id,
         graph_layer_id,

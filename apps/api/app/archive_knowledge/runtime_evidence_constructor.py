@@ -61,6 +61,7 @@ def build_evidence_constructor_snapshot(
     trace_sections = build_runtime_sections(runtime_trace)
 
     task_id = f"{document_id}:evidence-constructor:task"
+    selection_policy_id = f"{document_id}:evidence-constructor:policy"
     unit_group_id = f"{document_id}:evidence-constructor:units"
     anchor_group_id = f"{document_id}:evidence-constructor:anchors"
     span_group_id = f"{document_id}:evidence-constructor:spans"
@@ -82,6 +83,27 @@ def build_evidence_constructor_snapshot(
                 "span_count": span_count,
             },
             attributes={"document_title": document_title},
+        ),
+        RuntimeGraphNode(
+            node_id=selection_policy_id,
+            label="Evidence Selection Policy",
+            node_type="evidence_selection_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            metrics={
+                "input_count": (runtime_trace or {}).get("input_count", len(parsed_document.segments or [])),
+                "output_count": (runtime_trace or {}).get("output_count", evidence_count),
+                "rule_hit_count": len((runtime_trace or {}).get("rule_hits", []) or []),
+            },
+            attributes={
+                "decision_summary": (runtime_trace or {}).get(
+                    "decision_summary",
+                    "convert unified document paragraphs into traceable evidence units",
+                ),
+                "ai_summary": (runtime_trace or {}).get("ai_summary", "no AI refinement note recorded"),
+                "rule_key": "evidence-selection",
+            },
         ),
         RuntimeGraphNode(
             node_id=unit_group_id,
@@ -123,12 +145,41 @@ def build_evidence_constructor_snapshot(
             stage_id=definition.stage_id,
             status=status,
             origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
             metrics={"matched_segment_count": len({row.matched_segment_index for row in evidence_rows if row.matched_segment_index is not None})},
-            attributes={"matched_segment_count": len({row.matched_segment_index for row in evidence_rows if row.matched_segment_index is not None})},
+            attributes={
+                "input_object": "unified_paragraphs",
+                "segment_count": len(parsed_document.segments or []),
+                "matched_segment_count": len({row.matched_segment_index for row in evidence_rows if row.matched_segment_index is not None}),
+            },
         ),
     ]
 
     edges: list[RuntimeGraphEdge] = [
+        RuntimeGraphEdge(
+            edge_id=f"{paragraph_group_id}:consumed_by",
+            source=paragraph_group_id,
+            target=task_id,
+            relation="consumed_by",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={
+                "reason": "unified paragraphs are scanned for evidence-bearing spans",
+                "rule_key": "evidence-selection",
+            },
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{selection_policy_id}:governs",
+            source=selection_policy_id,
+            target=task_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            attributes={"rule_key": "evidence-selection"},
+        ),
         RuntimeGraphEdge(
             edge_id=f"{task_id}:results_in",
             source=task_id,
@@ -332,6 +383,39 @@ def build_evidence_constructor_snapshot(
                 )
             )
 
+    if not paragraph_node_ids and parsed_document.segments:
+        for segment_index, segment in enumerate(list(parsed_document.segments)[:12]):
+            paragraph_id = f"{document_id}:source-paragraph:{segment_index + 1}"
+            paragraph_node_ids[segment_index] = paragraph_id
+            nodes.append(
+                RuntimeGraphNode(
+                    node_id=paragraph_id,
+                    label=_paragraph_label(segment_index + 1, segment),
+                    node_type="source_paragraph",
+                    stage_id=definition.stage_id,
+                    status=RuntimeStatus.RUNNING if status == RuntimeStatus.RUNNING else RuntimeStatus.WARNING,
+                    origin=RuntimeOrigin.DERIVED,
+                    attributes={
+                        "heading": segment.heading,
+                        "anchor": segment.anchor,
+                        "content_excerpt": (segment.content or "")[:240],
+                        "coverage_role": "sample_input_until_evidence_units_exist",
+                    },
+                )
+            )
+            edges.append(
+                RuntimeGraphEdge(
+                    edge_id=f"{paragraph_group_id}:paragraph:{segment_index + 1}",
+                    source=paragraph_group_id,
+                    target=paragraph_id,
+                    relation="contains",
+                    stage_id=definition.stage_id,
+                    status=RuntimeStatus.RUNNING if status == RuntimeStatus.RUNNING else RuntimeStatus.WARNING,
+                    origin=RuntimeOrigin.DERIVED,
+                    attributes={"paragraph_order": segment_index + 1},
+                )
+            )
+
     if not evidence_count:
         nodes.append(
             RuntimeGraphNode(
@@ -410,6 +494,74 @@ def build_evidence_constructor_snapshot(
     )
 
     node_observers: dict[str, RuntimeObserverPayload] = {
+        paragraph_group_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Source Paragraphs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-constructor:paragraph-input",
+                    kind="progress",
+                    level="info",
+                    message=f"{len(parsed_document.segments or [])} unified paragraphs are available as evidence-constructor input.",
+                    object_id=paragraph_group_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="paragraph-input-summary",
+                    title="Input Objects",
+                    fields=[
+                        RuntimeSummaryField(key="input_object", label="input_object", value="unified_paragraphs"),
+                        RuntimeSummaryField(key="segment_count", label="segment_count", value=str(len(parsed_document.segments or []))),
+                        RuntimeSummaryField(key="matched_segment_count", label="matched_segment_count", value=str(len(paragraph_node_ids))),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-constructor", label="View Constructor", target_kind="node", target_id=task_id)],
+        ),
+        selection_policy_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Evidence Selection Policy",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-constructor:policy",
+                    kind="rule",
+                    level="info",
+                    message=str((runtime_trace or {}).get("decision_summary") or "Unified paragraphs are converted into traceable evidence units."),
+                    object_id=selection_policy_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="evidence-selection-policy",
+                    title="Policy Basis",
+                    fields=[
+                        RuntimeSummaryField(
+                            key="decision_summary",
+                            label="decision_summary",
+                            value=str((runtime_trace or {}).get("decision_summary") or "convert unified paragraphs into evidence units"),
+                        ),
+                        RuntimeSummaryField(
+                            key="ai_summary",
+                            label="ai_summary",
+                            value=str((runtime_trace or {}).get("ai_summary") or "none"),
+                        ),
+                        RuntimeSummaryField(
+                            key="rule_hit_count",
+                            label="rule_hit_count",
+                            value=str(len((runtime_trace or {}).get("rule_hits", []) or [])),
+                        ),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-constructor", label="View Constructor", target_kind="node", target_id=task_id)],
+        ),
         unit_group_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Evidence Units",
@@ -511,6 +663,61 @@ def build_evidence_constructor_snapshot(
         )
 
     edge_observers = {
+        f"{paragraph_group_id}:consumed_by": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="consumed_by",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-constructor:paragraphs-consumed",
+                    kind="progress",
+                    level="info",
+                    message="Unified paragraph input is consumed by the evidence constructor.",
+                    object_id=f"{paragraph_group_id}:consumed_by",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="paragraphs-consumed",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="consumed_by"),
+                        RuntimeSummaryField(key="input_count", label="input_count", value=str(len(parsed_document.segments or []))),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="evidence-selection"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
+        f"{selection_policy_id}:governs": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-constructor:policy-governs",
+                    kind="rule",
+                    level="info",
+                    message="Evidence selection policy governs the constructor task.",
+                    object_id=f"{selection_policy_id}:governs",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-governs",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="evidence-selection"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
         f"{task_id}:results_in": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="results_in",
@@ -573,6 +780,8 @@ def build_evidence_constructor_snapshot(
         )
 
     primary_node_ids = [
+        paragraph_group_id,
+        selection_policy_id,
         task_id,
         unit_group_id,
         anchor_group_id,

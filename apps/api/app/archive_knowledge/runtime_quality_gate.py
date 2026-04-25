@@ -53,14 +53,124 @@ def build_quality_gate_snapshot(
     gate_status = status_override or _decision_runtime_status(decision.get("status"), document_published=document_published)
 
     gate_id = f"{document_id}:quality-gate:gate"
+    candidate_set_id = f"{document_id}:quality-gate:candidate-set"
+    policy_set_id = f"{document_id}:quality-gate:policy-set"
+    rule_hit_set_id = f"{document_id}:quality-gate:rule-hit-set"
     blocked_id = f"{document_id}:quality-gate:blocked"
     publish_target_id = f"{document_id}:quality-gate:publish-target"
     primary_rule_node_id = _rule_node_id(document_id, rule_hits[0]) if rule_hits else gate_id
+    candidate_status = (
+        RuntimeStatus.BLOCKED
+        if rejected_items
+        else RuntimeStatus.WARNING
+        if pending_items
+        else RuntimeStatus.COMPLETED
+    )
 
     nodes: list[RuntimeGraphNode] = []
     edges: list[RuntimeGraphEdge] = []
     node_observers: dict[str, RuntimeObserverPayload] = {}
     edge_observers: dict[str, RuntimeObserverPayload] = {}
+
+    nodes.append(
+        RuntimeGraphNode(
+            node_id=candidate_set_id,
+            label="候选知识集合",
+            node_type="quality_candidate_set",
+            stage_id=definition.stage_id,
+            status=candidate_status,
+            origin=RuntimeOrigin.SOURCE,
+            is_primary=True,
+            metrics={
+                "knowledge_item_count": len(knowledge_items),
+                "approved_count": len(approved_items),
+                "pending_count": len(pending_items),
+                "rejected_count": len(rejected_items),
+            },
+            attributes={
+                "input_object": "canonical_knowledge_items",
+                "policy_snapshot_id": (trace.get("policy") or {}).get("snapshot_id"),
+                "rule_count": len(rule_hits),
+                "decision": decision.get("status"),
+            },
+        )
+    )
+    nodes.extend(
+        [
+            RuntimeGraphNode(
+                node_id=policy_set_id,
+                label="质量策略集合",
+                node_type="quality_policy_set",
+                stage_id=definition.stage_id,
+                status=gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                metrics={
+                    "rule_count": len(rule_hits),
+                    "failed_rule_count": int(decision.get("failed_rule_count") or 0),
+                },
+                attributes={
+                    "policy_snapshot_id": (trace.get("policy") or {}).get("snapshot_id"),
+                    "default_action": "block_return",
+                    "decision": decision.get("status"),
+                },
+            ),
+            RuntimeGraphNode(
+                node_id=rule_hit_set_id,
+                label="规则命中集合",
+                node_type="rule_hit_set",
+                stage_id=definition.stage_id,
+                status=gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                metrics={
+                    "rule_count": len(rule_hits),
+                    "failed_rule_count": int(decision.get("failed_rule_count") or 0),
+                },
+                attributes={
+                    "decision": decision.get("status"),
+                    "reason": decision.get("reason"),
+                },
+            ),
+        ]
+    )
+    edges.extend(
+        [
+            RuntimeGraphEdge(
+                edge_id=f"{candidate_set_id}:feeds-policy",
+                source=candidate_set_id,
+                target=policy_set_id,
+                relation="feeds_policy",
+                stage_id=definition.stage_id,
+                status=gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                attributes={"rule_count": len(rule_hits), "decision": decision.get("status")},
+            ),
+            RuntimeGraphEdge(
+                edge_id=f"{policy_set_id}:governs-rule-hits",
+                source=policy_set_id,
+                target=rule_hit_set_id,
+                relation="governs",
+                stage_id=definition.stage_id,
+                status=gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                attributes={"failed_rule_count": int(decision.get("failed_rule_count") or 0)},
+            ),
+            RuntimeGraphEdge(
+                edge_id=f"{rule_hit_set_id}:results_in",
+                source=rule_hit_set_id,
+                target=gate_id,
+                relation="results_in",
+                stage_id=definition.stage_id,
+                status=gate_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=True,
+                attributes={"decision": decision.get("status"), "reason": decision.get("reason")},
+            ),
+        ]
+    )
 
     for rule_hit in rule_hits:
         rule_node_id = _rule_node_id(document_id, rule_hit)
@@ -73,7 +183,7 @@ def build_quality_gate_snapshot(
                 stage_id=definition.stage_id,
                 status=rule_status,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=True,
+                is_primary=False,
                 metrics={
                     "passed": 1 if rule_hit.get("passed") else 0,
                     "actual": rule_hit.get("actual"),
@@ -87,17 +197,35 @@ def build_quality_gate_snapshot(
                 },
             )
         )
+        candidate_edge_id = f"{candidate_set_id}:evaluated_by:{rule_hit.get('key') or rule_node_id}"
+        edges.append(
+            RuntimeGraphEdge(
+                edge_id=candidate_edge_id,
+                source=candidate_set_id,
+                target=rule_node_id,
+                relation="evaluated_by",
+                stage_id=definition.stage_id,
+                status=rule_status,
+                origin=RuntimeOrigin.DERIVED,
+                is_primary=False,
+                attributes={
+                    "rule_key": rule_hit.get("key"),
+                    "threshold": rule_hit.get("threshold"),
+                    "action": rule_hit.get("action"),
+                },
+            )
+        )
         edge_id = f"{rule_node_id}:results_in"
         edges.append(
             RuntimeGraphEdge(
                 edge_id=edge_id,
                 source=rule_node_id,
-                target=gate_id,
+                target=rule_hit_set_id,
                 relation="results_in",
                 stage_id=definition.stage_id,
                 status=rule_status if rule_status != RuntimeStatus.COMPLETED else gate_status,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=True,
+                is_primary=False,
                 attributes={"action": rule_hit.get("action"), "outcome": rule_hit.get("outcome")},
             )
         )
@@ -109,19 +237,28 @@ def build_quality_gate_snapshot(
             rule_hit=rule_hit,
             status=rule_status,
         )
+        edge_observers[candidate_edge_id] = _build_candidate_rule_edge_observer(
+            document_id=document_id,
+            document_title=document_title,
+            edge_id=candidate_edge_id,
+            candidate_set_id=candidate_set_id,
+            rule_node_id=rule_node_id,
+            rule_hit=rule_hit,
+            status=rule_status,
+        )
         edge_observers[edge_id] = _build_rule_edge_observer(
             document_id=document_id,
             document_title=document_title,
             edge_id=edge_id,
             rule_node_id=rule_node_id,
-            gate_id=gate_id,
+            gate_id=rule_hit_set_id,
             status=gate_status,
         )
 
     nodes.append(
         RuntimeGraphNode(
             node_id=gate_id,
-            label="Gate Decision",
+            label="Gate 决策",
             node_type="gate_decision",
             stage_id=definition.stage_id,
             status=gate_status,
@@ -164,10 +301,10 @@ def build_quality_gate_snapshot(
         )
         edges.append(
             RuntimeGraphEdge(
-                edge_id=f"{item_node_id}:evaluated_by",
+                edge_id=f"{item_node_id}:feeds_candidate_set",
                 source=item_node_id,
-                target=primary_rule_node_id,
-                relation="evaluated_by",
+                target=candidate_set_id,
+                relation="feeds_candidate_set",
                 stage_id=definition.stage_id,
                 status=item_status,
                 origin=RuntimeOrigin.SOURCE,
@@ -201,6 +338,39 @@ def build_quality_gate_snapshot(
         trace_events=trace_events,
         trace_sections=trace_sections,
     )
+    node_observers[candidate_set_id] = _build_candidate_set_observer(
+        document_id=document_id,
+        document_title=document_title,
+        candidate_set_id=candidate_set_id,
+        first_rule_node_id=primary_rule_node_id,
+        status=candidate_status,
+        metrics={
+            "knowledge_item_count": len(knowledge_items),
+            "approved_count": len(approved_items),
+            "pending_count": len(pending_items),
+            "rejected_count": len(rejected_items),
+            "rule_count": len(rule_hits),
+        },
+    )
+    node_observers[policy_set_id] = _build_policy_set_observer(
+        document_id=document_id,
+        document_title=document_title,
+        policy_set_id=policy_set_id,
+        rule_hit_set_id=rule_hit_set_id,
+        status=gate_status,
+        decision=decision,
+        rule_hits=rule_hits,
+    )
+    node_observers[rule_hit_set_id] = _build_rule_hit_set_observer(
+        document_id=document_id,
+        document_title=document_title,
+        rule_hit_set_id=rule_hit_set_id,
+        first_rule_node_id=primary_rule_node_id,
+        gate_id=gate_id,
+        status=gate_status,
+        decision=decision,
+        rule_hits=rule_hits,
+    )
     node_observers[gate_id] = _build_gate_observer(
         document_id=document_id,
         document_title=document_title,
@@ -221,7 +391,7 @@ def build_quality_gate_snapshot(
         document_published=document_published,
     )
 
-    primary_node_ids = [_rule_node_id(document_id, hit) for hit in rule_hits] + [gate_id, outcome_node_id]
+    primary_node_ids = [candidate_set_id, policy_set_id, rule_hit_set_id, gate_id, outcome_node_id]
     return RuntimeStageSnapshot(
         stage_id=definition.stage_id,
         label=definition.label,
@@ -258,13 +428,13 @@ def _append_outcome_path(
         outcome_node_id = blocked_id
         outcome_status = RuntimeStatus.BLOCKED
         relation = "blocked_by"
-        label = "Blocked Result"
+        label = "阻断结果"
         node_type = "blocked_result"
     else:
         outcome_node_id = publish_target_id
         outcome_status = RuntimeStatus.COMPLETED if decision_status == "passed" and document_published else RuntimeStatus.WARNING if decision_status != "passed" else RuntimeStatus.RUNNING
         relation = "publishes_to" if decision_status == "passed" else "continues_with_policy_note"
-        label = "Publish Target" if decision_status == "passed" else "Policy Continuation"
+        label = "发布目标" if decision_status == "passed" else "带策略告警继续"
         node_type = "publish_target"
 
     nodes.append(
@@ -359,6 +529,149 @@ def _build_stage_observer(
         actions=[
             RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
             RuntimeAction(action_id="view-rule-hits", label="View Rule Hits", target_kind="node", target_id=first_rule_node_id),
+        ],
+    )
+
+
+def _build_candidate_set_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    candidate_set_id: str,
+    first_rule_node_id: str,
+    status: RuntimeStatus,
+    metrics: dict[str, Any],
+) -> RuntimeObserverPayload:
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title="Candidate Knowledge Set",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:candidate-set",
+                kind="info",
+                level="warning" if status == RuntimeStatus.WARNING else "success",
+                message=(
+                    "Canonical knowledge candidates are batched as the gate input before executable "
+                    "policy rules are evaluated."
+                ),
+                object_id=candidate_set_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="candidate-set",
+                title="Candidate Set",
+                fields=[
+                    RuntimeSummaryField(key=key, label=key, value=str(value), tone="info")
+                    for key, value in metrics.items()
+                ],
+            )
+        ],
+        actions=[
+            RuntimeAction(
+                action_id="view-first-rule",
+                label="View First Policy Rule",
+                target_kind="node",
+                target_id=first_rule_node_id,
+            )
+        ],
+    )
+
+
+def _build_policy_set_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    policy_set_id: str,
+    rule_hit_set_id: str,
+    status: RuntimeStatus,
+    decision: dict[str, Any],
+    rule_hits: list[dict[str, Any]],
+) -> RuntimeObserverPayload:
+    decision_status = str(decision.get("status") or status.value)
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title="质量策略集合",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:policy-set",
+                kind="rule",
+                level=_event_level(decision_status),
+                message=f"质量策略集合收口 {len(rule_hits)} 条可执行规则，先形成规则命中集合，再汇总为 Gate 决策。",
+                object_id=policy_set_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="policy-set",
+                title="策略集合",
+                fields=[
+                    RuntimeSummaryField(key="rule_count", label="规则数量", value=str(len(rule_hits)), tone="info"),
+                    RuntimeSummaryField(
+                        key="failed_rule_count",
+                        label="未通过规则",
+                        value=str(decision.get("failed_rule_count", 0)),
+                        tone="warning" if decision.get("failed_rule_count") else "success",
+                    ),
+                    RuntimeSummaryField(key="decision", label="门禁决策", value=decision_status, tone=_decision_tone(decision_status)),
+                ],
+            )
+        ],
+        actions=[
+            RuntimeAction(action_id="view-rule-hit-set", label="查看规则命中集合", target_kind="node", target_id=rule_hit_set_id)
+        ],
+    )
+
+
+def _build_rule_hit_set_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    rule_hit_set_id: str,
+    first_rule_node_id: str,
+    gate_id: str,
+    status: RuntimeStatus,
+    decision: dict[str, Any],
+    rule_hits: list[dict[str, Any]],
+) -> RuntimeObserverPayload:
+    failed_hits = [hit for hit in rule_hits if hit.get("outcome") != "passed"]
+    decision_status = str(decision.get("status") or status.value)
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.NODE,
+        title="规则命中集合",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:rule-hit-set",
+                kind="rule",
+                level=_event_level(decision_status),
+                message=f"规则命中集合包含 {len(rule_hits)} 条命中结果，其中 {len(failed_hits)} 条导致告警或阻断。",
+                object_id=rule_hit_set_id,
+                object_kind="node",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="rule-hit-set",
+                title="规则命中摘要",
+                fields=[
+                    RuntimeSummaryField(key="rule_count", label="规则数量", value=str(len(rule_hits)), tone="info"),
+                    RuntimeSummaryField(key="failed_rule_count", label="未通过规则", value=str(len(failed_hits)), tone="warning" if failed_hits else "success"),
+                    RuntimeSummaryField(key="decision", label="门禁决策", value=decision_status, tone=_decision_tone(decision_status)),
+                    RuntimeSummaryField(key="reason", label="原因", value=str(decision.get("reason") or "none"), tone=_decision_tone(decision_status)),
+                ],
+            )
+        ],
+        actions=[
+            RuntimeAction(action_id="view-first-rule", label="展开单条规则", target_kind="node", target_id=first_rule_node_id),
+            RuntimeAction(action_id="view-gate", label="查看 Gate 决策", target_kind="node", target_id=gate_id),
         ],
     )
 
@@ -489,6 +802,54 @@ def _build_outcome_observer(
             )
         ],
         actions=[RuntimeAction(action_id="view-gate", label="View Gate Decision", target_kind="node", target_id=gate_id)],
+    )
+
+
+def _build_candidate_rule_edge_observer(
+    *,
+    document_id: str,
+    document_title: str,
+    edge_id: str,
+    candidate_set_id: str,
+    rule_node_id: str,
+    rule_hit: dict[str, Any],
+    status: RuntimeStatus,
+) -> RuntimeObserverPayload:
+    return RuntimeObserverPayload(
+        mode=RuntimeObserverMode.EDGE,
+        title="evaluated_by",
+        subtitle=document_title,
+        status=status,
+        stream=[
+            RuntimeEvent(
+                event_id=f"{document_id}:quality-gate:candidate-rule-edge:{rule_hit.get('key')}",
+                kind="rule",
+                level="danger" if status == RuntimeStatus.BLOCKED else "info",
+                message=(
+                    f"Candidate set is evaluated by policy rule {rule_hit.get('key')}; "
+                    f"action={rule_hit.get('action')}."
+                ),
+                object_id=edge_id,
+                object_kind="edge",
+            )
+        ],
+        sections=[
+            RuntimeSummarySection(
+                section_id="relation",
+                title="Relation Summary",
+                fields=[
+                    RuntimeSummaryField(key="relation", label="relation", value="evaluated_by"),
+                    RuntimeSummaryField(key="source", label="source", value="Candidate Knowledge Set"),
+                    RuntimeSummaryField(key="target", label="target", value=str(rule_hit.get("label") or rule_hit.get("key"))),
+                    RuntimeSummaryField(key="threshold", label="threshold", value=str(rule_hit.get("threshold"))),
+                    RuntimeSummaryField(key="action", label="action", value=str(rule_hit.get("action")), tone="info"),
+                ],
+            )
+        ],
+        actions=[
+            RuntimeAction(action_id="view-source-node", label="View Candidate Set", target_kind="node", target_id=candidate_set_id),
+            RuntimeAction(action_id="view-target-node", label="View Policy Rule", target_kind="node", target_id=rule_node_id),
+        ],
     )
 
 

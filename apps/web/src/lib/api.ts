@@ -441,6 +441,9 @@ export type ArchiveReviewCandidate = {
   review_status: ArchiveReviewStatus;
   evidence_excerpt: string;
   evidence_document_title: string | null;
+  candidate_source?: string;
+  source_scope?: string;
+  governance_boundary?: string;
 };
 
 export type ArchiveKnowledgeItemUpdateInput = {
@@ -483,6 +486,19 @@ export type ArchivePublicationOverview = {
     entity_count: number;
     event_count: number;
     process_count: number;
+  };
+  candidate_source?: string;
+  candidate_scope?: string;
+  machine_publication_status?: string;
+  machine_publication_label?: string;
+  governance_confirmation_status?: string;
+  governance_confirmation_label?: string;
+  formal_entry_status?: string;
+  formal_entry_label?: string;
+  review_summary?: {
+    pending_count: number;
+    approved_count: number;
+    rejected_count: number;
   };
 };
 

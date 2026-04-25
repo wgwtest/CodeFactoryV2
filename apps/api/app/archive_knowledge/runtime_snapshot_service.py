@@ -180,6 +180,66 @@ class DocumentRuntimeSnapshotService:
                 deduplicated_stage_ids.append(stage_id)
         return deduplicated_stage_ids
 
+    def refresh_runtime_stage_snapshots(
+        self,
+        *,
+        archive_id: str,
+        contribution: dict[str, Any],
+        stage_ids: list[str],
+    ) -> list[str]:
+        runtime_trace = ((contribution or {}).get("extraction") or {}).get("runtime_trace", {})
+        refreshed_stage_ids: list[str] = []
+
+        for stage_id in stage_ids:
+            if stage_id == "evidence_pack":
+                refreshed_stage_ids.append(self.persist_evidence_pack_snapshot(archive_id, contribution=contribution))
+            elif stage_id == "concept_candidate_review":
+                refreshed_stage_ids.append(
+                    self.persist_concept_candidate_review_snapshot(archive_id, contribution=contribution)
+                )
+            elif stage_id == "relation_review_family_normalization":
+                refreshed_stage_ids.append(
+                    self.persist_relation_review_family_normalization_snapshot(
+                        archive_id,
+                        contribution=contribution,
+                    )
+                )
+            elif stage_id == "definition_summary_conflict_consolidation":
+                refreshed_stage_ids.append(
+                    self.persist_definition_summary_conflict_consolidation_snapshot(
+                        archive_id,
+                        contribution=contribution,
+                    )
+                )
+            elif stage_id == "canonical_knowledge":
+                refreshed_stage_ids.append(
+                    self.persist_canonical_knowledge_snapshot(
+                        archive_id,
+                        contribution=contribution,
+                    )
+                )
+            elif stage_id == "quality_policy_evaluation_governance_gate":
+                refreshed_stage_ids.append(
+                    self.persist_quality_gate_snapshot(
+                        archive_id,
+                        contribution=contribution,
+                        runtime_trace=runtime_trace.get("quality_policy_evaluation_governance_gate"),
+                    )
+                )
+            elif stage_id == "indexes_snapshots_apis":
+                refreshed_stage_ids.append(
+                    self.persist_indexes_snapshots_apis_snapshot(
+                        archive_id,
+                        contribution=contribution,
+                    )
+                )
+
+        deduplicated_stage_ids: list[str] = []
+        for stage_id in refreshed_stage_ids:
+            if stage_id not in deduplicated_stage_ids:
+                deduplicated_stage_ids.append(stage_id)
+        return deduplicated_stage_ids
+
     def load_or_derive_parsed_document(self, document_source: dict[str, Any]):
         parsed_document = self._load_parsed_document_from_source_file(
             document_source.get("source_file_path")
@@ -434,29 +494,11 @@ class DocumentRuntimeSnapshotService:
         status_override: RuntimeStatus | None = None,
     ) -> str:
         document = contribution["document"]
-        knowledge_items: list[dict[str, Any]]
-        try:
-            payload = self.knowledge_service._load_public(archive_id, [document["id"]])
-            document_index = self.knowledge_service._build_document_index(payload)
-            public_document = document_index.get(document["id"])
-            if public_document is None:
-                raise FileNotFoundError(document["id"])
-            knowledge_items = ArchiveKnowledgeService._build_document_knowledge_items_from_contribution(
-                {
-                    "document": document,
-                    "entities": payload.get("entities", []),
-                    "events": payload.get("events", []),
-                    "processes": payload.get("processes", []),
-                    "relations": payload.get("relations", []),
-                    "summary": payload.get("summary", {}),
-                },
-                public_document,
-            )
-        except FileNotFoundError:
-            knowledge_items = ArchiveKnowledgeService._build_document_knowledge_items_from_contribution(
-                contribution,
-                document,
-            )
+        knowledge_items = self._load_runtime_knowledge_items(
+            archive_id=archive_id,
+            document=document,
+            contribution=contribution,
+        )
 
         current_version, document_published = self._build_publication_context(
             archive_id,
@@ -487,15 +529,59 @@ class DocumentRuntimeSnapshotService:
             archive_id,
             document["id"],
         )
+        knowledge_items = self._load_runtime_knowledge_items(
+            archive_id=archive_id,
+            document=document,
+            contribution=contribution,
+        )
+        gate_snapshot = self.runtime_repository.load_stage_snapshot(
+            archive_id,
+            document["id"],
+            "quality_policy_evaluation_governance_gate",
+        ) or {}
+        gate_fields = {
+            field.get("key"): field.get("value")
+            for section in (gate_snapshot.get("stage_observer") or {}).get("sections", [])
+            for field in section.get("fields", [])
+            if isinstance(field, dict)
+        }
         snapshot = build_indexes_snapshots_apis_snapshot(
             archive_id=archive_id,
             document_id=document["id"],
             document_title=document["title"],
             current_version=current_version,
             document_published=document_published,
+            contribution=contribution,
+            knowledge_items=knowledge_items,
+            gate_decision_status=gate_fields.get("decision"),
+            gate_decision_reason=gate_fields.get("reason"),
         )
         self._save_stage_snapshot(archive_id, document["id"], snapshot)
         return snapshot.stage_id
+
+    def _load_runtime_knowledge_items(
+        self,
+        *,
+        archive_id: str,
+        document: dict[str, Any],
+        contribution: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        try:
+            payload = self.knowledge_service._load_raw(archive_id)
+            document_index = self.knowledge_service._build_document_index(payload)
+            live_document = document_index.get(document["id"])
+            if live_document is None:
+                raise FileNotFoundError(document["id"])
+            return ArchiveKnowledgeService._build_document_knowledge_items(
+                payload,
+                document["id"],
+                live_document,
+            )
+        except FileNotFoundError:
+            return ArchiveKnowledgeService._build_document_knowledge_items_from_contribution(
+                contribution,
+                document,
+            )
 
     def _build_publication_context(
         self,

@@ -38,6 +38,7 @@ def build_relation_review_family_normalization_snapshot(
     status = RuntimeStatus.COMPLETED if relation_count or family_count else RuntimeStatus.WARNING
 
     relation_set_id = f"{document_id}:relation-review:set"
+    policy_node_id = f"{document_id}:relation-review:review-policy"
     family_norm_id = f"{document_id}:relation-review:family-normalization"
     family_group_root_id = f"{document_id}:relation-review:family-groups"
     warning_id = f"{document_id}:relation-review:warning"
@@ -45,7 +46,7 @@ def build_relation_review_family_normalization_snapshot(
     nodes: list[RuntimeGraphNode] = [
         RuntimeGraphNode(
             node_id=relation_set_id,
-            label="Relation Candidate Set",
+            label="关系候选集合",
             node_type="relation_candidate_set",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if relation_count else RuntimeStatus.WARNING,
@@ -54,8 +55,23 @@ def build_relation_review_family_normalization_snapshot(
             metrics={"relation_count": relation_count},
         ),
         RuntimeGraphNode(
+            node_id=policy_node_id,
+            label="关系审查策略",
+            node_type="relation_review_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={"relation_count": relation_count, "family_count": family_count, "alias_count": alias_count},
+            attributes={
+                "rule_key": "relation_review_family_normalization.endpoint_family_policy",
+                "default_action": "normalize_relation_endpoints",
+                "review_scope": "relation_candidates_and_alias_families",
+            },
+        ),
+        RuntimeGraphNode(
             node_id=family_norm_id,
-            label="Family Normalization",
+            label="家族归一",
             node_type="family_normalization",
             stage_id=definition.stage_id,
             status=status,
@@ -65,16 +81,39 @@ def build_relation_review_family_normalization_snapshot(
         ),
         RuntimeGraphNode(
             node_id=family_group_root_id,
-            label="Family Groups",
+            label="家族集合",
             node_type="family_group_root",
             stage_id=definition.stage_id,
             status=status,
             origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
             metrics={"family_count": family_count},
         ),
     ]
 
     edges: list[RuntimeGraphEdge] = [
+        RuntimeGraphEdge(
+            edge_id=f"{relation_set_id}:feeds-policy",
+            source=relation_set_id,
+            target=policy_node_id,
+            relation="feeds_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "relation candidates with source and target endpoints"},
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{policy_node_id}:governs-family-normalization",
+            source=policy_node_id,
+            target=family_norm_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "endpoint alias resolution and family grouping"},
+        ),
         RuntimeGraphEdge(
             edge_id=f"{relation_set_id}:normalized_by",
             source=relation_set_id,
@@ -83,7 +122,6 @@ def build_relation_review_family_normalization_snapshot(
             stage_id=definition.stage_id,
             status=status,
             origin=RuntimeOrigin.DERIVED,
-            is_primary=True,
         ),
         RuntimeGraphEdge(
             edge_id=f"{family_norm_id}:contains",
@@ -99,6 +137,37 @@ def build_relation_review_family_normalization_snapshot(
 
     family_node_ids: dict[str, str] = {}
     node_observers: dict[str, RuntimeObserverPayload] = {
+        policy_node_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="关系审查策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:relation-review:policy",
+                    kind="decision",
+                    level="success" if relation_count or family_count else "warning",
+                    message="关系审查策略会把关系端点解析到家族集合，并在形成发布候选前归一别名与方向。",
+                    object_id=policy_node_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-basis",
+                    title="策略 / 动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="relation_review_family_normalization.endpoint_family_policy", tone="info"),
+                        RuntimeSummaryField(key="default_action", label="default_action", value="normalize_relation_endpoints", tone="info"),
+                        RuntimeSummaryField(key="family_count", label="family_count", value=str(family_count), tone="success" if family_count else "warning"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-relation-set", label="查看关系集合", target_kind="node", target_id=relation_set_id),
+                RuntimeAction(action_id="view-family-normalization", label="查看家族归一", target_kind="node", target_id=family_norm_id),
+            ],
+        ),
         relation_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Relation Candidate Set",
@@ -130,11 +199,71 @@ def build_relation_review_family_normalization_snapshot(
                 )
             ],
             actions=[
-                RuntimeAction(action_id="view-stage-graph", label="View stage graph", target_kind="graph"),
+                RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph"),
             ],
         ),
     }
     edge_observers: dict[str, RuntimeObserverPayload] = {
+        f"{relation_set_id}:feeds-policy": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="送入策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:relation-review:feeds-policy",
+                    kind="decision",
+                    level="success" if relation_count else "warning",
+                    message="关系候选会先送入端点家族策略，再执行归一化。",
+                    object_id=f"{relation_set_id}:feeds-policy",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="feeds_policy"),
+                        RuntimeSummaryField(key="relation_count", label="relation_count", value=str(relation_count)),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=relation_set_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        f"{policy_node_id}:governs-family-normalization": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:relation-review:governs-family-normalization",
+                    kind="decision",
+                    level="success" if family_count else "warning",
+                    message="端点家族策略决定别名聚合与家族归一的输出。",
+                    object_id=f"{policy_node_id}:governs-family-normalization",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="策略决策",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="relation_review_family_normalization.endpoint_family_policy"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=policy_node_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=family_norm_id),
+            ],
+        ),
         f"{relation_set_id}:normalized_by": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="normalized_by",
@@ -182,7 +311,6 @@ def build_relation_review_family_normalization_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=family_index <= 3,
                 metrics={"member_count": group["member_count"], "alias_count": len(group["aliases"])},
             )
         )
@@ -195,7 +323,6 @@ def build_relation_review_family_normalization_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.DERIVED,
-                is_primary=family_index <= 3,
             )
         )
 
@@ -267,7 +394,6 @@ def build_relation_review_family_normalization_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
                 attributes={
                     "source_name": relation.get("source_name") or "",
                     "target_name": relation.get("target_name") or "",
@@ -284,7 +410,6 @@ def build_relation_review_family_normalization_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
             )
         )
         if source_family_key and source_family_key in family_node_ids:

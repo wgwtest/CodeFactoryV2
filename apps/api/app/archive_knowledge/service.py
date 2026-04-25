@@ -17,6 +17,8 @@ ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("processes", "process"),
 )
 VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+PUBLICATION_CANDIDATE_SOURCE = "publication_candidate_snapshot"
+PUBLICATION_CANDIDATE_SCOPE = "post_quality_gate_publication_candidate"
 RELATION_SECTION_DEFINITIONS = {
     ("part_of", "incoming"): ("incoming_part_of", "包含的对象与流程", "包含"),
     ("part_of", "outgoing"): ("outgoing_part_of", "所属上位对象", "属于"),
@@ -305,6 +307,9 @@ class ArchiveKnowledgeService:
                         "review_status": current_review_status,
                         "evidence_excerpt": first_evidence.get("excerpt", ""),
                         "evidence_document_title": document_titles.get(first_evidence.get("document_id")),
+                        "candidate_source": PUBLICATION_CANDIDATE_SOURCE,
+                        "source_scope": PUBLICATION_CANDIDATE_SCOPE,
+                        "governance_boundary": "post_publication_confirmation",
                     }
                 )
 
@@ -315,10 +320,17 @@ class ArchiveKnowledgeService:
 
     def get_publication_overview(self, archive_id: str) -> dict:
         working_payload = self._apply_visibility_filter(self._load_raw(archive_id))
-        return self.published_repository.get_publication_overview(
+        overview = self.published_repository.get_publication_overview(
             archive_id,
             working_summary=working_payload["summary"],
         )
+        overview.update(
+            self._build_publication_boundary(
+                working_payload,
+                current_version=overview.get("current_version"),
+            )
+        )
+        return overview
 
     def publish_snapshot(self, archive_id: str, *, version_label: str, publisher: str) -> dict:
         payload = self._load_for_edit(archive_id)
@@ -651,6 +663,56 @@ class ArchiveKnowledgeService:
         ]
         filtered["summary"] = self._rebuild_summary(filtered, visible_only=False)
         return filtered
+
+    def _build_publication_boundary(self, payload: dict, *, current_version: dict | None) -> dict:
+        review_summary = self._build_review_summary(payload)
+        candidate_count = (
+            review_summary["pending_count"]
+            + review_summary["approved_count"]
+            + review_summary["rejected_count"]
+        )
+        has_candidate_snapshot = candidate_count > 0 or current_version is not None
+        formally_admitted = current_version is not None
+        governance_status = (
+            "confirmed"
+            if formally_admitted
+            else "waiting_confirmation"
+            if has_candidate_snapshot
+            else "not_ready"
+        )
+        return {
+            "candidate_source": PUBLICATION_CANDIDATE_SOURCE,
+            "candidate_scope": PUBLICATION_CANDIDATE_SCOPE,
+            "machine_publication_status": "candidate_available" if has_candidate_snapshot else "not_available",
+            "machine_publication_label": "机器已发布候选" if has_candidate_snapshot else "机器尚未发布候选",
+            "governance_confirmation_status": governance_status,
+            "governance_confirmation_label": {
+                "confirmed": "治理已确认",
+                "waiting_confirmation": "等待治理确认",
+                "not_ready": "未进入治理确认",
+            }[governance_status],
+            "formal_entry_status": "admitted" if formally_admitted else "not_admitted",
+            "formal_entry_label": "已正式入库" if formally_admitted else "尚未正式入库",
+            "review_summary": review_summary,
+        }
+
+    @staticmethod
+    def _build_review_summary(payload: dict) -> dict[str, int]:
+        summary = {
+            "pending_count": 0,
+            "approved_count": 0,
+            "rejected_count": 0,
+        }
+        for collection_name, _ in ITEM_COLLECTIONS:
+            for item in payload.get(collection_name, []):
+                status = item.get("review_status", "pending")
+                if status == "approved":
+                    summary["approved_count"] += 1
+                elif status == "rejected":
+                    summary["rejected_count"] += 1
+                else:
+                    summary["pending_count"] += 1
+        return summary
 
     def _build_published_repository(self):
         if settings.published_knowledge_backend == "neo4j":  # pragma: no cover - optional backend

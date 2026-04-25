@@ -17,4 +17,5 @@ apps/web/dist/
 .data/source_archives/
 .data/knowledge_output/
 .data/knowledge_output/ui-test-kb-*
+.logs/
 graphify-out/cache/
