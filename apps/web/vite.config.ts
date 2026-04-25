@@ -6,7 +6,7 @@ const repoRoot = resolve(__dirname, "../..");
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, repoRoot, ""), ...process.env };
-  const apiProxyTarget = env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8020";
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET ?? env.VITE_DEV_API_PROXY_TARGET ?? "http://127.0.0.1:8020";
   const webPort = Number.parseInt(env.VITE_WEB_PORT ?? "5173", 10);
 
   return {

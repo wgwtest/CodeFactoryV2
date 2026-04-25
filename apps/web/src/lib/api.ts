@@ -1,8 +1,21 @@
 import axios from "axios";
 
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
+  baseURL: API_BASE_URL,
 });
+
+export function resolveApiUrl(path: string): string {
+  const normalizedBase = API_BASE_URL.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (/^https?:\/\//i.test(normalizedBase)) {
+    return new URL(normalizedPath.replace(/^\//, ""), `${normalizedBase}/`).toString();
+  }
+
+  return `${normalizedBase}${normalizedPath}`;
+}
 
 export type ArchiveReviewStatus = "pending" | "approved" | "rejected";
 
@@ -74,7 +87,7 @@ export type KnowledgeArchiveBuildStateDocument = {
   title: string;
   file_type: string;
   source_archive: string;
-  state: "pending" | "running" | "completed" | "failed";
+  state: "pending" | "running" | "completed" | "failed" | "skipped";
 };
 
 export type KnowledgeArchiveBuildStateChunk = {
@@ -87,6 +100,14 @@ export type KnowledgeArchiveBuildStateChunk = {
   retry_depth: number | null;
 };
 
+export type KnowledgeArchiveBuildWarning = {
+  code: string;
+  severity: "warning";
+  file_path: string;
+  file_type: string;
+  message: string;
+};
+
 export type KnowledgeArchiveBuildState = {
   archive_id: string;
   archive_name: string;
@@ -96,6 +117,7 @@ export type KnowledgeArchiveBuildState = {
   updated_at: string | null;
   expected_document_count: number;
   completed_document_ids: string[];
+  skipped_document_ids?: string[];
   pending_document_ids: string[];
   failed_document_id: string | null;
   failed_message: string | null;
@@ -103,6 +125,9 @@ export type KnowledgeArchiveBuildState = {
   current_document_title: string | null;
   current_document_path: string | null;
   current_chunk: KnowledgeArchiveBuildStateChunk | null;
+  policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
+  warning_count?: number;
+  warnings?: KnowledgeArchiveBuildWarning[];
   documents: KnowledgeArchiveBuildStateDocument[];
 };
 
@@ -127,6 +152,86 @@ export type CreateKnowledgeArchiveInput = {
   extract_root?: string;
 };
 
+export type ArchivePolicyAction =
+  | "auto_pass"
+  | "warn_continue"
+  | "manual_review"
+  | "block_return"
+  | "defer_publish";
+
+/*
+
+export type ArchivePolicyAction =
+  | "自动放行"
+  | "告警继续"
+  | "转人工复核"
+  | "阻断并回退"
+  | "延迟发布";
+
+*/
+export type ArchiveStagePolicyRule = {
+  key: string;
+  name: string;
+  meaning: string;
+  threshold: string;
+  action: ArchivePolicyAction;
+};
+
+export type ArchiveStagePolicyConfig = {
+  stage_id: string;
+  label: string;
+  group: string;
+  enabled: boolean;
+  ai_mode: string;
+  default_action: ArchivePolicyAction;
+  objective: string;
+  inputs: string[];
+  ai_adaptation: string;
+  rules: ArchiveStagePolicyRule[];
+  branches: string[];
+  outputs: string[];
+  observability: string[];
+};
+
+export type ArchivePolicyConfig = {
+  archive_id: string;
+  version_label: string;
+  scope_label: string;
+  ai_autoadapt_enabled: boolean;
+  updated_at: string | null;
+  stage_order: string[];
+  stages: Record<string, ArchiveStagePolicyConfig>;
+};
+
+export type UpdateArchivePolicyConfigInput = {
+  version_label: string;
+  scope_label: string;
+  ai_autoadapt_enabled: boolean;
+  stage_order: string[];
+  stages: Record<string, ArchiveStagePolicyConfig>;
+};
+
+export type ArchivePolicyRuntimeSnapshotStage = {
+  stage_id: string;
+  label: string;
+  enabled: boolean;
+  ai_mode: string;
+  default_action: ArchivePolicyAction;
+  rule_count: number;
+};
+
+export type ArchivePolicyRuntimeSnapshot = {
+  snapshot_id: string;
+  captured_at: string | null;
+  archive_id: string;
+  version_label: string;
+  scope_label: string;
+  ai_autoadapt_enabled: boolean;
+  config_updated_at: string | null;
+  stage_order: string[];
+  stages: ArchivePolicyRuntimeSnapshotStage[];
+};
+
 export type ArchiveDocumentFormalizeResult = {
   archive_id: string;
   document_id: string;
@@ -137,6 +242,17 @@ export type ArchiveDocumentFormalizeResult = {
     | "incremental_remove"
     | "full_rebuild_bootstrap_remove";
   document_included: boolean;
+  summary: ArchiveKnowledgeSummary;
+  document: ArchiveKnowledgeDocument | null;
+};
+
+export type ArchiveDocumentImportResult = {
+  archive_id: string;
+  document_id: string;
+  action: "include";
+  mode: "single_document_import" | "full_rebuild_bootstrap_import";
+  document_included: true;
+  stored_path: string;
   summary: ArchiveKnowledgeSummary;
   document: ArchiveKnowledgeDocument | null;
 };
@@ -363,6 +479,118 @@ export type ArchivePublicationOverview = {
     event_count: number;
     process_count: number;
   };
+};
+
+export type ArchiveDocumentRuntimeStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "blocked"
+  | "warning"
+  | "unavailable";
+
+export type ArchiveDocumentRuntimeOrigin = "source" | "derived" | "unavailable";
+export type ArchiveDocumentRuntimeMode = "persisted" | "hybrid" | "derived" | "legacy_fallback";
+
+export type ArchiveDocumentRuntimeObserverMode = "stage" | "node" | "edge";
+
+export type ArchiveDocumentRuntimeAction = {
+  action_id: string;
+  label: string;
+  target_kind: "stage" | "node" | "edge" | "document" | "item" | "evidence" | "graph";
+  target_id?: string | null;
+};
+
+export type ArchiveDocumentRuntimeSummaryField = {
+  key: string;
+  label: string;
+  value: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "info";
+};
+
+export type ArchiveDocumentRuntimeSummarySection = {
+  section_id: string;
+  title: string;
+  fields: ArchiveDocumentRuntimeSummaryField[];
+};
+
+export type ArchiveDocumentRuntimeEvent = {
+  event_id: string;
+  kind: "progress" | "decision" | "evidence" | "rule" | "warning" | "block" | "result" | "info";
+  level: "neutral" | "success" | "warning" | "danger" | "info";
+  message: string;
+  object_id?: string | null;
+  object_kind?: "stage" | "node" | "edge" | "document" | "item" | "evidence" | null;
+  timestamp?: string | null;
+};
+
+export type ArchiveDocumentRuntimeGraphNode = {
+  node_id: string;
+  label: string;
+  node_type: string;
+  stage_id: string;
+  status: ArchiveDocumentRuntimeStatus;
+  origin: ArchiveDocumentRuntimeOrigin;
+  is_primary: boolean;
+  is_focus: boolean;
+  metrics: Record<string, unknown>;
+  attributes: Record<string, unknown>;
+};
+
+export type ArchiveDocumentRuntimeGraphEdge = {
+  edge_id: string;
+  source: string;
+  target: string;
+  relation: string;
+  stage_id: string;
+  status: ArchiveDocumentRuntimeStatus;
+  origin: ArchiveDocumentRuntimeOrigin;
+  is_primary: boolean;
+  attributes: Record<string, unknown>;
+};
+
+export type ArchiveDocumentRuntimeObserverPayload = {
+  mode: ArchiveDocumentRuntimeObserverMode;
+  title: string;
+  subtitle?: string | null;
+  status: ArchiveDocumentRuntimeStatus;
+  stream: ArchiveDocumentRuntimeEvent[];
+  sections: ArchiveDocumentRuntimeSummarySection[];
+  actions: ArchiveDocumentRuntimeAction[];
+};
+
+export type ArchiveDocumentRuntimeStageGraph = {
+  nodes: ArchiveDocumentRuntimeGraphNode[];
+  edges: ArchiveDocumentRuntimeGraphEdge[];
+  primary_node_ids: string[];
+  primary_edge_ids: string[];
+};
+
+export type ArchiveDocumentRuntimeStageSnapshot = {
+  stage_id: string;
+  label: string;
+  group: string;
+  order: number;
+  status: ArchiveDocumentRuntimeStatus;
+  is_current: boolean;
+  graph: ArchiveDocumentRuntimeStageGraph;
+  stage_observer: ArchiveDocumentRuntimeObserverPayload;
+  node_observers: Record<string, ArchiveDocumentRuntimeObserverPayload>;
+  edge_observers: Record<string, ArchiveDocumentRuntimeObserverPayload>;
+};
+
+export type ArchiveDocumentRuntimeContract = {
+  archive_id: string;
+  document_id: string;
+  document_title: string;
+  current_stage_id: string;
+  current_stage_label: string;
+  status: ArchiveDocumentRuntimeStatus;
+  runtime_mode?: ArchiveDocumentRuntimeMode;
+  persisted_stage_ids?: string[];
+  source_document: Record<string, unknown>;
+  policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
+  stages: ArchiveDocumentRuntimeStageSnapshot[];
 };
 
 export type RequirementFormalElement = {

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import time
 
 from fastapi.testclient import TestClient
 
@@ -83,11 +84,24 @@ def test_archive_registry_and_extraction_keep_existing_archive_intact(tmp_path, 
         extract_root_parent=tmp_path / ".extract",
     )
     extraction_service = ArchiveExtractionService(tmp_path)
+    build_calls: list[tuple[str, Path, Path, str]] = []
 
-    def fake_build_archive(self, archive_id: str, *, source_dir: Path, extract_root: Path, archive_name: str):
+    def fake_build_archive(
+        self,
+        archive_id: str,
+        *,
+        source_dir: Path,
+        extract_root: Path,
+        archive_name: str,
+        policy_snapshot=None,
+    ):
+        build_calls.append((archive_id, source_dir, extract_root, archive_name))
         assert archive_id == "domain-b"
         assert source_dir == new_source_dir
         assert extract_root == tmp_path / ".extract" / "domain-b"
+        assert policy_snapshot is not None
+        assert policy_snapshot["version_label"] == "13 阶段抽取蓝图 v1"
+        assert policy_snapshot["scope_label"] == "单文档抽取过程"
         assert archive_name == "领域 B 知识库"
         archive_path = tmp_path / "domain-b-knowledge.json"
         markdown_path = tmp_path / "domain-b-knowledge.md"
@@ -163,9 +177,25 @@ def test_archive_registry_and_extraction_keep_existing_archive_intact(tmp_path, 
     extracted = client.post("/api/archives/domain-b/extract")
     assert extracted.status_code == 200
     assert extracted.json()["archive_id"] == "domain-b"
-    assert extracted.json()["status"] == "ready"
-    assert extracted.json()["summary"]["entity_count"] == 2
+    assert extracted.json()["status"] == "extracting"
+    assert extracted.json()["summary"] is None
+    assert extracted.json()["build_state"]["policy_snapshot"]["version_label"] == "13 阶段抽取蓝图 v1"
+    assert extracted.json()["build_state"]["policy_snapshot"]["scope_label"] == "单文档抽取过程"
+
+    detail = None
+    for _ in range(40):
+        detail_response = client.get("/api/archives/domain-b")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        if detail["status"] == "ready":
+            break
+        time.sleep(0.05)
+
+    assert detail is not None
+    assert detail["status"] == "ready"
+    assert detail["summary"]["entity_count"] == 2
     assert (tmp_path / "domain-b-knowledge.json").exists()
+    assert build_calls
     assert legacy_archive_path.read_text(encoding="utf-8") == legacy_original
 
     activated = client.post("/api/archives/domain-b/activate")
@@ -219,6 +249,16 @@ def test_archive_registry_exposes_current_chunk_progress_in_build_state(tmp_path
                 "current_document_id": "doc-2",
                 "current_document_title": "FM 6-0",
                 "current_document_path": "runtime/FM_6-0.pdf",
+                "warning_count": 1,
+                "warnings": [
+                    {
+                        "code": "unsupported_spreadsheet_skipped",
+                        "severity": "warning",
+                        "file_path": "runtime/FM_6-0.xls",
+                        "file_type": "xls",
+                        "message": "正式知识库抽取已跳过表格文件（当前未接入 Docling 表格链路）：runtime/FM_6-0.xls",
+                    }
+                ],
                 "current_chunk": {
                     "chunk_id": "chunk-007",
                     "position": 7,
@@ -280,6 +320,8 @@ def test_archive_registry_exposes_current_chunk_progress_in_build_state(tmp_path
         "segment_count": 8,
         "retry_depth": 1,
     }
+    assert payload[0]["build_state"]["warning_count"] == 1
+    assert payload[0]["build_state"]["warnings"][0]["file_type"] == "xls"
 
 
 def test_archive_extract_rejects_parallel_requests(tmp_path) -> None:
@@ -321,7 +363,7 @@ def test_archive_extract_rejects_parallel_requests(tmp_path) -> None:
     response = client.post("/api/archives/20161116-nas/extract")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "当前已有知识库正在抽取中：another-kb，请等待完成后再试"}
+    assert response.json() == {"detail": "当前已有知识库正在抽取中：another-kb，请等待完成后再试。"}
 
 
 def test_archive_document_formalize_route_returns_incremental_result(tmp_path) -> None:
@@ -397,6 +439,97 @@ def test_archive_document_formalize_route_returns_incremental_result(tmp_path) -
     assert response.json()["document_id"] == "doc-1"
     assert response.json()["mode"] == "incremental_merge"
     assert response.json()["summary"]["entity_count"] == 2
+
+
+def test_archive_document_import_route_returns_incremental_result(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    expected_source_dir = source_dir
+
+    archive_path = tmp_path / "20161116-nas-knowledge.json"
+    _write_archive(
+        archive_path,
+        document_title="Legacy NAS",
+        entity_name="国家空域系统",
+        entity_count=1,
+    )
+
+    app = create_app()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+
+    class StubExtractionService(ArchiveExtractionService):
+        def import_document(
+            self,
+            archive_id: str,
+            *,
+            file_name: str,
+            file_bytes: bytes,
+            source_dir: Path,
+            extract_root: Path,
+            archive_name: str | None = None,
+        ) -> dict:
+            assert archive_id == "20161116-nas"
+            assert file_name == "new-guide.docx"
+            assert file_bytes == b"stub content"
+            assert source_dir == expected_source_dir
+            assert extract_root == tmp_path / "legacy-extract"
+            assert archive_name == "默认 NAS 知识库"
+            return {
+                "archive_id": archive_id,
+                "document_id": "doc-imported",
+                "action": "include",
+                "mode": "single_document_import",
+                "document_included": True,
+                "stored_path": "manual_uploads/2026-04-18/new-guide.docx",
+                "summary": {
+                    "document_count": 2,
+                    "entity_count": 3,
+                    "event_count": 0,
+                    "process_count": 0,
+                },
+                "document": {
+                    "id": "doc-imported",
+                    "title": "new-guide",
+                    "file_type": "docx",
+                    "source_archive": "manual_uploads",
+                    "character_count": 1600,
+                    "entity_count": 2,
+                    "event_count": 0,
+                    "process_count": 0,
+                    "knowledge_item_count": 2,
+                    "included_in_archive": True,
+                },
+            }
+
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    app.dependency_overrides[get_archive_extraction_service] = lambda: StubExtractionService(tmp_path)
+    app.dependency_overrides[get_archive_extraction_coordinator] = lambda: ArchiveExtractionCoordinator()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/archives/20161116-nas/documents/import",
+        files={
+            "file": (
+                "new-guide.docx",
+                b"stub content",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["archive_id"] == "20161116-nas"
+    assert response.json()["document_id"] == "doc-imported"
+    assert response.json()["action"] == "include"
+    assert response.json()["mode"] == "single_document_import"
+    assert response.json()["stored_path"] == "manual_uploads/2026-04-18/new-guide.docx"
 
 
 def test_archive_document_remove_route_returns_incremental_result(tmp_path) -> None:

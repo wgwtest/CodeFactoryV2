@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import { DEFAULT_ARCHIVE_ID } from "../lib/archiveKnowledge";
 import type { KnowledgeArchive } from "../lib/api";
@@ -71,7 +71,7 @@ export function ArchiveProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function refreshArchives(preferredArchiveId?: string | null) {
+  const refreshArchives = useCallback(async (preferredArchiveId?: string | null) => {
     try {
       const response = await getKnowledgeArchives();
       const nextArchives = response.data;
@@ -85,17 +85,29 @@ export function ArchiveProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function setActiveArchiveId(archiveId: string) {
+  const setActiveArchiveId = useCallback(async (archiveId: string) => {
     await activateKnowledgeArchive(archiveId);
     persistArchiveId(archiveId);
     await refreshArchives(archiveId);
-  }
+  }, [refreshArchives]);
 
   useEffect(() => {
     void refreshArchives();
-  }, []);
+  }, [refreshArchives]);
+
+  useEffect(() => {
+    if (!archives.some((archive) => archive.status === "extracting" || archive.build_state?.status === "running")) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void refreshArchives(activeArchiveId);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [activeArchiveId, archives, refreshArchives]);
 
   const activeArchive = archives.find((item) => item.archive_id === activeArchiveId) ?? null;
 

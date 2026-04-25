@@ -14,6 +14,12 @@ from app.archive_knowledge.document_artifacts import (
     build_extraction_report_payload,
     build_parsed_documents_payload,
 )
+from app.archive_knowledge.runtime_snapshot_service import (
+    DocumentRuntimeSnapshotService,
+)
+from app.archive_knowledge.runtime_parser_execution import (
+    parsed_document_from_source_document,
+)
 from app.archive_knowledge.rebuild import reconcile_curated_payload
 from app.extraction.service import ExtractionService
 from app.knowledge_builder import (
@@ -24,6 +30,7 @@ from app.knowledge_builder import (
 from app.parsing.service import ParsingService
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
+FORMAL_EXTRACTION_SKIPPABLE_SUFFIXES = {".xlsx", ".xls"}
 build_knowledge_index = runtime_build_knowledge_index
 _ORIGINAL_BUILD_KNOWLEDGE_INDEX = runtime_build_knowledge_index
 
@@ -60,6 +67,7 @@ def build_archive_knowledge(
     extract_root: Path,
     output_root: Path,
     formal_extraction_mode: bool = False,
+    policy_snapshot: dict | None = None,
 ) -> ArchiveBuildResult:
     source_dir = source_dir.expanduser().resolve()
     extract_root = extract_root.expanduser().resolve()
@@ -70,9 +78,14 @@ def build_archive_knowledge(
 
     extract_archives(source_dir, extract_root)
     document_roots = resolve_document_roots(source_dir, extract_root)
+    warnings: list[dict] = []
 
     if build_knowledge_index is not _ORIGINAL_BUILD_KNOWLEDGE_INDEX:
-        documents = collect_documents(document_roots, formal_extraction_mode=formal_extraction_mode)
+        documents = collect_documents(
+            document_roots,
+            formal_extraction_mode=formal_extraction_mode,
+            warnings_collector=warnings,
+        )
         if not documents:
             raise ValueError(f"目录中未发现可解析文档: {source_dir}")
         extraction_diagnostics: list[dict] = []
@@ -93,10 +106,15 @@ def build_archive_knowledge(
             documents=documents,
             extraction_diagnostics=extraction_diagnostics,
             formal_extraction_mode=formal_extraction_mode,
+            warnings=warnings,
         )
 
     if formal_extraction_mode:
-        documents = discover_documents(document_roots, formal_extraction_mode=True)
+        documents = discover_documents(
+            document_roots,
+            formal_extraction_mode=True,
+            warnings_collector=warnings,
+        )
         if not documents:
             raise ValueError(f"目录中未发现可解析文档: {source_dir}")
         extraction_service = ExtractionService(formal_extraction_mode=True)
@@ -104,12 +122,20 @@ def build_archive_knowledge(
         contributions = _build_formal_archive_contributions(
             archive_id=archive_id,
             archive_name=archive_name,
+            source_dir=source_dir,
             documents=documents,
             extraction_service=extraction_service,
             artifact_repository=artifact_repository,
+            warnings=warnings,
+            policy_snapshot=policy_snapshot,
         )
         extraction_diagnostics = _build_extraction_diagnostics(contributions)
-        _validate_formal_extraction_run(documents, extraction_diagnostics)
+        build_state = artifact_repository.load_build_state(archive_id) or {}
+        _validate_formal_extraction_run(
+            documents,
+            extraction_diagnostics,
+            skipped_document_ids=build_state.get("skipped_document_ids", []),
+        )
         artifact_repository.prune(
             archive_id,
             keep_document_ids={contribution["document"]["id"] for contribution in contributions},
@@ -135,6 +161,9 @@ def build_archive_knowledge(
                 current_document_path=None,
                 started_at=build_state.get("started_at"),
                 current_chunk=None,
+                skipped_document_ids=build_state.get("skipped_document_ids", []),
+                warnings=warnings,
+                policy_snapshot=build_state.get("policy_snapshot") or policy_snapshot,
             ),
         )
     else:
@@ -155,6 +184,7 @@ def build_archive_knowledge(
         knowledge=knowledge,
         contributions=contributions,
         formal_extraction_mode=formal_extraction_mode,
+        warnings=warnings,
     )
 
 
@@ -185,7 +215,12 @@ def extract_archives(source_dir: Path, extract_root: Path) -> None:
             break
 
 
-def discover_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[DiscoveredDocument]:
+def discover_documents(
+    document_roots: Path | list[Path],
+    *,
+    formal_extraction_mode: bool = False,
+    warnings_collector: list[dict] | None = None,
+) -> list[DiscoveredDocument]:
     roots = [document_roots] if isinstance(document_roots, Path) else list(document_roots)
     documents_by_digest: dict[str, tuple[int, DiscoveredDocument]] = {}
 
@@ -200,14 +235,16 @@ def discover_documents(document_roots: Path | list[Path], *, formal_extraction_m
             suffix = path.suffix.lower()
             if suffix not in SUPPORTED_SUFFIXES:
                 continue
-            if formal_extraction_mode and suffix in {".xlsx", ".xls"}:
-                raise ValueError(f"正式知识库抽取当前不允许使用非 Docling 的表格解析链路：{path}")
+            if formal_extraction_mode and suffix in FORMAL_EXTRACTION_SKIPPABLE_SUFFIXES:
+                if warnings_collector is not None:
+                    warnings_collector.append(_build_formal_extraction_warning(path))
+                continue
 
             digest = _file_digest(path)
             relative_path = path.relative_to(root)
             source_archive = relative_path.parts[0] if len(relative_path.parts) > 1 else root.name
             document = DiscoveredDocument(
-                path=str(relative_path),
+                path=relative_path.as_posix(),
                 title=path.stem,
                 file_type=suffix.lstrip("."),
                 source_archive=source_archive,
@@ -221,9 +258,18 @@ def discover_documents(document_roots: Path | list[Path], *, formal_extraction_m
     return sorted((item[1] for item in documents_by_digest.values()), key=lambda document: document.path)
 
 
-def collect_documents(document_roots: Path | list[Path], *, formal_extraction_mode: bool = False) -> list[SourceDocument]:
+def collect_documents(
+    document_roots: Path | list[Path],
+    *,
+    formal_extraction_mode: bool = False,
+    warnings_collector: list[dict] | None = None,
+) -> list[SourceDocument]:
     documents: list[SourceDocument] = []
-    for document in discover_documents(document_roots, formal_extraction_mode=formal_extraction_mode):
+    for document in discover_documents(
+        document_roots,
+        formal_extraction_mode=formal_extraction_mode,
+        warnings_collector=warnings_collector,
+    ):
         try:
             documents.append(
                 parse_discovered_document(document, formal_extraction_mode=formal_extraction_mode)
@@ -276,11 +322,20 @@ def parse_discovered_document(
     )
 
 
-def _validate_formal_extraction_run(documents: list[SourceDocument] | list[DiscoveredDocument], extraction_diagnostics: list[dict]) -> None:
-    if len(extraction_diagnostics) != len(documents):
+def _validate_formal_extraction_run(
+    documents: list[SourceDocument] | list[DiscoveredDocument],
+    extraction_diagnostics: list[dict],
+    *,
+    skipped_document_ids: list[str] | None = None,
+) -> None:
+    skipped_document_id_set = set(skipped_document_ids or [])
+    expected_documents = [
+        document for document in documents if _document_id(document.path) not in skipped_document_id_set
+    ]
+    if len(extraction_diagnostics) != len(expected_documents):
         raise ValueError("正式知识库抽取失败：抽取执行报告与文档数量不一致")
 
-    for document, diagnostic in zip(documents, extraction_diagnostics, strict=True):
+    for document, diagnostic in zip(expected_documents, extraction_diagnostics, strict=True):
         if document.file_type in {"pdf", "doc", "docx"} and diagnostic.get("parser_name") not in {"docling_pdf", "docling_docx"}:
             raise ValueError(
                 f"正式知识库抽取要求使用 Docling 解析，但执行报告记录的解析器不符合要求：{document.path}"
@@ -289,6 +344,111 @@ def _validate_formal_extraction_run(documents: list[SourceDocument] | list[Disco
             raise ValueError(f"正式知识库抽取要求使用结构化大模型抽取，但文档未启用大模型增强：{document.path}")
         if not diagnostic.get("llm_provider") or not diagnostic.get("llm_model"):
             raise ValueError(f"正式知识库抽取要求记录实际使用的大模型信息，但当前文档缺少记录：{document.path}")
+
+
+def _build_formal_extraction_warning(path: Path) -> dict:
+    return {
+        "code": "unsupported_spreadsheet_skipped",
+        "severity": "warning",
+        "file_path": str(path),
+        "file_type": path.suffix.lower().lstrip("."),
+        "message": f"正式知识库抽取已跳过表格文件（当前未接入 Docling 表格链路）：{path}",
+    }
+
+
+def _should_skip_formal_pdf_failure(document: DiscoveredDocument, exc: Exception) -> bool:
+    if document.file_type != "pdf":
+        return False
+    message = str(exc)
+    return "Docling" in message or "PDF 使用 Docling 解析" in message or "禁止 PDF 解析降级到非 Docling" in message
+
+
+def _build_formal_pdf_skip_warning(document: DiscoveredDocument, exc: Exception) -> dict:
+    return {
+        "code": "docling_pdf_skipped",
+        "severity": "warning",
+        "file_path": document.source_file_path,
+        "file_type": document.file_type,
+        "message": f"正式知识库抽取已跳过 PDF 文件（Docling 解析失败）：{document.source_file_path}",
+        "reason": str(exc),
+    }
+
+
+def _iter_exception_chain(exc: Exception):
+    current: Exception | None = exc
+    while current is not None:
+        yield current
+        if current.__cause__ is not None and isinstance(current.__cause__, Exception):
+            current = current.__cause__
+            continue
+        if current.__context__ is not None and isinstance(current.__context__, Exception):
+            current = current.__context__
+            continue
+        break
+
+
+def _is_formal_doc_conversion_failure(exc: Exception) -> bool:
+    chain = list(_iter_exception_chain(exc))
+    if any(isinstance(item, FileNotFoundError) for item in chain):
+        return True
+    if any(isinstance(item, subprocess.CalledProcessError) for item in chain):
+        return True
+
+    messages = " | ".join(str(item) for item in chain)
+    return (
+        "soffice" in messages
+        or "LibreOffice" in messages
+        or "No such file or directory" in messages
+        or "系统找不到指定的文件" in messages
+    )
+
+
+def _should_skip_formal_docling_failure(document: DiscoveredDocument, exc: Exception) -> bool:
+    if document.file_type not in {"pdf", "doc", "docx"}:
+        return False
+
+    if document.file_type == "doc" and _is_formal_doc_conversion_failure(exc):
+        return True
+
+    message = str(exc)
+    if "Docling" not in message and "MsWordDocumentBackend could not load document" not in message:
+        return False
+
+    if document.file_type == "pdf":
+        return _should_skip_formal_pdf_failure(document, exc)
+
+    return (
+        "DOC/DOCX 浣跨敤 Docling 瑙ｆ瀽" in message
+        or "绂佹 DOC/DOCX 瑙ｆ瀽闄嶇骇鍒伴潪 Docling" in message
+        or "MsWordDocumentBackend could not load document" in message
+        or "Docling" in message
+    )
+
+
+def _build_formal_docling_skip_warning(document: DiscoveredDocument, exc: Exception) -> dict:
+    if document.file_type == "pdf":
+        return _build_formal_pdf_skip_warning(document, exc)
+
+    if document.file_type == "doc" and _is_formal_doc_conversion_failure(exc):
+        return {
+            "code": "doc_conversion_skipped",
+            "severity": "warning",
+            "file_path": document.source_file_path,
+            "file_type": document.file_type,
+            "message": f"正式知识库抽取已跳过 DOC 文件（DOC 转 DOCX 失败）: {document.source_file_path}",
+            "reason": str(exc),
+        }
+
+    file_type = document.file_type.upper()
+    code = "docling_doc_skipped" if document.file_type == "doc" else "docling_docx_skipped"
+    return {
+        "code": code,
+        "severity": "warning",
+        "file_path": document.source_file_path,
+        "file_type": document.file_type,
+        "message": f"姝ｅ紡鐭ヨ瘑搴撴娊鍙栧凡璺宠繃 {file_type} 鏂囦欢锛圖ocling 瑙ｆ瀽澶辫触锛夛細{document.source_file_path}",
+        "reason": str(exc),
+    }
 
 
 def extract_text(path: Path) -> str:
@@ -348,14 +508,19 @@ def _build_formal_archive_contributions(
     *,
     archive_id: str,
     archive_name: str,
+    source_dir: Path,
     documents: list[DiscoveredDocument],
     extraction_service: ExtractionService,
     artifact_repository: DocumentArtifactRepository,
+    warnings: list[dict] | None = None,
+    policy_snapshot: dict | None = None,
 ) -> list[dict]:
     started_at = datetime.now(UTC).isoformat()
     completed_document_ids: list[str] = []
+    skipped_document_ids: list[str] = []
     pending_document_ids = [_document_id(document.path) for document in documents]
     contributions: list[dict] = []
+    runtime_snapshot_service = DocumentRuntimeSnapshotService(artifact_repository.output_root)
 
     artifact_repository.save_build_state(
         archive_id,
@@ -373,6 +538,9 @@ def _build_formal_archive_contributions(
             current_document_path=None,
             started_at=started_at,
             current_chunk=None,
+            skipped_document_ids=skipped_document_ids,
+            warnings=warnings,
+            policy_snapshot=policy_snapshot,
         ),
     )
 
@@ -381,6 +549,24 @@ def _build_formal_archive_contributions(
         manifest_document = artifact_repository.get_document_source_info(archive_id, document_id)
         included_in_archive = manifest_document.get("included_in_archive", True) if manifest_document else True
         current_chunk: dict | None = None
+        parsed_document = None
+        runtime_parsed_document = None
+
+        runtime_snapshot_service.persist_asset_intake_snapshot(
+            archive_id,
+            archive_name=archive_name,
+            document_id=document_id,
+            document_title=document.title,
+            document_path=document.path,
+            source_dir=source_dir,
+            source_file_path=document.source_file_path,
+            file_type=document.file_type,
+            source_archive=document.source_archive,
+            source_digest=document.source_digest,
+            included_in_archive=included_in_archive,
+            mode="archive_extract",
+            intake_timestamp=started_at,
+        )
 
         def save_running_state(*, current_chunk_override: dict | None) -> None:
             artifact_repository.save_build_state(
@@ -399,6 +585,9 @@ def _build_formal_archive_contributions(
                     current_document_path=document.path,
                     started_at=started_at,
                     current_chunk=current_chunk_override,
+                    skipped_document_ids=skipped_document_ids,
+                    warnings=warnings,
+                    policy_snapshot=policy_snapshot,
                 ),
             )
 
@@ -430,6 +619,37 @@ def _build_formal_archive_contributions(
                     raise FileNotFoundError(f"文档级正式产物缺失: {document_id}")
             else:
                 parsed_document = parse_discovered_document(document, formal_extraction_mode=True)
+                runtime_parsed_document = parsed_document_from_source_document(
+                    parser_name=parsed_document.parser_name,
+                    segment_count=parsed_document.segment_count,
+                    segments=parsed_document.segments,
+                    source_file_path=parsed_document.source_file_path,
+                    source_digest=parsed_document.source_digest,
+                )
+                runtime_snapshot_service.persist_parser_router_snapshot(
+                    archive_id,
+                    document_id=document_id,
+                    document_title=parsed_document.title,
+                    file_type=parsed_document.file_type,
+                    source_file_path=parsed_document.source_file_path,
+                    parser_name=parsed_document.parser_name,
+                    parser_version="runtime",
+                )
+                if runtime_parsed_document is not None:
+                    runtime_snapshot_service.persist_parser_execution_snapshot(
+                        archive_id,
+                        document_id=document_id,
+                        document_title=parsed_document.title,
+                        file_type=parsed_document.file_type,
+                        parsed_document=runtime_parsed_document,
+                    )
+                    runtime_snapshot_service.persist_unified_document_object_snapshot(
+                        archive_id,
+                        document_id=document_id,
+                        document_title=parsed_document.title,
+                        file_type=parsed_document.file_type,
+                        parsed_document=runtime_parsed_document,
+                    )
                 contribution = build_document_contribution(parsed_document, extraction_service, document_id=document_id)
                 artifact_repository.upsert(
                     archive_id,
@@ -437,6 +657,35 @@ def _build_formal_archive_contributions(
                     included_in_archive=included_in_archive,
                 )
         except Exception as exc:
+            if _should_skip_formal_docling_failure(document, exc):
+                warning = _build_formal_docling_skip_warning(document, exc)
+                if warnings is not None:
+                    warnings.append(warning)
+                if document_id not in skipped_document_ids:
+                    skipped_document_ids.append(document_id)
+                pending_document_ids = [pending_id for pending_id in pending_document_ids if pending_id != document_id]
+                artifact_repository.save_build_state(
+                    archive_id,
+                    _build_archive_state(
+                        archive_id=archive_id,
+                        archive_name=archive_name,
+                        documents=documents,
+                        status="running",
+                        completed_document_ids=completed_document_ids,
+                        pending_document_ids=pending_document_ids,
+                        failed_document_id=None,
+                        failed_message=None,
+                        current_document_id=None,
+                        current_document_title=None,
+                        current_document_path=None,
+                        started_at=started_at,
+                        current_chunk=None,
+                        skipped_document_ids=skipped_document_ids,
+                        warnings=warnings,
+                        policy_snapshot=policy_snapshot,
+                    ),
+                )
+                continue
             artifact_repository.save_build_state(
                 archive_id,
                 _build_archive_state(
@@ -455,11 +704,37 @@ def _build_formal_archive_contributions(
                     current_document_path=document.path,
                     started_at=started_at,
                     current_chunk=current_chunk,
+                    skipped_document_ids=skipped_document_ids,
+                    warnings=warnings,
+                    policy_snapshot=policy_snapshot,
                 ),
             )
             raise
         finally:
             extraction_service.progress_callback = None
+
+        runtime_snapshot_service.persist_document_runtime_snapshots(
+            archive_id=archive_id,
+            archive_name=archive_name,
+            source_dir=source_dir,
+            document_source={
+                "document_id": document_id,
+                "title": document.title,
+                "path": document.path,
+                "file_type": document.file_type,
+                "source_archive": document.source_archive,
+                "source_file_path": document.source_file_path,
+                "source_digest": document.source_digest,
+                "included_in_archive": included_in_archive,
+                "parser_name": contribution.get("document", {}).get("parser_name"),
+                "segment_count": contribution.get("document", {}).get("segment_count", 0),
+            },
+            contribution=contribution,
+            mode="archive_extract",
+            intake_timestamp=started_at,
+            parsed_document=runtime_parsed_document,
+            included_in_archive=included_in_archive,
+        )
 
         contributions.append(contribution)
         if document_id not in completed_document_ids:
@@ -481,6 +756,9 @@ def _build_formal_archive_contributions(
                 current_document_path=None,
                 started_at=started_at,
                 current_chunk=None,
+                skipped_document_ids=skipped_document_ids,
+                warnings=warnings,
+                policy_snapshot=policy_snapshot,
             ),
         )
 
@@ -502,9 +780,14 @@ def _build_archive_state(
     current_document_path: str | None,
     started_at: str | None,
     current_chunk: dict | None,
+    skipped_document_ids: list[str] | None = None,
+    warnings: list[dict] | None = None,
+    policy_snapshot: dict | None = None,
 ) -> dict:
     completed_set = set(completed_document_ids)
     pending_set = set(pending_document_ids)
+    skipped_set = set(skipped_document_ids or [])
+    normalized_warnings = list(warnings or [])
     return {
         "archive_id": archive_id,
         "archive_name": archive_name,
@@ -513,6 +796,7 @@ def _build_archive_state(
         "started_at": started_at,
         "expected_document_count": len(documents),
         "completed_document_ids": completed_document_ids,
+        "skipped_document_ids": list(skipped_document_ids or []),
         "pending_document_ids": pending_document_ids,
         "failed_document_id": failed_document_id,
         "failed_message": failed_message,
@@ -520,6 +804,9 @@ def _build_archive_state(
         "current_document_title": current_document_title,
         "current_document_path": current_document_path,
         "current_chunk": current_chunk,
+        "policy_snapshot": policy_snapshot,
+        "warning_count": len(normalized_warnings),
+        "warnings": normalized_warnings,
         "documents": [
             {
                 "document_id": _document_id(document.path),
@@ -536,6 +823,8 @@ def _build_archive_state(
                     if _document_id(document.path) == current_document_id and status == "running"
                     else "completed"
                     if _document_id(document.path) in completed_set
+                    else "skipped"
+                    if _document_id(document.path) in skipped_set
                     else "pending"
                     if _document_id(document.path) in pending_set
                     else "pending"
@@ -556,6 +845,7 @@ def persist_archive_outputs(
     knowledge: dict,
     contributions: list[dict],
     formal_extraction_mode: bool,
+    warnings: list[dict] | None = None,
 ) -> ArchiveBuildResult:
     output_root.mkdir(parents=True, exist_ok=True)
     json_path = output_root / f"{archive_id}-knowledge.json"
@@ -589,6 +879,7 @@ def persist_archive_outputs(
                 strict_mode=formal_extraction_mode,
                 contributions=contributions,
                 summary=knowledge["summary"],
+                warnings=warnings,
             ),
             ensure_ascii=False,
             indent=2,
@@ -640,6 +931,7 @@ def persist_legacy_archive_outputs(
     documents: list[SourceDocument],
     extraction_diagnostics: list[dict],
     formal_extraction_mode: bool,
+    warnings: list[dict] | None = None,
 ) -> ArchiveBuildResult:
     output_root.mkdir(parents=True, exist_ok=True)
     json_path = output_root / f"{archive_id}-knowledge.json"
@@ -687,6 +979,8 @@ def persist_legacy_archive_outputs(
                 "archive_name": archive_name,
                 "strict_mode": formal_extraction_mode,
                 "summary": knowledge["summary"],
+                "warning_count": len(warnings or []),
+                "warnings": list(warnings or []),
                 "documents": extraction_diagnostics,
             },
             ensure_ascii=False,

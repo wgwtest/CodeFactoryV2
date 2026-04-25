@@ -5,6 +5,7 @@ import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
 import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
+import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
@@ -21,7 +22,8 @@ import { XXP5SimPage } from "./pages/XXP5SimPage";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
-  { key: "/documents", label: <Link to="/documents">文档导入</Link> },
+  { key: "/documents", label: <Link to="/documents">知识库文档</Link> },
+  { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
@@ -33,9 +35,14 @@ const mainShellRoutes = new Set(items.map((item) => item.key));
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
-  const selectedMenuKey = location.pathname;
   const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
   const defaultRoute = envDefaultRoute && mainShellRoutes.has(envDefaultRoute) ? envDefaultRoute : "/documents";
+  const selectedMenuKey =
+    location.pathname === "/"
+      ? defaultRoute
+      : location.pathname.startsWith("/documents/intake")
+        ? "/documents/intake"
+        : location.pathname;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -70,14 +77,15 @@ function MainShell() {
           <Route path="/archives" element={<ArchiveManagementPage />} />
           <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/documents/intake" element={<DocumentIntakePage />} />
           <Route path="/governance" element={<GovernancePage />} />
-        <Route path="/graph" element={<KnowledgeGraphPage />} />
-        <Route path="/requirements" element={<RequirementsPage />} />
-        <Route path="/modeling" element={<ApplicationModelerPage />} />
-      </Routes>
-    </Layout.Content>
-  </Layout>
-);
+          <Route path="/graph" element={<KnowledgeGraphPage />} />
+          <Route path="/requirements" element={<RequirementsPage />} />
+          <Route path="/modeling" element={<ApplicationModelerPage />} />
+        </Routes>
+      </Layout.Content>
+    </Layout>
+  );
 }
 
 export default function App() {

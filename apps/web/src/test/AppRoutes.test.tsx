@@ -65,6 +65,16 @@ function mockDocumentsApis() {
   });
 }
 
+function mockDocumentIntakeApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/documents") {
+      return Promise.resolve({ data: [] });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
 function mockRequirementsApis() {
   getMock.mockImplementation((url: string) => {
     if (url === "/requirements/specs") {
@@ -505,8 +515,20 @@ test("renders documents page on /documents route", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
+  expect(await screen.findByText("当前知识库文档")).toBeInTheDocument();
   expect((await screen.findAllByText("10002024_NAS-EA-OV-2-As-Is-V1.0-091311")).length).toBeGreaterThan(0);
+});
+
+test("renders intake validation page on /documents/intake route", async () => {
+  mockDocumentIntakeApis();
+
+  render(
+    <MemoryRouter initialEntries={["/documents/intake"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("这是独立的接入验证链")).toBeInTheDocument();
 });
 
 test("redirects / to the main default page", async () => {
@@ -515,6 +537,9 @@ test("redirects / to the main default page", async () => {
   switch (defaultRoute) {
     case "/documents":
       mockDocumentsApis();
+      break;
+    case "/documents/intake":
+      mockDocumentIntakeApis();
       break;
     case "/requirements":
       mockRequirementsApis();
@@ -546,7 +571,12 @@ test("redirects / to the main default page", async () => {
 
   switch (defaultRoute) {
     case "/documents":
-      expect(await screen.findByText("已建库档案文档")).toBeInTheDocument();
+      expect(await screen.findByText("当前知识库文档")).toBeInTheDocument();
+      expect(screen.getByText("知识仓库")).toBeInTheDocument();
+      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
+      break;
+    case "/documents/intake":
+      expect(await screen.findByText("这是独立的接入验证链")).toBeInTheDocument();
       expect(screen.getByText("知识仓库")).toBeInTheDocument();
       expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
       break;

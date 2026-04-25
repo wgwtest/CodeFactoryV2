@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.archive_knowledge.policy_config import build_default_archive_policy_config, normalize_archive_policy_config
+
 
 class ArchiveRegistryService:
     def __init__(
@@ -71,6 +73,7 @@ class ArchiveRegistryService:
                 "status": "empty",
                 "last_built_at": None,
                 "last_error": None,
+                "policy_config": build_default_archive_policy_config(normalized_archive_id),
                 "created_at": now,
                 "updated_at": now,
             }
@@ -116,6 +119,26 @@ class ArchiveRegistryService:
             },
         )
 
+    def get_policy_config(self, archive_id: str) -> dict | None:
+        state = self._load_state()
+        entry = self._find_archive(state, archive_id)
+        if entry is None:
+            return None
+        return normalize_archive_policy_config(archive_id, entry.get("policy_config"))
+
+    def update_policy_config(self, archive_id: str, config: dict) -> dict | None:
+        state = self._load_state()
+        entry = self._find_archive(state, archive_id)
+        if entry is None:
+            return None
+
+        normalized = normalize_archive_policy_config(archive_id, config)
+        normalized["updated_at"] = self._now()
+        entry["policy_config"] = normalized
+        entry["updated_at"] = self._now()
+        self._save_state(state)
+        return normalize_archive_policy_config(archive_id, entry.get("policy_config"))
+
     def _update_archive(self, archive_id: str, changes: dict) -> dict | None:
         state = self._load_state()
         entry = self._find_archive(state, archive_id)
@@ -154,6 +177,7 @@ class ArchiveRegistryService:
                     "status": "ready" if self._resolve_base_path(self.default_archive_id).exists() else "empty",
                     "last_built_at": None,
                     "last_error": None,
+                    "policy_config": build_default_archive_policy_config(self.default_archive_id),
                     "created_at": now,
                     "updated_at": now,
                 },
@@ -220,6 +244,7 @@ class ArchiveRegistryService:
             "updated_at": payload.get("updated_at"),
             "expected_document_count": payload.get("expected_document_count", 0),
             "completed_document_ids": payload.get("completed_document_ids", []),
+            "skipped_document_ids": payload.get("skipped_document_ids", []),
             "pending_document_ids": payload.get("pending_document_ids", []),
             "failed_document_id": payload.get("failed_document_id"),
             "failed_message": payload.get("failed_message"),
@@ -227,6 +252,9 @@ class ArchiveRegistryService:
             "current_document_title": payload.get("current_document_title"),
             "current_document_path": payload.get("current_document_path"),
             "current_chunk": payload.get("current_chunk"),
+            "policy_snapshot": payload.get("policy_snapshot"),
+            "warning_count": payload.get("warning_count", 0),
+            "warnings": payload.get("warnings", []),
             "documents": [
                 {
                     "document_id": item.get("document_id"),
