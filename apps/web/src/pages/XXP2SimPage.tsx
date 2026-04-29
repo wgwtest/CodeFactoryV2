@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { Alert, Button, Card, Col, List, Row, Space, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 
 import { useArchiveContext } from "../context/ArchiveContext";
 import type { RequirementSpecDetail } from "../lib/api";
-import { buildP2SimWriteInput, p2SimTemplates } from "../lib/p2SimTemplates";
+import { buildP2SimWriteInput, p2SimTemplates, type P2SimTemplate } from "../lib/p2SimTemplates";
 import { createRequirementSpec } from "../lib/requirements";
 
 export function XXP2SimPage() {
@@ -30,6 +30,17 @@ export function XXP2SimPage() {
       setError(submitError instanceof Error ? submitError.message : "提交需求规格说明失败");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function selectTemplate(templateId: P2SimTemplate["template_id"]) {
+    setSelectedTemplateId(templateId);
+  }
+
+  function handleTemplateKeyDown(event: KeyboardEvent<HTMLDivElement>, templateId: P2SimTemplate["template_id"]) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectTemplate(templateId);
     }
   }
 
@@ -86,6 +97,7 @@ export function XXP2SimPage() {
           <Col xs={24} xl={10}>
             <Card title="轻量样板库" style={{ borderRadius: 20, boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)" }}>
               <Space direction="vertical" size={14} style={{ display: "flex" }}>
+                <Typography.Text type="secondary">点击卡片即可切换样板，右侧预览会实时更新。</Typography.Text>
                 {p2SimTemplates.map((template) => {
                   const isSelected = template.template_id === selectedTemplate?.template_id;
 
@@ -93,16 +105,25 @@ export function XXP2SimPage() {
                     <Card
                       key={template.template_id}
                       size="small"
+                      hoverable
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      onClick={() => selectTemplate(template.template_id)}
+                      onKeyDown={(event) => handleTemplateKeyDown(event, template.template_id)}
                       style={{
                         borderRadius: 16,
                         borderColor: isSelected ? "#2563eb" : "#d0d7de",
                         background: isSelected ? "linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%)" : "#ffffff",
+                        cursor: "pointer",
+                        boxShadow: isSelected ? "0 12px 28px rgba(37, 99, 235, 0.14)" : "0 6px 20px rgba(15, 23, 42, 0.05)",
                       }}
                     >
                       <Space direction="vertical" size={10} style={{ display: "flex" }}>
-                        <Space wrap>
+                        <Space wrap size={[8, 8]} style={{ justifyContent: "space-between" }}>
                           <Tag color={isSelected ? "blue" : "default"}>{template.badge}</Tag>
                           <Typography.Text strong>{template.title}</Typography.Text>
+                          {isSelected ? <Tag color="processing">当前样板</Tag> : null}
                         </Space>
                         <Typography.Text type="secondary">{template.use_case}</Typography.Text>
                         <Typography.Text>{template.fit_for}</Typography.Text>
@@ -111,12 +132,9 @@ export function XXP2SimPage() {
                           <Tag color="cyan">流程 {template.payload.processes.length}</Tag>
                           <Tag color="gold">约束 {template.payload.non_functional_constraints.length}</Tag>
                         </Space>
-                        <Button
-                          type={isSelected ? "primary" : "default"}
-                          onClick={() => setSelectedTemplateId(template.template_id)}
-                        >
-                          {isSelected ? `已选择 ${template.title}` : `选择${template.title}`}
-                        </Button>
+                        <Typography.Text style={{ color: isSelected ? "#2563eb" : "#64748b" }}>
+                          {isSelected ? `已选中，提交将使用 ${template.title}` : "点击切换为当前样板"}
+                        </Typography.Text>
                       </Space>
                     </Card>
                   );

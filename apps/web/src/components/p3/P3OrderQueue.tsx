@@ -32,54 +32,70 @@ export function P3OrderQueue({
               onClick={() => void onSelectOrder(order.order_id)}
               style={{
                 cursor: "pointer",
-                paddingInline: 12,
+                padding: 12,
                 borderRadius: 12,
                 background: order.order_id === selectedOrderId ? "#eff6ff" : "transparent",
+                alignItems: "stretch",
               }}
-              actions={[
-                <Button
-                  key="approve"
-                  type="primary"
-                  size="small"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void onApprove(order.order_id);
-                  }}
-                >
-                  审批通过
-                </Button>,
-                <Button
-                  key="reject"
-                  danger
-                  size="small"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void onReject(order.order_id);
-                  }}
-                >
-                  驳回
-                </Button>,
-                <Button
-                  key="generate"
-                  size="small"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void onGenerateDraft(order.order_id);
-                  }}
-                >
-                  生成软设草案
-                </Button>,
-              ]}
             >
-              <List.Item.Meta
-                title={
-                  <Space>
-                    <Typography.Text strong>{order.application_name}</Typography.Text>
-                    <Tag color="blue">{order.status}</Tag>
+              <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                  <Space wrap size={[8, 8]} style={{ width: "100%" }}>
+                    <Typography.Text
+                      strong
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 1.5,
+                        whiteSpace: "normal",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {order.application_name}
+                    </Typography.Text>
+                    <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                      {order.status}
+                    </Tag>
                   </Space>
-                }
-                description={`需求规格: ${order.requirement_spec_id}`}
-              />
+                  <Typography.Text type="secondary" style={{ whiteSpace: "normal", wordBreak: "break-all" }}>
+                    需求规格: {order.requirement_spec_id}
+                  </Typography.Text>
+                </div>
+
+                <div
+                  data-testid={`p3-order-actions-${order.order_id}`}
+                  style={{ display: "flex", flexWrap: "wrap", gap: 8 }}
+                >
+                  <Button
+                    type="primary"
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onApprove(order.order_id);
+                    }}
+                  >
+                    审批通过
+                  </Button>
+                  <Button
+                    danger
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onReject(order.order_id);
+                    }}
+                  >
+                    驳回
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onGenerateDraft(order.order_id);
+                    }}
+                  >
+                    生成软设草案
+                  </Button>
+                </div>
+              </div>
             </List.Item>
           )}
         />

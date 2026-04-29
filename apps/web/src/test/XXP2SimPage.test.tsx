@@ -53,7 +53,7 @@ test("renders xx-p2-sim and submits the selected lightweight requirement templat
   expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
   expect(screen.getByText("平台级业务系统")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "选择流程审批工具" }));
+  fireEvent.click(screen.getByRole("button", { name: /流程审批工具/ }));
 
   expect(await screen.findByText("研发立项审批工具")).toBeInTheDocument();
   expect(screen.getByText(/流程立项、部门会签和状态留痕/)).toBeInTheDocument();
@@ -77,4 +77,25 @@ test("renders xx-p2-sim and submits the selected lightweight requirement templat
   expect(await screen.findByText("已提交需求规格说明")).toBeInTheDocument();
   expect(screen.getByText(/规格标识：spec-sim-1/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "前往 XX-P3" })).toHaveAttribute("href", "/xx-p3");
+});
+
+test("switches the selected lightweight template when the user clicks the template card content", async () => {
+  render(
+    <MemoryRouter initialEntries={["/xx-p2-sim"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+  expect(screen.getByText("空域协同指挥平台")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("流程审批工具"));
+
+  expect(await screen.findByText("研发立项审批工具")).toBeInTheDocument();
+  expect(screen.getByText(/流程立项、部门会签和状态留痕/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("单体业务软件"));
+
+  expect(await screen.findByText("值班排班管理软件")).toBeInTheDocument();
+  expect(screen.getByText(/围绕单一业务域构造轻量需求输入/)).toBeInTheDocument();
 });
