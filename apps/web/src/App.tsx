@@ -8,6 +8,7 @@ import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { P6ObservationPage } from "./pages/P6ObservationPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
@@ -82,6 +83,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/portal" element={<P6PortalPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/observation")) {
+    return (
+      <Routes>
+        <Route path="/observation" element={<P6ObservationPage />} />
       </Routes>
     );
   }

@@ -1,0 +1,297 @@
+.p6-observation-page {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(86, 149, 255, 0.12), transparent 26%),
+    linear-gradient(180deg, #eef5ff 0%, #f8fbff 100%);
+  color: var(--p6-text-primary, #17385f);
+}
+
+.p6-observation-page--status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.p6-observation-status-card,
+.p6-observation-panel,
+.p6-observation-hero {
+  border: 1px solid rgba(140, 170, 214, 0.32);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 20px 42px rgba(18, 49, 85, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+.p6-observation-status-card {
+  width: min(480px, calc(100vw - 48px));
+  padding: 28px;
+}
+
+.p6-observation-status-card__title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.p6-observation-status-card__text {
+  margin-top: 10px;
+  color: #577390;
+  line-height: 1.6;
+}
+
+.p6-observation-status-card__button {
+  margin-top: 18px;
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid rgba(104, 138, 189, 0.42);
+  border-radius: 999px;
+  background: rgba(241, 246, 255, 0.86);
+  color: #2c507d;
+  cursor: pointer;
+}
+
+.p6-observation-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+}
+
+.p6-observation-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(233, 241, 255, 0.95);
+  border: 1px solid rgba(133, 163, 205, 0.48);
+  color: #20456f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.p6-observation-hero__title {
+  margin: 14px 0 0;
+  font-size: 36px;
+  line-height: 1.1;
+}
+
+.p6-observation-hero__text {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: #547190;
+  line-height: 1.7;
+}
+
+.p6-observation-hero__actions,
+.p6-observation-actions,
+.p6-observation-alert__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.p6-observation-switch {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(164, 186, 222, 0.6);
+  border-radius: 999px;
+  background: rgba(248, 251, 255, 0.92);
+  color: #2e537e;
+  cursor: pointer;
+}
+
+.p6-observation-switch.is-active {
+  background: linear-gradient(135deg, #e1edff 0%, #d8fff6 100%);
+  border-color: rgba(76, 124, 198, 0.52);
+}
+
+.p6-observation-panel {
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.p6-observation-panel__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #436487;
+  letter-spacing: 0.08em;
+}
+
+.p6-observation-overview,
+.p6-observation-comparison {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.p6-observation-overview__item,
+.p6-observation-comparison__item {
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(243, 247, 255, 0.92);
+  border: 1px solid rgba(183, 201, 229, 0.42);
+}
+
+.p6-observation-overview__item span,
+.p6-observation-comparison__item span {
+  display: block;
+  color: #6b85a1;
+  font-size: 12px;
+}
+
+.p6-observation-overview__item strong,
+.p6-observation-comparison__item strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.p6-observation-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.p6-observation-stage-card {
+  padding: 16px;
+  border: 1px solid rgba(183, 201, 229, 0.42);
+  border-radius: 24px;
+  background: rgba(243, 247, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+}
+
+.p6-observation-stage-card.is-active {
+  border-color: rgba(76, 124, 198, 0.62);
+  box-shadow: 0 16px 32px rgba(83, 124, 181, 0.16);
+}
+
+.p6-observation-stage-card__topline,
+.p6-observation-stage-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.p6-observation-stage-card__title {
+  margin-top: 14px;
+  font-weight: 700;
+}
+
+.p6-observation-stage-card__headline {
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.p6-observation-stage-card__summary {
+  margin-top: 10px;
+  color: #5b7594;
+  line-height: 1.6;
+}
+
+.p6-observation-stage-card__footer {
+  margin-top: 14px;
+  color: #7a8fa7;
+  font-size: 12px;
+}
+
+.p6-observation-columns {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 18px;
+}
+
+.p6-observation-alert {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.p6-observation-alert__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  min-height: 74px;
+  border-radius: 24px;
+  background: rgba(245, 251, 255, 0.96);
+  border: 1px solid rgba(183, 201, 229, 0.42);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.p6-observation-alert__message,
+.p6-observation-degraded {
+  margin-top: 16px;
+  color: #546f8f;
+  line-height: 1.7;
+}
+
+.p6-observation-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.p6-observation-chip--ready {
+  background: rgba(219, 248, 235, 0.96);
+  color: #0f7b4a;
+}
+
+.p6-observation-chip--warning {
+  background: rgba(255, 243, 209, 0.96);
+  color: #996300;
+}
+
+.p6-observation-chip--blocked {
+  background: rgba(255, 225, 225, 0.98);
+  color: #b42318;
+}
+
+.p6-observation-chip--neutral {
+  background: rgba(228, 235, 244, 0.98);
+  color: #516981;
+}
+
+.p6-observation-loading {
+  margin-top: 14px;
+  color: #5f7c9d;
+}
+
+@media (max-width: 1200px) {
+  .p6-observation-overview,
+  .p6-observation-comparison,
+  .p6-observation-stage-grid,
+  .p6-observation-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .p6-observation-page {
+    padding: 18px;
+  }
+
+  .p6-observation-hero {
+    flex-direction: column;
+  }
+
+  .p6-observation-overview,
+  .p6-observation-comparison,
+  .p6-observation-stage-grid,
+  .p6-observation-columns {
+    grid-template-columns: 1fr;
+  }
+}

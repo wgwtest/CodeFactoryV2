@@ -1,12 +1,15 @@
+import type { P6PortalProjection } from "../../lib/p6";
 import {
   P6_PORTAL_LAYOUT_STORAGE_KEY,
-  p6PortalArtifacts,
-  p6PortalFlows,
-  p6PortalNodes,
+  buildPortalViewArtifact,
+  buildPortalViewFlow,
+  buildPortalViewNode,
   readP6PortalLayout,
-  type P6PortalArtifact,
   type P6PortalNodeId,
   type P6PortalPosition,
+  type P6PortalViewArtifact,
+  type P6PortalViewFlow,
+  type P6PortalViewNode,
 } from "./p6PortalData";
 
 export type P6PortalLayoutMode = "system" | "personal";
@@ -30,6 +33,14 @@ export type P6PortalProjectionSummary = {
   archiveName: string;
   layoutModeLabel: string;
   relationshipModeLabel: string;
+  sourceLabel: string;
+  scenarioLabel: string;
+  focusHint: string;
+  alertMessage: string;
+  knowledgeBaseName: string;
+  contextHint: string;
+  freshnessLabel: string;
+  degradedReason: string | null;
 };
 
 export function hasStoredP6PortalLayout() {
@@ -44,9 +55,21 @@ export function readPersonalPortalLayout(): Record<P6PortalNodeId, P6PortalPosit
   return readP6PortalLayout();
 }
 
-export function buildPortalNodeRelationSnapshots(): Record<P6PortalNodeId, P6PortalNodeRelationSnapshot> {
+export function buildPortalViewModel(projection: P6PortalProjection) {
+  return {
+    nodes: projection.node_list.map(buildPortalViewNode),
+    flows: projection.flow_list.map(buildPortalViewFlow),
+    artifacts: projection.artifact_list.map(buildPortalViewArtifact),
+  };
+}
+
+export function buildPortalNodeRelationSnapshots(
+  nodes: P6PortalViewNode[],
+  flows: P6PortalViewFlow[],
+  artifacts: P6PortalViewArtifact[],
+): Record<P6PortalNodeId, P6PortalNodeRelationSnapshot> {
   const snapshots = Object.fromEntries(
-    p6PortalNodes.map((node) => [
+    nodes.map((node) => [
       node.id,
       {
         nodeId: node.id,
@@ -58,12 +81,12 @@ export function buildPortalNodeRelationSnapshots(): Record<P6PortalNodeId, P6Por
     ]),
   ) as Record<P6PortalNodeId, P6PortalNodeRelationSnapshot>;
 
-  p6PortalFlows.forEach((flow) => {
+  flows.forEach((flow) => {
     snapshots[flow.from].outgoing += 1;
     snapshots[flow.to].incoming += 1;
   });
 
-  p6PortalArtifacts.forEach((artifact) => {
+  artifacts.forEach((artifact) => {
     artifact.linkedNodeIds.forEach((nodeId) => {
       snapshots[nodeId].artifacts += 1;
     });
@@ -80,32 +103,42 @@ export function buildPortalProjectionSummary(
   archiveName: string,
   layoutMode: P6PortalLayoutMode,
   relationshipMode: P6PortalRelationshipViewMode,
+  projection: P6PortalProjection,
 ) {
   const manualCount =
-    p6PortalNodes.filter((node) => node.projectionMode === "manual").length +
-    p6PortalArtifacts.filter((artifact) => artifact.projectionMode === "manual").length;
-  const autoCount = p6PortalNodes.length + p6PortalArtifacts.length - manualCount;
+    projection.node_list.filter((node) => node.projection_mode === "manual").length +
+    projection.artifact_list.filter((artifact) => artifact.projection_mode === "manual").length;
+  const autoCount = projection.node_list.length + projection.artifact_list.length - manualCount;
 
   return {
-    moduleCount: p6PortalNodes.filter((node) => node.kind === "module").length,
-    userCount: p6PortalNodes.filter((node) => node.kind === "user").length,
-    artifactCount: p6PortalArtifacts.length,
-    flowCount: p6PortalFlows.length,
+    moduleCount: projection.portal_summary.module_count,
+    userCount: projection.portal_summary.user_count,
+    artifactCount: projection.portal_summary.artifact_count,
+    flowCount: projection.portal_summary.flow_count,
     autoProjectionCount: autoCount,
     manualProjectionCount: manualCount,
     archiveName,
     layoutModeLabel: layoutMode === "system" ? "推荐布局" : "个人布局",
     relationshipModeLabel: relationshipMode === "semantic" ? "语义线" : "投影聚合",
+    sourceLabel: projection.portal_summary.source_label,
+    scenarioLabel: projection.portal_summary.scenario_label,
+    focusHint: projection.portal_summary.focus_hint,
+    alertMessage: projection.portal_summary.alert_message,
+    knowledgeBaseName: projection.knowledge_context.current_knowledge_base_name,
+    contextHint: projection.knowledge_context.context_hint,
+    freshnessLabel: projection.freshness === "fresh" ? "新鲜" : projection.freshness === "stale" ? "过期" : "未知",
+    degradedReason: projection.degraded_reason ?? null,
   } satisfies P6PortalProjectionSummary;
 }
 
 export function getArtifactsForRelationshipView(
   relationshipMode: P6PortalRelationshipViewMode,
   focusedNodeId: P6PortalNodeId | null,
-): P6PortalArtifact[] {
+  artifacts: P6PortalViewArtifact[],
+): P6PortalViewArtifact[] {
   if (relationshipMode === "semantic" || !focusedNodeId) {
-    return p6PortalArtifacts;
+    return artifacts;
   }
 
-  return p6PortalArtifacts.filter((artifact) => artifact.linkedNodeIds.includes(focusedNodeId));
+  return artifacts.filter((artifact) => artifact.linkedNodeIds.includes(focusedNodeId));
 }

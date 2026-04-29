@@ -6,6 +6,13 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
 import App from "../App";
+import {
+  buildDisplayBaseline,
+  buildPlatformLegend,
+  buildPlatformRoutes,
+  buildPortalProjectionEnvelope,
+  buildScenarioCatalog,
+} from "./p6TestData";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
@@ -24,6 +31,46 @@ beforeEach(() => {
   postMock.mockReset();
   patchMock.mockReset();
 });
+
+function mockPortalApis() {
+  getMock.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
+    if (url === "/p6/mock-scenarios") {
+      return Promise.resolve({ data: buildScenarioCatalog() });
+    }
+
+    if (url === "/p6/portal-projection") {
+      return Promise.resolve({ data: buildPortalProjectionEnvelope(config?.params?.scenario ?? "baseline") });
+    }
+
+    if (url === "/platform-config/display-baseline") {
+      return Promise.resolve({ data: buildDisplayBaseline() });
+    }
+
+    if (url === "/platform-config/routes") {
+      return Promise.resolve({ data: buildPlatformRoutes() });
+    }
+
+    if (url === "/platform-config/legend") {
+      return Promise.resolve({ data: buildPlatformLegend() });
+    }
+
+    if (url === "/platform-display/workbench") {
+      return Promise.resolve({
+        data: {
+          version: "p6.4-v1",
+          templates: [],
+          bindings: [],
+          layouts: [],
+          presets: [],
+          experiments: [],
+          promotion_candidates: [],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
 
 function mockDocumentsApis() {
   getMock.mockImplementation((url: string) => {
@@ -444,6 +491,8 @@ test("redirects / to the main default page", async () => {
       mockDocumentsApis();
       break;
     case "/portal":
+      mockPortalApis();
+      break;
     case "/build":
       mockSoftwareBuildApis();
       break;
