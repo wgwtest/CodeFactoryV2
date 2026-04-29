@@ -1,5 +1,14 @@
-export type P6PortalNodeId = "user" | "p1" | "p2" | "p3" | "p4" | "p5";
+import type {
+  P6ParticipantNodePayload,
+  P6PortalArtifact,
+  P6PortalFlow,
+  P6PortalNode,
+  P6ProjectionMode,
+  P6StageNodeStatusPayload,
+} from "../../lib/p6";
 
+export type P6PortalNodeId = "user" | "p1" | "p2" | "p3" | "p4" | "p5";
+export type P6PortalArtifactId = "spec" | "design" | "tooling";
 export type P6PortalAnchorSide = "left" | "right" | "top" | "bottom";
 
 export type P6PortalPosition = {
@@ -7,24 +16,39 @@ export type P6PortalPosition = {
   y: number;
 };
 
-export type P6PortalNode = {
-  id: P6PortalNodeId;
-  title: string;
-  stage?: string;
-  summary: string;
-  status: string;
-  metrics: string[];
-  route?: string;
-  accent: string;
-  width: number;
-  height: number;
-  kind: "user" | "module";
-  categoryLabel: string;
-  projectionMode: "auto" | "manual";
-  description: string;
-};
+export type P6PortalViewNode =
+  | {
+      id: "user";
+      kind: "user";
+      title: string;
+      summary: string;
+      projectionMode: P6ProjectionMode;
+      accent: string;
+      width: number;
+      height: number;
+      categoryLabel: string;
+      description: string;
+      participantPayload: P6ParticipantNodePayload;
+    }
+  | {
+      id: Exclude<P6PortalNodeId, "user">;
+      kind: "module";
+      title: string;
+      stage: string;
+      route?: string;
+      summary: string;
+      primaryStatus: string;
+      freshness: string;
+      projectionMode: P6ProjectionMode;
+      accent: string;
+      width: number;
+      height: number;
+      categoryLabel: string;
+      description: string;
+      stageCard: P6StageNodeStatusPayload;
+    };
 
-export type P6PortalFlow = {
+export type P6PortalViewFlow = {
   id: string;
   from: P6PortalNodeId;
   to: P6PortalNodeId;
@@ -36,19 +60,86 @@ export type P6PortalFlow = {
   semanticLabel: string;
 };
 
-export type P6PortalArtifactTone = "analysis" | "design" | "tooling";
-
-export type P6PortalArtifact = {
-  id: "spec" | "design" | "tooling";
+export type P6PortalViewArtifact = {
+  id: P6PortalArtifactId;
   title: string;
   summary: string;
   x: number;
   y: number;
-  tone: P6PortalArtifactTone;
+  tone: "analysis" | "design" | "tooling";
   categoryLabel: string;
-  projectionMode: "auto" | "manual";
+  projectionMode: P6ProjectionMode;
   linkedNodeIds: P6PortalNodeId[];
-  linkedFlowIds: string[];
+};
+
+type P6PortalNodePreset = {
+  width: number;
+  height: number;
+  accent: string;
+  categoryLabel: string;
+};
+
+type P6PortalArtifactPreset = {
+  x: number;
+  y: number;
+  categoryLabel: string;
+};
+
+const P6_PORTAL_NODE_PRESETS: Record<P6PortalNodeId, P6PortalNodePreset> = {
+  user: {
+    width: 220,
+    height: 150,
+    accent: "#2563eb",
+    categoryLabel: "角色节点",
+  },
+  p1: {
+    width: 330,
+    height: 208,
+    accent: "#0f766e",
+    categoryLabel: "系统节点",
+  },
+  p2: {
+    width: 340,
+    height: 208,
+    accent: "#2563eb",
+    categoryLabel: "系统节点",
+  },
+  p3: {
+    width: 340,
+    height: 208,
+    accent: "#4f46e5",
+    categoryLabel: "系统节点",
+  },
+  p4: {
+    width: 360,
+    height: 208,
+    accent: "#ca8a04",
+    categoryLabel: "系统节点",
+  },
+  p5: {
+    width: 350,
+    height: 208,
+    accent: "#dc2626",
+    categoryLabel: "系统节点",
+  },
+};
+
+const P6_PORTAL_ARTIFACT_PRESETS: Record<P6PortalArtifactId, P6PortalArtifactPreset> = {
+  spec: {
+    x: 745,
+    y: 300,
+    categoryLabel: "数据产物",
+  },
+  design: {
+    x: 1180,
+    y: 330,
+    categoryLabel: "数据产物",
+  },
+  tooling: {
+    x: 1350,
+    y: 610,
+    categoryLabel: "数据产物",
+  },
 };
 
 export const P6_PORTAL_LAYOUT_STORAGE_KEY = "code-factory.p6.portal.layout";
@@ -57,211 +148,6 @@ export const P6_PORTAL_WORLD = {
   width: 1920,
   height: 1080,
 };
-
-export const p6PortalNodes: P6PortalNode[] = [
-  {
-    id: "user",
-    title: "行业用户",
-    summary: "以业务语言提出应用目标",
-    status: "持续接入",
-    metrics: ["问题定义", "对象确认", "目标澄清"],
-    accent: "#2563eb",
-    width: 220,
-    height: 160,
-    kind: "user",
-    categoryLabel: "角色节点",
-    projectionMode: "manual",
-    description: "行业专家以业务视角进入平台，关注对象、场景、边界和目标，而不是技术实现细节。",
-  },
-  {
-    id: "p1",
-    title: "业务知识库",
-    stage: "P1",
-    summary: "沉淀领域对象、事件、流程与释义",
-    status: "知识供给运行中",
-    metrics: ["实体 1305", "事件 88", "流程 42"],
-    route: "/graph",
-    accent: "#0f766e",
-    width: 330,
-    height: 188,
-    kind: "module",
-    categoryLabel: "系统节点",
-    projectionMode: "auto",
-    description: "负责把原始资料沉淀为可追溯、可筛选、可查询的业务知识元素，并向下游提供稳定知识出口。",
-  },
-  {
-    id: "p2",
-    title: "需求分析系统",
-    stage: "P2",
-    summary: "把业务语言组织成结构化需求对象",
-    status: "建模路径收敛中",
-    metrics: ["待建模 7", "规格说明 3", "对象优先"],
-    route: "/requirements",
-    accent: "#2563eb",
-    width: 340,
-    height: 196,
-    kind: "module",
-    categoryLabel: "系统节点",
-    projectionMode: "auto",
-    description: "通过选配式和表单式建模，把用户输入组织成需求规格说明与结构化需求模型。",
-  },
-  {
-    id: "p3",
-    title: "软件设计系统",
-    stage: "P3",
-    summary: "消费规格说明，转成软件设计说明",
-    status: "结构表达准备中",
-    metrics: ["设计任务 4", "结构说明 2", "工具化描述"],
-    route: "/modeling",
-    accent: "#4f46e5",
-    width: 340,
-    height: 196,
-    kind: "module",
-    categoryLabel: "系统节点",
-    projectionMode: "auto",
-    description: "承接需求规格说明，形成软件设计说明，并进一步导出工具可消费的结构化设计表达。",
-  },
-  {
-    id: "p4",
-    title: "工具仓库 / 工具中台",
-    stage: "P4",
-    summary: "承载工具能力、匹配分析与调用编排",
-    status: "工具匹配在线推演",
-    metrics: ["工具 18", "匹配中 6", "调用链 11"],
-    route: "/xx-p4",
-    accent: "#ca8a04",
-    width: 360,
-    height: 196,
-    kind: "module",
-    categoryLabel: "系统节点",
-    projectionMode: "auto",
-    description: "沉淀工具能力与匹配规则，支撑设计产物向执行能力映射和后续编排。",
-  },
-  {
-    id: "p5",
-    title: "软件构建系统",
-    stage: "P5",
-    summary: "整合设计说明、组件与工具形成应用",
-    status: "构建链准备就绪",
-    metrics: ["构建链 5", "应用骨架 2", "集成待验证"],
-    route: "/build",
-    accent: "#dc2626",
-    width: 350,
-    height: 196,
-    kind: "module",
-    categoryLabel: "系统节点",
-    projectionMode: "auto",
-    description: "结合设计说明、工具中台和组件资产，执行应用构建、集成与结果输出。",
-  },
-];
-
-export const p6PortalFlows: P6PortalFlow[] = [
-  {
-    id: "user-p2",
-    from: "user",
-    to: "p2",
-    fromSide: "right",
-    toSide: "left",
-    label: "需求进入",
-    tone: "analysis",
-    renderStyle: "solid",
-    semanticLabel: "角色输入",
-  },
-  {
-    id: "p1-p2",
-    from: "p1",
-    to: "p2",
-    fromSide: "top",
-    toSide: "bottom",
-    label: "知识供给",
-    tone: "knowledge",
-    renderStyle: "dashed",
-    semanticLabel: "知识支撑",
-  },
-  {
-    id: "p2-p3",
-    from: "p2",
-    to: "p3",
-    fromSide: "right",
-    toSide: "left",
-    label: "规格说明",
-    tone: "analysis",
-    renderStyle: "solid",
-    semanticLabel: "规格投递",
-  },
-  {
-    id: "p3-p4",
-    from: "p3",
-    to: "p4",
-    fromSide: "bottom",
-    toSide: "top",
-    label: "工具匹配",
-    tone: "tooling",
-    renderStyle: "dashed",
-    semanticLabel: "能力匹配",
-  },
-  {
-    id: "p4-p5",
-    from: "p4",
-    to: "p5",
-    fromSide: "right",
-    toSide: "left",
-    label: "构建执行",
-    tone: "delivery",
-    renderStyle: "solid",
-    semanticLabel: "执行主链",
-  },
-  {
-    id: "p3-p5",
-    from: "p3",
-    to: "p5",
-    fromSide: "right",
-    toSide: "left",
-    label: "设计落地",
-    tone: "design",
-    renderStyle: "solid",
-    semanticLabel: "设计转化",
-  },
-];
-
-export const p6PortalArtifacts: P6PortalArtifact[] = [
-  {
-    id: "spec",
-    title: "需求规格说明",
-    summary: "从需求建模投影出的结构化规格",
-    x: 745,
-    y: 300,
-    tone: "analysis",
-    categoryLabel: "数据产物",
-    projectionMode: "auto",
-    linkedNodeIds: ["p2", "p3"],
-    linkedFlowIds: ["p2-p3"],
-  },
-  {
-    id: "design",
-    title: "软件设计说明",
-    summary: "从规格说明转化出的设计表达",
-    x: 1180,
-    y: 330,
-    tone: "design",
-    categoryLabel: "数据产物",
-    projectionMode: "auto",
-    linkedNodeIds: ["p3", "p5"],
-    linkedFlowIds: ["p3-p5"],
-  },
-  {
-    id: "tooling",
-    title: "工具化描述 / 调用编排",
-    summary: "驱动工具中台与构建执行的调用对象",
-    x: 1350,
-    y: 610,
-    tone: "tooling",
-    categoryLabel: "数据产物",
-    projectionMode: "auto",
-    linkedNodeIds: ["p3", "p4", "p5"],
-    linkedFlowIds: ["p3-p4", "p4-p5"],
-  },
-];
 
 export const defaultP6PortalLayout: Record<P6PortalNodeId, P6PortalPosition> = {
   user: { x: 110, y: 430 },
@@ -277,6 +163,99 @@ export const p6PortalLegendRoadmap = [
   { id: "p6.3", label: "权限与角色控制", status: "占位" },
   { id: "p6.4", label: "入口与导航治理", status: "占位" },
 ];
+
+function toPortalNodeId(nodeId: string): P6PortalNodeId {
+  if (nodeId === "p1" || nodeId === "p2" || nodeId === "p3" || nodeId === "p4" || nodeId === "p5") {
+    return nodeId;
+  }
+  return "user";
+}
+
+function toPortalArtifactId(artifactId: string): P6PortalArtifactId {
+  if (artifactId === "design" || artifactId === "tooling") {
+    return artifactId;
+  }
+  return "spec";
+}
+
+export function buildPortalViewNode(node: P6PortalNode): P6PortalViewNode {
+  const nodeId = toPortalNodeId(node.node_id);
+  const preset = P6_PORTAL_NODE_PRESETS[nodeId];
+
+  if (node.node_kind === "user" && node.participant_payload) {
+    return {
+      id: "user",
+      kind: "user",
+      title: node.title,
+      summary: node.summary,
+      projectionMode: node.projection_mode,
+      accent: preset.accent,
+      width: preset.width,
+      height: preset.height,
+      categoryLabel: preset.categoryLabel,
+      description: node.description,
+      participantPayload: node.participant_payload,
+    };
+  }
+
+  return {
+    id: nodeId === "user" ? "p1" : nodeId,
+    kind: "module",
+    title: node.title,
+    stage: node.stage_id ?? "",
+    route: node.route ?? undefined,
+    summary: node.summary,
+    primaryStatus: node.primary_status ?? "",
+    freshness: node.freshness ?? "unknown",
+    projectionMode: node.projection_mode,
+    accent: preset.accent,
+    width: preset.width,
+    height: preset.height,
+    categoryLabel: preset.categoryLabel,
+    description: node.description,
+    stageCard: node.stage_card ?? {
+      stage_id: node.stage_id ?? "",
+      headline_value: node.title,
+      summary_line: node.summary,
+      metric_items: [],
+      entry_badge: { label: "入口未知", tone: "neutral" },
+      health_badge: { label: "未知", tone: "neutral" },
+      timestamp_label: "时间未知",
+      degraded_hint: null,
+    },
+  };
+}
+
+export function buildPortalViewFlow(flow: P6PortalFlow): P6PortalViewFlow {
+  return {
+    id: flow.flow_id,
+    from: toPortalNodeId(flow.from_node_id),
+    to: toPortalNodeId(flow.to_node_id),
+    fromSide: flow.from_pin,
+    toSide: flow.to_pin,
+    label: flow.label,
+    tone: flow.render_tone,
+    renderStyle: flow.render_style,
+    semanticLabel: flow.semantic_type,
+  };
+}
+
+export function buildPortalViewArtifact(artifact: P6PortalArtifact): P6PortalViewArtifact {
+  const artifactId = toPortalArtifactId(artifact.artifact_id);
+  const preset = P6_PORTAL_ARTIFACT_PRESETS[artifactId];
+
+  return {
+    id: artifactId,
+    title: artifact.title,
+    summary: artifact.summary,
+    x: preset.x,
+    y: preset.y,
+    tone: artifact.render_tone,
+    categoryLabel: preset.categoryLabel,
+    projectionMode: artifact.projection_mode,
+    linkedNodeIds: artifact.linked_node_ids.map(toPortalNodeId),
+  };
+}
 
 export function readP6PortalLayout() {
   if (typeof window === "undefined") {

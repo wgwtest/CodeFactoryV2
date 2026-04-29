@@ -1,7 +1,7 @@
 import { Button } from "antd";
 
 import type { MouseEventHandler } from "react";
-import { p6PortalLegendRoadmap } from "./p6PortalData";
+import type { P6PlatformLegend } from "../../lib/p6";
 import type {
   P6PortalLayoutMode,
   P6PortalProjectionSummary,
@@ -10,6 +10,7 @@ import type {
 
 type P6BlueprintLegendProps = {
   archiveName: string;
+  legend: P6PlatformLegend;
   projectionSummary: P6PortalProjectionSummary;
   layoutMode: P6PortalLayoutMode;
   relationshipMode: P6PortalRelationshipViewMode;
@@ -21,6 +22,7 @@ type P6BlueprintLegendProps = {
 
 export function P6BlueprintLegend({
   archiveName,
+  legend,
   projectionSummary,
   layoutMode,
   relationshipMode,
@@ -36,17 +38,33 @@ export function P6BlueprintLegend({
         <span className="p6-blueprint-legend__archive">知识库 · {archiveName}</span>
       </div>
 
-      <p className="p6-blueprint-legend__summary">门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。</p>
+      <p className="p6-blueprint-legend__summary">{legend.summary_copy}</p>
+
+      <div className="p6-blueprint-legend__group">
+        <div className="p6-blueprint-legend__group-title">上下文</div>
+        <div className="p6-blueprint-legend__fact">
+          数据源：{projectionSummary.sourceLabel} · {projectionSummary.scenarioLabel}
+        </div>
+        <div className="p6-blueprint-legend__fact">当前知识库：{projectionSummary.knowledgeBaseName}</div>
+        <div className="p6-blueprint-legend__fact">观察提示：{projectionSummary.focusHint}</div>
+        <div className="p6-blueprint-legend__fact">场景说明：{projectionSummary.alertMessage}</div>
+        {projectionSummary.degradedReason ? (
+          <div className="p6-blueprint-legend__fact">降级说明：{projectionSummary.degradedReason}</div>
+        ) : null}
+      </div>
 
       <div className="p6-blueprint-legend__group">
         <div className="p6-blueprint-legend__group-title">交互</div>
-        <div className="p6-blueprint-legend__fact">单击高亮 / 双击进入 / 滚轮缩放 / 背景平移</div>
-        <div className="p6-blueprint-legend__fact">节点拖拽仅在自动布局区内生效，超界后自动回收</div>
+        {legend.interaction_facts.map((item) => (
+          <div key={item} className="p6-blueprint-legend__fact">
+            {item}
+          </div>
+        ))}
       </div>
 
       <div className="p6-blueprint-legend__group">
         <div className="p6-blueprint-legend__group-title">元素语言</div>
-        <div className="p6-blueprint-legend__fact">圆角卡片 = 系统节点，椭圆胶囊 = 角色节点，小胶囊 = 数据产物</div>
+        <div className="p6-blueprint-legend__fact">{legend.element_language_copy}</div>
       </div>
 
       <div className="p6-blueprint-legend__group">
@@ -108,39 +126,27 @@ export function P6BlueprintLegend({
         </div>
         <div className="p6-blueprint-legend__fact">当前布局：{projectionSummary.layoutModeLabel}</div>
         <div className="p6-blueprint-legend__fact">关系视图：{projectionSummary.relationshipModeLabel}</div>
+        <div className="p6-blueprint-legend__fact">数据新鲜度：{projectionSummary.freshnessLabel}</div>
+        <div className="p6-blueprint-legend__fact">观察上下文：{projectionSummary.contextHint}</div>
       </div>
 
       <div className="p6-blueprint-legend__group">
         <div className="p6-blueprint-legend__group-title">流向标记</div>
         <ul className="p6-blueprint-legend__signals">
-          <li>
-            <span className="p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--knowledge" />
-            <span>知识供给</span>
-          </li>
-          <li>
-            <span className="p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--analysis" />
-            <span>需求分析</span>
-          </li>
-          <li>
-            <span className="p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--design" />
-            <span>设计转化</span>
-          </li>
-          <li>
-            <span className="p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--tooling" />
-            <span>工具匹配</span>
-          </li>
-          <li>
-            <span className="p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--delivery" />
-            <span>构建执行</span>
-          </li>
+          {legend.signal_items.map((item) => (
+            <li key={item.label}>
+              <span className={`p6-blueprint-legend__signal-dot p6-blueprint-legend__signal-dot--${item.tone}`} />
+              <span>{item.label}</span>
+            </li>
+          ))}
         </ul>
       </div>
 
       <div className="p6-blueprint-legend__group">
         <div className="p6-blueprint-legend__group-title">平台注释</div>
         <ul className="p6-blueprint-legend__roadmap">
-          {p6PortalLegendRoadmap.map((item) => (
-            <li key={item.id}>
+          {legend.roadmap_items.map((item) => (
+            <li key={item.item_id}>
               <span>{item.label}</span>
               <strong>{item.status}</strong>
             </li>
