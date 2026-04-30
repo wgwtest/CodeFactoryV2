@@ -12,6 +12,10 @@ import {
   type P6PortalViewNode,
 } from "./p6PortalData";
 
+function isRelationNodeId(nodeId: string): nodeId is P6PortalNodeId {
+  return nodeId === "user" || nodeId === "p1" || nodeId === "p2" || nodeId === "p3" || nodeId === "p4" || nodeId === "p5";
+}
+
 export type P6PortalLayoutMode = "system" | "personal";
 export type P6PortalRelationshipViewMode = "semantic" | "projection";
 
@@ -57,7 +61,7 @@ export function readPersonalPortalLayout(): Record<P6PortalNodeId, P6PortalPosit
 
 export function buildPortalViewModel(projection: P6PortalProjection) {
   return {
-    nodes: projection.node_list.map(buildPortalViewNode),
+    nodes: projection.node_list.filter((node) => node.node_kind === "module").map(buildPortalViewNode),
     flows: projection.flow_list.map(buildPortalViewFlow),
     artifacts: projection.artifact_list.map(buildPortalViewArtifact),
   };
@@ -67,7 +71,7 @@ export function buildPortalNodeRelationSnapshots(
   nodes: P6PortalViewNode[],
   flows: P6PortalViewFlow[],
   artifacts: P6PortalViewArtifact[],
-): Record<P6PortalNodeId, P6PortalNodeRelationSnapshot> {
+): Partial<Record<P6PortalNodeId, P6PortalNodeRelationSnapshot>> {
   const snapshots = Object.fromEntries(
     nodes.map((node) => [
       node.id,
@@ -79,21 +83,35 @@ export function buildPortalNodeRelationSnapshots(
         label: "",
       },
     ]),
-  ) as Record<P6PortalNodeId, P6PortalNodeRelationSnapshot>;
+  ) as Partial<Record<P6PortalNodeId, P6PortalNodeRelationSnapshot>>;
 
   flows.forEach((flow) => {
-    snapshots[flow.from].outgoing += 1;
-    snapshots[flow.to].incoming += 1;
+    if (isRelationNodeId(flow.from)) {
+      const fromSnapshot = snapshots[flow.from];
+      if (fromSnapshot) {
+        fromSnapshot.outgoing += 1;
+      }
+    }
+    if (isRelationNodeId(flow.to)) {
+      const toSnapshot = snapshots[flow.to];
+      if (toSnapshot) {
+        toSnapshot.incoming += 1;
+      }
+    }
   });
 
   artifacts.forEach((artifact) => {
     artifact.linkedNodeIds.forEach((nodeId) => {
-      snapshots[nodeId].artifacts += 1;
+      if (snapshots[nodeId]) {
+        snapshots[nodeId].artifacts += 1;
+      }
     });
   });
 
   Object.values(snapshots).forEach((snapshot) => {
-    snapshot.label = `入${snapshot.incoming} / 出${snapshot.outgoing} / 产物${snapshot.artifacts}`;
+    if (snapshot) {
+      snapshot.label = `入${snapshot.incoming} / 出${snapshot.outgoing} / 产物${snapshot.artifacts}`;
+    }
   });
 
   return snapshots;

@@ -77,12 +77,12 @@ test("switches focus stage and scenario in the observation page", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("无人协同批次 A")).toBeInTheDocument();
+  expect(await screen.findByText("支持软件 24 个，需求规格 86 份，业务对象 430 个")).toBeInTheDocument();
   expect(screen.getByTestId("p6-observation-stage-card-P2")).toHaveAttribute("data-active", "true");
 
   fireEvent.click(screen.getByRole("button", { name: "交付缺口" }));
 
-  expect(await screen.findByText("交付主单 DO-240421-04")).toBeInTheDocument();
+  expect(await screen.findByText("目录输出受阻，需人工确认缺口与回补路径。")).toBeInTheDocument();
   expect(screen.getByText("需人工确认缺口与回补路径。")).toBeInTheDocument();
 
   fireEvent.click(screen.getByTestId("p6-observation-stage-card-P5"));

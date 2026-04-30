@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-  createP6DisplayExperiment,
-  getP6DisplayWorkbench,
-  type P6DisplayWorkbenchBootstrap,
   type P6MockScenarioCatalog,
   type P6PlatformDisplayBaselinePackage,
   type P6PlatformLegend,
@@ -14,7 +11,6 @@ import {
   type P6SourceMode,
 } from "../../lib/p6";
 import { P6BlueprintArtifact } from "./P6BlueprintArtifact";
-import { P6ExperimentWorkbench } from "./P6ExperimentWorkbench";
 import { P6BlueprintLegend } from "./P6BlueprintLegend";
 import { P6BlueprintNode } from "./P6BlueprintNode";
 import { buildP6CssVariables } from "./p6Baseline";
@@ -22,33 +18,20 @@ import {
   P6_PORTAL_LAYOUT_STORAGE_KEY,
   P6_PORTAL_WORLD,
   type P6PortalAnchorSide,
+  type P6PortalFlowEndpointId,
   type P6PortalNodeId,
   type P6PortalPosition,
+  type P6PortalViewNode,
   defaultP6PortalLayout,
 } from "./p6PortalData";
 import {
   P6_PORTAL_NODE_PADDING,
   clampCameraToWorld,
   clampNodePosition,
+  createP6PortalFitCamera,
   getPortalNodeById,
   type P6PortalCameraState as CameraState,
 } from "./p6PortalGeometry";
-import {
-  buildExperimentRecord,
-  buildExperimentSavePayload,
-  buildExperimentTargetOptions,
-  buildBindingPresetOptions,
-  buildLayoutPresetOptions,
-  buildModuleTemplateOptions,
-  buildPreviewEntries,
-  buildUserTemplateOptions,
-  createDefaultExperimentDraft,
-  resolveNodeCard,
-  setBindingPreset,
-  setModuleTemplate,
-  setUserTemplate,
-  type P6ExperimentTargetId,
-} from "./p6ExperimentConfig";
 import {
   buildPortalNodeRelationSnapshots,
   buildPortalProjectionSummary,
@@ -93,10 +76,19 @@ type P6BlueprintCanvasProps = {
 };
 
 const defaultCamera: CameraState = {
-  x: 24,
-  y: 36,
-  scale: 0.72,
+  x: 0,
+  y: 0,
+  scale: 1,
 };
+
+const deliveryCatalogEndpoint = {
+  x: 1655,
+  y: 730,
+  width: 0,
+  height: 0,
+};
+
+const MAX_VISIBLE_FLOW_PAYLOADS = 24;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -121,6 +113,23 @@ function getAnchorPoint(
   }
 }
 
+function isPortalNodeId(endpointId: P6PortalFlowEndpointId): endpointId is P6PortalNodeId {
+  return endpointId === "p1" || endpointId === "p2" || endpointId === "p3" || endpointId === "p4" || endpointId === "p5";
+}
+
+function getFlowEndpointPoint(
+  endpointId: P6PortalFlowEndpointId,
+  side: P6PortalAnchorSide,
+  layout: Record<P6PortalNodeId, P6PortalPosition>,
+  nodes: ReturnType<typeof buildPortalViewModel>["nodes"],
+) {
+  if (endpointId === "delivery-catalog") {
+    return { x: deliveryCatalogEndpoint.x, y: deliveryCatalogEndpoint.y };
+  }
+
+  return getAnchorPoint(getPortalNodeById(nodes, endpointId), layout[endpointId], side);
+}
+
 function getControlPoint(point: { x: number; y: number }, side: P6PortalAnchorSide, distance: number) {
   switch (side) {
     case "left":
@@ -141,10 +150,8 @@ function createFlowPath(
   layout: Record<P6PortalNodeId, P6PortalPosition>,
   nodeIds: ReturnType<typeof buildPortalViewModel>["nodes"],
 ) {
-  const fromNode = getPortalNodeById(nodeIds, flow.from);
-  const toNode = getPortalNodeById(nodeIds, flow.to);
-  const fromPoint = getAnchorPoint(fromNode, layout[flow.from], flow.fromSide);
-  const toPoint = getAnchorPoint(toNode, layout[flow.to], flow.toSide);
+  const fromPoint = getFlowEndpointPoint(flow.from, flow.fromSide, layout, nodeIds);
+  const toPoint = getFlowEndpointPoint(flow.to, flow.toSide, layout, nodeIds);
   const distance = Math.max(Math.abs(toPoint.x - fromPoint.x) * 0.38, Math.abs(toPoint.y - fromPoint.y) * 0.32, 120);
   const controlA = getControlPoint(fromPoint, flow.fromSide, distance);
   const controlB = getControlPoint(toPoint, flow.toSide, distance);
@@ -173,6 +180,128 @@ function getVisiblePins(flows: ReturnType<typeof buildPortalViewModel>["flows"],
   return Array.from(sides);
 }
 
+function getFlowFallbackPayloadLabel(label: string) {
+  if (label.includes("知识")) {
+    return "知识";
+  }
+  if (label.includes("规格") || label.includes("需求")) {
+    return "规格";
+  }
+  if (label.includes("工单")) {
+    return "工单";
+  }
+  if (label.includes("基线")) {
+    return "基线";
+  }
+  if (label.includes("工具")) {
+    return "工具";
+  }
+  if (label.includes("目录") || label.includes("交付")) {
+    return "目录";
+  }
+  return label.slice(0, 2);
+}
+
+function isModuleNode(node: P6PortalViewNode): node is Extract<P6PortalViewNode, { kind: "module" }> {
+  return node.kind === "module";
+}
+
+function getFlowPayloadLabel(flow: ReturnType<typeof buildPortalViewModel>["flows"][number]) {
+  switch (flow.semanticLabel) {
+    case "knowledge_supply":
+      return "知识";
+    case "requirement_to_design":
+      return "规格";
+    case "work_order_package":
+      return "工单";
+    case "design_baseline_to_build":
+      return "基线";
+    case "tool_supply":
+      return "工具";
+    case "delivery_catalog_output":
+      return "目录";
+    default:
+      return getFlowFallbackPayloadLabel(flow.label);
+  }
+}
+
+function normalizeFlowTargetLabel(label: string) {
+  return label.trim().toLowerCase();
+}
+
+function getFlowTargetLabels(
+  endpointId: P6PortalFlowEndpointId,
+  nodes: ReturnType<typeof buildPortalViewModel>["nodes"],
+) {
+  if (endpointId === "delivery-catalog") {
+    return ["交付目录", "delivery-catalog"];
+  }
+
+  const targetNode = getPortalNodeById(nodes, endpointId);
+  if (!isModuleNode(targetNode)) {
+    return [endpointId];
+  }
+
+  return [targetNode.stage, targetNode.title, endpointId];
+}
+
+function parseFlowCount(value: string | number | undefined | null) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value));
+  }
+
+  if (!value) {
+    return null;
+  }
+
+  const matched = String(value).match(/\d+(?:\.\d+)?/);
+  if (!matched) {
+    return null;
+  }
+
+  return Math.max(0, Math.round(Number(matched[0])));
+}
+
+function getFlowPayloadConfig(
+  flow: ReturnType<typeof buildPortalViewModel>["flows"][number],
+  nodes: ReturnType<typeof buildPortalViewModel>["nodes"],
+) {
+  const payloadLabel = getFlowPayloadLabel(flow);
+  const sourceNode = isPortalNodeId(flow.from) ? getPortalNodeById(nodes, flow.from) : null;
+  const targetLabels = getFlowTargetLabels(flow.to, nodes).map(normalizeFlowTargetLabel);
+  const matchingOutputPort =
+    sourceNode && isModuleNode(sourceNode)
+      ? (sourceNode.stageCard.flow_port_items ?? []).find((port) => {
+          const portTarget = normalizeFlowTargetLabel(port.connected_target);
+          return port.direction === "output" && targetLabels.includes(portTarget);
+        })
+      : undefined;
+  const matchingOutputCounter =
+    sourceNode && isModuleNode(sourceNode)
+      ? (sourceNode.stageCard.live_counter_items ?? []).find((counter) => {
+          return counter.direction === "output" && (counter.label.includes(payloadLabel) || counter.key.includes(flow.semanticLabel));
+        })
+      : undefined;
+  const sourceCount =
+    parseFlowCount(matchingOutputPort?.current_rate) ??
+    parseFlowCount(matchingOutputCounter?.value) ??
+    parseFlowCount(matchingOutputCounter?.unit) ??
+    1;
+  const tokenCount = clamp(sourceCount, sourceCount === 0 ? 0 : 1, MAX_VISIBLE_FLOW_PAYLOADS);
+
+  return {
+    label: payloadLabel,
+    sourceCount,
+    tokenCount,
+    rate: matchingOutputPort?.current_rate ?? `${sourceCount}`,
+    truncated: sourceCount > MAX_VISIBLE_FLOW_PAYLOADS,
+  };
+}
+
+function getFlowPayloadDuration(tokenCount: number) {
+  return clamp(5.4 + tokenCount * 0.16, 6, 10);
+}
+
 export function P6BlueprintCanvas({
   archiveName,
   projection,
@@ -193,41 +322,16 @@ export function P6BlueprintCanvas({
   const [layout, setLayout] = useState<Record<P6PortalNodeId, P6PortalPosition>>(() => readPersonalPortalLayout());
   const [camera, setCamera] = useState<CameraState>(defaultCamera);
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<P6PortalNodeId | null>("p2");
+  const [selectedNodeId, setSelectedNodeId] = useState<P6PortalNodeId | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<P6PortalNodeId | null>(null);
   const [activeFlowIndex, setActiveFlowIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<P6PortalLayoutMode>(() => (hasStoredP6PortalLayout() ? "personal" : "system"));
   const [relationshipMode, setRelationshipMode] = useState<P6PortalRelationshipViewMode>("semantic");
-  const [experimentWorkbenchOpen, setExperimentWorkbenchOpen] = useState(false);
-  const [experimentDraft, setExperimentDraft] = useState(createDefaultExperimentDraft);
-  const [workbenchData, setWorkbenchData] = useState<P6DisplayWorkbenchBootstrap | null>(null);
-  const [workbenchLoading, setWorkbenchLoading] = useState(false);
-  const [workbenchError, setWorkbenchError] = useState<string | null>(null);
-  const [experimentSaving, setExperimentSaving] = useState(false);
-  const [experimentSaveError, setExperimentSaveError] = useState<string | null>(null);
   const { nodes, flows, artifacts } = useMemo(() => buildPortalViewModel(projection), [projection]);
   const selectedScenario = scenarioCatalog.items.find((item) => item.scenario_id === selectedScenarioId) ?? scenarioCatalog.items[0];
-  const experimentTargetOptions = useMemo(() => buildExperimentTargetOptions(nodes), [nodes]);
-  const experimentPreviewEntries = useMemo(() => buildPreviewEntries(nodes, experimentDraft), [experimentDraft, nodes]);
-  const moduleTemplateOptions = useMemo(
-    () => buildModuleTemplateOptions(workbenchData?.templates ?? []),
-    [workbenchData],
-  );
-  const userTemplateOptions = useMemo(
-    () => buildUserTemplateOptions(workbenchData?.templates ?? []),
-    [workbenchData],
-  );
-  const bindingPresetOptions = useMemo(
-    () => buildBindingPresetOptions(workbenchData?.bindings ?? []),
-    [workbenchData],
-  );
-  const layoutPresetOptions = useMemo(
-    () => buildLayoutPresetOptions(workbenchData?.layouts ?? []),
-    [workbenchData],
-  );
-  const experimentRecord = useMemo(
-    () => buildExperimentRecord(nodes, experimentDraft, projection.portal_summary.scenario_label),
-    [experimentDraft, nodes, projection.portal_summary.scenario_label],
+  const p5Node = nodes.find((node): node is Extract<P6PortalViewNode, { kind: "module" }> => node.id === "p5" && isModuleNode(node));
+  const deliveryVersionMetric = (p5Node?.stageCard.system_overall_metric_items ?? []).find(
+    (metric) => metric.key.includes("delivery") || metric.label.includes("版本"),
   );
 
   const focusNodeId = hoveredNodeId ?? selectedNodeId;
@@ -244,9 +348,26 @@ export function P6BlueprintCanvas({
 
   useEffect(() => {
     if (selectedNodeId && !nodes.some((node) => node.id === selectedNodeId)) {
-      setSelectedNodeId("p2");
+      setSelectedNodeId(null);
     }
   }, [nodes, selectedNodeId]);
+
+  useEffect(() => {
+    function fitViewport() {
+      const viewportRect = viewportRef.current?.getBoundingClientRect();
+      setCamera(
+        createP6PortalFitCamera({
+          width: viewportRect?.width,
+          height: viewportRect?.height,
+        }),
+      );
+    }
+
+    fitViewport();
+    window.addEventListener("resize", fitViewport);
+
+    return () => window.removeEventListener("resize", fitViewport);
+  }, []);
 
   useEffect(() => {
     if (layoutMode !== "personal") {
@@ -339,8 +460,12 @@ export function P6BlueprintCanvas({
     flows.forEach((flow) => {
       if (flow.from === focusNodeId || flow.to === focusNodeId) {
         emphasizedFlowIds.add(flow.id);
-        emphasizedNodeIds.add(flow.from);
-        emphasizedNodeIds.add(flow.to);
+        if (isPortalNodeId(flow.from)) {
+          emphasizedNodeIds.add(flow.from);
+        }
+        if (isPortalNodeId(flow.to)) {
+          emphasizedNodeIds.add(flow.to);
+        }
       }
     });
     artifacts.forEach((artifact) => {
@@ -350,40 +475,11 @@ export function P6BlueprintCanvas({
     });
   } else if (activeFlow) {
     emphasizedFlowIds.add(activeFlow.id);
-    emphasizedNodeIds.add(activeFlow.from);
-    emphasizedNodeIds.add(activeFlow.to);
-  }
-
-  async function ensureWorkbenchLoaded() {
-    if (workbenchLoading || workbenchData) {
-      return;
+    if (isPortalNodeId(activeFlow.from)) {
+      emphasizedNodeIds.add(activeFlow.from);
     }
-
-    setWorkbenchLoading(true);
-    try {
-      const response = await getP6DisplayWorkbench();
-      setWorkbenchData(response.data);
-      setWorkbenchError(null);
-    } catch (loadError) {
-      setWorkbenchError(loadError instanceof Error ? loadError.message : "加载实验台配置失败");
-    } finally {
-      setWorkbenchLoading(false);
-    }
-  }
-
-  async function handleSaveExperiment() {
-    setExperimentSaving(true);
-    setExperimentSaveError(null);
-    try {
-      await createP6DisplayExperiment(
-        buildExperimentSavePayload(nodes, experimentDraft, projection.portal_summary.scenario_label),
-      );
-      const response = await getP6DisplayWorkbench();
-      setWorkbenchData(response.data);
-    } catch (saveError) {
-      setExperimentSaveError(saveError instanceof Error ? saveError.message : "登记实验失败");
-    } finally {
-      setExperimentSaving(false);
+    if (isPortalNodeId(activeFlow.to)) {
+      emphasizedNodeIds.add(activeFlow.to);
     }
   }
 
@@ -417,6 +513,12 @@ export function P6BlueprintCanvas({
 
   return (
     <div id="p6-portal-page" className="p6-portal-page" style={buildP6CssVariables(baseline)}>
+      <header className="p6-portal-hud-title" aria-label="门户状态">
+        <p>CodeFactoryV2 / P6.1</p>
+        <h1>五阶段运行语义画布</h1>
+        <span>推荐布局 · {sourceMode === "mock" ? "mock projection" : "live projection"} · {loading ? "刷新中" : "100%"}</span>
+      </header>
+
       <div className="p6-portal-source-control" data-testid="p6-portal-source-control">
         <div className="p6-portal-source-control__topline">
           <span className="p6-portal-source-control__badge">{sourceMode === "mock" ? "模拟源" : "真实源"}</span>
@@ -440,31 +542,6 @@ export function P6BlueprintCanvas({
           ))}
         </div>
         <div className="p6-portal-source-control__hint">{selectedScenario?.description}</div>
-        <div className="p6-portal-source-control__actions">
-          <button
-            type="button"
-            className={[
-              "p6-portal-source-control__button",
-              "p6-portal-source-control__button--minor",
-              experimentWorkbenchOpen ? "is-active" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onClick={() => {
-              const nextOpen = !experimentWorkbenchOpen;
-              if (nextOpen && selectedNodeId) {
-                setExperimentDraft((draft) => ({
-                  ...draft,
-                  selectedTargetId: selectedNodeId,
-                }));
-                void ensureWorkbenchLoaded();
-              }
-              setExperimentWorkbenchOpen(nextOpen);
-            }}
-          >
-            卡片配置
-          </button>
-        </div>
         {error ? (
           <div className="p6-portal-source-control__error">
             <span>{error}</span>
@@ -474,75 +551,6 @@ export function P6BlueprintCanvas({
           </div>
         ) : null}
       </div>
-
-      {experimentWorkbenchOpen && workbenchData ? (
-        <P6ExperimentWorkbench
-          draft={experimentDraft}
-          targetOptions={experimentTargetOptions}
-          moduleTemplateOptions={moduleTemplateOptions}
-          userTemplateOptions={userTemplateOptions}
-          bindingPresetOptions={bindingPresetOptions}
-          layoutPresetOptions={layoutPresetOptions}
-          previewEntries={experimentPreviewEntries}
-          record={experimentRecord}
-          savedRecords={workbenchData.experiments}
-          promotionCandidates={workbenchData.promotion_candidates}
-          saving={experimentSaving}
-          saveError={experimentSaveError ?? workbenchError}
-          onClose={() => setExperimentWorkbenchOpen(false)}
-          onTargetChange={(targetId) =>
-            setExperimentDraft((draft) => ({
-              ...draft,
-              selectedTargetId: targetId as P6ExperimentTargetId,
-            }))
-          }
-          onModuleTemplateChange={(templateId) =>
-            setExperimentDraft((draft) => setModuleTemplate(draft, draft.selectedTargetId, templateId))
-          }
-          onUserTemplateChange={(templateId) => setExperimentDraft((draft) => setUserTemplate(draft, templateId))}
-          onBindingPresetChange={(bindingPresetId) =>
-            setExperimentDraft((draft) => setBindingPreset(draft, draft.selectedTargetId, bindingPresetId))
-          }
-          onLayoutPresetChange={(layoutPresetId) =>
-            setExperimentDraft((draft) => ({
-              ...draft,
-              layoutPresetId,
-            }))
-          }
-          onPromotionDecisionChange={(decision) =>
-            setExperimentDraft((draft) => ({
-              ...draft,
-              promotionDecision: decision,
-            }))
-          }
-          onTargetStageToggle={(stageId) =>
-            setExperimentDraft((draft) => ({
-              ...draft,
-              targetStages: draft.targetStages.includes(stageId)
-                ? draft.targetStages.filter((item) => item !== stageId)
-                : [...draft.targetStages, stageId],
-            }))
-          }
-          onSave={() => {
-            void handleSaveExperiment();
-          }}
-        />
-      ) : experimentWorkbenchOpen ? (
-        <aside data-testid="p6-experiment-workbench" className="p6-experiment-workbench">
-          <div className="p6-experiment-workbench__topline">
-            <div>
-              <div className="p6-experiment-workbench__badge">P6.4</div>
-              <h2 className="p6-experiment-workbench__title">卡片配置实验台</h2>
-            </div>
-            <button type="button" className="p6-experiment-workbench__close" onClick={() => setExperimentWorkbenchOpen(false)}>
-              收起
-            </button>
-          </div>
-          <div className="p6-experiment-workbench__section">
-            <div className="p6-experiment-workbench__section-title">{workbenchLoading ? "正在加载实验台配置" : workbenchError ?? "实验台暂不可用"}</div>
-          </div>
-        </aside>
-      ) : null}
 
       <div
         id="p6-portal-viewport"
@@ -564,8 +572,6 @@ export function P6BlueprintCanvas({
         }}
       >
         <div className="p6-portal-viewport__background-grid" />
-        <div className="p6-portal-viewport__ambient p6-portal-viewport__ambient--one" />
-        <div className="p6-portal-viewport__ambient p6-portal-viewport__ambient--two" />
 
         <div
           id="p6-portal-stage"
@@ -577,78 +583,106 @@ export function P6BlueprintCanvas({
             transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
           }}
         >
-          <div
-            data-testid="p6-portal-world-boundary"
-            className="p6-portal-stage__boundary"
-            style={{
-              left: `${P6_PORTAL_NODE_PADDING}px`,
-              top: `${P6_PORTAL_NODE_PADDING}px`,
-              width: `${P6_PORTAL_WORLD.width - P6_PORTAL_NODE_PADDING * 2}px`,
-              height: `${P6_PORTAL_WORLD.height - P6_PORTAL_NODE_PADDING * 2}px`,
-            }}
-          >
-            <span className="p6-portal-stage__boundary-label">自动布局区</span>
-            <span className="p6-portal-stage__boundary-note">边界内可拖拽，边界外只保留视口平移</span>
-          </div>
-
           <svg
             className="p6-portal-stage__wires"
             viewBox={`0 0 ${P6_PORTAL_WORLD.width} ${P6_PORTAL_WORLD.height}`}
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {flowPaths.map((flow, index) => (
-              <g key={flow.id}>
-                <path
-                  d={flow.d}
-                  className={[
-                    "p6-portal-wire",
-                    `p6-portal-wire--${flow.tone}`,
-                    `p6-portal-wire--${flow.renderStyle}`,
-                    emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                />
-                <path
-                  d={flow.d}
-                  className={[
-                    "p6-portal-wire-travel",
-                    `p6-portal-wire-travel--${flow.tone}`,
-                    `p6-portal-wire-travel--${flow.renderStyle}`,
-                    emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ animationDelay: `${index * 0.35}s` }}
-                />
-              </g>
+            {flowPaths.map((flow) => (
+              <Fragment key={flow.id}>
+                <g>
+                  <path
+                    d={flow.d}
+                    className={[
+                      "p6-portal-wire",
+                      `p6-portal-wire--${flow.tone}`,
+                      `p6-portal-wire--flow-${flow.id}`,
+                      `p6-portal-wire--${flow.renderStyle}`,
+                      emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  />
+                </g>
+              </Fragment>
             ))}
+            {relationshipMode === "semantic"
+              ? flowPaths.map((flow, flowIndex) => {
+                  const payload = getFlowPayloadConfig(flow, nodes);
+                  const duration = getFlowPayloadDuration(payload.tokenCount);
+                  const interval = payload.tokenCount > 0 ? duration / payload.tokenCount : duration;
+                  const tokenWidth = payload.label.length > 2 ? 52 : 46;
+
+                  return (
+                    <Fragment key={`${flow.id}-payloads`}>
+                      <g className="p6-portal-flow-payloads">
+                        {Array.from({ length: payload.tokenCount }, (_, tokenIndex) => (
+                          <Fragment key={`${flow.id}-${tokenIndex}`}>
+                            <g
+                              data-testid={`p6-flow-payload-${flow.id}-${tokenIndex}`}
+                              data-flow-id={flow.id}
+                              data-payload-label={payload.label}
+                              data-payload-rate={payload.rate}
+                              data-payload-source-count={`${payload.sourceCount}`}
+                              data-payload-token-count={`${payload.tokenCount}`}
+                              data-payload-truncated={payload.truncated ? "true" : "false"}
+                              className={[
+                                "p6-portal-flow-payload",
+                                `p6-portal-flow-payload--${flow.tone}`,
+                                `p6-portal-flow-payload--flow-${flow.id}`,
+                                emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                            >
+                              <rect
+                                className="p6-portal-flow-payload__shell"
+                                x={-tokenWidth / 2}
+                                y={-12}
+                                width={tokenWidth}
+                                height={24}
+                                rx={12}
+                              />
+                              <circle className="p6-portal-flow-payload__dot" cx={-tokenWidth / 2 + 12} cy={0} r={3.6} />
+                              <text className="p6-portal-flow-payload__text" x={4} y={4} textAnchor="middle">
+                                {payload.label}
+                              </text>
+                              <animateMotion
+                                path={flow.d}
+                                dur={`${duration.toFixed(2)}s`}
+                                begin={`-${(tokenIndex * interval + flowIndex * 0.19).toFixed(2)}s`}
+                                repeatCount="indefinite"
+                                calcMode="linear"
+                              />
+                            </g>
+                          </Fragment>
+                        ))}
+                      </g>
+                    </Fragment>
+                  );
+                })
+              : null}
           </svg>
 
-          {relationshipMode === "semantic"
-            ? flowPaths.map((flow) => (
-                <div
-                  key={`${flow.id}-label`}
-                  data-testid={`p6-flow-label-${flow.id}`}
-                  className={[
-                    "p6-portal-flow-label",
-                    `p6-portal-flow-label--${flow.tone}`,
-                    `p6-portal-flow-label--${flow.renderStyle}`,
-                    emphasizedFlowIds.has(flow.id) ? "is-emphasized" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  title={flow.semanticLabel}
-                  style={{
-                    left: `${flow.labelPosition.x - 56}px`,
-                    top: `${flow.labelPosition.y - 18}px`,
-                  }}
-                >
-                  {flow.label}
-                </div>
-              ))
-            : null}
+          <div
+            data-testid="p6-terminal-output-delivery-catalog"
+            className="p6-portal-terminal-output"
+            style={{
+              left: `${deliveryCatalogEndpoint.x}px`,
+              top: `${deliveryCatalogEndpoint.y - 65}px`,
+            }}
+          >
+            <span className="p6-portal-terminal-output__pin" />
+            <strong>交付目录</strong>
+            <span>版本包 / 部署说明 / 验证记录</span>
+            <b>
+              {deliveryVersionMetric
+                ? `${deliveryVersionMetric.value}${deliveryVersionMetric.unit ?? ""}`
+                : "86个"}{" "}
+              版本
+            </b>
+          </div>
 
           {visibleArtifacts.map((artifact) => (
             <P6BlueprintArtifact key={artifact.id} artifact={artifact} emphasized={emphasizedArtifactIds.has(artifact.id)} />
@@ -663,15 +697,8 @@ export function P6BlueprintCanvas({
               emphasized={emphasizedNodeIds.has(node.id)}
               visiblePins={getVisiblePins(flows, node.id)}
               relationSummary={relationshipMode === "projection" ? relationSnapshots[node.id]?.label : undefined}
-              cardPresentation={resolveNodeCard(node, experimentDraft)}
               onClick={() => {
                 setSelectedNodeId(node.id);
-                if (experimentWorkbenchOpen) {
-                  setExperimentDraft((draft) => ({
-                    ...draft,
-                    selectedTargetId: node.id,
-                  }));
-                }
               }}
               onDoubleClick={() => {
                 if (node.kind === "module") {
@@ -714,9 +741,15 @@ export function P6BlueprintCanvas({
         onRelationshipModeChange={setRelationshipMode}
         onResetView={(event) => {
           event.stopPropagation();
-          setCamera(defaultCamera);
+          const viewportRect = viewportRef.current?.getBoundingClientRect();
+          setCamera(
+            createP6PortalFitCamera({
+              width: viewportRect?.width,
+              height: viewportRect?.height,
+            }),
+          );
           setLayout(layoutMode === "system" ? defaultP6PortalLayout : personalLayoutRef.current);
-          setSelectedNodeId("p2");
+          setSelectedNodeId(null);
         }}
       />
     </div>

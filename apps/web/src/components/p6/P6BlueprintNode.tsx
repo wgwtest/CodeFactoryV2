@@ -29,6 +29,29 @@ function formatFreshnessLabel(freshness: string) {
   return "未知";
 }
 
+function formatProjectedValue(value: number | string, unit?: string) {
+  return `${value}${unit ?? ""}`;
+}
+
+function getStageIconLabel(title: string) {
+  if (title.includes("知识")) {
+    return "知";
+  }
+  if (title.includes("需求")) {
+    return "需";
+  }
+  if (title.includes("设计")) {
+    return "设";
+  }
+  if (title.includes("工具")) {
+    return "工";
+  }
+  if (title.includes("构建")) {
+    return "构";
+  }
+  return title.slice(0, 1);
+}
+
 export function P6BlueprintNode({
   node,
   position,
@@ -77,6 +100,21 @@ export function P6BlueprintNode({
           showDegraded: false,
         });
   const moduleMetrics = node.kind === "module" ? node.stageCard.metric_items.slice(0, resolvedCard.metricsCount) : [];
+  const contractUsers = node.kind === "module" ? (node.stageCard.connected_user_items ?? []) : [];
+  const contractPorts = node.kind === "module" ? (node.stageCard.flow_port_items ?? []) : [];
+  const inputPort = contractPorts.find((port) => port.direction === "input");
+  const outputPort = contractPorts.find((port) => port.direction === "output");
+  const overallMetrics = node.kind === "module" ? (node.stageCard.system_overall_metric_items ?? []) : [];
+  const liveCounters = node.kind === "module" ? (node.stageCard.live_counter_items ?? []) : [];
+  const queueProjection = node.kind === "module" ? node.stageCard.queue_projection : null;
+  const queueSlotCount = node.id === "p1" ? 8 : 6;
+  const queueSlots = Array.from({ length: queueSlotCount }, (_, index) => queueProjection?.items[index] ?? null);
+  const contractPortSides = new Set(
+    contractPorts.map((port) => (port.direction === "input" ? "left" : "right") as P6PortalAnchorSide),
+  );
+  const shouldRenderContractCard =
+    node.kind === "module" &&
+    (overallMetrics.length > 0 || liveCounters.length > 0 || contractUsers.length > 0 || contractPorts.length > 0 || Boolean(queueProjection));
   const className = [
     "p6-blueprint-node",
     node.kind === "user" ? "p6-blueprint-node--user" : "p6-blueprint-node--module",
@@ -119,12 +157,87 @@ export function P6BlueprintNode({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
+      {node.kind === "module" && contractUsers.length > 0 ? (
+        <div className="p6-blueprint-node__user-stack" aria-label={`${node.title} 当前接入用户`}>
+          {contractUsers.slice(0, 6).map((user) => (
+            <span
+              key={user.user_ref}
+              className={`p6-blueprint-node__user-block p6-blueprint-node__user-block--${user.activity_state}`}
+              title={`${user.role_label} · ${user.activity_state}`}
+            >
+              {user.display_label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {node.kind === "module" && inputPort ? (
+        <span
+          className="p6-blueprint-node__flow-port p6-blueprint-node__flow-port--left"
+          aria-label={`${inputPort.label} 输入端口`}
+          title={`${inputPort.label} · ${inputPort.current_rate}`}
+        />
+      ) : null}
+
+      {node.kind === "module" && outputPort ? (
+        <span
+          className="p6-blueprint-node__flow-port p6-blueprint-node__flow-port--right"
+          aria-label={`${outputPort.label} 输出端口`}
+          title={`${outputPort.label} · ${outputPort.current_rate}`}
+        />
+      ) : null}
+
       {visiblePins.map((side) => (
-        <span key={side} className={`p6-blueprint-node__pin p6-blueprint-node__pin--${side}`} />
+        contractPortSides.has(side) ? null : (
+          <span key={side} className={`p6-blueprint-node__pin p6-blueprint-node__pin--${side}`} />
+        )
       ))}
 
       <div className="p6-blueprint-node__body">
-        {node.kind === "module" ? (
+        {node.kind === "module" && shouldRenderContractCard ? (
+          <>
+            <div className="p6-blueprint-node__stage-header">
+              <span className="p6-blueprint-node__stage-icon" aria-hidden="true">
+                {getStageIconLabel(node.title)}
+              </span>
+              <span className="p6-blueprint-node__stage-copy">
+                <span className="p6-blueprint-node__title">{node.title}</span>
+                <span className="p6-blueprint-node__subtitle">{node.description}</span>
+              </span>
+              <span className={`p6-blueprint-node__health p6-blueprint-node__health--${node.stageCard.health_badge.tone}`}>
+                {node.stageCard.health_badge.label}
+              </span>
+            </div>
+
+            <div className="p6-blueprint-node__overall-grid">
+              {overallMetrics.slice(0, 3).map((metric) => (
+                <span key={metric.key} className="p6-blueprint-node__overall-item">
+                  <small>{metric.label}</small>
+                  <strong>{formatProjectedValue(metric.value, metric.unit)}</strong>
+                </span>
+              ))}
+            </div>
+
+            <div className="p6-blueprint-node__live-row">
+              {liveCounters.slice(0, 2).map((counter) => (
+                <span key={counter.key} className={`p6-blueprint-node__live-item p6-blueprint-node__live-item--${counter.direction}`}>
+                  <small>{counter.label}</small>
+                  <strong>{formatProjectedValue(counter.value, counter.unit)}</strong>
+                </span>
+              ))}
+            </div>
+
+            {resolvedCard.showDegraded && node.stageCard.degraded_hint ? (
+              <div className="p6-blueprint-node__degraded">{node.stageCard.degraded_hint}</div>
+            ) : null}
+
+            {relationSummary ? (
+              <div data-testid={`p6-node-relations-${node.id}`} className="p6-blueprint-node__relations">
+                {relationSummary}
+              </div>
+            ) : null}
+          </>
+        ) : node.kind === "module" ? (
           <>
             <div className="p6-blueprint-node__head">
               <div className="p6-blueprint-node__head-group">
@@ -206,6 +319,28 @@ export function P6BlueprintNode({
           </div>
         )}
       </div>
+
+      {node.kind === "module" && queueProjection ? (
+        <div className="p6-blueprint-node__queue-rack" aria-label={`${node.title} ${queueProjection.label}`}>
+          <span className="p6-blueprint-node__queue-rail" aria-hidden="true" />
+          <div className="p6-blueprint-node__queue-items">
+            {queueSlots.map((item, index) => (
+              <span
+                key={item?.item_id ?? `${node.id}-empty-${index}`}
+                className={[
+                  "p6-blueprint-node__queue-hook",
+                  item ? `p6-blueprint-node__queue-hook--${item.state}` : "p6-blueprint-node__queue-hook--empty",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                title={item ? `${item.label} · ${item.state}` : "等待补位"}
+              >
+                {item ? item.label.slice(0, 1) : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </button>
   );
 }

@@ -6,6 +6,8 @@ from app.p6.models import (
     MockScenarioCatalog,
     ObservationProjectionReadEnvelope,
     PortalProjectionReadEnvelope,
+    P6SimulatorContractSubmission,
+    P6SimulatorSubmissionResponse,
     SourceMode,
     StageSnapshotReadEnvelope,
 )
@@ -31,6 +33,17 @@ def _raise_p6_error(exc: Exception) -> HTTPException:
 @router.get("/mock-scenarios", response_model=MockScenarioCatalog)
 def list_p6_mock_scenarios(service: P6ProjectionService = Depends(get_p6_projection_service)):
     return service.list_mock_scenarios()
+
+
+@router.post("/simulator/contracts", response_model=P6SimulatorSubmissionResponse, status_code=201)
+def submit_p6_simulator_contracts(
+    payload: P6SimulatorContractSubmission,
+    service: P6ProjectionService = Depends(get_p6_projection_service),
+):
+    try:
+        return service.submit_simulator_contracts(payload)
+    except Exception as exc:  # pragma: no cover - mapping branch is verified by API tests.
+        raise _raise_p6_error(exc) from exc
 
 
 @router.get("/stage-snapshots", response_model=StageSnapshotReadEnvelope)
