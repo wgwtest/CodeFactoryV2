@@ -1,0 +1,1213 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P2 场景发生器独立工作台原型 v2</title>
+    <style>
+      :root {
+        --bg: #e7eceb;
+        --ink: #16211d;
+        --muted: #64736f;
+        --line: #c5d0ca;
+        --panel: #fbfcfb;
+        --paper: #fffefd;
+        --green: #1f7449;
+        --green-2: #e0f1e7;
+        --blue: #285f8f;
+        --blue-2: #dcecf9;
+        --amber: #a26316;
+        --amber-2: #f3e3c7;
+        --red: #983131;
+        --shadow: 0 20px 50px rgba(38, 50, 45, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          linear-gradient(0deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 78px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px 0 24px;
+        border: 1px solid rgba(151, 164, 157, 0.58);
+        background: rgba(251, 252, 251, 0.94);
+        box-shadow: 0 10px 34px rgba(55, 66, 62, 0.1);
+      }
+
+      .brandline {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .mark {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--green);
+        color: var(--green);
+        font-weight: 850;
+        font-size: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 25px;
+        line-height: 1.16;
+        font-weight: 850;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .button,
+      .pill,
+      .segmented {
+        border: 1px solid #b8c5bf;
+        background: #fff;
+        color: #26342f;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 15px;
+      }
+
+      .button.primary {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .button.blue {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #fff;
+      }
+
+      .button.disabled {
+        color: #8b9893;
+        background: #eef2f0;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+      }
+
+      .pill.green {
+        color: var(--green);
+        border-color: #9cc8ae;
+        background: var(--green-2);
+      }
+
+      .pill.blue {
+        color: var(--blue);
+        border-color: #b3cee5;
+        background: var(--blue-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dbbd87;
+        background: var(--amber-2);
+      }
+
+      .segmented {
+        height: 38px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px;
+      }
+
+      .segment {
+        min-width: 72px;
+        padding: 7px 12px;
+        color: #596762;
+        text-align: center;
+      }
+
+      .segment.active {
+        background: #22332c;
+        color: #fff;
+      }
+
+      .layout {
+        height: 958px;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card {
+        border: 1px solid rgba(162, 174, 168, 0.78);
+        background: rgba(251, 252, 251, 0.96);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 20px 18px 16px;
+        border-bottom: 1px solid #d8e0dc;
+      }
+
+      .side-title {
+        font-weight: 850;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .nav {
+        padding: 16px 12px;
+      }
+
+      .nav-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 12px;
+        margin-bottom: 8px;
+        border: 1px solid transparent;
+        color: #40504a;
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .nav-item.active {
+        color: #fff;
+        background: #22332c;
+      }
+
+      .nav-item.pending {
+        border-color: #c9d4ce;
+        background: #fff;
+      }
+
+      .side-foot {
+        padding: 15px 18px;
+        border-top: 1px solid #d8e0dc;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .workspace-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 64px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d8e0dc;
+        background: #fff;
+      }
+
+      .workspace-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 850;
+        font-size: 18px;
+      }
+
+      .workspace-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .content {
+        min-height: 0;
+        padding: 18px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .setup-grid {
+        grid-template-columns: 1.12fr 0.88fr;
+        grid-template-rows: 360px 1fr;
+      }
+
+      .run-grid {
+        grid-template-columns: 1fr 380px;
+        grid-template-rows: 330px 1fr;
+      }
+
+      .editor-grid {
+        grid-template-columns: 43fr 57fr;
+        grid-template-rows: 1fr;
+        padding: 0;
+        gap: 18px;
+        background: transparent;
+      }
+
+      .panel {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .panel-title {
+        font-size: 16px;
+        font-weight: 850;
+      }
+
+      .panel-subtitle {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .scenario-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .scenario-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px;
+        padding: 15px;
+        border: 1px solid #c7d4ce;
+        background: #fff;
+      }
+
+      .scenario-row.active {
+        border-color: #91c3a6;
+        background: #f0faf4;
+      }
+
+      .scenario-row h3 {
+        margin: 0 0 8px;
+        font-size: 17px;
+      }
+
+      .scenario-row p {
+        margin: 0;
+        color: #566760;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .scenario-meta {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+
+      .selector-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .selector {
+        min-height: 92px;
+        padding: 13px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .selector.active {
+        border-color: #98c8ac;
+        background: #f2faf5;
+      }
+
+      .selector b {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .selector span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+      }
+
+      .step {
+        min-height: 126px;
+        padding: 14px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .step.done {
+        border-color: #91c3a6;
+        background: #f0faf4;
+      }
+
+      .step.active {
+        border-color: #d9b66f;
+        background: #fff7e8;
+      }
+
+      .step-index {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 12px;
+        color: #fff;
+        background: #22332c;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .step.done .step-index {
+        background: var(--green);
+      }
+
+      .step.active .step-index {
+        background: var(--amber);
+      }
+
+      .step b {
+        display: block;
+        margin-bottom: 7px;
+      }
+
+      .step span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .audit-table {
+        display: grid;
+        gap: 8px;
+      }
+
+      .audit-row {
+        display: grid;
+        grid-template-columns: 82px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 42px;
+        padding: 0 12px;
+        border: 1px solid #d4ddd8;
+        background: #fff;
+        font-size: 12px;
+      }
+
+      .audit-row b {
+        color: #24332e;
+      }
+
+      .audit-row code {
+        white-space: nowrap;
+        font-size: 11px;
+      }
+
+      .audit-row code,
+      .artifact code,
+      .handoff code {
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        color: var(--blue);
+      }
+
+      .artifact-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .artifact {
+        min-height: 126px;
+        padding: 15px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .artifact b {
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      .artifact p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .handoff {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .handoff-box {
+        min-height: 148px;
+        padding: 15px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .handoff-box h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
+      .handoff-line {
+        margin: 8px 0;
+        color: #4b5d56;
+        font-size: 13px;
+      }
+
+      .open-session {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 86px;
+        padding: 18px;
+        border: 1px solid #91c3a6;
+        background: #f0faf4;
+      }
+
+      .open-session h3 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+
+      .open-session p {
+        margin: 0;
+        color: #52635c;
+        font-size: 13px;
+      }
+
+      .editor-panel {
+        min-height: 0;
+        border: 1px solid rgba(162, 174, 168, 0.78);
+        background: rgba(251, 252, 251, 0.96);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .left-editor {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .tabs {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 18px 0;
+      }
+
+      .tab-group {
+        display: flex;
+        gap: 7px;
+      }
+
+      .tab {
+        padding: 9px 15px;
+        border: 1px solid #bac7c1;
+        background: #fff;
+        font-size: 15px;
+        font-weight: 760;
+        color: #4f5e58;
+      }
+
+      .tab.active {
+        color: #fff;
+        background: #22332c;
+        border-color: #22332c;
+      }
+
+      .messages {
+        padding: 20px;
+        overflow: hidden;
+      }
+
+      .message {
+        margin-bottom: 16px;
+        padding: 15px 16px;
+        border: 1px solid #cbd8d2;
+        background: #fff;
+        box-shadow: 0 7px 20px rgba(42, 54, 49, 0.08);
+      }
+
+      .message.system {
+        border-left: 5px solid var(--green);
+      }
+
+      .message.user {
+        width: 78%;
+        margin-left: auto;
+        border-left: 5px solid var(--blue);
+        background: #f7fbff;
+      }
+
+      .message-label {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .message p {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .quick-row {
+        display: flex;
+        gap: 9px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .quick {
+        padding: 7px 12px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #41504a;
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 92px;
+        gap: 10px;
+        padding: 16px 18px 18px;
+        border-top: 1px solid #d9e0dc;
+        background: #f3f6f4;
+      }
+
+      .input {
+        height: 43px;
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #4d5a55;
+        font-size: 15px;
+      }
+
+      .right-editor {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        background: #f0f3f1;
+      }
+
+      .doc-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 57px;
+        padding: 13px 18px;
+        background: #fff;
+        border-bottom: 1px solid #d4ddd8;
+      }
+
+      .toolbar-left,
+      .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .toolbar-title {
+        font-size: 17px;
+        font-weight: 850;
+      }
+
+      .ribbon {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-height: 39px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d4ddd8;
+        background: #f8faf9;
+        color: #687772;
+        font-size: 13px;
+      }
+
+      .paper-zone {
+        position: relative;
+        padding: 28px 32px 34px;
+        overflow: hidden;
+      }
+
+      .paper {
+        width: 720px;
+        min-height: 820px;
+        margin: 0 auto;
+        padding: 44px 54px 46px;
+        background: var(--paper);
+        border: 1px solid #d0d0c8;
+        box-shadow: 0 22px 50px rgba(49, 56, 53, 0.2);
+      }
+
+      .paper-head {
+        display: flex;
+        justify-content: space-between;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #d8d8d0;
+        color: #7b7d76;
+        font-size: 12px;
+      }
+
+      .paper h2 {
+        margin: 26px 0 24px;
+        text-align: center;
+        font-size: 24px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .doc-section {
+        margin-top: 20px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .doc-section h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      .clause {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #ecebe4;
+      }
+
+      .clause-id {
+        color: var(--green);
+        font-weight: 850;
+        font-family: "Noto Sans CJK SC", sans-serif;
+      }
+
+      .clause-title {
+        margin-bottom: 5px;
+        font-weight: 850;
+      }
+
+      .clause-content {
+        margin: 0;
+        color: #2e3733;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .state-setup,
+      .state-run,
+      .state-editor {
+        display: none;
+      }
+
+      body[data-state="setup"] .state-setup,
+      body[data-state="run"] .state-run,
+      body[data-state="editor"] .state-editor {
+        display: block;
+      }
+
+      body[data-state="setup"] .state-setup.segmented,
+      body[data-state="run"] .state-run.segmented {
+        display: flex;
+      }
+
+      body[data-state="setup"] .state-setup.button,
+      body[data-state="run"] .state-run.button,
+      body[data-state="editor"] .state-editor.button {
+        display: inline-flex;
+      }
+
+      body[data-state="setup"] .state-setup.grid,
+      body[data-state="run"] .state-run.grid,
+      body[data-state="editor"] .state-editor.grid {
+        display: grid;
+      }
+
+      body[data-state="editor"] .layout {
+        grid-template-columns: 1fr;
+      }
+
+      body[data-state="editor"] .workspace {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      body[data-state="editor"] .content {
+        height: 894px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <header class="topbar">
+        <div class="brandline">
+          <div class="mark state-setup state-run">GEN</div>
+          <div class="mark state-editor">P2</div>
+          <div>
+            <h1 class="state-setup state-run">P2 场景数据发生器工作台</h1>
+            <h1 class="state-editor">P2 专家需求规格编写工作台</h1>
+            <div class="subtitle state-setup state-run">独立造数、独立验证、向 P2 编辑器交付标准会话输入</div>
+            <div class="subtitle state-editor">标准需求规格编辑器：只消费知识包、模板、文档和问答上下文</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div class="segmented state-setup state-run" aria-label="发生器视图">
+            <div class="segment active">发生器</div>
+            <div class="segment">审计</div>
+          </div>
+          <button class="button state-setup">保存配置</button>
+          <button class="button primary state-setup">生成场景会话</button>
+          <button class="button state-run">下载结构包</button>
+          <button class="button primary state-run">打开 P2 编辑器</button>
+          <button class="button state-editor">缺口检查</button>
+          <button class="button primary state-editor">冻结版本</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar state-setup state-run">
+          <div class="side-head">
+            <div class="side-title">发生器功能</div>
+            <div class="side-note">这里处理数据来源、模板选择、规则引擎和可复现测试证据。P2 编辑器不接触这些内部概念。</div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item active">场景目录 <span>3</span></div>
+            <div class="nav-item pending">模板绑定 <span>81433</span></div>
+            <div class="nav-item pending">知识物化 <span>ready</span></div>
+            <div class="nav-item pending">问答脚本 <span>rule</span></div>
+            <div class="nav-item pending">闭环验证 <span>0 gap</span></div>
+            <div class="nav-item pending">交付会话 <span>P2</span></div>
+          </nav>
+          <div class="side-foot">
+            发生器输出的是普通 `RequirementAuthoringSession`。编辑器只根据 session 渲染，不读取发生器配置。
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <div class="workspace-head state-setup state-run">
+            <div class="workspace-title state-setup">
+              独立发生器配置
+              <span class="pill blue">不嵌入编辑器</span>
+              <span class="pill">输出标准会话</span>
+            </div>
+            <div class="workspace-title state-run">
+              场景会话已生成
+              <span class="pill green">可打开编辑器</span>
+              <span class="pill blue">可复现</span>
+            </div>
+            <div class="workspace-actions">
+              <span class="pill">scenario_id: airspace-collaboration</span>
+              <span class="pill amber">内部测试源</span>
+            </div>
+          </div>
+
+          <div class="content setup-grid state-setup grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">场景目录</div>
+                  <div class="panel-subtitle">选择一个确定性业务样例，生成首版 P2 可用闭环。</div>
+                </div>
+                <span class="pill green">当前选中</span>
+              </div>
+              <div class="scenario-list">
+                <div class="scenario-row active">
+                  <div>
+                    <h3>空域协同规划软件</h3>
+                    <p>覆盖协同任务、冲突窗口、方案会签、超时提醒和人工确认，适合验证需求规格正文、问答补齐与冻结输出。</p>
+                    <div class="scenario-meta">
+                      <span class="pill">P1 发布态知识</span>
+                      <span class="pill">81433 模板</span>
+                      <span class="pill">P3 结构包</span>
+                    </div>
+                  </div>
+                  <button class="button primary">使用</button>
+                </div>
+                <div class="scenario-row">
+                  <div>
+                    <h3>政务窗口预约系统</h3>
+                    <p>保留为后续扩展，用于验证角色权限、预约冲突和服务评价类需求。</p>
+                  </div>
+                  <button class="button disabled">待配置</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">发生器配置</div>
+                  <div class="panel-subtitle">这些设置属于发生器，不进入 P2 编辑器主工作面。</div>
+                </div>
+                <span class="pill blue">开发/验收配置</span>
+              </div>
+              <div class="selector-grid">
+                <div class="selector active">
+                  <b>规格模板</b>
+                  <span>81433 软件级需求规格说明模板，作为真实模板对象加载。</span>
+                </div>
+                <div class="selector active">
+                  <b>知识包形态</b>
+                  <span>按 P1 发布态结构物化，编辑器只接收标准知识包。</span>
+                </div>
+                <div class="selector active">
+                  <b>问答引擎</b>
+                  <span>首版规则引擎可复现，后续可替换 LLM 输出同一补丁契约。</span>
+                </div>
+                <div class="selector">
+                  <b>数据来源标记</b>
+                  <span>仅用于发生器审计和测试记录，不展示在 P2 编辑器。</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel" style="grid-column: 1 / -1">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">交付链路</div>
+                  <div class="panel-subtitle">发生器先完成造数和验证，再把标准会话交付给 P2 编辑器。</div>
+                </div>
+                <button class="button primary">生成场景会话</button>
+              </div>
+              <div class="pipeline">
+                <div class="step active">
+                  <div class="step-index">1</div>
+                  <b>选择场景</b>
+                  <span>确定业务样例、模板和验证目标。</span>
+                </div>
+                <div class="step">
+                  <div class="step-index">2</div>
+                  <b>物化知识</b>
+                  <span>输出接近真实 P1 发布态的知识包。</span>
+                </div>
+                <div class="step">
+                  <div class="step-index">3</div>
+                  <b>创建会话</b>
+                  <span>生成普通 P2 authoring session。</span>
+                </div>
+                <div class="step">
+                  <div class="step-index">4</div>
+                  <b>闭环验证</b>
+                  <span>执行问答补丁、自动补齐和缺口检查。</span>
+                </div>
+                <div class="step">
+                  <div class="step-index">5</div>
+                  <b>打开编辑器</b>
+                  <span>编辑器只读取标准会话输入。</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="content run-grid state-run grid">
+            <section class="panel" style="grid-column: 1 / -1">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">生成流水线</div>
+                  <div class="panel-subtitle">发生器内部可以追踪来源真假，但交付给编辑器的是统一会话契约。</div>
+                </div>
+                <span class="pill green">阻断缺口 0</span>
+              </div>
+              <div class="pipeline">
+                <div class="step done">
+                  <div class="step-index">1</div>
+                  <b>场景读取</b>
+                  <span>airspace-collaboration / 版本 1.0.0。</span>
+                </div>
+                <div class="step done">
+                  <div class="step-index">2</div>
+                  <b>知识物化</b>
+                  <span>P1 发布态知识结构已生成。</span>
+                </div>
+                <div class="step done">
+                  <div class="step-index">3</div>
+                  <b>规格会话</b>
+                  <span>RequirementAuthoringSession 已创建。</span>
+                </div>
+                <div class="step done">
+                  <div class="step-index">4</div>
+                  <b>自动补齐</b>
+                  <span>会签超时、验收准则、追溯字段已补齐。</span>
+                </div>
+                <div class="step active">
+                  <div class="step-index">5</div>
+                  <b>待打开</b>
+                  <span>用户进入普通 P2 编辑器继续审阅。</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">输出工件</div>
+                  <div class="panel-subtitle">这些是发生器的结果，不是编辑器 UI 的一部分。</div>
+                </div>
+                <span class="pill blue">session ready</span>
+              </div>
+              <div class="artifact-grid">
+                <div class="artifact">
+                  <b>知识输入</b>
+                  <p><code>knowledge_archive</code>：包含实体、流程、事件、关系和证据片段。</p>
+                </div>
+                <div class="artifact">
+                  <b>规格会话</b>
+                  <p><code>authoring_session</code>：模板、文档状态、问答上下文和缺口检查结果。</p>
+                </div>
+                <div class="artifact">
+                  <b>冻结候选</b>
+                  <p><code>p3_consumable_preview</code>：可供 P3 消费的结构化预览。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">发生器审计</div>
+                  <div class="panel-subtitle">仅在发生器工作台可见，用于复现和测试。</div>
+                </div>
+                <span class="pill amber">不传给编辑器视图</span>
+              </div>
+              <div class="audit-table">
+                <div class="audit-row"><b>内部来源</b><code>mock-airspace-p1</code><span>test only</span></div>
+                <div class="audit-row"><b>问答策略</b><code>mock_rule</code><span>deterministic</span></div>
+                <div class="audit-row"><b>模板</b><code>81433</code><span>real</span></div>
+                <div class="audit-row"><b>编辑器契约</b><code>standard session</code><span>clean</span></div>
+              </div>
+            </section>
+
+            <section class="panel" style="grid-column: 1 / -1">
+              <div class="handoff">
+                <div class="handoff-box">
+                  <h3>发生器内部事实</h3>
+                  <div class="handoff-line">可以显示模拟标记、规则引擎、fixture id 和复现版本。</div>
+                  <div class="handoff-line">这些信息服务开发者、测试人员和管理配置。</div>
+                </div>
+                <div class="handoff-box">
+                  <h3>P2 编辑器可见事实</h3>
+                  <div class="handoff-line">只显示需求规格正文、问答建议、缺口检查和冻结状态。</div>
+                  <div class="handoff-line">不显示 mock、模拟、发生器来源或 fixture id。</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="open-session">
+              <div>
+                <h3>打开普通 P2 编辑会话</h3>
+                <p>传入 <code>session_id=req-airspace-81433</code>，编辑器按标准数据契约渲染，不知道会话由发生器创建。</p>
+              </div>
+              <button class="button primary">打开 P2 编辑器</button>
+            </section>
+          </div>
+
+          <div class="content editor-grid state-editor grid">
+            <section class="editor-panel left-editor">
+              <div class="tabs">
+                <div class="tab-group">
+                  <div class="tab active">问答模式</div>
+                  <div class="tab">表单模式</div>
+                </div>
+                <span class="pill green">知识库已绑定</span>
+              </div>
+              <div class="messages">
+                <article class="message system">
+                  <div class="message-label">系统</div>
+                  <p>已创建空域协同规划软件的需求规格说明。你可以继续确认、补充异常流程，或要求我自动补齐剩余字段。</p>
+                  <div class="quick-row">
+                    <span class="quick">可以</span>
+                    <span class="quick">加超时</span>
+                    <span class="quick">补验收</span>
+                    <span class="quick">自动补齐</span>
+                  </div>
+                </article>
+                <article class="message user">
+                  <div class="message-label">专家</div>
+                  <p>加超时</p>
+                </article>
+                <article class="message system">
+                  <div class="message-label">系统</div>
+                  <p>已补入方案会签超时提醒和人工确认约束。右侧异常与补偿条款已经同步更新。</p>
+                  <div class="quick-row">
+                    <span class="quick">补验收</span>
+                    <span class="quick">更正式</span>
+                    <span class="quick">自动补齐</span>
+                  </div>
+                </article>
+              </div>
+              <div class="input-row">
+                <div class="input">继续补充需求...</div>
+                <button class="button primary">发送</button>
+              </div>
+            </section>
+
+            <section class="editor-panel right-editor">
+              <div class="doc-toolbar">
+                <div class="toolbar-left">
+                  <span class="toolbar-title">标准需求规格说明</span>
+                  <span class="pill green">可导出稿</span>
+                  <span class="pill blue">draft</span>
+                  <span class="pill amber">阻断项 2</span>
+                </div>
+                <div class="toolbar-right">
+                  <span class="pill">软件级需求规格说明模板</span>
+                  <span class="pill">DOCX / PDF</span>
+                </div>
+              </div>
+              <div class="ribbon">
+                <span>页面 A4</span>
+                <span>样式 标准正文</span>
+                <span>段落 1.5 倍行距</span>
+                <span>批注 点击条款打开</span>
+                <span>知识库已绑定</span>
+              </div>
+              <div class="paper-zone">
+                <article class="paper">
+                  <div class="paper-head">
+                    <span>需求规格说明</span>
+                    <span>草稿版</span>
+                  </div>
+                  <h2>空域协同规划软件需求规格说明</h2>
+                  <section class="doc-section">
+                    <h3>1 总则</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-1.1</div>
+                      <div>
+                        <div class="clause-title">编写目的</div>
+                        <p class="clause-content">本文档用于定义空域协同规划软件在空域协同规划领域内的需求边界、功能行为和验收准则。</p>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="doc-section">
+                    <h3>3 功能需求</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.1</div>
+                      <div>
+                        <div class="clause-title">用户与角色</div>
+                        <p class="clause-content">本软件的主要使用对象包括运行协调员、规划审核员、体系架构师。</p>
+                      </div>
+                    </div>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.2</div>
+                      <div>
+                        <div class="clause-title">核心业务流程</div>
+                        <p class="clause-content">系统应支持协同任务创建、冲突窗口识别、方案会签、结果发布与过程留痕，并保证关键状态可追溯。</p>
+                      </div>
+                    </div>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.3</div>
+                      <div>
+                        <div class="clause-title">异常与补偿</div>
+                        <p class="clause-content">系统应在方案会签超时后提醒责任人，并允许人工确认后继续处理；未确认时不得直接发布规划方案。</p>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="doc-section">
+                    <h3>4 非功能要求</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-4.1</div>
+                      <div>
+                        <div class="clause-title">性能与可追溯</div>
+                        <p class="clause-content">系统应保证关键告警 2 分钟内反馈，关键操作、会签结果和异常处置过程可审计。</p>
+                      </div>
+                    </div>
+                  </section>
+                </article>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      const allowed = new Set(["setup", "run", "editor"]);
+      const state = location.hash.replace("#", "") || "setup";
+      document.body.dataset.state = allowed.has(state) ? state : "setup";
+    </script>
+  </body>
+</html>
