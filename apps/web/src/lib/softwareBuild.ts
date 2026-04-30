@@ -37,26 +37,26 @@ export type P5DesignInputSimPayload = {
   requirement_spec_id: string;
   baseline_id: string;
   notes: string;
-  module_specs: Array<{
+  module_specs: ReadonlyArray<{
     module_id: string;
     name: string;
     objective: string;
-    inputs: string[];
-    outputs: string[];
-    constraints: string[];
-    recommended_tools: string[];
+    inputs: readonly string[];
+    outputs: readonly string[];
+    constraints: readonly string[];
+    recommended_tools: readonly string[];
   }>;
 };
 
 export type P5SupplyInputSimPayload = {
   snapshot_name: string;
   notes: string;
-  tools: Array<{
+  tools: ReadonlyArray<{
     tool_id: string;
     tool_name: string;
     tool_slug: string;
     verification_status: string;
-    keywords: string[];
+    keywords: readonly string[];
   }>;
 };
 
