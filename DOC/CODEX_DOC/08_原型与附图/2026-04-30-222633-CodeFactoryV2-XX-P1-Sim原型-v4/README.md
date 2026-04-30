@@ -1,10 +1,10 @@
-# CodeFactoryV2 XX-P1-Sim 原型 v3
+# CodeFactoryV2 XX-P1-Sim 原型 v4
 
-生成时间：2026-04-30 21:47:34
+生成时间：2026-04-30 22:26:33
 
 - 文档角色：`XX-P1-Sim` 正式原型评审入口
-- 版本目录：`DOC/CODEX_DOC/08_原型与附图/2026-04-30-214734-CodeFactoryV2-XX-P1-Sim原型-v3/`
-- 当前状态：已被 v4 替代，不作为最新实现依据
+- 版本目录：`DOC/CODEX_DOC/08_原型与附图/2026-04-30-222633-CodeFactoryV2-XX-P1-Sim原型-v4/`
+- 当前状态：待用户确认（v4 修正稿）
 - 目标路由：`/xx-p1-sim`、`/requirement-authoring`
 - 页面归属：`P2` 需求分析系统的上游联调输入
 - 页面主对象：`XXP1SimPage`、`P1KnowledgeProviderRegistration`、`P1DomainKnowledgeArchive`、`RequirementAuthoringKnowledgeBinding`
@@ -13,16 +13,21 @@
 
 ## 1. 本版定位
 
-本版已被 `2026-04-30-222633-CodeFactoryV2-XX-P1-Sim原型-v4/` 替代。P1 上游知识服务模拟器的总体边界成立，但 `5.1 XX-P1-Sim 模拟输入台` 中接口、调用日志和左侧表达以 v4 为准。
+本版继承 v3 的 `XX-P1-Sim` 方向，只修正 `5.1 XX-P1-Sim 模拟输入台` 的表达问题。
 
-本版废弃“场景数据发生器”“样例数据发生器”的方向，改为既有体系中的 `XX-P1-Sim`。
+v4 处理用户对 v3 中 `5.1 XX-P1-Sim 模拟输入台` 的四点批注：
 
-`XX-P1-Sim` 只模拟 P1 这个上游阶段给 P2 的知识输入端口。它不模拟专家输入，不生成需求规格说明，不生成 P2 文档，不做自动补齐，不做冻结。
+1. 删除 v3 中语义不清的注册总览卡片。
+2. 接口区直接命名为 `P1 服务接口`，不再使用抽象命名。
+3. 将 `P1 服务接口` 和 `最近调用日志` 提升到 5.1 主工作区第一行。
+4. 移除左侧看起来像 Tab / 导航的切换项，改为不可点击的静态服务摘要。
+
+`5.2 P2 选择 P1 领域知识` 和 `5.3 P2 普通编辑态` 沿用 v3 结构，仅随源文件统一重新截图。
 
 ## 2. 非目标
 
-1. 不再使用“场景”“样例数据包”“样例项目包”作为正式概念。
-2. 不提供“空域协同规划软件”这类成型软件目录。
+1. 不再使用旧方向中的 P2 样例包、项目包作为正式概念。
+2. 不提供任何成型软件目录。
 3. 不模拟人的问答输入。
 4. 不生成 P2 标准需求规格正文。
 5. 不替代 P2 专家工作台。
@@ -41,8 +46,11 @@
 | 区域 | 规格 / 预算 | 设计说明 |
 | --- | --- | --- |
 | 主画板 | `1920 x 1080` | 桌面整页原型 |
-| `XX-P1-Sim` 顶部栏 | 约 `78px` | 服务注册、重置种子、注册到 P2 |
-| `XX-P1-Sim` 侧栏 | 约 `250px` | 服务注册、领域目录、知识版本、输出契约、调用日志 |
+| `XX-P1-Sim` 顶部栏 | 约 `78px` | 查看日志、重置种子、注册到 P2 |
+| `XX-P1-Sim` 左侧摘要 | 约 `250px` | 静态展示当前模拟服务状态，不作为 Tab 或导航 |
+| `XX-P1-Sim` 主区第一行 | 约 `285px` | 左侧 `P1 服务接口`，右侧 `最近调用日志` |
+| `XX-P1-Sim` 主区第二行 | 约 `330px` | 领域知识目录 |
+| `XX-P1-Sim` 主区第三行 | 剩余高度 | 选中领域知识包预览 |
 | P2 知识绑定页 | 全宽工作区 | P2 发现 P1 知识源，选择领域并加载 |
 | P2 编辑器态 | 左右分屏 | 领域知识已绑定，用户继续正常编写需求规格 |
 
@@ -59,12 +67,14 @@
 1. 页面命名为 `XX-P1-Sim`，对齐既有 `XX-Pn-Sim` 命名体系。
 2. 它模拟的是 P1 发布态知识服务，而不是 P2 数据发生器。
 3. 目录对象是领域知识，例如 `空域规划领域知识`，不是成型软件。
-4. 输出契约只有 P1 知识相关接口：领域目录、领域知识包、重置、调用日志。
+4. 服务接口是 5.1 的核心对象，应放在主工作区第一行，而不是右侧次要区域。
+5. 调用日志用于解释 P2 何时调用了哪个接口，应和服务接口同级展示。
+6. 左侧只保留静态服务摘要，不再使用看起来可切换的 Tab 或导航项。
 
 **需要用户判断：**
 
-1. 这个 Sim 页是否符合你对已有模拟输入台的直觉。
-2. 领域知识目录是否比“场景/样例/软件目录”更准确。
+1. 5.1 是否已经能直观看出这是 P1 模拟服务接口台。
+2. `P1 服务接口 / 最近调用日志 / 领域知识目录` 的主次关系是否符合预期。
 
 ![01 XX-P1-Sim 模拟输入台](./01-1920x1080-XX-P1-Sim模拟输入台.png)
 
@@ -118,8 +128,8 @@
 | --- | --- | --- |
 | `XX-P1-Sim` 独立路由 | `/xx-p1-sim` | 对齐既有 Sim 命名体系 |
 | 服务注册 | P1 knowledge provider registration | P2 能发现该知识源 |
-| 领域目录 | `GET /p1/domains` | 返回领域知识，不返回软件样例 |
-| 知识包输出 | `GET /p1/domains/{domain_id}/knowledge` | 输出概念、规则、流程、证据 |
+| 服务接口 | `GET /api/xx-p1-sim/domains`、`GET /api/xx-p1-sim/domains/{domain_id}/knowledge` | 返回领域知识和知识包，不返回软件样例 |
+| 调用日志 | `GET /api/xx-p1-sim/logs` | 记录 P2 的接口调用 |
 | P2 知识绑定 | `/requirement-authoring` 中的知识源选择 | 用户在 P2 里选择领域 |
 | P2 编辑器 | 普通需求规格编辑器 | 不显示 Sim/mock/发生器概念 |
 
@@ -129,12 +139,12 @@
 
 1. `XX-P1-Sim` 可以使用已有 Sim 页面布局组件。
 2. P2 知识绑定入口可以是编辑器启动前的面板、侧栏或首步区域。
-3. 领域知识字段可随 P1 输出契约调整。
+3. 领域知识字段可随 P1 服务接口调整。
 
 不可接受偏差：
 
-1. 将本功能命名为 P2 场景/样例数据发生器。
-2. 在 Sim 中出现成型软件目录，例如 `空域协同规划软件`。
+1. 将本功能命名为 P2 样例数据发生器。
+2. 在 Sim 中出现成型软件目录。
 3. 让 Sim 生成需求规格说明、问答补丁、自动补齐或冻结包。
 4. 模拟专家输入。
 5. P2 编辑器暴露 Sim/mock/发生器来源。
@@ -144,23 +154,23 @@
 直接打开源文件：
 
 ```bash
-xdg-open DOC/CODEX_DOC/08_原型与附图/2026-04-30-214734-CodeFactoryV2-XX-P1-Sim原型-v3/source/xx-p1-sim-prototype.html
+xdg-open DOC/CODEX_DOC/08_原型与附图/2026-04-30-222633-CodeFactoryV2-XX-P1-Sim原型-v4/source/xx-p1-sim-prototype.html
 ```
 
 重新生成截图：
 
 ```bash
-base="$PWD/DOC/CODEX_DOC/08_原型与附图/2026-04-30-214734-CodeFactoryV2-XX-P1-Sim原型-v3"
-mkdir -p /tmp/cf-xx-p1-sim-v3
-ln -sfn "$base/source/xx-p1-sim-prototype.html" /tmp/cf-xx-p1-sim-v3/prototype.html
+base="$PWD/DOC/CODEX_DOC/08_原型与附图/2026-04-30-222633-CodeFactoryV2-XX-P1-Sim原型-v4"
+mkdir -p /tmp/cf-xx-p1-sim-v4
+ln -sfn "$base/source/xx-p1-sim-prototype.html" /tmp/cf-xx-p1-sim-v4/prototype.html
 for item in \
   "sim|01-1920x1080-XX-P1-Sim模拟输入台.png" \
   "bind|02-1920x1080-P2选择P1领域知识.png" \
   "editor|03-1920x1080-P2普通编辑态.png"; do
   state="${item%%|*}"
   name="${item#*|}"
-  tmp="/tmp/cf-xx-p1-sim-v3/${state}-1920x1167.png"
-  google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars --window-size=1920,1167 --screenshot="$tmp" "file:///tmp/cf-xx-p1-sim-v3/prototype.html#$state"
+  tmp="/tmp/cf-xx-p1-sim-v4/${state}-1920x1167.png"
+  google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars --window-size=1920,1167 --screenshot="$tmp" "file:///tmp/cf-xx-p1-sim-v4/prototype.html#$state"
   python3 - "$tmp" "$base/$name" <<'PY'
 from PIL import Image
 import sys
@@ -172,20 +182,20 @@ done
 
 ## 10. 自检结论
 
-自检时间：2026-04-30 22:06。
+自检时间：2026-04-30 22:40
 
 已执行：
 
 1. 使用 `google-chrome --headless=new --window-size=1920,1167` 重新生成三张截图，并裁切为 `1920 x 1080`。
 2. 使用 `file` 检查三张 PNG 均为 `1920 x 1080`。
 3. 逐张查看截图，确认主要面板没有底部空白、明显重叠、文字溢出或错误裁切。
-4. 检查 `XX-P1-Sim` 页面未出现 `空域协同规划软件` 这类成型软件目录；只展示 `空域规划领域知识` 等领域知识。
+4. 检查 `XX-P1-Sim` 页面未出现成型软件目录；只展示 `空域规划领域知识` 等领域知识。
 5. 检查 `P2 普通编辑态` 截图中未显示 `XX-P1-Sim`、`mock`、`模拟` 或 `发生器` 来源概念。
 
-自检结论：通过，待用户确认。
+自检结论：通过。三张评审图均已重新生成并人工查看，`5.1` 已按本轮批注修正。
 
 ## 11. 评审结论与后续处理
 
 当前结论：待用户确认。
 
-用户确认后，本版可作为 `XX-P1-Sim` 与 P2 知识绑定边界的实现事实源。v1、v2 保留为方向错误的历史原型证据，不再作为实现依据。
+用户确认后，本版可作为 `XX-P1-Sim` 与 P2 知识绑定边界的实现事实源。v1、v2 保留为方向错误的历史原型证据，v3 保留为本轮评审前序版本，并已被 v4 替代。
