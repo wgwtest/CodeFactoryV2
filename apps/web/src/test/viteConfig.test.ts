@@ -26,7 +26,9 @@ describe("vite proxy config", () => {
     const expectedHost = repoEnv.VITE_WEB_HOST ?? "127.0.0.1";
     const expectedPort = Number.parseInt(repoEnv.VITE_WEB_PORT ?? "5173", 10);
 
-    expect(config.server?.proxy?.["/api"].target).toBe(expectedProxyTarget);
+    const apiProxy = config.server?.proxy?.["/api"];
+    const apiProxyTarget = typeof apiProxy === "string" ? apiProxy : apiProxy?.target;
+    expect(apiProxyTarget).toBe(expectedProxyTarget);
     expect(config.server?.host).toBe(expectedHost);
     expect(config.server?.port).toBe(Number.isNaN(expectedPort) ? 5173 : expectedPort);
     expect(config.server?.strictPort).toBe(true);

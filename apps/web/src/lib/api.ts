@@ -689,6 +689,134 @@ export type RequirementSpecWriteInput = {
   payload: RequirementSpecPayload;
 };
 
+export type RequirementAuthoringTemplateStatus = "draft" | "active" | "disabled" | "archived";
+export type RequirementAuthoringDocumentStatus =
+  | "draft"
+  | "checking"
+  | "ready_to_freeze"
+  | "frozen"
+  | "submitted_to_p3"
+  | "archived";
+export type RequirementAuthoringLayoutRatio = "2:3" | "1:1";
+
+export type RequirementAuthoringTemplateField = {
+  field_key: string;
+  label: string;
+  required: boolean;
+  clause_id: string;
+};
+
+export type RequirementAuthoringTemplateFormGroup = {
+  group_id: string;
+  title: string;
+  fields: RequirementAuthoringTemplateField[];
+};
+
+export type RequirementAuthoringTemplate = {
+  template_id: string;
+  template_code: string;
+  name: string;
+  status: RequirementAuthoringTemplateStatus;
+  description: string;
+  sections: Array<Record<string, unknown>>;
+  form_groups: RequirementAuthoringTemplateFormGroup[];
+  field_mappings: Array<Record<string, unknown>>;
+  questionnaire_policy: {
+    quick_inputs?: string[];
+    [key: string]: unknown;
+  };
+  gap_rules: Record<string, unknown>;
+  knowledge_bindings: Array<{ archive_id: string; label: string; enabled?: boolean }>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RequirementAuthoringClause = {
+  clause_id: string;
+  title: string;
+  content: string;
+  status: "missing" | "synced" | "pending_mapping" | string;
+};
+
+export type RequirementAuthoringSection = {
+  section_id: string;
+  title: string;
+  clauses: RequirementAuthoringClause[];
+};
+
+export type RequirementAuthoringStandardDocument = {
+  title: string;
+  sections: RequirementAuthoringSection[];
+};
+
+export type RequirementAuthoringConversationMessage = {
+  id: string;
+  role: "assistant" | "user" | string;
+  content: string;
+  created_at?: string;
+};
+
+export type RequirementAuthoringAnnotation = {
+  clause_id: string;
+  title: string;
+  interpretation: string;
+  source_refs: string[];
+  semantic_mapping: Array<Record<string, unknown>>;
+  p3_mapping: string[];
+  gaps: string[];
+  pending_confirmations: string[];
+};
+
+export type RequirementAuthoringCheckResult = {
+  blocking_count: number;
+  warning_count: number;
+  passed_count: number;
+  items: Array<Record<string, unknown>>;
+};
+
+export type RequirementAuthoringDocumentSummary = {
+  document_id: string;
+  title: string;
+  template_id: string;
+  status: RequirementAuthoringDocumentStatus;
+  layout_ratio: RequirementAuthoringLayoutRatio;
+  archive_ids: string[];
+  updated_at: string;
+};
+
+export type RequirementAuthoringDocumentDetail = RequirementAuthoringDocumentSummary & {
+  created_at: string;
+  semantic_state: {
+    fields: Record<string, string>;
+    [key: string]: unknown;
+  };
+  document: RequirementAuthoringStandardDocument;
+  conversation: RequirementAuthoringConversationMessage[];
+  annotations: RequirementAuthoringAnnotation[];
+  check_result: RequirementAuthoringCheckResult;
+  frozen_package: { p3_consumable?: boolean; [key: string]: unknown } | null;
+};
+
+export type RequirementAuthoringTemplateWriteInput = {
+  template_code: string;
+  name: string;
+  description?: string;
+  status?: RequirementAuthoringTemplateStatus;
+  sections?: Array<Record<string, unknown>>;
+  form_groups?: RequirementAuthoringTemplateFormGroup[];
+  field_mappings?: Array<Record<string, unknown>>;
+  questionnaire_policy?: Record<string, unknown>;
+  gap_rules?: Record<string, unknown>;
+  knowledge_bindings?: Array<Record<string, unknown>>;
+};
+
+export type RequirementAuthoringDocumentCreateInput = {
+  title: string;
+  template_id: string;
+  archive_ids?: string[];
+  layout_ratio?: RequirementAuthoringLayoutRatio;
+};
+
 export type RequirementStep = "goal" | "audience" | "flow" | "object_event" | "structure";
 export type RequirementDraftStatus = "draft" | "completed";
 export type RequirementRecommendationSource = "recommended_common" | "recommended_domain" | "manual";
@@ -832,6 +960,16 @@ export type ApplicationRequirementDraftExport = {
 
 export type ToolStatus = "draft" | "active" | "archived";
 export type ToolVerificationStatus = "unverified" | "verified" | "warning" | "failed";
+export type ToolGranularity = "atomic" | "composite" | "page_level";
+export type ToolPackagingType = "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
+export type ToolIntegrationMode =
+  | "import_component"
+  | "import_module"
+  | "include_router"
+  | "call_http_api"
+  | "mount_page"
+  | "manual";
+export type ToolDependencyPolicy = "peer" | "bundled" | "external";
 
 export type ToolHubCatalogItem = {
   id: string;
@@ -855,6 +993,12 @@ export type ToolDefinition = {
   problem_statement: string;
   primary_domain_id: string;
   tool_form_id: string;
+  tool_granularity?: ToolGranularity;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
+  host_constraints?: Record<string, string | string[]>;
   runtime_platform_ids: string[];
   tags: string[];
   lifecycle_stage_ids: string[];
@@ -1181,12 +1325,53 @@ export type ToolFetchManifest = {
   tool_name: string;
   tool_version: string;
   tool_form_id: string;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
   runtime_platform_ids: string[];
   fetch_mode: "descriptor";
   entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
   entrypoint_locator: string;
   contract_version: string;
   updated_at: string;
+};
+
+export type ToolBuildRun = {
+  build_run_id: string;
+  build_request_id: string;
+  tool_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  queue_name: string;
+  payload: Record<string, unknown>;
+  artifact_version_id?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolDeliveryManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_form_id: string;
+  packaging_type: ToolPackagingType;
+  integration_mode: ToolIntegrationMode;
+  dependency_policy: ToolDependencyPolicy;
+  runtime_dependencies: string[];
+  import_specifier: string;
+  example_host_path: string;
+  artifact_version_id?: string | null;
+  manifest_path: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type FrontendComponentBuildRequestInput = {
+  requested_by: string;
+  component_name: string;
+  scenario_id: string;
+  tool_definition: ToolDefinitionWriteInput;
 };
 
 export type ToolSupplyResult = {

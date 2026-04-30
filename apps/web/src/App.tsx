@@ -12,6 +12,8 @@ import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { P6ObservationPage } from "./pages/P6ObservationPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
+import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
+import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
 import { XXP3Page } from "./pages/XXP3Page";
@@ -27,6 +29,8 @@ const items = [
   { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
+  { key: "/requirement-authoring", label: <Link to="/requirement-authoring">P2规格编写</Link> },
+  { key: "/requirement-authoring/admin", label: <Link to="/requirement-authoring/admin">P2配置台</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
@@ -81,6 +85,8 @@ function MainShell() {
           <Route path="/documents/intake" element={<DocumentIntakePage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
+          <Route path="/requirement-authoring" element={<RequirementAuthoringPage />} />
+          <Route path="/requirement-authoring/admin" element={<RequirementAuthoringAdminPage />} />
           <Route path="/requirements" element={<RequirementsPage />} />
           <Route path="/modeling" element={<ApplicationModelerPage />} />
         </Routes>
