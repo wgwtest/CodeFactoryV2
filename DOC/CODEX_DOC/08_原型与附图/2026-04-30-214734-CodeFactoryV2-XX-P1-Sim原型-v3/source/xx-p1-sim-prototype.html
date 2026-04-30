@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 XX-P1-Sim 原型 v3</title>
+    <style>
+      :root {
+        --bg: #e7eceb;
+        --ink: #16211d;
+        --muted: #65736f;
+        --line: #c6d0ca;
+        --panel: #fbfcfb;
+        --paper: #fffefd;
+        --green: #1f7449;
+        --green-2: #e1f1e8;
+        --blue: #285f8f;
+        --blue-2: #dcecf9;
+        --amber: #a26316;
+        --amber-2: #f3e3c7;
+        --red: #963232;
+        --shadow: 0 20px 50px rgba(38, 50, 45, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          linear-gradient(0deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 78px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px 0 24px;
+        border: 1px solid rgba(151, 164, 157, 0.58);
+        background: rgba(251, 252, 251, 0.94);
+        box-shadow: 0 10px 34px rgba(55, 66, 62, 0.1);
+      }
+
+      .brandline {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .mark {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--green);
+        color: var(--green);
+        font-weight: 850;
+        font-size: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 25px;
+        line-height: 1.16;
+        font-weight: 850;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .button,
+      .pill,
+      .segmented {
+        border: 1px solid #b8c5bf;
+        background: #fff;
+        color: #26342f;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 15px;
+      }
+
+      .button.primary {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .button.disabled {
+        color: #8b9893;
+        background: #eef2f0;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+      }
+
+      .pill.green {
+        color: var(--green);
+        border-color: #9cc8ae;
+        background: var(--green-2);
+      }
+
+      .pill.blue {
+        color: var(--blue);
+        border-color: #b3cee5;
+        background: var(--blue-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dbbd87;
+        background: var(--amber-2);
+      }
+
+      .segmented {
+        height: 38px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px;
+      }
+
+      .segment {
+        min-width: 72px;
+        padding: 7px 12px;
+        color: #596762;
+        text-align: center;
+      }
+
+      .segment.active {
+        background: #22332c;
+        color: #fff;
+      }
+
+      .layout {
+        height: 958px;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .editor-panel {
+        border: 1px solid rgba(162, 174, 168, 0.78);
+        background: rgba(251, 252, 251, 0.96);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 20px 18px 16px;
+        border-bottom: 1px solid #d8e0dc;
+      }
+
+      .side-title {
+        font-weight: 850;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .nav {
+        padding: 16px 12px;
+      }
+
+      .nav-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 12px;
+        margin-bottom: 8px;
+        border: 1px solid #c9d4ce;
+        background: #fff;
+        color: #40504a;
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .nav-item.active {
+        color: #fff;
+        background: #22332c;
+        border-color: #22332c;
+      }
+
+      .side-foot {
+        padding: 15px 18px;
+        border-top: 1px solid #d8e0dc;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .workspace-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 64px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d8e0dc;
+        background: #fff;
+      }
+
+      .workspace-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 850;
+        font-size: 18px;
+      }
+
+      .workspace-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .content {
+        min-height: 0;
+        padding: 18px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .sim-grid {
+        grid-template-columns: 1fr 410px;
+        grid-template-rows: 220px 360px 1fr;
+      }
+
+      .p2-bind-grid {
+        grid-template-columns: 390px 1fr;
+        grid-template-rows: 280px 1fr;
+      }
+
+      .editor-grid {
+        grid-template-columns: 43fr 57fr;
+        grid-template-rows: 1fr;
+        padding: 0;
+        gap: 18px;
+        background: transparent;
+      }
+
+      .panel {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .panel-title {
+        font-size: 16px;
+        font-weight: 850;
+      }
+
+      .panel-subtitle {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .status-card,
+      .domain-card,
+      .data-card,
+      .log-row,
+      .contract-row {
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .status-card {
+        min-height: 132px;
+        padding: 15px;
+      }
+
+      .status-card b {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 17px;
+      }
+
+      .status-card span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .domain-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .domain-card {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 14px;
+        min-height: 66px;
+        padding: 12px 14px;
+      }
+
+      .domain-card.active {
+        border-color: #91c3a6;
+        background: #f0faf4;
+      }
+
+      .domain-card h3 {
+        margin: 0 0 5px;
+        font-size: 16px;
+      }
+
+      .domain-card p {
+        margin: 0;
+        color: #566760;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .domain-meta {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+      }
+
+      .contract-list,
+      .log-list,
+      .data-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .contract-row {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 42px;
+        padding: 0 12px;
+        font-size: 12px;
+      }
+
+      .contract-row code,
+      .data-card code,
+      .log-row code {
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        color: var(--blue);
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .data-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .data-card {
+        min-height: 118px;
+        padding: 14px;
+      }
+
+      .data-card b {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .data-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .log-row {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr) 44px;
+        align-items: center;
+        gap: 12px;
+        min-height: 44px;
+        padding: 0 12px;
+        font-size: 12px;
+      }
+
+      .source-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 14px;
+        padding: 14px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+        margin-bottom: 10px;
+      }
+
+      .source-row.active {
+        border-color: #91c3a6;
+        background: #f0faf4;
+      }
+
+      .source-row h3 {
+        margin: 0 0 7px;
+        font-size: 16px;
+      }
+
+      .source-row p {
+        margin: 0;
+        color: #566760;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .knowledge-preview {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .knowledge-card {
+        min-height: 140px;
+        padding: 14px;
+        border: 1px solid #c8d4ce;
+        background: #fff;
+      }
+
+      .knowledge-card b {
+        display: block;
+        margin-bottom: 9px;
+      }
+
+      .knowledge-card ul {
+        margin: 0;
+        padding-left: 18px;
+        color: #4f6059;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .bind-banner {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 92px;
+        padding: 18px;
+        border: 1px solid #91c3a6;
+        background: #f0faf4;
+      }
+
+      .bind-banner h3 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+
+      .bind-banner p {
+        margin: 0;
+        color: #52635c;
+        font-size: 13px;
+      }
+
+      .editor-panel {
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .left-editor {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .tabs {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 18px 0;
+      }
+
+      .tab-group {
+        display: flex;
+        gap: 7px;
+      }
+
+      .tab {
+        padding: 9px 15px;
+        border: 1px solid #bac7c1;
+        background: #fff;
+        font-size: 15px;
+        font-weight: 760;
+        color: #4f5e58;
+      }
+
+      .tab.active {
+        color: #fff;
+        background: #22332c;
+        border-color: #22332c;
+      }
+
+      .messages {
+        padding: 20px;
+        overflow: hidden;
+      }
+
+      .message {
+        margin-bottom: 16px;
+        padding: 15px 16px;
+        border: 1px solid #cbd8d2;
+        background: #fff;
+        box-shadow: 0 7px 20px rgba(42, 54, 49, 0.08);
+      }
+
+      .message.system {
+        border-left: 5px solid var(--green);
+      }
+
+      .message.user {
+        width: 78%;
+        margin-left: auto;
+        border-left: 5px solid var(--blue);
+        background: #f7fbff;
+      }
+
+      .message-label {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .message p {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .quick-row {
+        display: flex;
+        gap: 9px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .quick {
+        padding: 7px 12px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #41504a;
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 92px;
+        gap: 10px;
+        padding: 16px 18px 18px;
+        border-top: 1px solid #d9e0dc;
+        background: #f3f6f4;
+      }
+
+      .input {
+        height: 43px;
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #4d5a55;
+        font-size: 15px;
+      }
+
+      .right-editor {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        background: #f0f3f1;
+      }
+
+      .doc-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 57px;
+        padding: 13px 18px;
+        background: #fff;
+        border-bottom: 1px solid #d4ddd8;
+      }
+
+      .toolbar-left,
+      .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .toolbar-title {
+        font-size: 17px;
+        font-weight: 850;
+      }
+
+      .ribbon {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-height: 39px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d4ddd8;
+        background: #f8faf9;
+        color: #687772;
+        font-size: 13px;
+      }
+
+      .paper-zone {
+        position: relative;
+        padding: 28px 32px 34px;
+        overflow: hidden;
+      }
+
+      .paper {
+        width: 720px;
+        min-height: 820px;
+        margin: 0 auto;
+        padding: 44px 54px 46px;
+        background: var(--paper);
+        border: 1px solid #d0d0c8;
+        box-shadow: 0 22px 50px rgba(49, 56, 53, 0.2);
+      }
+
+      .paper-head {
+        display: flex;
+        justify-content: space-between;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #d8d8d0;
+        color: #7b7d76;
+        font-size: 12px;
+      }
+
+      .paper h2 {
+        margin: 26px 0 24px;
+        text-align: center;
+        font-size: 24px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .doc-section {
+        margin-top: 20px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .doc-section h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      .clause {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #ecebe4;
+      }
+
+      .clause-id {
+        color: var(--green);
+        font-weight: 850;
+        font-family: "Noto Sans CJK SC", sans-serif;
+      }
+
+      .clause-title {
+        margin-bottom: 5px;
+        font-weight: 850;
+      }
+
+      .clause-content {
+        margin: 0;
+        color: #2e3733;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .state-sim,
+      .state-bind,
+      .state-editor {
+        display: none;
+      }
+
+      body[data-state="sim"] .state-sim,
+      body[data-state="bind"] .state-bind,
+      body[data-state="editor"] .state-editor {
+        display: block;
+      }
+
+      body[data-state="sim"] .state-sim.segmented,
+      body[data-state="bind"] .state-bind.segmented {
+        display: flex;
+      }
+
+      body[data-state="sim"] .state-sim.button,
+      body[data-state="bind"] .state-bind.button,
+      body[data-state="editor"] .state-editor.button {
+        display: inline-flex;
+      }
+
+      body[data-state="sim"] .state-sim.grid,
+      body[data-state="bind"] .state-bind.grid,
+      body[data-state="editor"] .state-editor.grid {
+        display: grid;
+      }
+
+      body[data-state="bind"] .layout,
+      body[data-state="editor"] .layout {
+        grid-template-columns: 1fr;
+      }
+
+      body[data-state="bind"] .sidebar,
+      body[data-state="editor"] .sidebar {
+        display: none;
+      }
+
+      body[data-state="editor"] .workspace {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      body[data-state="editor"] .content {
+        height: 894px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <header class="topbar">
+        <div class="brandline">
+          <div class="mark state-sim">SIM</div>
+          <div class="mark state-bind state-editor">P2</div>
+          <div>
+            <h1 class="state-sim">XX-P1-Sim</h1>
+            <h1 class="state-bind">P2 专家需求规格编写工作台</h1>
+            <h1 class="state-editor">P2 专家需求规格编写工作台</h1>
+            <div class="subtitle state-sim">模拟 P1 上游知识服务：注册、领域目录、发布态知识输出</div>
+            <div class="subtitle state-bind">选择已注册的 P1 知识源，按领域拉取知识背景</div>
+            <div class="subtitle state-editor">标准需求规格编辑器：知识已绑定，继续由专家问答和表单驱动</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div class="segmented state-sim" aria-label="XX-P1-Sim视图">
+            <div class="segment active">P1-Sim</div>
+            <div class="segment">调用日志</div>
+          </div>
+          <button class="button state-sim">重置种子</button>
+          <button class="button primary state-sim">注册到 P2</button>
+          <button class="button state-bind">刷新知识源</button>
+          <button class="button primary state-bind">加载领域知识</button>
+          <button class="button state-editor">缺口检查</button>
+          <button class="button primary state-editor">冻结版本</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar state-sim">
+          <div class="side-head">
+            <div class="side-title">XX-P1-Sim 职责</div>
+            <div class="side-note">只模拟 P1 给 P2 的上游知识输入，不模拟专家、不生成需求规格正文。</div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item active">服务注册 <span>online</span></div>
+            <div class="nav-item">领域目录 <span>3</span></div>
+            <div class="nav-item">知识版本 <span>v1.0</span></div>
+            <div class="nav-item">输出契约 <span>P1</span></div>
+            <div class="nav-item">调用日志 <span>12</span></div>
+          </nav>
+          <div class="side-foot">
+            输出对象是 P1 发布态知识包。P2 仍由专家在主工作台选择领域并使用知识。
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <div class="workspace-head state-sim">
+            <div class="workspace-title">
+              P1 上游输入模拟台
+              <span class="pill green">已注册</span>
+              <span class="pill blue">供 P2 查询</span>
+            </div>
+            <div class="workspace-actions">
+              <span class="pill">service_id: xx-p1-sim</span>
+              <span class="pill amber">固定种子 v1.0</span>
+            </div>
+          </div>
+
+          <div class="workspace-head state-bind">
+            <div class="workspace-title">
+              P1 知识绑定
+              <span class="pill green">发现 1 个 P1 知识源</span>
+              <span class="pill">编辑器标准入口</span>
+            </div>
+            <div class="workspace-actions">
+              <span class="pill">当前项目：未命名需求规格</span>
+              <span class="pill blue">P1 source: available</span>
+            </div>
+          </div>
+
+          <div class="content sim-grid state-sim grid">
+            <section class="panel" style="grid-column: 1 / -1">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">服务注册状态</div>
+                  <div class="panel-subtitle">XX-P1-Sim 模拟 P1 服务发现与知识输出端口，P2 可按领域查询。</div>
+                </div>
+                <span class="pill green">registered to P2</span>
+              </div>
+              <div class="status-grid">
+                <div class="status-card">
+                  <b>注册中心</b>
+                  <span>service_id = xx-p1-sim，能力声明为 knowledge_provider。</span>
+                </div>
+                <div class="status-card">
+                  <b>领域目录</b>
+                  <span>提供领域知识列表，不提供目标软件或需求规格样板。</span>
+                </div>
+                <div class="status-card">
+                  <b>发布态知识</b>
+                  <span>返回概念、规则、流程、约束和证据片段。</span>
+                </div>
+                <div class="status-card">
+                  <b>复现能力</b>
+                  <span>固定版本、固定种子、可重置，便于联调和机测。</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">领域知识目录</div>
+                  <div class="panel-subtitle">这里是 P1 领域知识，不是软件目录，也不是 P2 文档样板。</div>
+                </div>
+                <span class="pill blue">domain catalog</span>
+              </div>
+              <div class="domain-list">
+                <div class="domain-card active">
+                  <div>
+                    <h3>空域规划领域知识</h3>
+                    <p>包含空域对象、冲突窗口、协同规划流程、会签约束和证据片段。</p>
+                    <div class="domain-meta">
+                      <span class="pill">concepts 12</span>
+                      <span class="pill">rules 8</span>
+                      <span class="pill">evidence 18</span>
+                    </div>
+                  </div>
+                  <button class="button primary">可查询</button>
+                </div>
+                <div class="domain-card">
+                  <div>
+                    <h3>政务服务领域知识</h3>
+                    <p>包含预约、窗口、排队、办理状态和服务评价知识。</p>
+                  </div>
+                  <button class="button">可查询</button>
+                </div>
+                <div class="domain-card">
+                  <div>
+                    <h3>供应链协同领域知识</h3>
+                    <p>包含订单、交付、异常协同和履约约束知识。</p>
+                  </div>
+                  <button class="button">可查询</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">P1 输出契约</div>
+                  <div class="panel-subtitle">P2 拉取的是知识包，不是人机问答脚本或需求规格正文。</div>
+                </div>
+                <span class="pill green">contract clean</span>
+              </div>
+              <div class="contract-list">
+                <div class="contract-row"><b>GET</b><code>/p1/domains</code><span>领域目录</span></div>
+                <div class="contract-row"><b>GET</b><code>/p1/domains/{domain_id}/knowledge</code><span>知识包</span></div>
+                <div class="contract-row"><b>POST</b><code>/p1/sim/reset</code><span>重置种子</span></div>
+                <div class="contract-row"><b>GET</b><code>/p1/sim/logs</code><span>调用日志</span></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">空域规划知识包预览</div>
+                  <div class="panel-subtitle">预览 P1 会给 P2 的知识，不含目标软件名。</div>
+                </div>
+                <span class="pill">knowledge_archive v1.0</span>
+              </div>
+              <div class="data-grid">
+                <div class="data-card">
+                  <b>概念</b>
+                  <p><code>airspace</code>、<code>conflict_window</code>、<code>coordination_task</code></p>
+                </div>
+                <div class="data-card">
+                  <b>规则</b>
+                  <p>冲突窗口未确认时，不得直接发布规划结果。</p>
+                </div>
+                <div class="data-card">
+                  <b>流程</b>
+                  <p>任务创建 -> 冲突识别 -> 协同会签 -> 结果发布。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">调用日志</div>
+                  <div class="panel-subtitle">记录 P2 什么时候请求了哪个领域知识。</div>
+                </div>
+                <span class="pill amber">sim evidence</span>
+              </div>
+              <div class="log-list">
+                <div class="log-row"><b>21:45:08</b><code>GET /p1/domains</code><span>200</span></div>
+                <div class="log-row"><b>21:45:16</b><code>GET /p1/domains/airspace-planning/knowledge</code><span>200</span></div>
+                <div class="log-row"><b>21:45:17</b><code>archive_version = v1.0</code><span>fixed</span></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="content p2-bind-grid state-bind grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">P1 知识源</div>
+                  <div class="panel-subtitle">P2 发现已注册的上游知识服务，用户选择领域。</div>
+                </div>
+                <span class="pill green">online</span>
+              </div>
+              <div class="source-row active">
+                <div>
+                  <h3>XX-P1-Sim</h3>
+                  <p>模拟 P1 发布态知识服务，提供领域目录和知识包输出。</p>
+                </div>
+                <span class="pill green">可用</span>
+              </div>
+              <div class="source-row">
+                <div>
+                  <h3>真实 P1</h3>
+                  <p>真实 P1 尚未接入，后续可替换同一接口。</p>
+                </div>
+                <span class="pill amber">未接入</span>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">选择领域知识</div>
+                  <div class="panel-subtitle">这里选择的是知识背景，不是软件名称；目标软件由后续需求规格编辑确定。</div>
+                </div>
+                <button class="button primary">加载领域知识</button>
+              </div>
+              <div class="domain-list">
+                <div class="domain-card active">
+                  <div>
+                    <h3>空域规划领域知识</h3>
+                    <p>适用于空域运算、空域协同、无人机任务规划等多种需求规格编写。</p>
+                    <div class="domain-meta">
+                      <span class="pill">概念 12</span>
+                      <span class="pill">规则 8</span>
+                      <span class="pill">证据 18</span>
+                    </div>
+                  </div>
+                  <button class="button primary">选中</button>
+                </div>
+                <div class="domain-card">
+                  <div>
+                    <h3>政务服务领域知识</h3>
+                    <p>预约、窗口、办理、评价等知识背景。</p>
+                  </div>
+                  <button class="button">选择</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel" style="grid-column: 1 / -1">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">知识预览</div>
+                  <div class="panel-subtitle">P2 仅把这些知识加载为背景材料，后续由专家问答和表单形成需求规格。</div>
+                </div>
+                <span class="pill green">已拉取</span>
+              </div>
+              <div class="knowledge-preview">
+                <div class="knowledge-card">
+                  <b>业务对象</b>
+                  <ul>
+                    <li>空域单元</li>
+                    <li>冲突窗口</li>
+                    <li>协同任务</li>
+                  </ul>
+                </div>
+                <div class="knowledge-card">
+                  <b>业务规则</b>
+                  <ul>
+                    <li>冲突窗口未确认时不得发布规划结果</li>
+                    <li>方案会签超时后必须提醒责任人</li>
+                    <li>关键状态需要保留审计证据</li>
+                  </ul>
+                </div>
+                <div class="knowledge-card">
+                  <b>流程知识</b>
+                  <ul>
+                    <li>协同任务创建</li>
+                    <li>冲突识别与标记</li>
+                    <li>会签确认与结果发布</li>
+                  </ul>
+                </div>
+                <div class="knowledge-card">
+                  <b>证据片段</b>
+                  <ul>
+                    <li>领域术语说明</li>
+                    <li>规则依据片段</li>
+                    <li>流程节点描述</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="bind-banner">
+              <div>
+                <h3>绑定到当前 P2 编辑上下文</h3>
+                <p>知识背景加载后，用户进入普通 P2 编辑器，自行确定目标软件名称和需求规格内容。</p>
+              </div>
+              <button class="button primary">进入编辑器</button>
+            </section>
+          </div>
+
+          <div class="content editor-grid state-editor grid">
+            <section class="editor-panel left-editor">
+              <div class="tabs">
+                <div class="tab-group">
+                  <div class="tab active">问答模式</div>
+                  <div class="tab">表单模式</div>
+                </div>
+                <span class="pill green">领域知识已绑定</span>
+              </div>
+              <div class="messages">
+                <article class="message system">
+                  <div class="message-label">系统</div>
+                  <p>已加载空域规划领域知识。请先确定本次要编写的目标软件名称和需求边界。</p>
+                  <div class="quick-row">
+                    <span class="quick">空域运算软件</span>
+                    <span class="quick">无人机任务规划软件</span>
+                    <span class="quick">我手动输入</span>
+                  </div>
+                </article>
+                <article class="message user">
+                  <div class="message-label">专家</div>
+                  <p>空域运算软件</p>
+                </article>
+                <article class="message system">
+                  <div class="message-label">系统</div>
+                  <p>已将目标软件名称设为“空域运算软件”。我会基于已绑定的领域知识继续补齐业务对象、流程和约束。</p>
+                  <div class="quick-row">
+                    <span class="quick">继续问</span>
+                    <span class="quick">补异常</span>
+                    <span class="quick">转表单</span>
+                  </div>
+                </article>
+              </div>
+              <div class="input-row">
+                <div class="input">继续补充需求...</div>
+                <button class="button primary">发送</button>
+              </div>
+            </section>
+
+            <section class="editor-panel right-editor">
+              <div class="doc-toolbar">
+                <div class="toolbar-left">
+                  <span class="toolbar-title">标准需求规格说明</span>
+                  <span class="pill green">可导出稿</span>
+                  <span class="pill blue">draft</span>
+                  <span class="pill amber">阻断项 3</span>
+                </div>
+                <div class="toolbar-right">
+                  <span class="pill">软件级需求规格说明模板</span>
+                  <span class="pill">DOCX / PDF</span>
+                </div>
+              </div>
+              <div class="ribbon">
+                <span>页面 A4</span>
+                <span>样式 标准正文</span>
+                <span>段落 1.5 倍行距</span>
+                <span>批注 点击条款打开</span>
+                <span>领域知识已绑定</span>
+              </div>
+              <div class="paper-zone">
+                <article class="paper">
+                  <div class="paper-head">
+                    <span>需求规格说明</span>
+                    <span>草稿版</span>
+                  </div>
+                  <h2>空域运算软件需求规格说明</h2>
+                  <section class="doc-section">
+                    <h3>1 总则</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-1.1</div>
+                      <div>
+                        <div class="clause-title">编写目的</div>
+                        <p class="clause-content">本文档用于定义空域运算软件在空域规划领域内的需求边界、功能行为和验收准则。</p>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="doc-section">
+                    <h3>3 功能需求</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.1</div>
+                      <div>
+                        <div class="clause-title">业务对象</div>
+                        <p class="clause-content">系统应支持空域单元、冲突窗口和协同任务等核心业务对象的识别、维护和追踪。</p>
+                      </div>
+                    </div>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.2</div>
+                      <div>
+                        <div class="clause-title">核心流程</div>
+                        <p class="clause-content">系统应支持协同任务创建、冲突窗口识别、会签确认和规划结果发布，并保留关键状态证据。</p>
+                      </div>
+                    </div>
+                    <div class="clause">
+                      <div class="clause-id">REQ-3.3</div>
+                      <div>
+                        <div class="clause-title">异常约束</div>
+                        <p class="clause-content">冲突窗口未确认时，系统不得直接发布规划结果；会签超时后应提醒责任人处理。</p>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="doc-section">
+                    <h3>4 非功能要求</h3>
+                    <div class="clause">
+                      <div class="clause-id">REQ-4.1</div>
+                      <div>
+                        <div class="clause-title">可追溯性</div>
+                        <p class="clause-content">系统应保证关键操作、会签结果、异常处置和规划发布过程可审计、可追溯。</p>
+                      </div>
+                    </div>
+                  </section>
+                </article>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      const allowed = new Set(["sim", "bind", "editor"]);
+      const state = location.hash.replace("#", "") || "sim";
+      document.body.dataset.state = allowed.has(state) ? state : "sim";
+    </script>
+  </body>
+</html>

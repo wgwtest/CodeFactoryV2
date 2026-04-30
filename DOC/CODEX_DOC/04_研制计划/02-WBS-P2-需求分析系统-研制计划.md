@@ -27,8 +27,8 @@
 - `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-可配置需求规格说明编写系统设计.md`
-- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-P1场景数据发生器设计.md`
-- `DOC/CODEX_DOC/04_研制计划/02.01-WBS-P2-P1场景数据发生器-研制计划.md`
+- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XX-P1-Sim上游知识服务模拟器设计.md`
+- `DOC/CODEX_DOC/04_研制计划/02.01-WBS-P2-XX-P1-Sim上游知识服务模拟器-研制计划.md`
 
 ## 4. 历史工作层参考
 
@@ -37,15 +37,15 @@
 - `docs/superpowers/specs/2026-04-13-application-requirement-modeler-design.md`
 - `docs/superpowers/specs/2026-04-17-xx-p2-sim-design.md`
 - `docs/superpowers/specs/2026-04-30-p2-wysiwyg-requirement-spec-system-design.md`
-- `docs/superpowers/specs/2026-04-30-p2-p1-scenario-data-generator-design.md`
 - `docs/superpowers/plans/2026-04-17-xx-p2-sim.md`
-- `docs/superpowers/plans/2026-04-30-p2-p1-scenario-data-generator-implementation.md`
+- `docs/superpowers/specs/2026-04-30-p2-p1-scenario-data-generator-design.md`（历史拒绝方向，只作过程证据）
+- `docs/superpowers/plans/2026-04-30-p2-p1-scenario-data-generator-implementation.md`（历史拒绝方向，只作过程证据）
 
 ## 5. 当前状态
 
 - `2026-04-19` 已完成 `P2` 正式设计归档同步
 - `2026-04-30` 已确认 `P2` 新基线：可配置标准需求规格说明编写系统
-- `2026-04-30` 已确认 `P2-P1` 场景数据发生器首版范围：确定性模拟 `P1` 知识、规则型 `Brainstorming`、正式工作台闭环、缺口检查和冻结
+- `2026-04-30` 已纠正 `P2-P1` 模拟输入方向：本轮应实现 `XX-P1-Sim`，只模拟 `P1` 上游领域知识服务，不模拟专家输入、不生成 P2 文档、不承担问答补齐或冻结
 - 设计方向已明确
 - 已形成模拟输入台方案
 - 仍需补齐正式 issue tree mirror 与更完整的节点级执行契约
