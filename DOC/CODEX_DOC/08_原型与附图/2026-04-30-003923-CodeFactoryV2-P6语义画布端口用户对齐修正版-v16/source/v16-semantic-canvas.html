@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P6 五阶段语义画布端口用户对齐修正版 v16</title>
+    <script>
+      const state = location.hash.replace("#", "") || "overview";
+      document.documentElement.dataset.state = ["overview", "selected", "legend"].includes(state)
+        ? state
+        : "overview";
+    </script>
+    <link rel="stylesheet" href="./v16-semantic-canvas.css" />
+  </head>
+  <body>
+    <main class="artboard" data-artboard="1920x1080">
+      <div class="star-map" aria-hidden="true"></div>
+
+      <header class="hud-title" aria-label="门户状态">
+        <p>CodeFactoryV2 / P6.1</p>
+        <h1>五阶段运行语义画布</h1>
+        <span>推荐布局 · mock projection · 100%</span>
+      </header>
+
+      <section class="world" aria-label="五阶段语义画布">
+        <svg class="flow-svg" viewBox="0 0 1920 1080" aria-label="语义数据流">
+          <defs>
+            <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#48d597" />
+            </marker>
+            <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#65b7ff" />
+            </marker>
+            <marker id="arrow-violet" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#bfa5ff" />
+            </marker>
+            <marker id="arrow-amber" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#f4bd61" />
+            </marker>
+            <marker id="arrow-cyan" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#56e3e0" />
+            </marker>
+          </defs>
+
+          <g class="flow ext" data-flow="external-knowledge">
+            <path d="M96 760 C158 700 204 704 245 745" marker-end="url(#arrow-green)" />
+            <circle cx="132" cy="731" r="5" />
+            <circle cx="176" cy="711" r="4" />
+            <circle cx="218" cy="724" r="5" />
+          </g>
+          <g class="flow p1p2 rel-p1 rel-p2" data-flow="knowledge-supply">
+            <path d="M537 750 C625 674 590 476 445 360" marker-end="url(#arrow-green)" />
+            <circle cx="570" cy="704" r="5" />
+            <circle cx="580" cy="595" r="4" />
+            <circle cx="526" cy="468" r="5" />
+          </g>
+          <g class="flow p2p3 rel-p2 rel-p3" data-flow="requirement-spec">
+            <path d="M737 360 C772 284 796 267 820 264" marker-end="url(#arrow-blue)" />
+            <circle cx="763" cy="320" r="5" />
+            <circle cx="790" cy="282" r="4" />
+          </g>
+          <g class="flow p3p4 rel-p3 rel-p4" data-flow="work-order-package">
+            <path d="M1112 264 C1220 396 1108 600 970 750" marker-end="url(#arrow-violet)" />
+            <circle cx="1160" cy="350" r="5" />
+            <circle cx="1144" cy="498" r="4" />
+            <circle cx="1055" cy="650" r="5" />
+          </g>
+          <g class="flow p4p5 rel-p4 rel-p5" data-flow="tool-supply">
+            <path d="M1262 750 C1415 642 1215 456 1325 360" marker-end="url(#arrow-amber)" />
+            <circle cx="1326" cy="690" r="5" />
+            <circle cx="1318" cy="550" r="4" />
+            <circle cx="1298" cy="420" r="5" />
+          </g>
+          <g class="flow p5out rel-p5" data-flow="delivery-catalog">
+            <path d="M1617 360 C1746 450 1578 610 1655 730" marker-end="url(#arrow-cyan)" />
+            <circle cx="1664" cy="428" r="5" />
+            <circle cx="1650" cy="555" r="4" />
+            <circle cx="1627" cy="654" r="5" />
+          </g>
+        </svg>
+
+        <div class="flow-label label-ext">外部知识入库 · 23 条/分钟</div>
+        <div class="flow-label label-p1p2">知识供给流 · 发布态知识</div>
+        <div class="flow-label label-p2p3">需求规格流 · 9 份/小时</div>
+        <div class="flow-label label-p3p4">模块工单包流 · 4 包/小时</div>
+        <div class="flow-label label-p4p5">工具供给流 · 11 项/小时</div>
+        <div class="flow-label label-p5out">交付目录输出 · 3 版/日</div>
+
+        <article class="stage-card p1 related-p1" aria-label="业务知识库运行态卡片">
+          <div class="user-blocks" aria-label="当前接入用户">
+            <span>库</span><span>专</span><span>审</span><span>采</span>
+          </div>
+          <div class="port in"><b>输入</b><span>外部知识</span></div>
+          <div class="port out"><b>输出</b><span>需求分析系统</span></div>
+          <header>
+            <div class="stage-icon knowledge">知</div>
+            <div>
+              <h2>业务知识库</h2>
+              <p>发布态知识 / 证据回溯 / 外部知识吸收</p>
+            </div>
+            <em class="health good">运行正常</em>
+          </header>
+          <section class="overall">
+            <div><span>知识库</span><strong>16</strong></div>
+            <div><span>知识</span><strong>12,840</strong></div>
+            <div><span>领域</span><strong>9</strong></div>
+          </section>
+          <section class="live">
+            <span>正在入库 <b>23/分</b></span>
+            <span>正在供给 <b>12/时</b></span>
+          </section>
+          <div class="hanger-queue knowledge-queue" aria-label="知识挂载队列">
+            <i>税</i><i>规</i><i>表</i><i>库</i><i>术</i><i></i><i></i><i></i>
+          </div>
+        </article>
+
+        <article class="stage-card p2 related-p2" aria-label="需求分析系统运行态卡片">
+          <div class="user-blocks" aria-label="当前接入用户">
+            <span>业</span><span>产</span><span>分</span><span>域</span><span>审</span><span>项</span>
+          </div>
+          <div class="port in"><b>输入</b><span>业务知识库</span></div>
+          <div class="port out"><b>输出</b><span>软件设计系统</span></div>
+          <header>
+            <div class="stage-icon requirement">需</div>
+            <div>
+              <h2>需求分析系统</h2>
+              <p>应用建模 / 需求规格 / 业务对象</p>
+            </div>
+            <em class="health warn">需求高峰</em>
+          </header>
+          <section class="overall">
+            <div><span>应用</span><strong>42</strong></div>
+            <div><span>模型</span><strong>318</strong></div>
+            <div><span>对象</span><strong>1,286</strong></div>
+          </section>
+          <section class="live">
+            <span>正在接收 <b>14/时</b></span>
+            <span>正在建模 <b>8 项</b></span>
+          </section>
+          <div class="hanger-queue" aria-label="需求处理队列">
+            <i>访</i><i>域</i><i>模</i><i>规</i><i></i><i></i>
+          </div>
+        </article>
+
+        <article class="stage-card p3 related-p3 selected-card" aria-label="软件设计系统运行态卡片">
+          <div class="user-blocks" aria-label="当前接入用户">
+            <span>架</span><span>设</span><span>审</span><span>模</span><span>项</span>
+          </div>
+          <div class="port in"><b>输入</b><span>需求分析系统</span></div>
+          <div class="port out"><b>输出</b><span>工具仓库</span></div>
+          <header>
+            <div class="stage-icon design">设</div>
+            <div>
+              <h2>软件设计系统</h2>
+              <p>设计订单 / 人工评审 / 工单包冻结</p>
+            </div>
+            <em class="health warn">评审偏高</em>
+          </header>
+          <section class="overall">
+            <div><span>软件</span><strong>36</strong></div>
+            <div><span>基线</span><strong>112</strong></div>
+            <div><span>工单包</span><strong>268</strong></div>
+          </section>
+          <section class="live">
+            <span>正在接入 <b>6/时</b></span>
+            <span>正在评审 <b>2 项</b></span>
+          </section>
+          <div class="hanger-queue" aria-label="设计处理队列">
+            <i>规</i><i>析</i><i>草</i><i>审</i><i>冻</i><i></i>
+          </div>
+        </article>
+
+        <article class="stage-card p4 related-p4" aria-label="工具仓库运行态卡片">
+          <div class="user-blocks" aria-label="当前接入用户">
+            <span>工</span><span>研</span><span>审</span><span>维</span>
+          </div>
+          <div class="port in"><b>输入</b><span>软件设计系统</span></div>
+          <div class="port out"><b>输出</b><span>软件构建系统</span></div>
+          <header>
+            <div class="stage-icon tool">工</div>
+            <div>
+              <h2>工具仓库</h2>
+              <p>工具资产 / 能力匹配 / 供给投影</p>
+            </div>
+            <em class="health good">匹配中</em>
+          </header>
+          <section class="overall">
+            <div><span>工具</span><strong>128</strong></div>
+            <div><span>领域</span><strong>18</strong></div>
+            <div><span>供给</span><strong>642</strong></div>
+          </section>
+          <section class="live">
+            <span>正在匹配 <b>9 项</b></span>
+            <span>正在供给 <b>11/时</b></span>
+          </section>
+          <div class="hanger-queue" aria-label="工具供给队列">
+            <i>查</i><i>生</i><i>验</i><i>供</i><i></i><i></i>
+          </div>
+        </article>
+
+        <article class="stage-card p5 related-p5" aria-label="软件构建系统运行态卡片">
+          <div class="user-blocks" aria-label="当前接入用户">
+            <span>构</span><span>测</span><span>发</span><span>版</span>
+          </div>
+          <div class="port in"><b>输入</b><span>工具仓库</span></div>
+          <div class="port out"><b>输出</b><span>交付目录</span></div>
+          <header>
+            <div class="stage-icon build">构</div>
+            <div>
+              <h2>软件构建系统</h2>
+              <p>装配构建 / 版本产出 / 交付目录</p>
+            </div>
+            <em class="health good">构建稳定</em>
+          </header>
+          <section class="overall">
+            <div><span>软件</span><strong>24</strong></div>
+            <div><span>版本</span><strong>86</strong></div>
+            <div><span>构建</span><strong>412</strong></div>
+          </section>
+          <section class="live">
+            <span>正在装配 <b>5 项</b></span>
+            <span>目录输出 <b>3/日</b></span>
+          </section>
+          <div class="hanger-queue" aria-label="构建处理队列">
+            <i>装</i><i>测</i><i>包</i><i>版</i><i></i><i></i>
+          </div>
+        </article>
+
+        <aside class="terminal-output" aria-label="终端交付目录">
+          <div class="terminal-pin"></div>
+          <h2>交付目录</h2>
+          <p>版本包 / 部署说明 / 验证记录</p>
+          <strong>86 个版本</strong>
+        </aside>
+      </section>
+
+      <aside class="portal-drawer" aria-label="软件设计系统选中观察面">
+        <div class="drawer-handle"></div>
+        <p>选中观察面</p>
+        <h2>软件设计系统</h2>
+        <span class="drawer-status">评审压力偏高 · 上游需求规格保持输入</span>
+        <section>
+          <h3>总体状态</h3>
+          <div class="drawer-metrics">
+            <b>36<span>支持软件</span></b>
+            <b>112<span>设计基线</span></b>
+            <b>268<span>工单包</span></b>
+          </div>
+        </section>
+        <section>
+          <h3>实时流动</h3>
+          <ul>
+            <li><span>输入端口</span><strong>需求规格 6 份/小时</strong></li>
+            <li><span>输出端口</span><strong>工单包 4 包/小时</strong></li>
+            <li><span>队列状态</span><strong>冻结后顺序补位</strong></li>
+          </ul>
+        </section>
+        <button type="button">双击进入软件设计系统</button>
+      </aside>
+
+      <aside class="legend-panel" aria-label="语义流与图例说明">
+        <p>语义图例</p>
+        <h2>卡片 + 连线的运行含义</h2>
+        <div class="legend-row"><i class="sample-card"></i><span>系统运行态卡片：顶部是动态接入用户，主体是总体状态与实时状态，底部是顺序补位队列。</span></div>
+        <div class="legend-row"><i class="sample-port"></i><span>端口锚点：连线只能从输入 / 输出端口出发，不从卡片中心随意连线。</span></div>
+        <div class="legend-row"><i class="sample-flow knowledge"></i><span>知识供给流：外部知识进入 P1，P1 只向需求分析系统输出发布态知识。</span></div>
+        <div class="legend-row"><i class="sample-flow spec"></i><span>需求规格流：需求分析系统向软件设计系统输出规格与业务对象。</span></div>
+        <div class="legend-row"><i class="sample-flow work"></i><span>工单包流：软件设计系统向工具仓库输出模块工单包。</span></div>
+        <div class="legend-row"><i class="sample-flow tool"></i><span>工具供给流：工具仓库向软件构建系统输出工具、组件和能力供给。</span></div>
+        <div class="legend-row"><i class="sample-flow delivery"></i><span>终端输出：软件构建系统输出交付目录，不输出到 P6。</span></div>
+      </aside>
+
+      <section class="flow-callouts" aria-label="语义流说明批注">
+        <div class="callout c1"><b>输入型粒子</b><span>外部知识按队列进入业务知识库</span></div>
+        <div class="callout c2"><b>端口级锚定</b><span>连线进入目标卡左端口，离开源卡右端口</span></div>
+        <div class="callout c3"><b>对象类型随线变化</b><span>知识、规格、工单包、工具、交付目录分别用不同线型和颜色表达</span></div>
+      </section>
+
+      <footer class="bottom-signals" aria-label="底部运行态信号">
+        <span class="signal ok">主链通畅</span>
+        <span class="signal warn">评审压力 72%</span>
+        <span class="signal mock">模拟源驱动</span>
+        <span class="signal fresh">最近刷新 18 秒前</span>
+      </footer>
+    </main>
+  </body>
+</html>

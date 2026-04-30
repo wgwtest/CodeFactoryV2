@@ -233,11 +233,10 @@ class PlatformConfigService:
             ],
             element_language_copy="矩形状态卡 = 系统节点，轻量胶囊 = 参与用户，小胶囊 = 数据产物",
             signal_items=[
-                PlatformLegendSignalItem(tone="knowledge", label="知识供给", detail="P1 到 P2 的知识输入"),
-                PlatformLegendSignalItem(tone="analysis", label="需求分析", detail="需求进入与规格说明"),
-                PlatformLegendSignalItem(tone="design", label="设计转化", detail="设计输出到构建与说明"),
-                PlatformLegendSignalItem(tone="tooling", label="工具匹配", detail="工具供给与匹配链"),
-                PlatformLegendSignalItem(tone="delivery", label="构建执行", detail="交付执行与缺口反馈"),
+                PlatformLegendSignalItem(tone="knowledge", label="主链通畅", detail="五阶段主链保持可观察流动"),
+                PlatformLegendSignalItem(tone="tooling", label="评审压力 72%", detail="P3 评审压力作为底部状态信号展示"),
+                PlatformLegendSignalItem(tone="analysis", label="模拟源驱动", detail="当前页面由 P6 mock projection 驱动"),
+                PlatformLegendSignalItem(tone="delivery", label="最近刷新 18 秒前", detail="门户投影新鲜度提示"),
             ],
             roadmap_items=[
                 PlatformLegendRoadmapItem(item_id="p6-r1", label="统一登录接入", status="后置"),

@@ -13,6 +13,7 @@ ProjectionMode = Literal["auto", "manual"]
 PinSide = Literal["left", "right", "top", "bottom"]
 RenderTone = Literal["knowledge", "analysis", "design", "tooling", "delivery"]
 RenderStyle = Literal["solid", "dashed"]
+FlowDirection = Literal["input", "output", "process"]
 
 
 class DisplayBadge(BaseModel):
@@ -28,6 +29,16 @@ class StageMetricProjection(BaseModel):
     metric_trend: str | None = None
 
 
+class StageOverview(BaseModel):
+    stage_id: str
+    stage_name: str
+    stage_display_name: str
+    primary_status: str
+    summary: str
+    updated_at: str
+    freshness: FreshnessState
+
+
 class StageEntryProjection(BaseModel):
     entry_route: str
     entry_available: bool
@@ -41,15 +52,102 @@ class StageHealthProjection(BaseModel):
     captured_at: str
 
 
+class StageOverallMetricProjection(BaseModel):
+    key: str
+    label: str
+    value: int | float | str
+    unit: str
+    basis: str
+
+
+class StageLiveCounterProjection(BaseModel):
+    key: str
+    label: str
+    value: int | float | str
+    unit: str
+    window: str
+    direction: FlowDirection
+
+
+class StageFlowPortProjection(BaseModel):
+    port_id: str
+    side: Literal["left", "right"]
+    direction: Literal["input", "output"]
+    label: str
+    connected_target: str
+    current_rate: str
+    terminal: bool = False
+
+
+class StageConnectedUserProjection(BaseModel):
+    user_ref: str
+    display_label: str
+    role_label: str
+    activity_state: str
+    connected_at: str
+
+
+class StageQueueItemProjection(BaseModel):
+    item_id: str
+    label: str
+    state: str
+    order_index: int
+
+
+class StageQueueProjection(BaseModel):
+    queue_id: str
+    label: str
+    items: list[StageQueueItemProjection] = Field(default_factory=list)
+    active_index: int
+    advance_rule: str
+
+
+class StageDisplayBinding(BaseModel):
+    prototype_refs: list[str] = Field(default_factory=list)
+    regions: dict[str, str]
+
+
+class StageSourceTrace(BaseModel):
+    field: str
+    source_doc: str
+    source_object: str
+    calculation_basis: str
+    freshness_policy: str | None = None
+    display_reason: str
+
+
 class StageNodeStatusPayload(BaseModel):
+    contract_version: str = "P6DisplayExportContract.v2"
     stage_id: str
     headline_value: str
     summary_line: str
     metric_items: list[StageMetricProjection] = Field(default_factory=list)
+    system_overall_metric_items: list[StageOverallMetricProjection] = Field(default_factory=list)
+    live_counter_items: list[StageLiveCounterProjection] = Field(default_factory=list)
+    flow_port_items: list[StageFlowPortProjection] = Field(default_factory=list)
+    connected_user_items: list[StageConnectedUserProjection] = Field(default_factory=list)
+    queue_projection: StageQueueProjection | None = None
+    display_binding: StageDisplayBinding | None = None
+    source_trace: list[StageSourceTrace] = Field(default_factory=list)
     entry_badge: DisplayBadge
     health_badge: DisplayBadge
     timestamp_label: str
     degraded_hint: str | None = None
+
+
+class P6DisplayExportContract(BaseModel):
+    contract_version: Literal["P6DisplayExportContract.v2"]
+    stage_overview: StageOverview
+    entry_projection: StageEntryProjection
+    system_overall_metrics: list[StageOverallMetricProjection] = Field(default_factory=list)
+    live_counters: list[StageLiveCounterProjection] = Field(default_factory=list)
+    flow_ports: list[StageFlowPortProjection] = Field(default_factory=list)
+    connected_users: list[StageConnectedUserProjection] = Field(default_factory=list)
+    queue_projection: StageQueueProjection
+    display_binding: StageDisplayBinding
+    health_projection: StageHealthProjection
+    source_trace: list[StageSourceTrace] = Field(default_factory=list)
+    stage_specific: dict[str, Any] = Field(default_factory=dict)
 
 
 class StageSnapshot(BaseModel):
@@ -66,6 +164,7 @@ class StageSnapshot(BaseModel):
     freshness: FreshnessState
     degraded_reason: str | None = None
     node_status_payload: StageNodeStatusPayload
+    display_contract: P6DisplayExportContract | None = None
 
 
 class ParticipantNodePayload(BaseModel):
@@ -220,6 +319,20 @@ class ObservationProjectionReadEnvelope(BaseModel):
     source_mode: SourceMode
     scenario: MockScenarioSummary
     projection: ObservationProjection
+
+
+class P6SimulatorContractSubmission(BaseModel):
+    scenario_id: str = "simulator-latest"
+    label: str
+    description: str
+    recommended_focus_stage: str = "P3"
+    contracts: list[P6DisplayExportContract]
+
+
+class P6SimulatorSubmissionResponse(BaseModel):
+    scenario: MockScenarioSummary
+    accepted_contract_count: int
+    portal_projection_path: str
 
 
 class DesignTokenSet(BaseModel):

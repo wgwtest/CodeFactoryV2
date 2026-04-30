@@ -7,6 +7,188 @@ def _build_client() -> TestClient:
     return TestClient(create_app())
 
 
+def _build_display_contract(
+    stage_id: str,
+    stage_name: str,
+    *,
+    overall_key: str,
+    overall_label: str,
+    overall_value: int,
+    input_target: str,
+    output_target: str,
+    terminal_output: bool = False,
+    include_input_port: bool = True,
+) -> dict[str, object]:
+    flow_ports = []
+    if include_input_port:
+        flow_ports.append(
+            {
+                "port_id": f"{stage_id.lower()}_input",
+                "side": "left",
+                "direction": "input",
+                "label": "输入",
+                "connected_target": input_target,
+                "current_rate": "7 项/小时",
+                "terminal": False,
+            }
+        )
+    flow_ports.append(
+        {
+            "port_id": f"{stage_id.lower()}_output",
+            "side": "right",
+            "direction": "output",
+            "label": "输出",
+            "connected_target": output_target,
+            "current_rate": "5 项/小时",
+            "terminal": terminal_output,
+        }
+    )
+    return {
+        "contract_version": "P6DisplayExportContract.v2",
+        "stage_overview": {
+            "stage_id": stage_id,
+            "stage_name": stage_name,
+            "stage_display_name": stage_name,
+            "primary_status": "running",
+            "summary": f"{stage_name} 累计支撑 {overall_value} 个对象",
+            "updated_at": "2026-04-29T20:50:00+08:00",
+            "freshness": "fresh",
+        },
+        "entry_projection": {
+            "entry_route": "/portal",
+            "entry_available": True,
+            "entry_reason": f"{stage_name} 入口可用",
+        },
+        "system_overall_metrics": [
+            {
+                "key": overall_key,
+                "label": overall_label,
+                "value": overall_value,
+                "unit": "个",
+                "basis": "累计承载",
+            }
+        ],
+        "live_counters": [
+            {
+                "key": f"{stage_id.lower()}_active_input",
+                "label": "正在接入",
+                "value": 7,
+                "unit": "项/小时",
+                "window": "1h",
+                "direction": "input",
+            }
+        ],
+        "flow_ports": flow_ports,
+        "connected_users": [
+            {
+                "user_ref": f"role:{stage_id.lower()}-operator",
+                "display_label": stage_id,
+                "role_label": "接入用户",
+                "activity_state": "active",
+                "connected_at": "2026-04-29T20:48:00+08:00",
+            }
+        ],
+        "queue_projection": {
+            "queue_id": f"{stage_id.lower()}-queue",
+            "label": f"{stage_name} 队列",
+            "items": [
+                {"item_id": f"{stage_id.lower()}-q-001", "label": "队列项 A", "state": "active", "order_index": 0},
+                {"item_id": f"{stage_id.lower()}-q-002", "label": "队列项 B", "state": "waiting", "order_index": 1},
+            ],
+            "active_index": 0,
+            "advance_rule": "active_done_then_shift_left",
+        },
+        "display_binding": {
+            "prototype_refs": [
+                "DOC/CODEX_DOC/08_原型与附图/2026-04-29-192233-CodeFactoryV2-P6四子系统总体状态卡详情原型-v14/"
+            ],
+            "regions": {
+                "top_participants": "connected_users",
+                "middle_overall": "system_overall_metrics",
+                "lower_realtime": "live_counters",
+                "left_input_port": "flow_ports[input]",
+                "right_output_port": "flow_ports[output]",
+                "bottom_queue": "queue_projection",
+            },
+        },
+        "health_projection": {
+            "health_level": "healthy",
+            "health_message": f"{stage_name} 模拟合同已接入",
+            "health_source": "p6_contract_simulator",
+            "captured_at": "2026-04-29T20:50:00+08:00",
+        },
+        "source_trace": [
+            {
+                "field": f"system_overall_metrics.{overall_key}",
+                "source_doc": f"DOC/CODEX_DOC/02_设计说明/{stage_id}_{stage_name}/{stage_id}-{stage_name}设计.md",
+                "source_object": overall_label,
+                "calculation_basis": "模拟器显式发送",
+                "freshness_policy": "mock-fresh",
+                "display_reason": "绑定详情卡中段总体状态",
+            }
+        ],
+        "stage_specific": {overall_key: overall_value},
+    }
+
+
+def _build_simulator_contract_payload() -> dict[str, object]:
+    return {
+        "scenario_id": "simulator-latest",
+        "label": "合同模拟器",
+        "description": "由 P6 合同模拟器发送的五阶段展示输出合同。",
+        "recommended_focus_stage": "P3",
+        "contracts": [
+            _build_display_contract(
+                "P1",
+                "业务知识库",
+                overall_key="published_knowledge_count",
+                overall_label="已发布知识",
+                overall_value=12480,
+                input_target="外部资料",
+                output_target="P2",
+                include_input_port=False,
+            ),
+            _build_display_contract(
+                "P2",
+                "需求分析系统",
+                overall_key="supported_software_count",
+                overall_label="支持软件",
+                overall_value=24,
+                input_target="P1",
+                output_target="P3",
+            ),
+            _build_display_contract(
+                "P3",
+                "软件设计系统",
+                overall_key="design_baseline_count",
+                overall_label="设计基线",
+                overall_value=112,
+                input_target="P2",
+                output_target="P4",
+            ),
+            _build_display_contract(
+                "P4",
+                "工具仓库",
+                overall_key="tool_definition_count",
+                overall_label="工具定义",
+                overall_value=286,
+                input_target="P3",
+                output_target="P5",
+            ),
+            _build_display_contract(
+                "P5",
+                "软件构建系统",
+                overall_key="delivery_version_count",
+                overall_label="交付版本",
+                overall_value=86,
+                input_target="P4",
+                output_target="交付目录",
+                terminal_output=True,
+            ),
+        ],
+    }
+
+
 def test_p6_mock_scenarios_expose_small_portal_control_options() -> None:
     client = _build_client()
 
@@ -37,9 +219,69 @@ def test_p6_stage_snapshots_return_baseline_stage_payloads() -> None:
     assert [item["stage_id"] for item in payload["items"]] == ["P1", "P2", "P3", "P4", "P5"]
 
     p5_snapshot = next(item for item in payload["items"] if item["stage_id"] == "P5")
-    assert p5_snapshot["node_status_payload"]["headline_value"] == "交付主单 DO-240421-01"
+    assert p5_snapshot["node_status_payload"]["headline_value"] == "支持软件 24 个，交付版本 86 个，构建尝试 412 次"
     assert p5_snapshot["entry_projection"]["entry_route"] == "/build"
     assert p5_snapshot["health_projection"]["health_level"] == "healthy"
+
+
+def test_p6_mock_stage_snapshots_expose_display_contract_v2_regions() -> None:
+    client = _build_client()
+
+    response = client.get("/api/p6/stage-snapshots", params={"source": "mock", "scenario": "baseline"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    p1_snapshot = next(item for item in payload["items"] if item["stage_id"] == "P1")
+    p2_snapshot = next(item for item in payload["items"] if item["stage_id"] == "P2")
+    p5_snapshot = next(item for item in payload["items"] if item["stage_id"] == "P5")
+
+    p1_payload = p1_snapshot["node_status_payload"]
+    assert p1_payload["contract_version"] == "P6DisplayExportContract.v2"
+    p1_overall_keys = {item["key"] for item in p1_payload["system_overall_metric_items"]}
+    assert {"knowledge_repository_count", "published_knowledge_count", "domain_directory_count", "contributor_count"}.issubset(
+        p1_overall_keys
+    )
+    assert p1_payload["headline_value"] == "知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人"
+    assert p1_payload["connected_user_items"][0]["activity_state"] == "active"
+    assert p1_payload["queue_projection"]["advance_rule"] == "active_done_then_shift_left"
+    assert [port["connected_target"] for port in p1_payload["flow_port_items"] if port["direction"] == "output"] == ["P2"]
+
+    p2_keys = {item["key"] for item in p2_snapshot["node_status_payload"]["system_overall_metric_items"]}
+    assert "supported_software_count" in p2_keys
+    assert "active_requirement_count" not in p2_keys
+
+    p5_output = next(port for port in p5_snapshot["node_status_payload"]["flow_port_items"] if port["direction"] == "output")
+    assert p5_output["connected_target"] == "交付目录"
+    assert p5_output["terminal"] is True
+
+
+def test_p6_contract_simulator_submission_drives_portal_projection() -> None:
+    client = _build_client()
+
+    create_response = client.post("/api/p6/simulator/contracts", json=_build_simulator_contract_payload())
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["scenario"]["scenario_id"] == "simulator-latest"
+    assert created["accepted_contract_count"] == 5
+
+    catalog_response = client.get("/api/p6/mock-scenarios")
+    assert catalog_response.status_code == 200
+    assert "simulator-latest" in [item["scenario_id"] for item in catalog_response.json()["items"]]
+
+    portal_response = client.get("/api/p6/portal-projection", params={"source": "mock", "scenario": "simulator-latest"})
+
+    assert portal_response.status_code == 200
+    projection = portal_response.json()["projection"]
+    p2_node = next(item for item in projection["node_list"] if item["stage_id"] == "P2")
+    p5_node = next(item for item in projection["node_list"] if item["stage_id"] == "P5")
+
+    assert p2_node["stage_card"]["system_overall_metric_items"][0]["key"] == "supported_software_count"
+    assert p2_node["stage_card"]["system_overall_metric_items"][0]["value"] == 24
+    assert p2_node["stage_card"]["connected_user_items"][0]["display_label"] == "P2"
+    p5_output = next(port for port in p5_node["stage_card"]["flow_port_items"] if port["direction"] == "output")
+    assert p5_output["connected_target"] == "交付目录"
+    assert p5_output["terminal"] is True
 
 
 def test_p6_portal_projection_returns_stage_and_participant_nodes() -> None:
@@ -53,16 +295,32 @@ def test_p6_portal_projection_returns_stage_and_participant_nodes() -> None:
 
     assert payload["scenario"]["scenario_id"] == "baseline"
     assert projection["freshness"] == "fresh"
-    assert len(projection["node_list"]) == 6
+    assert len(projection["node_list"]) == 5
     assert len(projection["flow_list"]) == 6
-    assert len(projection["artifact_list"]) == 3
+    assert projection["artifact_list"] == []
+    assert [item["flow_id"] for item in projection["flow_list"]] == [
+        "p1-p2",
+        "p2-p3",
+        "p3-p4",
+        "p3-p5",
+        "p4-p5",
+        "p5-delivery",
+    ]
 
-    user_node = next(item for item in projection["node_list"] if item["node_id"] == "user")
-    assert user_node["node_kind"] == "user"
-    assert user_node["participant_payload"]["title"] == "行业用户"
-
+    p1_node = next(item for item in projection["node_list"] if item["node_id"] == "p1")
     p3_node = next(item for item in projection["node_list"] if item["node_id"] == "p3")
-    assert p3_node["stage_card"]["metric_items"][1]["metric_label"] == "待评审"
+    p5_node = next(item for item in projection["node_list"] if item["node_id"] == "p5")
+    assert [port for port in p1_node["stage_card"]["flow_port_items"] if port["direction"] == "input"] == []
+    assert [port["connected_target"] for port in p1_node["stage_card"]["flow_port_items"] if port["direction"] == "output"] == ["P2"]
+    assert any(
+        port["direction"] == "output" and port["connected_target"] == "P5" and port["label"] == "设计基线"
+        for port in p3_node["stage_card"]["flow_port_items"]
+    )
+    assert any(
+        port["direction"] == "input" and port["connected_target"] == "P3" and port["label"] == "设计基线"
+        for port in p5_node["stage_card"]["flow_port_items"]
+    )
+    assert p3_node["stage_card"]["system_overall_metric_items"][1]["label"] == "设计基线"
     assert p3_node["route"] == "/modeling"
 
 
@@ -120,7 +378,7 @@ def test_platform_config_routes_and_legend_are_available_for_portal_consumers() 
     assert routes_payload["observation_route"]["path"] == "/observation"
     assert routes_payload["stage_routes"]["P5"]["path"] == "/build"
     assert legend_payload["summary_copy"] == "门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。"
-    assert legend_payload["signal_items"][2]["label"] == "设计转化"
+    assert legend_payload["signal_items"][2]["label"] == "模拟源驱动"
     assert legend_payload["roadmap_items"][0]["label"] == "统一登录接入"
 
 

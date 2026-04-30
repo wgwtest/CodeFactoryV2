@@ -68,3 +68,14 @@ export function clampCameraToWorld(
     y: clamp(camera.y, minY, maxY),
   };
 }
+
+export function createP6PortalFitCamera(viewport: Partial<P6PortalViewportSize>): P6PortalCameraState {
+  const size = normalizeViewportSize(viewport);
+  const scale = Math.min(size.width / P6_PORTAL_WORLD.width, size.height / P6_PORTAL_WORLD.height, 1);
+
+  return {
+    x: (size.width - P6_PORTAL_WORLD.width * scale) / 2,
+    y: (size.height - P6_PORTAL_WORLD.height * scale) / 2,
+    scale,
+  };
+}

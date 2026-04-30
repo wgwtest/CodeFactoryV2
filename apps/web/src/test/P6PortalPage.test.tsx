@@ -133,7 +133,7 @@ test("renders P6 portal blueprint outside MainShell on /portal route and loads f
   expect(screen.getByText("统一登录接入")).toBeInTheDocument();
   expect(screen.getByText("权限与角色控制")).toBeInTheDocument();
   expect(screen.getByText(/双击节点即可进入对应模块/)).toBeInTheDocument();
-  expect(screen.getByText("NAS 战术知识库 v3")).toBeInTheDocument();
+  expect(screen.getByText(/当前知识库：知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人/)).toBeInTheDocument();
 
   expect(getMock).toHaveBeenCalledWith("/p6/mock-scenarios");
   expect(getMock).toHaveBeenCalledWith("/platform-config/display-baseline");
@@ -147,12 +147,34 @@ test("renders P6 portal blueprint outside MainShell on /portal route and loads f
   );
 });
 
-test("legend styles anchor it to the portal bottom-right corner", () => {
+test("portal visual baseline uses the approved v17 semantic canvas shell", () => {
   const css = readFileSync("src/pages/P6PortalPage.css", "utf8");
 
-  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*position:\s*absolute;/s);
-  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*right:\s*26px;/s);
+  expect(css).toMatch(/\.p6-portal-page\s*\{[^}]*#071018/s);
+  expect(css).toMatch(/\.p6-portal-viewport__background-grid\s*\{[^}]*80px 80px/s);
+  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*left:\s*50%;/s);
   expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*bottom:\s*24px;/s);
+  expect(css).toMatch(/\.p6-blueprint-legend\s*\{[^}]*max-height:\s*96px;/s);
+});
+
+test("renders the five stage cards on the approved v17 1920x1080 geometry", async () => {
+  render(
+    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const p1 = await screen.findByTestId("p6-portal-node-p1");
+  const p2 = screen.getByTestId("p6-portal-node-p2");
+  const p3 = screen.getByTestId("p6-portal-node-p3");
+  const p4 = screen.getByTestId("p6-portal-node-p4");
+  const p5 = screen.getByTestId("p6-portal-node-p5");
+
+  expect(p1).toHaveStyle({ left: "245px", top: "650px", width: "292px", height: "224px" });
+  expect(p2).toHaveStyle({ left: "445px", top: "252px", width: "292px", height: "224px" });
+  expect(p3).toHaveStyle({ left: "820px", top: "158px", width: "292px", height: "224px" });
+  expect(p4).toHaveStyle({ left: "970px", top: "650px", width: "292px", height: "224px" });
+  expect(p5).toHaveStyle({ left: "1325px", top: "252px", width: "292px", height: "224px" });
 });
 
 test("switching scenario reloads projection with the selected mock source", async () => {
@@ -162,11 +184,12 @@ test("switching scenario reloads projection with the selected mock source", asyn
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("交付主单 DO-240421-01")).toBeInTheDocument();
+  expect(await screen.findByText("目录输出")).toBeInTheDocument();
+  expect(screen.getByText("2个/日")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "交付缺口" }));
 
-  expect(await screen.findByText("交付主单 DO-240421-04")).toBeInTheDocument();
+  expect(await screen.findByText("需人工确认缺口与回补路径。")).toBeInTheDocument();
   expect(screen.getByText("需人工确认缺口与回补路径。")).toBeInTheDocument();
 
   await waitFor(() =>
@@ -179,21 +202,51 @@ test("switching scenario reloads projection with the selected mock source", asyn
   );
 });
 
-test("renders distinct portal element types and a visible world boundary", async () => {
+test("renders five stage cards without standalone artifacts, external P1 input, or fixed world boundary", async () => {
   render(
     <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </MemoryRouter>,
   );
 
-  expect(await screen.findByTestId("p6-portal-node-user")).toHaveAttribute("data-node-kind", "user");
-  expect(screen.getByTestId("p6-portal-node-p1")).toHaveAttribute("data-node-kind", "module");
+  expect(await screen.findByTestId("p6-portal-node-p1")).toHaveAttribute("data-node-kind", "module");
+  expect(screen.queryByTestId("p6-portal-node-user")).not.toBeInTheDocument();
+  expect(screen.getByTitle("行业用户 · active")).toBeInTheDocument();
 
-  const artifact = screen.getByTestId("p6-portal-artifact-spec");
-  expect(artifact).toHaveAttribute("data-artifact-kind", "artifact");
-  expect(artifact).toHaveTextContent("自动投影");
+  expect(screen.queryByTestId("p6-portal-artifact-spec")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("p6-portal-world-boundary")).not.toBeInTheDocument();
+  expect(screen.queryByText("外部知识")).not.toBeInTheDocument();
+  expect(screen.queryByText("外部资料")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("p6-flow-label-p3-p5")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId(/^p6-flow-payload-p3-p5-/)[0]).toHaveTextContent("基线");
+  expect(screen.getByTestId("p6-terminal-output-delivery-catalog")).toHaveTextContent("交付目录");
+});
 
-  expect(screen.getByTestId("p6-portal-world-boundary")).toHaveTextContent("自动布局区");
+test("renders flow payloads as data-driven moving objects instead of static line labels", async () => {
+  render(
+    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByTestId("p6-portal-node-p1")).toBeInTheDocument();
+  expect(screen.queryByTestId("p6-flow-label-p1-p2")).not.toBeInTheDocument();
+
+  const knowledgePayloads = screen.getAllByTestId(/^p6-flow-payload-p1-p2-/);
+  expect(knowledgePayloads).toHaveLength(5);
+  knowledgePayloads.forEach((payload) => {
+    expect(payload).toHaveTextContent("知识");
+    expect(payload).toHaveAttribute("data-flow-id", "p1-p2");
+    expect(payload).toHaveAttribute("data-payload-rate", "5 条/小时");
+    expect(payload).toHaveAttribute("data-payload-source-count", "5");
+    expect(payload.querySelector("animateMotion")).toBeInTheDocument();
+  });
+
+  expect(screen.getAllByTestId(/^p6-flow-payload-p2-p3-/)).toHaveLength(4);
+  expect(screen.getAllByTestId(/^p6-flow-payload-p3-p4-/)).toHaveLength(5);
+  expect(screen.getAllByTestId(/^p6-flow-payload-p3-p5-/)).toHaveLength(3);
+  expect(screen.getAllByTestId(/^p6-flow-payload-p4-p5-/)).toHaveLength(4);
+  expect(screen.getAllByTestId(/^p6-flow-payload-p5-delivery-/)).toHaveLength(2);
 });
 
 test("clicking a module only highlights it and does not open a summary popup", async () => {
@@ -246,7 +299,7 @@ test("switches between recommended layout and personal layout", async () => {
   expect(node).toHaveStyle({ left: "520px", top: "600px" });
 
   fireEvent.click(screen.getByRole("button", { name: "推荐布局" }));
-  expect(node).toHaveStyle({ left: "400px", top: "660px" });
+  expect(node).toHaveStyle({ left: "245px", top: "650px" });
 
   fireEvent.click(screen.getByRole("button", { name: "个人布局" }));
   expect(node).toHaveStyle({ left: "520px", top: "600px" });
@@ -269,7 +322,7 @@ test("persists blueprint node layout after dragging", async () => {
   };
 
   expect(savedLayout.p1).toBeDefined();
-  expect(savedLayout.p1?.x).toBeGreaterThan(420);
+  expect(savedLayout.p1?.x).toBeGreaterThan(250);
   expect(savedLayout.p1?.y).toBeGreaterThan(540);
 });
 
@@ -280,15 +333,15 @@ test("switches relationship view from semantic wires to projection aggregation",
     </MemoryRouter>,
   );
 
-  expect(await screen.findByTestId("p6-flow-label-p2-p3")).toBeInTheDocument();
+  expect(await screen.findByTestId("p6-flow-payload-p2-p3-0")).toBeInTheDocument();
   expect(screen.queryByTestId("p6-node-relations-p3")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "投影聚合" }));
 
-  expect(screen.queryByTestId("p6-flow-label-p2-p3")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("p6-flow-payload-p2-p3-0")).not.toBeInTheDocument();
   expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/入1/);
   expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/出2/);
-  expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/产物3/);
+  expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/产物0/);
 });
 
 test("double clicking a module navigates to its target workspace through route config", async () => {
@@ -305,59 +358,16 @@ test("double clicking a module navigates to its target workspace through route c
   expect(await screen.findByText("交付主单队列")).toBeInTheDocument();
 });
 
-test("opens the P6.4 card configurator from the portal and shows backend-driven experiment content", async () => {
+test("keeps the P6.4 card configurator out of the portal canvas", async () => {
   render(
     <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("button", { name: "卡片配置" })).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "卡片配置" }));
-
-  expect(await screen.findByText("模板选择区")).toBeInTheDocument();
-  expect(screen.getByTestId("p6-experiment-workbench")).toBeInTheDocument();
-  expect(screen.getByText("绑定配置区")).toBeInTheDocument();
-  expect(screen.getByText("布局组合区")).toBeInTheDocument();
-  expect(screen.getByText("实时预览区")).toBeInTheDocument();
-  expect(screen.getByText("实验记录区")).toBeInTheDocument();
-  expect(screen.getByText("晋升评估区")).toBeInTheDocument();
-  expect(screen.getByText("系统状态卡适合门户首屏，能够稳定承载阶段识别、摘要和健康状态。")).toBeInTheDocument();
-  expect(screen.getByText("门户系统状态卡已经具备可复用的模板、绑定和布局组合。")).toBeInTheDocument();
-
-  expect(getMock).toHaveBeenCalledWith("/platform-display/workbench");
-});
-
-test("applies card style selectively to the chosen node and can save an experiment record", async () => {
-  render(
-    <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <App />
-    </MemoryRouter>,
-  );
-
-  expect(await screen.findByRole("button", { name: "卡片配置" })).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "卡片配置" }));
-  await screen.findByTestId("p6-experiment-workbench");
-
-  fireEvent.change(screen.getByLabelText("配置对象"), { target: { value: "p5" } });
-  fireEvent.click(screen.getByRole("button", { name: /压缩/ }));
-
-  expect(screen.getByTestId("p6-portal-node-p5")).toHaveAttribute("data-card-template", "template-module-compact");
-  expect(screen.getByTestId("p6-portal-node-p2")).toHaveAttribute("data-card-template", "template-module-status");
-
-  fireEvent.click(screen.getByRole("button", { name: /进入候选/ }));
-  fireEvent.click(screen.getByRole("button", { name: "登记实验" }));
-
-  await waitFor(() =>
-    expect(postMock).toHaveBeenCalledWith(
-      "/platform-display/experiments",
-      expect.objectContaining({
-        goal: expect.any(String),
-        projection_scope: "PortalProjection",
-        target_stage_ids: expect.arrayContaining(["P4", "P5"]),
-      }),
-    ),
-  );
+  expect(await screen.findByText("图例")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "卡片配置" })).not.toBeInTheDocument();
+  expect(screen.queryByTestId("p6-experiment-workbench")).not.toBeInTheDocument();
+  expect(getMock).not.toHaveBeenCalledWith("/platform-display/workbench");
+  expect(postMock).not.toHaveBeenCalled();
 });

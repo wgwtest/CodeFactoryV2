@@ -11,6 +11,7 @@ import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { P6ObservationPage } from "./pages/P6ObservationPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
+import { P6SimulatorPage } from "./pages/P6SimulatorPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
@@ -91,6 +92,11 @@ function MainShell() {
 
 export default function App() {
   const location = useLocation();
+  const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
+
+  if (location.pathname === "/" && envDefaultRoute && !mainShellRoutes.has(envDefaultRoute)) {
+    return <Navigate to={envDefaultRoute} replace />;
+  }
 
   if (location.pathname.startsWith("/portal")) {
     return (
@@ -104,6 +110,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/observation" element={<P6ObservationPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p6-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p6-sim" element={<P6SimulatorPage />} />
       </Routes>
     );
   }

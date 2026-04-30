@@ -8,6 +8,7 @@ import type {
 } from "../../lib/p6";
 
 export type P6PortalNodeId = "user" | "p1" | "p2" | "p3" | "p4" | "p5";
+export type P6PortalFlowEndpointId = P6PortalNodeId | "delivery-catalog";
 export type P6PortalArtifactId = "spec" | "design" | "tooling";
 export type P6PortalAnchorSide = "left" | "right" | "top" | "bottom";
 
@@ -50,8 +51,8 @@ export type P6PortalViewNode =
 
 export type P6PortalViewFlow = {
   id: string;
-  from: P6PortalNodeId;
-  to: P6PortalNodeId;
+  from: P6PortalFlowEndpointId;
+  to: P6PortalFlowEndpointId;
   fromSide: P6PortalAnchorSide;
   toSide: P6PortalAnchorSide;
   label: string;
@@ -87,39 +88,39 @@ type P6PortalArtifactPreset = {
 
 const P6_PORTAL_NODE_PRESETS: Record<P6PortalNodeId, P6PortalNodePreset> = {
   user: {
-    width: 220,
-    height: 150,
+    width: 0,
+    height: 0,
     accent: "#2563eb",
-    categoryLabel: "角色节点",
+    categoryLabel: "已内化角色",
   },
   p1: {
-    width: 330,
-    height: 208,
-    accent: "#0f766e",
+    width: 292,
+    height: 224,
+    accent: "#2fc37e",
     categoryLabel: "系统节点",
   },
   p2: {
-    width: 340,
-    height: 208,
-    accent: "#2563eb",
+    width: 292,
+    height: 224,
+    accent: "#4ea8ff",
     categoryLabel: "系统节点",
   },
   p3: {
-    width: 340,
-    height: 208,
-    accent: "#4f46e5",
+    width: 292,
+    height: 224,
+    accent: "#9c7bff",
     categoryLabel: "系统节点",
   },
   p4: {
-    width: 360,
-    height: 208,
-    accent: "#ca8a04",
+    width: 292,
+    height: 224,
+    accent: "#eda936",
     categoryLabel: "系统节点",
   },
   p5: {
-    width: 350,
-    height: 208,
-    accent: "#dc2626",
+    width: 292,
+    height: 224,
+    accent: "#35d3cf",
     categoryLabel: "系统节点",
   },
 };
@@ -150,12 +151,12 @@ export const P6_PORTAL_WORLD = {
 };
 
 export const defaultP6PortalLayout: Record<P6PortalNodeId, P6PortalPosition> = {
-  user: { x: 110, y: 430 },
-  p1: { x: 400, y: 660 },
-  p2: { x: 410, y: 210 },
-  p3: { x: 960, y: 200 },
-  p4: { x: 1040, y: 650 },
-  p5: { x: 1500, y: 410 },
+  user: { x: 72, y: 430 },
+  p1: { x: 245, y: 650 },
+  p2: { x: 445, y: 252 },
+  p3: { x: 820, y: 158 },
+  p4: { x: 970, y: 650 },
+  p5: { x: 1325, y: 252 },
 };
 
 export const p6PortalLegendRoadmap = [
@@ -169,6 +170,13 @@ function toPortalNodeId(nodeId: string): P6PortalNodeId {
     return nodeId;
   }
   return "user";
+}
+
+function toPortalFlowEndpointId(nodeId: string): P6PortalFlowEndpointId {
+  if (nodeId === "p1" || nodeId === "p2" || nodeId === "p3" || nodeId === "p4" || nodeId === "p5") {
+    return nodeId;
+  }
+  return "delivery-catalog";
 }
 
 function toPortalArtifactId(artifactId: string): P6PortalArtifactId {
@@ -214,10 +222,18 @@ export function buildPortalViewNode(node: P6PortalNode): P6PortalViewNode {
     categoryLabel: preset.categoryLabel,
     description: node.description,
     stageCard: node.stage_card ?? {
+      contract_version: "P6DisplayExportContract.v2",
       stage_id: node.stage_id ?? "",
       headline_value: node.title,
       summary_line: node.summary,
       metric_items: [],
+      system_overall_metric_items: [],
+      live_counter_items: [],
+      flow_port_items: [],
+      connected_user_items: [],
+      queue_projection: null,
+      display_binding: null,
+      source_trace: [],
       entry_badge: { label: "入口未知", tone: "neutral" },
       health_badge: { label: "未知", tone: "neutral" },
       timestamp_label: "时间未知",
@@ -229,8 +245,8 @@ export function buildPortalViewNode(node: P6PortalNode): P6PortalViewNode {
 export function buildPortalViewFlow(flow: P6PortalFlow): P6PortalViewFlow {
   return {
     id: flow.flow_id,
-    from: toPortalNodeId(flow.from_node_id),
-    to: toPortalNodeId(flow.to_node_id),
+    from: toPortalFlowEndpointId(flow.from_node_id),
+    to: toPortalFlowEndpointId(flow.to_node_id),
     fromSide: flow.from_pin,
     toSide: flow.to_pin,
     label: flow.label,

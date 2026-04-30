@@ -1,0 +1,198 @@
+.p6-simulator-page {
+  min-height: 100vh;
+  padding: 32px;
+  background:
+    linear-gradient(0deg, rgba(46, 83, 124, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(46, 83, 124, 0.12) 1px, transparent 1px),
+    #07111f;
+  background-size: 36px 36px;
+  color: #eef6ff;
+}
+
+.p6-simulator-hero,
+.p6-simulator-contract-card,
+.p6-simulator-status {
+  border: 1px solid rgba(142, 177, 214, 0.26);
+  background: rgba(10, 21, 36, 0.88);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.28);
+}
+
+.p6-simulator-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px;
+  border-radius: 8px;
+}
+
+.p6-simulator-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(84, 196, 170, 0.45);
+  border-radius: 6px;
+  background: rgba(13, 148, 136, 0.16);
+  color: #9debdc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.p6-simulator-hero h1 {
+  margin: 16px 0 0;
+  font-size: 34px;
+  line-height: 1.12;
+}
+
+.p6-simulator-hero p {
+  max-width: 720px;
+  margin: 12px 0 0;
+  color: #b7c8da;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.p6-simulator-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.p6-simulator-hero__actions button,
+.p6-simulator-hero__actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(92, 180, 228, 0.46);
+  background: #d6eefc;
+  color: #0d253a;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.p6-simulator-hero__actions button:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.p6-simulator-hero__actions a {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7ecff;
+}
+
+.p6-simulator-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 1280px;
+  margin: 18px auto 0;
+}
+
+.p6-simulator-contract-card {
+  min-height: 244px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.p6-simulator-contract-card__topline,
+.p6-simulator-contract-card__ports {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.p6-simulator-contract-card__topline span {
+  color: #f4fbff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.p6-simulator-contract-card__topline strong {
+  color: #9debdc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.p6-simulator-contract-card__summary {
+  margin-top: 12px;
+  color: #b8cadd;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.p6-simulator-contract-card__metrics {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.p6-simulator-contract-card__metrics span {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(119, 160, 205, 0.24);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e7f2ff;
+  font-size: 12px;
+}
+
+.p6-simulator-contract-card__ports {
+  margin-top: 14px;
+  color: #9fb5cc;
+  font-size: 12px;
+}
+
+.p6-simulator-contract-card__ports em {
+  color: #e7f2ff;
+  font-style: normal;
+}
+
+.p6-simulator-contract-card__queue {
+  margin-top: 12px;
+  color: #f0cf83;
+  font-size: 12px;
+}
+
+.p6-simulator-status {
+  max-width: 1280px;
+  margin: 16px auto 0;
+  padding: 14px 16px;
+  border-radius: 8px;
+  color: #9debdc;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.p6-simulator-status--error {
+  color: #feb2b2;
+}
+
+@media (max-width: 1180px) {
+  .p6-simulator-contract-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .p6-simulator-page {
+    padding: 18px;
+  }
+
+  .p6-simulator-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .p6-simulator-contract-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -22,15 +22,125 @@ export type P6StageMetricProjection = {
   metric_trend?: string | null;
 };
 
+export type P6StageOverview = {
+  stage_id: string;
+  stage_name: string;
+  stage_display_name: string;
+  primary_status: string;
+  summary: string;
+  updated_at: string;
+  freshness: P6FreshnessState;
+};
+
+export type P6StageEntryProjection = {
+  entry_route: string;
+  entry_available: boolean;
+  entry_reason: string;
+};
+
+export type P6StageHealthProjection = {
+  health_level: "healthy" | "warning" | "blocked" | "unknown";
+  health_message: string;
+  health_source: string;
+  captured_at: string;
+};
+
+export type P6StageOverallMetricProjection = {
+  key: string;
+  label: string;
+  value: number | string;
+  unit: string;
+  basis: string;
+};
+
+export type P6StageLiveCounterProjection = {
+  key: string;
+  label: string;
+  value: number | string;
+  unit: string;
+  window: string;
+  direction: "input" | "output" | "process";
+};
+
+export type P6StageFlowPortProjection = {
+  port_id: string;
+  side: "left" | "right";
+  direction: "input" | "output";
+  label: string;
+  connected_target: string;
+  current_rate: string;
+  terminal: boolean;
+};
+
+export type P6StageConnectedUserProjection = {
+  user_ref: string;
+  display_label: string;
+  role_label: string;
+  activity_state: string;
+  connected_at: string;
+};
+
+export type P6StageQueueItemProjection = {
+  item_id: string;
+  label: string;
+  state: string;
+  order_index: number;
+};
+
+export type P6StageQueueProjection = {
+  queue_id: string;
+  label: string;
+  items: P6StageQueueItemProjection[];
+  active_index: number;
+  advance_rule: string;
+};
+
+export type P6StageDisplayBinding = {
+  prototype_refs: string[];
+  regions: Record<string, string>;
+};
+
+export type P6StageSourceTrace = {
+  field: string;
+  source_doc: string;
+  source_object: string;
+  calculation_basis: string;
+  freshness_policy?: string | null;
+  display_reason: string;
+};
+
 export type P6StageNodeStatusPayload = {
+  contract_version?: string;
   stage_id: string;
   headline_value: string;
   summary_line: string;
   metric_items: P6StageMetricProjection[];
+  system_overall_metric_items?: P6StageOverallMetricProjection[];
+  live_counter_items?: P6StageLiveCounterProjection[];
+  flow_port_items?: P6StageFlowPortProjection[];
+  connected_user_items?: P6StageConnectedUserProjection[];
+  queue_projection?: P6StageQueueProjection | null;
+  display_binding?: P6StageDisplayBinding | null;
+  source_trace?: P6StageSourceTrace[];
   entry_badge: P6DisplayBadge;
   health_badge: P6DisplayBadge;
   timestamp_label: string;
   degraded_hint?: string | null;
+};
+
+export type P6DisplayExportContract = {
+  contract_version: "P6DisplayExportContract.v2";
+  stage_overview: P6StageOverview;
+  entry_projection: P6StageEntryProjection;
+  system_overall_metrics: P6StageOverallMetricProjection[];
+  live_counters: P6StageLiveCounterProjection[];
+  flow_ports: P6StageFlowPortProjection[];
+  connected_users: P6StageConnectedUserProjection[];
+  queue_projection: P6StageQueueProjection;
+  display_binding: P6StageDisplayBinding;
+  health_projection: P6StageHealthProjection;
+  source_trace: P6StageSourceTrace[];
+  stage_specific: Record<string, number | string>;
 };
 
 export type P6ParticipantNodePayload = {
@@ -176,6 +286,20 @@ export type P6ObservationProjectionReadEnvelope = {
   source_mode: P6SourceMode;
   scenario: P6MockScenarioSummary;
   projection: P6ObservationProjection;
+};
+
+export type P6SimulatorContractSubmission = {
+  scenario_id: string;
+  label: string;
+  description: string;
+  recommended_focus_stage: string;
+  contracts: P6DisplayExportContract[];
+};
+
+export type P6SimulatorSubmissionResponse = {
+  scenario: P6MockScenarioSummary;
+  accepted_contract_count: number;
+  portal_projection_path: string;
 };
 
 export type P6DesignTokenSet = {
@@ -392,6 +516,10 @@ export function getP6ObservationProjection(params: P6ProjectionParams) {
   return api.get<P6ObservationProjectionReadEnvelope>("/p6/observation-projection", {
     params,
   });
+}
+
+export function submitP6SimulatorContracts(payload: P6SimulatorContractSubmission) {
+  return api.post<P6SimulatorSubmissionResponse>("/p6/simulator/contracts", payload);
 }
 
 export function getP6DisplayBaseline() {

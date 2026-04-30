@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { P6BlueprintCanvas } from "../components/p6/P6BlueprintCanvas";
 import { useArchiveContext } from "../context/ArchiveContext";
@@ -20,9 +21,11 @@ import "./P6PortalPage.css";
 
 export function P6PortalPage() {
   const { activeArchive } = useArchiveContext();
+  const [searchParams] = useSearchParams();
+  const requestedScenarioId = searchParams.get("scenario");
   const [sourceMode] = useState<P6SourceMode>("mock");
   const [scenarioCatalog, setScenarioCatalog] = useState<P6MockScenarioCatalog | null>(null);
-  const [selectedScenarioId, setSelectedScenarioId] = useState("baseline");
+  const [selectedScenarioId, setSelectedScenarioId] = useState(requestedScenarioId ?? "baseline");
   const [projectionEnvelope, setProjectionEnvelope] = useState<P6PortalProjectionReadEnvelope | null>(null);
   const [baselinePackage, setBaselinePackage] = useState<P6PlatformDisplayBaselinePackage | null>(null);
   const [platformRoutes, setPlatformRoutes] = useState<P6PlatformRoutes | null>(null);
@@ -54,9 +57,12 @@ export function P6PortalPage() {
           setBaselinePackage(baselineResponse.data);
           setPlatformRoutes(routesResponse.data);
           setPlatformLegend(legendResponse.data);
-          setSelectedScenarioId((current) =>
-            catalog.items.some((item) => item.scenario_id === current) ? current : catalog.default_scenario_id,
-          );
+          setSelectedScenarioId((current) => {
+            if (requestedScenarioId && catalog.items.some((item) => item.scenario_id === requestedScenarioId)) {
+              return requestedScenarioId;
+            }
+            return catalog.items.some((item) => item.scenario_id === current) ? current : catalog.default_scenario_id;
+          });
         });
         setError(null);
       } catch (loadError) {
@@ -73,7 +79,7 @@ export function P6PortalPage() {
     return () => {
       cancelled = true;
     };
-  }, [catalogReloadKey]);
+  }, [catalogReloadKey, requestedScenarioId]);
 
   useEffect(() => {
     if (!scenarioCatalog || !selectedScenarioId || !baselinePackage || !platformRoutes || !platformLegend) {
