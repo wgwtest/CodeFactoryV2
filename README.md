@@ -2,6 +2,8 @@
 
 `CodeFactoryV2` 是一个知识驱动的软件工厂项目。当前仓库已经落地 `P1` 业务知识库的首个可运行闭环，并在此基础上继续推进 `P2` 需求分析系统、`P3` 软件设计系统、`P4` 工具仓库、`P5` 软件构建系统和 `P6` 门户入口层的正式规划与实施。
 
+> Codex 新会话优先读取：[`CODEX_START_HERE.md`](CODEX_START_HERE.md)。
+
 ## Formal docs
 
 - 正式文档根：`DOC/CODEX_DOC/`
