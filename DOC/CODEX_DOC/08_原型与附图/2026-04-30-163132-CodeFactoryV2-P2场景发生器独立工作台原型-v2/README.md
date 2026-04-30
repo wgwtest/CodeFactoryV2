@@ -4,7 +4,7 @@
 
 - 文档角色：`P2-P1 场景数据发生器` v2 正式原型评审入口
 - 版本目录：`DOC/CODEX_DOC/08_原型与附图/2026-04-30-163132-CodeFactoryV2-P2场景发生器独立工作台原型-v2/`
-- 当前状态：待用户确认
+- 当前状态：已被 v3 替代，不作为实现依据
 - 目标路由：`/requirement-scenario-generator`、`/requirement-authoring/:session_id`
 - 页面归属：`P2` 需求分析系统、`P2-P1 场景数据发生器`
 - 页面主对象：`ScenarioGeneratorWorkbench`、`RequirementAuthoringSession`、`P1KnowledgeArchive`、`BrainstormingContract`、`FrozenRequirementSpec`
@@ -186,6 +186,10 @@ done
 
 ## 11. 评审结论与后续处理
 
-当前结论：待用户确认。
+当前结论：已被 v3 替代，不作为实现依据。
 
-用户确认后，本版可作为 `P2-P1 场景数据发生器` 独立工作台与 P2 编辑器交付边界的实现事实源。v1 保留为方向错误的历史原型证据，不再作为实现依据。
+替代版本：
+
+- `DOC/CODEX_DOC/08_原型与附图/2026-04-30-214734-CodeFactoryV2-XX-P1-Sim原型-v3/README.md`
+
+替代原因：v2 仍把本功能理解为 P2 样例/场景数据发生器，并承担了 P2 不需要的会话生成、问答补齐和冻结验证语义；v3 已改为 `XX-P1-Sim`，只模拟 P1 上游领域知识服务。
