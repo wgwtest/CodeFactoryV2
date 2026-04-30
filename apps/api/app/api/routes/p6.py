@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.p6.models import (
     MockScenarioCatalog,
     ObservationProjectionReadEnvelope,
+    PortalDataViewReadEnvelope,
     PortalProjectionReadEnvelope,
     P6SimulatorContractSubmission,
     P6SimulatorSubmissionResponse,
@@ -66,6 +67,19 @@ def get_p6_portal_projection(
 ):
     try:
         return service.get_portal_projection(source=source, scenario=scenario)
+    except Exception as exc:  # pragma: no cover - mapping branch is verified by API tests.
+        raise _raise_p6_error(exc) from exc
+
+
+@router.get("/portal-data", response_model=PortalDataViewReadEnvelope)
+def get_p6_portal_data_view(
+    source: SourceMode = Query(default="mock"),
+    scenario: str = Query(default="baseline"),
+    selected_stage_id: str = Query(default="P3"),
+    service: P6ProjectionService = Depends(get_p6_projection_service),
+):
+    try:
+        return service.get_portal_data_view(source=source, scenario=scenario, selected_stage_id=selected_stage_id)
     except Exception as exc:  # pragma: no cover - mapping branch is verified by API tests.
         raise _raise_p6_error(exc) from exc
 

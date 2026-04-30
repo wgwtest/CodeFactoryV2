@@ -1,10 +1,18 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from app.main import create_app
+from app.p6 import service as p6_service
 
 
 def _build_client() -> TestClient:
     return TestClient(create_app())
+
+
+@pytest.fixture(autouse=True)
+def _reset_p6_simulator_state() -> None:
+    p6_service._SIMULATOR_SUBMISSION = None
+    p6_service._SIMULATOR_HISTORY.clear()
 
 
 def _build_display_contract(
@@ -18,6 +26,7 @@ def _build_display_contract(
     output_target: str,
     terminal_output: bool = False,
     include_input_port: bool = True,
+    extra_output_ports: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     flow_ports = []
     if include_input_port:
@@ -43,6 +52,7 @@ def _build_display_contract(
             "terminal": terminal_output,
         }
     )
+    flow_ports.extend(extra_output_ports or [])
     return {
         "contract_version": "P6DisplayExportContract.v2",
         "stage_overview": {
@@ -165,6 +175,17 @@ def _build_simulator_contract_payload() -> dict[str, object]:
                 overall_value=112,
                 input_target="P2",
                 output_target="P4",
+                extra_output_ports=[
+                    {
+                        "port_id": "p3_p5_baseline_output",
+                        "side": "right",
+                        "direction": "output",
+                        "label": "设计基线",
+                        "connected_target": "P5",
+                        "current_rate": "3 份/小时",
+                        "terminal": False,
+                    }
+                ],
             ),
             _build_display_contract(
                 "P4",
@@ -264,6 +285,7 @@ def test_p6_contract_simulator_submission_drives_portal_projection() -> None:
     created = create_response.json()
     assert created["scenario"]["scenario_id"] == "simulator-latest"
     assert created["accepted_contract_count"] == 5
+    assert created["portal_data_path"] == "/portal-data?scenario=simulator-latest"
 
     catalog_response = client.get("/api/p6/mock-scenarios")
     assert catalog_response.status_code == 200
@@ -282,6 +304,57 @@ def test_p6_contract_simulator_submission_drives_portal_projection() -> None:
     p5_output = next(port for port in p5_node["stage_card"]["flow_port_items"] if port["direction"] == "output")
     assert p5_output["connected_target"] == "交付目录"
     assert p5_output["terminal"] is True
+
+
+def test_p6_portal_data_view_returns_five_stage_table_without_generated_history() -> None:
+    client = _build_client()
+
+    response = client.get("/api/p6/portal-data", params={"source": "mock", "scenario": "baseline"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    view = payload["view"]
+
+    assert payload["source_mode"] == "mock"
+    assert payload["scenario"]["scenario_id"] == "baseline"
+    assert view["scenario_summary"]["stage_count"] == 5
+    assert view["scenario_summary"]["flow_count"] == 6
+    assert view["history_sample_count"] == 0
+    assert [row["stage_id"] for row in view["stage_rows"]] == ["P1", "P2", "P3", "P4", "P5"]
+    assert view["stage_rows"][0]["overall_status"] == "知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人"
+    assert [series["flow_id"] for series in view["flow_series"]] == [
+        "p1-p2",
+        "p2-p3",
+        "p3-p4",
+        "p3-p5",
+        "p4-p5",
+        "p5-delivery",
+    ]
+    assert all(series["points"] == [] for series in view["flow_series"])
+    assert view["selected_stage_detail"]["stage_id"] == "P3"
+    assert view["selected_stage_detail"]["display_contract"]["contract_version"] == "P6DisplayExportContract.v2"
+
+
+def test_p6_portal_data_view_uses_simulator_history_points_after_contract_submission() -> None:
+    client = _build_client()
+
+    create_response = client.post("/api/p6/simulator/contracts", json=_build_simulator_contract_payload())
+    assert create_response.status_code == 201
+
+    response = client.get("/api/p6/portal-data", params={"source": "mock", "scenario": "simulator-latest"})
+
+    assert response.status_code == 200
+    view = response.json()["view"]
+    flow_points_by_id = {series["flow_id"]: series["points"] for series in view["flow_series"]}
+
+    assert view["history_sample_count"] == 1
+    assert set(flow_points_by_id) == {"p1-p2", "p2-p3", "p3-p4", "p3-p5", "p4-p5", "p5-delivery"}
+    assert flow_points_by_id["p1-p2"][0]["payload_label"] == "发布态知识"
+    assert flow_points_by_id["p1-p2"][0]["value"] == 5
+    assert flow_points_by_id["p3-p5"][0]["payload_label"] == "设计基线"
+    assert flow_points_by_id["p3-p5"][0]["value"] == 3
+    assert flow_points_by_id["p5-delivery"][0]["to_stage_id"] == "交付目录"
+    assert view["selected_stage_detail"]["stage_id"] == "P3"
 
 
 def test_p6_portal_projection_returns_stage_and_participant_nodes() -> None:

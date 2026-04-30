@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+import re
+
 from app.p6.mock_scenarios import (
     DEFAULT_SCENARIO_ID,
     PORTAL_ARTIFACTS,
@@ -21,6 +24,7 @@ from app.p6.models import (
     ObservationRouteAction,
     ObservationStageCard,
     ParticipantNodePayload,
+    PortalDataViewReadEnvelope,
     PortalArtifact,
     PortalFlow,
     PortalNode,
@@ -28,7 +32,14 @@ from app.p6.models import (
     PortalProjectionReadEnvelope,
     PortalSummary,
     P6DisplayExportContract,
+    P6PortalDataFlowSeries,
+    P6PortalDataScenarioSummary,
+    P6PortalDataStageDetail,
+    P6PortalDataStageRow,
+    P6PortalDataViewModel,
     P6SimulatorContractSubmission,
+    P6SimulatorFlowPoint,
+    P6SimulatorHistorySample,
     P6SimulatorSubmissionResponse,
     StageEntryProjection,
     StageFlowPortProjection,
@@ -53,6 +64,64 @@ HEALTH_BADGE_TONES = {
 
 SIMULATOR_SCENARIO_ID = "simulator-latest"
 _SIMULATOR_SUBMISSION: P6SimulatorContractSubmission | None = None
+_SIMULATOR_HISTORY: list[P6SimulatorHistorySample] = []
+
+PORTAL_DATA_FLOW_SPECS = [
+    {
+        "flow_id": "p1-p2",
+        "label": "P1 -> P2",
+        "from_stage_id": "P1",
+        "to_stage_id": "P2",
+        "semantic_type": "knowledge_supply",
+        "payload_label": "发布态知识",
+        "render_tone": "knowledge",
+    },
+    {
+        "flow_id": "p2-p3",
+        "label": "P2 -> P3",
+        "from_stage_id": "P2",
+        "to_stage_id": "P3",
+        "semantic_type": "requirement_to_design",
+        "payload_label": "需求规格",
+        "render_tone": "analysis",
+    },
+    {
+        "flow_id": "p3-p4",
+        "label": "P3 -> P4",
+        "from_stage_id": "P3",
+        "to_stage_id": "P4",
+        "semantic_type": "work_order_package",
+        "payload_label": "模块工单包",
+        "render_tone": "design",
+    },
+    {
+        "flow_id": "p3-p5",
+        "label": "P3 -> P5",
+        "from_stage_id": "P3",
+        "to_stage_id": "P5",
+        "semantic_type": "design_baseline_to_build",
+        "payload_label": "设计基线",
+        "render_tone": "design",
+    },
+    {
+        "flow_id": "p4-p5",
+        "label": "P4 -> P5",
+        "from_stage_id": "P4",
+        "to_stage_id": "P5",
+        "semantic_type": "tool_supply",
+        "payload_label": "工具供给",
+        "render_tone": "tooling",
+    },
+    {
+        "flow_id": "p5-delivery",
+        "label": "P5 -> 交付目录",
+        "from_stage_id": "P5",
+        "to_stage_id": "交付目录",
+        "semantic_type": "delivery_catalog_output",
+        "payload_label": "交付目录",
+        "render_tone": "delivery",
+    },
+]
 
 DISPLAY_CONTRACT_PROFILE = {
     "P1": {
@@ -224,6 +293,17 @@ class P6ProjectionService:
 
         global _SIMULATOR_SUBMISSION
         _SIMULATOR_SUBMISSION = payload
+        captured_at = self._resolve_history_captured_at(payload.contracts)
+        _SIMULATOR_HISTORY.append(
+            P6SimulatorHistorySample(
+                sample_id=f"{payload.scenario_id}-{len(_SIMULATOR_HISTORY) + 1}",
+                scenario_id=payload.scenario_id,
+                captured_at=captured_at,
+                stage_contracts=payload.contracts,
+                flow_points=self._build_simulator_flow_points(payload.contracts, captured_at),
+                source_label=payload.label,
+            )
+        )
         scenario = MockScenarioSummary(
             scenario_id=payload.scenario_id,
             label=payload.label,
@@ -235,6 +315,7 @@ class P6ProjectionService:
             scenario=scenario,
             accepted_contract_count=len(payload.contracts),
             portal_projection_path=f"/portal?scenario={payload.scenario_id}",
+            portal_data_path=f"/portal-data?scenario={payload.scenario_id}",
         )
 
     def get_stage_snapshots(self, source: str = "mock", scenario: str = DEFAULT_SCENARIO_ID) -> StageSnapshotReadEnvelope:
@@ -262,6 +343,38 @@ class P6ProjectionService:
             degraded_reason=self._resolve_projection_degraded_reason(snapshots),
         )
         return PortalProjectionReadEnvelope(source_mode="mock", scenario=scenario_summary, projection=projection)
+
+    def get_portal_data_view(
+        self,
+        source: str = "mock",
+        scenario: str = DEFAULT_SCENARIO_ID,
+        selected_stage_id: str = "P3",
+    ) -> PortalDataViewReadEnvelope:
+        scenario_summary, scenario_definition = self._resolve_scenario(source, scenario)
+        snapshots = self._build_stage_snapshots(scenario_definition)
+        scenario_history = [sample for sample in _SIMULATOR_HISTORY if sample.scenario_id == scenario_summary.scenario_id]
+        stage_rows = [self._build_portal_data_stage_row(snapshot) for snapshot in snapshots]
+        flow_series = self._build_portal_data_flow_series(scenario_history)
+        selected_detail = self._build_portal_data_stage_detail(selected_stage_id, snapshots, scenario_history)
+        projection_at = snapshots[-1].projection_at if snapshots else datetime.now(UTC).isoformat()
+        view = P6PortalDataViewModel(
+            scenario_summary=P6PortalDataScenarioSummary(
+                scenario_id=scenario_summary.scenario_id,
+                label=scenario_summary.label,
+                source_label="模拟源",
+                stage_count=len(stage_rows),
+                flow_count=len(flow_series),
+                connected_user_count=sum(row.connected_user_count for row in stage_rows),
+                queue_item_count=sum(row.queue_item_count for row in stage_rows),
+                history_sample_count=len(scenario_history),
+                captured_at=projection_at,
+            ),
+            stage_rows=stage_rows,
+            flow_series=flow_series,
+            selected_stage_detail=selected_detail,
+            history_sample_count=len(scenario_history),
+        )
+        return PortalDataViewReadEnvelope(source_mode="mock", scenario=scenario_summary, view=view)
 
     def get_observation_projection(
         self,
@@ -656,6 +769,133 @@ class P6ProjectionService:
             ],
             stage_specific={metric.key: metric.value for metric in system_overall_metrics},
         )
+
+    def _build_portal_data_stage_row(self, snapshot: StageSnapshot) -> P6PortalDataStageRow:
+        payload = snapshot.node_status_payload
+        input_counters = [counter for counter in payload.live_counter_items if counter.direction == "input"]
+        process_counters = [counter for counter in payload.live_counter_items if counter.direction == "process"]
+        output_ports = [port for port in payload.flow_port_items if port.direction == "output"]
+        queue_item_count = len(payload.queue_projection.items) if payload.queue_projection else 0
+        return P6PortalDataStageRow(
+            stage_id=snapshot.stage_id,
+            stage_name=snapshot.stage_name,
+            primary_status=snapshot.primary_status,
+            health_level=snapshot.health_projection.health_level,
+            overall_status=payload.headline_value,
+            realtime_input=self._format_live_counters(input_counters),
+            processing_status=self._format_live_counters(process_counters) or snapshot.health_projection.health_message,
+            output_flow=self._format_output_ports(output_ports),
+            connected_user_count=len(payload.connected_user_items),
+            queue_item_count=queue_item_count,
+            updated_at=snapshot.projection_at,
+        )
+
+    def _build_portal_data_flow_series(
+        self,
+        history_samples: list[P6SimulatorHistorySample],
+    ) -> list[P6PortalDataFlowSeries]:
+        return [
+            P6PortalDataFlowSeries(
+                flow_id=str(spec["flow_id"]),
+                label=str(spec["label"]),
+                from_stage_id=str(spec["from_stage_id"]),
+                to_stage_id=str(spec["to_stage_id"]),
+                semantic_type=str(spec["semantic_type"]),
+                payload_label=str(spec["payload_label"]),
+                render_tone=str(spec["render_tone"]),
+                points=[
+                    point
+                    for sample in history_samples
+                    for point in sample.flow_points
+                    if point.flow_id == spec["flow_id"]
+                ],
+            )
+            for spec in PORTAL_DATA_FLOW_SPECS
+        ]
+
+    def _build_portal_data_stage_detail(
+        self,
+        selected_stage_id: str,
+        snapshots: list[StageSnapshot],
+        history_samples: list[P6SimulatorHistorySample],
+    ) -> P6PortalDataStageDetail:
+        snapshot = next((item for item in snapshots if item.stage_id == selected_stage_id), snapshots[0])
+        payload = snapshot.node_status_payload
+        recent_points = [
+            point
+            for sample in history_samples[-3:]
+            for point in sample.flow_points
+            if point.from_stage_id == snapshot.stage_id or point.to_stage_id == snapshot.stage_id
+        ]
+        return P6PortalDataStageDetail(
+            stage_id=snapshot.stage_id,
+            stage_name=snapshot.stage_name,
+            summary=snapshot.summary,
+            overall_metrics=payload.system_overall_metric_items,
+            live_counters=payload.live_counter_items,
+            flow_ports=payload.flow_port_items,
+            connected_users=payload.connected_user_items,
+            queue_projection=payload.queue_projection,
+            source_trace=payload.source_trace,
+            display_contract=snapshot.display_contract,
+            recent_flow_points=recent_points,
+        )
+
+    def _build_simulator_flow_points(
+        self,
+        contracts: list[P6DisplayExportContract],
+        captured_at: str,
+    ) -> list[P6SimulatorFlowPoint]:
+        contracts_by_stage = {contract.stage_overview.stage_id: contract for contract in contracts}
+        points: list[P6SimulatorFlowPoint] = []
+        for spec in PORTAL_DATA_FLOW_SPECS:
+            contract = contracts_by_stage.get(str(spec["from_stage_id"]))
+            if contract is None:
+                continue
+            output_port = next(
+                (
+                    port
+                    for port in contract.flow_ports
+                    if port.direction == "output" and port.connected_target == spec["to_stage_id"]
+                ),
+                None,
+            )
+            if output_port is None:
+                continue
+
+            value, unit = self._parse_rate_label(output_port.current_rate)
+            points.append(
+                P6SimulatorFlowPoint(
+                    flow_id=str(spec["flow_id"]),
+                    from_stage_id=str(spec["from_stage_id"]),
+                    to_stage_id=str(spec["to_stage_id"]),
+                    semantic_type=str(spec["semantic_type"]),
+                    payload_label=str(spec["payload_label"]),
+                    value=value,
+                    unit=unit,
+                    rate_label=output_port.current_rate,
+                    captured_at=captured_at,
+                )
+            )
+        return points
+
+    def _resolve_history_captured_at(self, contracts: list[P6DisplayExportContract]) -> str:
+        captured_values = [contract.health_projection.captured_at for contract in contracts if contract.health_projection.captured_at]
+        return captured_values[-1] if captured_values else datetime.now(UTC).isoformat()
+
+    def _parse_rate_label(self, rate_label: str) -> tuple[int | float, str]:
+        matched = re.match(r"\s*(\d+(?:\.\d+)?)\s*(.*)\s*$", rate_label)
+        if matched is None:
+            return 0, rate_label
+        raw_value = float(matched.group(1))
+        value: int | float = int(raw_value) if raw_value.is_integer() else raw_value
+        return value, matched.group(2)
+
+    def _format_live_counters(self, counters: list[StageLiveCounterProjection]) -> str:
+        return "；".join(f"{counter.label} {counter.value}{counter.unit}" for counter in counters)
+
+    def _format_output_ports(self, ports: list[StageFlowPortProjection]) -> str:
+        return "；".join(f"{port.label} -> {port.connected_target} {port.current_rate}" for port in ports)
 
     def _validate_contract_ports(self, contract: P6DisplayExportContract) -> None:
         expected_outputs = {

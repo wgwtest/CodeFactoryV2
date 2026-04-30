@@ -107,6 +107,7 @@ const scenarioSeeds: StageContractSeed[] = [
     live: [
       ["active_requirement_input_rate", "规格接入", 8, "份/小时", "1h", "input"],
       ["active_workorder_output_rate", "工单输出", 11, "包/小时", "1h", "output"],
+      ["active_design_baseline_sync_rate", "基线同步", 3, "份/小时", "1h", "output"],
     ],
     inputTarget: "P2",
     inputLabel: "需求规格",
@@ -187,6 +188,39 @@ const scenarioSeeds: StageContractSeed[] = [
 
 function buildContract(seed: StageContractSeed, index: number): P6DisplayExportContract {
   const capturedAt = `2026-04-29T20:${50 + index}:00+08:00`;
+  const flowPorts: P6DisplayExportContract["flow_ports"] = [];
+  if (seed.stageId !== "P1") {
+    flowPorts.push({
+      port_id: `${seed.stageId.toLowerCase()}_input`,
+      side: "left",
+      direction: "input",
+      label: seed.inputLabel,
+      connected_target: seed.inputTarget,
+      current_rate: `${seed.live[0]?.[2] ?? 0} ${seed.live[0]?.[3] ?? "项/小时"}`,
+      terminal: false,
+    });
+  }
+  flowPorts.push({
+    port_id: `${seed.stageId.toLowerCase()}_output`,
+    side: "right",
+    direction: "output",
+    label: seed.outputLabel,
+    connected_target: seed.outputTarget,
+    current_rate: `${seed.live[1]?.[2] ?? 0} ${seed.live[1]?.[3] ?? "项/小时"}`,
+    terminal: seed.terminalOutput,
+  });
+  if (seed.stageId === "P3") {
+    const baselineCounter = seed.live.find(([key]) => key === "active_design_baseline_sync_rate");
+    flowPorts.push({
+      port_id: "p3_p5_baseline_output",
+      side: "right",
+      direction: "output",
+      label: "设计基线",
+      connected_target: "P5",
+      current_rate: `${baselineCounter?.[2] ?? 3} ${baselineCounter?.[3] ?? "份/小时"}`,
+      terminal: false,
+    });
+  }
   return {
     contract_version: "P6DisplayExportContract.v2",
     stage_overview: {
@@ -212,26 +246,7 @@ function buildContract(seed: StageContractSeed, index: number): P6DisplayExportC
       window,
       direction,
     })),
-    flow_ports: [
-      {
-        port_id: `${seed.stageId.toLowerCase()}_input`,
-        side: "left",
-        direction: "input",
-        label: seed.inputLabel,
-        connected_target: seed.inputTarget,
-        current_rate: `${seed.live[0]?.[2] ?? 0}${seed.live[0]?.[3] ?? "项/小时"}`,
-        terminal: false,
-      },
-      {
-        port_id: `${seed.stageId.toLowerCase()}_output`,
-        side: "right",
-        direction: "output",
-        label: seed.outputLabel,
-        connected_target: seed.outputTarget,
-        current_rate: `${seed.live[1]?.[2] ?? 0}${seed.live[1]?.[3] ?? "项/小时"}`,
-        terminal: seed.terminalOutput,
-      },
-    ],
+    flow_ports: flowPorts,
     connected_users: seed.users.map(([user_ref, display_label, role_label]) => ({
       user_ref,
       display_label,
@@ -257,7 +272,7 @@ function buildContract(seed: StageContractSeed, index: number): P6DisplayExportC
         top_participants: "connected_users",
         middle_overall: "system_overall_metrics",
         lower_realtime: "live_counters",
-        left_input_port: "flow_ports[input]",
+        left_input_port: seed.stageId === "P1" ? "queue_projection" : "flow_ports[input]",
         right_output_port: "flow_ports[output]",
         bottom_queue: "queue_projection",
       },
@@ -322,11 +337,13 @@ export function P6SimulatorPage() {
             {submitting ? "发送中" : "发送模拟合同"}
           </button>
           {result ? <Link to={result.portal_projection_path}>打开 P6 门户</Link> : null}
+          {result ? <Link to={result.portal_data_path}>打开图表视图</Link> : null}
         </div>
       </section>
 
       <section className="p6-simulator-contract-grid">
         {submission.contracts.map((contract) => {
+          const inputPort = contract.flow_ports.find((port) => port.direction === "input");
           const outputPort = contract.flow_ports.find((port) => port.direction === "output");
           return (
             <article key={contract.stage_overview.stage_id} className="p6-simulator-contract-card">
@@ -345,7 +362,7 @@ export function P6SimulatorPage() {
               </div>
               <div className="p6-simulator-contract-card__ports">
                 <span>
-                  输入 <em>{contract.flow_ports[0]?.connected_target}</em>
+                  输入 <em>{inputPort?.connected_target ?? contract.queue_projection.label}</em>
                 </span>
                 <span>
                   输出 <em>{outputPort?.connected_target}</em>

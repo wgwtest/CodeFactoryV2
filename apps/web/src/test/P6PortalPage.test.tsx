@@ -134,6 +134,8 @@ test("renders P6 portal blueprint outside MainShell on /portal route and loads f
   expect(screen.getByText("权限与角色控制")).toBeInTheDocument();
   expect(screen.getByText(/双击节点即可进入对应模块/)).toBeInTheDocument();
   expect(screen.getByText(/当前知识库：知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "图表视图" })).toHaveAttribute("href", "/portal-data?scenario=baseline");
+  expect(screen.getByRole("link", { name: "模拟发生器" })).toHaveAttribute("href", "/xx-p6-sim");
 
   expect(getMock).toHaveBeenCalledWith("/p6/mock-scenarios");
   expect(getMock).toHaveBeenCalledWith("/platform-config/display-baseline");

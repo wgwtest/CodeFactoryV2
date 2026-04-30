@@ -296,10 +296,88 @@ export type P6SimulatorContractSubmission = {
   contracts: P6DisplayExportContract[];
 };
 
+export type P6SimulatorFlowPoint = {
+  flow_id: string;
+  from_stage_id: string;
+  to_stage_id: string;
+  semantic_type: string;
+  payload_label: string;
+  value: number;
+  unit: string;
+  rate_label: string;
+  captured_at: string;
+};
+
+export type P6PortalDataStageRow = {
+  stage_id: string;
+  stage_name: string;
+  primary_status: string;
+  health_level: "healthy" | "warning" | "blocked" | "unknown";
+  overall_status: string;
+  realtime_input: string;
+  processing_status: string;
+  output_flow: string;
+  connected_user_count: number;
+  queue_item_count: number;
+  updated_at: string;
+};
+
+export type P6PortalDataFlowSeries = {
+  flow_id: string;
+  label: string;
+  from_stage_id: string;
+  to_stage_id: string;
+  semantic_type: string;
+  payload_label: string;
+  render_tone: P6RenderTone;
+  points: P6SimulatorFlowPoint[];
+};
+
+export type P6PortalDataScenarioSummary = {
+  scenario_id: string;
+  label: string;
+  source_label: string;
+  stage_count: number;
+  flow_count: number;
+  connected_user_count: number;
+  queue_item_count: number;
+  history_sample_count: number;
+  captured_at: string;
+};
+
+export type P6PortalDataStageDetail = {
+  stage_id: string;
+  stage_name: string;
+  summary: string;
+  overall_metrics: P6StageOverallMetricProjection[];
+  live_counters: P6StageLiveCounterProjection[];
+  flow_ports: P6StageFlowPortProjection[];
+  connected_users: P6StageConnectedUserProjection[];
+  queue_projection?: P6StageQueueProjection | null;
+  source_trace: P6StageSourceTrace[];
+  display_contract?: P6DisplayExportContract | null;
+  recent_flow_points: P6SimulatorFlowPoint[];
+};
+
+export type P6PortalDataViewModel = {
+  scenario_summary: P6PortalDataScenarioSummary;
+  stage_rows: P6PortalDataStageRow[];
+  flow_series: P6PortalDataFlowSeries[];
+  selected_stage_detail: P6PortalDataStageDetail;
+  history_sample_count: number;
+};
+
+export type P6PortalDataViewReadEnvelope = {
+  source_mode: P6SourceMode;
+  scenario: P6MockScenarioSummary;
+  view: P6PortalDataViewModel;
+};
+
 export type P6SimulatorSubmissionResponse = {
   scenario: P6MockScenarioSummary;
   accepted_contract_count: number;
   portal_projection_path: string;
+  portal_data_path: string;
 };
 
 export type P6DesignTokenSet = {
@@ -508,6 +586,12 @@ export function listP6MockScenarios() {
 
 export function getP6PortalProjection(params: P6ProjectionParams) {
   return api.get<P6PortalProjectionReadEnvelope>("/p6/portal-projection", {
+    params,
+  });
+}
+
+export function getP6PortalDataView(params: P6ProjectionParams & { selected_stage_id: string }) {
+  return api.get<P6PortalDataViewReadEnvelope>("/p6/portal-data", {
     params,
   });
 }

@@ -10,6 +10,7 @@ import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { P6ObservationPage } from "./pages/P6ObservationPage";
+import { P6PortalDataPage } from "./pages/P6PortalDataPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
 import { P6SimulatorPage } from "./pages/P6SimulatorPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
@@ -104,7 +105,15 @@ export default function App() {
     return <Navigate to={envDefaultRoute} replace />;
   }
 
-  if (location.pathname.startsWith("/portal")) {
+  if (location.pathname.startsWith("/portal-data")) {
+    return (
+      <Routes>
+        <Route path="/portal-data" element={<P6PortalDataPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname === "/portal") {
     return (
       <Routes>
         <Route path="/portal" element={<P6PortalPage />} />

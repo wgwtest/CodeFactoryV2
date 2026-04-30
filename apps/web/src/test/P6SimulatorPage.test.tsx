@@ -26,6 +26,7 @@ beforeEach(() => {
       },
       accepted_contract_count: 5,
       portal_projection_path: "/portal?scenario=simulator-latest",
+      portal_data_path: "/portal-data?scenario=simulator-latest",
     },
   });
 });
@@ -58,6 +59,10 @@ test("renders the P6 contract simulator and submits five display contracts", asy
     flow_ports: Array<{ direction: string; connected_target: string; label: string }>;
     system_overall_metrics: Array<{ key: string }>;
   };
+  const p3Contract = payload.contracts.find((item) => {
+    const overview = item.stage_overview as { stage_id: string };
+    return overview.stage_id === "P3";
+  }) as { flow_ports: Array<{ direction: string; connected_target: string; label: string }> };
   const p5Contract = payload.contracts.find((item) => {
     const overview = item.stage_overview as { stage_id: string };
     return overview.stage_id === "P5";
@@ -66,14 +71,16 @@ test("renders the P6 contract simulator and submits five display contracts", asy
   expect(p1Contract.flow_ports.filter((port) => port.direction === "output")).toEqual([
     expect.objectContaining({ connected_target: "P2" }),
   ]);
-  expect(p1Contract.flow_ports.filter((port) => port.direction === "input")).toEqual([
-    expect.objectContaining({ connected_target: "外部资料", label: "外部知识" }),
-  ]);
+  expect(p1Contract.flow_ports.filter((port) => port.direction === "input")).toEqual([]);
   expect(p1Contract.system_overall_metrics.map((metric) => metric.key)).toEqual([
     "knowledge_repository_count",
     "published_knowledge_count",
     "domain_directory_count",
     "contributor_count",
+  ]);
+  expect(p3Contract.flow_ports.filter((port) => port.direction === "output")).toEqual([
+    expect.objectContaining({ connected_target: "P4", label: "模块工单包" }),
+    expect.objectContaining({ connected_target: "P5", label: "设计基线" }),
   ]);
   expect(p5Contract.flow_ports.filter((port) => port.direction === "output")).toEqual([
     expect.objectContaining({ connected_target: "交付目录", terminal: true }),
@@ -83,5 +90,9 @@ test("renders the P6 contract simulator and submits five display contracts", asy
   expect(screen.getByRole("link", { name: "打开 P6 门户" })).toHaveAttribute(
     "href",
     "/portal?scenario=simulator-latest",
+  );
+  expect(screen.getByRole("link", { name: "打开图表视图" })).toHaveAttribute(
+    "href",
+    "/portal-data?scenario=simulator-latest",
   );
 });

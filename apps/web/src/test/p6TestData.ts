@@ -914,3 +914,149 @@ export function buildObservationProjectionEnvelope(scenarioId: string) {
     },
   };
 }
+
+export function buildPortalDataViewEnvelope(options?: { history?: boolean; selectedStageId?: string }) {
+  const portalEnvelope = buildPortalProjectionEnvelope("baseline");
+  const selectedStageId = options?.selectedStageId ?? "P3";
+  const stageNodes = portalEnvelope.projection.node_list.filter((item) => item.node_kind === "module" && item.stage_card);
+  const makeFlowPoint = (
+    flow_id: string,
+    from_stage_id: string,
+    to_stage_id: string,
+    semantic_type: string,
+    payload_label: string,
+    value: number,
+    unit: string,
+  ) => ({
+    flow_id,
+    from_stage_id,
+    to_stage_id,
+    semantic_type,
+    payload_label,
+    value,
+    unit,
+    rate_label: `${value} ${unit}`,
+    captured_at: "2026-04-30T15:20:00+08:00",
+  });
+  const points = options?.history
+    ? {
+        "p1-p2": [makeFlowPoint("p1-p2", "P1", "P2", "knowledge_supply", "发布态知识", 5, "条/小时")],
+        "p2-p3": [makeFlowPoint("p2-p3", "P2", "P3", "requirement_to_design", "需求规格", 4, "份/小时")],
+        "p3-p4": [makeFlowPoint("p3-p4", "P3", "P4", "work_order_package", "模块工单包", 5, "包/小时")],
+        "p3-p5": [makeFlowPoint("p3-p5", "P3", "P5", "design_baseline_to_build", "设计基线", 3, "份/小时")],
+        "p4-p5": [makeFlowPoint("p4-p5", "P4", "P5", "tool_supply", "工具供给", 4, "项/小时")],
+        "p5-delivery": [
+          makeFlowPoint("p5-delivery", "P5", "交付目录", "delivery_catalog_output", "交付目录", 2, "个/日"),
+        ],
+      }
+    : {};
+
+  const flowSeries = [
+    ["p1-p2", "P1 -> P2", "P1", "P2", "knowledge_supply", "发布态知识", "knowledge"],
+    ["p2-p3", "P2 -> P3", "P2", "P3", "requirement_to_design", "需求规格", "analysis"],
+    ["p3-p4", "P3 -> P4", "P3", "P4", "work_order_package", "模块工单包", "design"],
+    ["p3-p5", "P3 -> P5", "P3", "P5", "design_baseline_to_build", "设计基线", "design"],
+    ["p4-p5", "P4 -> P5", "P4", "P5", "tool_supply", "工具供给", "tooling"],
+    ["p5-delivery", "P5 -> 交付目录", "P5", "交付目录", "delivery_catalog_output", "交付目录", "delivery"],
+  ].map(([flow_id, label, from_stage_id, to_stage_id, semantic_type, payload_label, render_tone]) => ({
+    flow_id,
+    label,
+    from_stage_id,
+    to_stage_id,
+    semantic_type,
+    payload_label,
+    render_tone,
+    points: points[flow_id as keyof typeof points] ?? [],
+  }));
+
+  const selectedNode = stageNodes.find((item) => item.stage_id === selectedStageId) ?? stageNodes[2];
+  const selectedCard = selectedNode.stage_card;
+
+  return {
+    source_mode: "mock",
+    scenario: portalEnvelope.scenario,
+    view: {
+      scenario_summary: {
+        scenario_id: "baseline",
+        label: "基线通畅",
+        source_label: "模拟源",
+        stage_count: 5,
+        flow_count: 6,
+        connected_user_count: 23,
+        queue_item_count: 20,
+        history_sample_count: options?.history ? 1 : 0,
+        captured_at: "2026-04-30T15:20:00+08:00",
+      },
+      stage_rows: stageNodes.map((item) => ({
+        stage_id: item.stage_id,
+        stage_name: item.title,
+        primary_status: item.primary_status,
+        health_level: item.stage_card?.health_badge.tone === "blocked" ? "blocked" : "healthy",
+        overall_status: item.stage_card?.headline_value,
+        realtime_input:
+          item.stage_card?.live_counter_items
+            ?.filter((counter) => counter.direction === "input")
+            .map((counter) => `${counter.label} ${counter.value}${counter.unit}`)
+            .join("；") || item.stage_card?.summary_line,
+        processing_status:
+          item.stage_card?.live_counter_items
+            ?.filter((counter) => counter.direction === "process")
+            .map((counter) => `${counter.label} ${counter.value}${counter.unit}`)
+            .join("；") || item.stage_card?.health_badge.detail,
+        output_flow:
+          item.stage_card?.flow_port_items
+            ?.filter((port) => port.direction === "output")
+            .map((port) => `${port.label} -> ${port.connected_target} ${port.current_rate}`)
+            .join("；") ?? "",
+        connected_user_count: item.stage_card?.connected_user_items?.length ?? 0,
+        queue_item_count: item.stage_card?.queue_projection?.items.length ?? 0,
+        updated_at: "2026-04-30T15:20:00+08:00",
+      })),
+      flow_series: flowSeries,
+      selected_stage_detail: {
+        stage_id: selectedNode.stage_id,
+        stage_name: selectedNode.title,
+        summary: selectedNode.summary,
+        overall_metrics: selectedCard?.system_overall_metric_items ?? [],
+        live_counters: selectedCard?.live_counter_items ?? [],
+        flow_ports: selectedCard?.flow_port_items ?? [],
+        connected_users: selectedCard?.connected_user_items ?? [],
+        queue_projection: selectedCard?.queue_projection,
+        source_trace: selectedCard?.source_trace ?? [],
+        display_contract: {
+          contract_version: "P6DisplayExportContract.v2",
+          stage_overview: {
+            stage_id: selectedNode.stage_id ?? "P3",
+            stage_name: selectedNode.title,
+            stage_display_name: selectedNode.title,
+            primary_status: selectedNode.primary_status ?? "unknown",
+            summary: selectedCard?.headline_value ?? "",
+            updated_at: "2026-04-30T15:20:00+08:00",
+            freshness: "fresh",
+          },
+          entry_projection: {
+            entry_route: selectedNode.route ?? "/portal",
+            entry_available: true,
+            entry_reason: `${selectedNode.title} 入口可用`,
+          },
+          system_overall_metrics: selectedCard?.system_overall_metric_items ?? [],
+          live_counters: selectedCard?.live_counter_items ?? [],
+          flow_ports: selectedCard?.flow_port_items ?? [],
+          connected_users: selectedCard?.connected_user_items ?? [],
+          queue_projection: selectedCard?.queue_projection,
+          display_binding: selectedCard?.display_binding,
+          health_projection: {
+            health_level: "healthy",
+            health_message: selectedCard?.health_badge.detail ?? "",
+            health_source: "test",
+            captured_at: "2026-04-30T15:20:00+08:00",
+          },
+          source_trace: selectedCard?.source_trace ?? [],
+          stage_specific: {},
+        },
+        recent_flow_points: options?.history ? flowSeries.flatMap((series) => series.points).slice(0, 3) : [],
+      },
+      history_sample_count: options?.history ? 1 : 0,
+    },
+  };
+}

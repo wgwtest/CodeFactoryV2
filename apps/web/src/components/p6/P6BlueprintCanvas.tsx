@@ -552,6 +552,11 @@ export function P6BlueprintCanvas({
         ) : null}
       </div>
 
+      <nav className="p6-portal-quick-links" aria-label="P6 补充视图">
+        <a href={`/portal-data?scenario=${selectedScenarioId}`}>图表视图</a>
+        <a href="/xx-p6-sim">模拟发生器</a>
+      </nav>
+
       <div
         id="p6-portal-viewport"
         ref={viewportRef}

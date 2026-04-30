@@ -139,6 +139,30 @@
   line-height: 1.5;
 }
 
+.p6-portal-quick-links {
+  position: absolute;
+  top: 168px;
+  right: 26px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+.p6-portal-quick-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(103, 139, 186, 0.32);
+  border-radius: 999px;
+  color: var(--p6-text-primary, #244971);
+  font-size: 12px;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 28px rgba(18, 49, 85, 0.12);
+  backdrop-filter: blur(10px);
+}
+
 .p6-portal-source-control__actions {
   display: flex;
   justify-content: flex-end;

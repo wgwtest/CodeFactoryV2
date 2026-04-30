@@ -321,6 +321,92 @@ class ObservationProjectionReadEnvelope(BaseModel):
     projection: ObservationProjection
 
 
+class P6SimulatorFlowPoint(BaseModel):
+    flow_id: str
+    from_stage_id: str
+    to_stage_id: str
+    semantic_type: str
+    payload_label: str
+    value: int | float
+    unit: str
+    rate_label: str
+    captured_at: str
+
+
+class P6SimulatorHistorySample(BaseModel):
+    sample_id: str
+    scenario_id: str
+    captured_at: str
+    stage_contracts: list[P6DisplayExportContract]
+    flow_points: list[P6SimulatorFlowPoint] = Field(default_factory=list)
+    source_label: str
+
+
+class P6PortalDataStageRow(BaseModel):
+    stage_id: str
+    stage_name: str
+    primary_status: str
+    health_level: HealthLevel
+    overall_status: str
+    realtime_input: str
+    processing_status: str
+    output_flow: str
+    connected_user_count: int
+    queue_item_count: int
+    updated_at: str
+
+
+class P6PortalDataFlowSeries(BaseModel):
+    flow_id: str
+    label: str
+    from_stage_id: str
+    to_stage_id: str
+    semantic_type: str
+    payload_label: str
+    render_tone: RenderTone
+    points: list[P6SimulatorFlowPoint] = Field(default_factory=list)
+
+
+class P6PortalDataScenarioSummary(BaseModel):
+    scenario_id: str
+    label: str
+    source_label: str
+    stage_count: int
+    flow_count: int
+    connected_user_count: int
+    queue_item_count: int
+    history_sample_count: int
+    captured_at: str
+
+
+class P6PortalDataStageDetail(BaseModel):
+    stage_id: str
+    stage_name: str
+    summary: str
+    overall_metrics: list[StageOverallMetricProjection] = Field(default_factory=list)
+    live_counters: list[StageLiveCounterProjection] = Field(default_factory=list)
+    flow_ports: list[StageFlowPortProjection] = Field(default_factory=list)
+    connected_users: list[StageConnectedUserProjection] = Field(default_factory=list)
+    queue_projection: StageQueueProjection | None = None
+    source_trace: list[StageSourceTrace] = Field(default_factory=list)
+    display_contract: P6DisplayExportContract | None = None
+    recent_flow_points: list[P6SimulatorFlowPoint] = Field(default_factory=list)
+
+
+class P6PortalDataViewModel(BaseModel):
+    scenario_summary: P6PortalDataScenarioSummary
+    stage_rows: list[P6PortalDataStageRow] = Field(default_factory=list)
+    flow_series: list[P6PortalDataFlowSeries] = Field(default_factory=list)
+    selected_stage_detail: P6PortalDataStageDetail
+    history_sample_count: int
+
+
+class PortalDataViewReadEnvelope(BaseModel):
+    source_mode: SourceMode
+    scenario: MockScenarioSummary
+    view: P6PortalDataViewModel
+
+
 class P6SimulatorContractSubmission(BaseModel):
     scenario_id: str = "simulator-latest"
     label: str
@@ -333,6 +419,7 @@ class P6SimulatorSubmissionResponse(BaseModel):
     scenario: MockScenarioSummary
     accepted_contract_count: int
     portal_projection_path: str
+    portal_data_path: str
 
 
 class DesignTokenSet(BaseModel):
