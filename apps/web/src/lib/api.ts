@@ -817,6 +817,108 @@ export type RequirementAuthoringDocumentCreateInput = {
   layout_ratio?: RequirementAuthoringLayoutRatio;
 };
 
+export type P1KnowledgeProviderRegistration = {
+  provider_id: string;
+  provider_name: string;
+  provider_kind: "p1_knowledge_provider";
+  status: "online" | "offline";
+  capabilities: string[];
+  version: string;
+  seed: string;
+};
+
+export type P1DomainKnowledgeCatalogItem = {
+  domain_id: string;
+  domain_name: string;
+  domain_summary: string;
+  archive_version: string;
+  concept_count: number;
+  rule_count: number;
+  process_count: number;
+  evidence_count: number;
+};
+
+export type P1DomainKnowledgeCatalog = {
+  provider: P1KnowledgeProviderRegistration;
+  items: P1DomainKnowledgeCatalogItem[];
+};
+
+export type P1KnowledgeConcept = {
+  concept_id: string;
+  name: string;
+  definition: string;
+};
+
+export type P1KnowledgeRule = {
+  rule_id: string;
+  name: string;
+  description: string;
+};
+
+export type P1KnowledgeProcess = {
+  process_id: string;
+  name: string;
+  steps: string[];
+};
+
+export type P1KnowledgeConstraint = {
+  constraint_id: string;
+  category: string;
+  description: string;
+};
+
+export type P1KnowledgeEvidenceRef = {
+  evidence_id: string;
+  source: string;
+  excerpt: string;
+};
+
+export type P1DomainKnowledgeArchive = {
+  provider_id: string;
+  domain_id: string;
+  archive_id: string;
+  archive_version: string;
+  published_at: string;
+  concepts: P1KnowledgeConcept[];
+  entities: P1KnowledgeConcept[];
+  rules: P1KnowledgeRule[];
+  processes: P1KnowledgeProcess[];
+  constraints: P1KnowledgeConstraint[];
+  evidence_refs: P1KnowledgeEvidenceRef[];
+};
+
+export type P1SimCallLog = {
+  call_id: string;
+  called_at: string;
+  method: string;
+  path: string;
+  domain_id?: string | null;
+  status_code: number;
+  archive_version: string;
+};
+
+export type P1SimCallLogEnvelope = {
+  items: P1SimCallLog[];
+};
+
+export type RequirementAuthoringKnowledgeProvider = P1KnowledgeProviderRegistration & {
+  domains: P1DomainKnowledgeCatalogItem[];
+};
+
+export type RequirementAuthoringKnowledgeProviderEnvelope = {
+  items: RequirementAuthoringKnowledgeProvider[];
+};
+
+export type RequirementAuthoringKnowledgeBinding = {
+  binding_id: string;
+  provider: P1KnowledgeProviderRegistration;
+  domain: P1DomainKnowledgeCatalogItem;
+  knowledge_archive: Partial<P1DomainKnowledgeArchive>;
+  editor_badge: string;
+  created_document: null;
+  frozen_package: null;
+};
+
 export type RequirementStep = "goal" | "audience" | "flow" | "object_event" | "structure";
 export type RequirementDraftStatus = "draft" | "completed";
 export type RequirementRecommendationSource = "recommended_common" | "recommended_domain" | "manual";

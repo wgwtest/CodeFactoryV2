@@ -518,6 +518,102 @@ function mockSoftwareBuildApis() {
   });
 }
 
+function mockXXP1SimApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/xx-p1-sim/domains") {
+      return Promise.resolve({
+        data: {
+          provider: {
+            provider_id: "xx-p1-sim",
+            provider_name: "XX-P1-Sim",
+            provider_kind: "p1_knowledge_provider",
+            status: "online",
+            capabilities: ["domain_catalog", "knowledge_archive"],
+            version: "v1.0",
+            seed: "xx-p1-sim-fixed-v1",
+          },
+          items: [
+            {
+              domain_id: "airspace-planning",
+              domain_name: "空域规划领域知识",
+              domain_summary: "包含空域对象、冲突窗口、协同规划流程、会签约束和证据片段。",
+              archive_version: "v1.0",
+              concept_count: 12,
+              rule_count: 8,
+              process_count: 3,
+              evidence_count: 18,
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/xx-p1-sim/domains/airspace-planning/knowledge") {
+      return Promise.resolve({
+        data: {
+          provider_id: "xx-p1-sim",
+          domain_id: "airspace-planning",
+          archive_id: "archive-airspace-planning-v1",
+          archive_version: "v1.0",
+          published_at: "2026-04-30T00:00:00+00:00",
+          concepts: [
+            { concept_id: "concept-airspace-cell", name: "空域单元", definition: "用于表达可规划的空域范围。" },
+          ],
+          entities: [],
+          rules: [
+            {
+              rule_id: "rule-confirm-conflict-window",
+              name: "冲突窗口确认规则",
+              description: "冲突窗口未确认时，不得直接发布规划结果。",
+            },
+          ],
+          processes: [
+            {
+              process_id: "process-airspace-coordination",
+              name: "空域规划协同流程",
+              steps: ["任务创建", "冲突识别", "协同会签", "结果发布"],
+            },
+          ],
+          constraints: [
+            {
+              constraint_id: "constraint-audit-trace",
+              category: "traceability",
+              description: "关键状态变化需要保留责任人、时间和依据。",
+            },
+          ],
+          evidence_refs: [
+            {
+              evidence_id: "evidence-airspace-term",
+              source: "P1 发布态领域知识",
+              excerpt: "空域规划过程应形成可追溯记录。",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/xx-p1-sim/logs") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              call_id: "p1-sim-call-0001",
+              called_at: "2026-04-30T21:45:08+00:00",
+              method: "GET",
+              path: "/api/xx-p1-sim/domains",
+              domain_id: null,
+              status_code: 200,
+              archive_version: "v1.0",
+            },
+          ],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
 function parseEnvFile(filePath: string) {
   if (!existsSync(filePath)) {
     return {} as Record<string, string>;
@@ -608,6 +704,9 @@ test("redirects / to the main default page", async () => {
       break;
     case "/xx-p2-sim":
       break;
+    case "/xx-p1-sim":
+      mockXXP1SimApis();
+      break;
     default:
       throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
   }
@@ -659,6 +758,10 @@ test("redirects / to the main default page", async () => {
       break;
     case "/xx-p2-sim":
       expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/xx-p1-sim":
+      expect(await screen.findByRole("heading", { name: "XX-P1-Sim" })).toBeInTheDocument();
       expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
       break;
     default:
@@ -730,5 +833,19 @@ test("renders xx-p2-sim route outside the main shell", async () => {
   );
 
   expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
+
+test("renders xx-p1-sim route outside the main shell", async () => {
+  mockXXP1SimApis();
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p1-sim"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "XX-P1-Sim" })).toBeInTheDocument();
+  expect(screen.getByText("P1 服务接口")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

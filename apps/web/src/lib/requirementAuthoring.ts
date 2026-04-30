@@ -3,6 +3,8 @@ import type {
   RequirementAuthoringDocumentCreateInput,
   RequirementAuthoringDocumentDetail,
   RequirementAuthoringDocumentSummary,
+  RequirementAuthoringKnowledgeBinding,
+  RequirementAuthoringKnowledgeProviderEnvelope,
   RequirementAuthoringTemplate,
   RequirementAuthoringTemplateWriteInput,
 } from "./api";
@@ -25,6 +27,17 @@ export function activateRequirementAuthoringTemplate(templateId: string) {
 
 export function getRequirementAuthoringDocuments() {
   return api.get<RequirementAuthoringDocumentSummary[]>("/requirement-authoring/documents");
+}
+
+export function getRequirementAuthoringKnowledgeProviders() {
+  return api.get<RequirementAuthoringKnowledgeProviderEnvelope>("/requirement-authoring/knowledge-providers");
+}
+
+export function bindRequirementAuthoringKnowledge(providerId: string, domainId: string) {
+  return api.post<RequirementAuthoringKnowledgeBinding>("/requirement-authoring/knowledge-bindings", {
+    provider_id: providerId,
+    domain_id: domainId,
+  });
 }
 
 export function createRequirementAuthoringDocument(payload: RequirementAuthoringDocumentCreateInput) {

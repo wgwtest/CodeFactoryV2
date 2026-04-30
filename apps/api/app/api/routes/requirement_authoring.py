@@ -7,6 +7,7 @@ from app.requirement_authoring.models import (
     RequirementAuthoringClausePatch,
     RequirementAuthoringDocumentCreate,
     RequirementAuthoringFormPatch,
+    RequirementAuthoringKnowledgeBindingWrite,
     RequirementAuthoringMessageWrite,
     RequirementAuthoringTemplateWrite,
 )
@@ -88,6 +89,24 @@ def create_requirement_authoring_document(
         return service.create_document(payload)
     except ValueError as exc:
         raise _bad_request(exc) from exc
+
+
+@router.get("/knowledge-providers")
+def list_requirement_authoring_knowledge_providers(
+    service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
+):
+    return service.list_knowledge_providers()
+
+
+@router.post("/knowledge-bindings")
+def bind_requirement_authoring_knowledge(
+    payload: RequirementAuthoringKnowledgeBindingWrite,
+    service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
+):
+    binding = service.bind_knowledge(payload.provider_id, payload.domain_id)
+    if binding is None:
+        raise _not_found("Requirement authoring knowledge binding source not found")
+    return binding
 
 
 @router.get("/documents/{document_id}")

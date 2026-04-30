@@ -12,6 +12,7 @@ from app.requirement_authoring.models import (
     RequirementAuthoringTemplateWrite,
     default_template_payload,
 )
+from app.xx_p1_sim.service import XXP1SimService
 
 
 class RequirementAuthoringService:
@@ -102,6 +103,13 @@ class RequirementAuthoringService:
         self.session.commit()
         self.session.refresh(document)
         return self._serialize_document_detail(document)
+
+    def list_knowledge_providers(self) -> dict:
+        provider = XXP1SimService().build_requirement_authoring_provider()
+        return {"items": [provider]}
+
+    def bind_knowledge(self, provider_id: str, domain_id: str) -> dict | None:
+        return XXP1SimService().bind_requirement_authoring_knowledge(provider_id, domain_id)
 
     def get_document(self, document_id: str) -> dict | None:
         document = self.session.get(RequirementAuthoringDocument, document_id)

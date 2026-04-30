@@ -11,6 +11,7 @@ from app.api.routes.requirements import router as requirements_router
 from app.api.routes.software_build import router as software_build_router
 from app.api.routes.software_design import router as software_design_router
 from app.api.routes.tool_hub import router as tool_hub_router
+from app.api.routes.xx_p1_sim import router as xx_p1_sim_router
 from fastapi import FastAPI
 
 from app.api.routes.health import router as health_router
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(tool_hub_router, prefix=settings.api_prefix)
     app.include_router(software_design_router, prefix=settings.api_prefix)
     app.include_router(software_build_router, prefix=settings.api_prefix)
+    app.include_router(xx_p1_sim_router, prefix=settings.api_prefix)
     return app
 
 
