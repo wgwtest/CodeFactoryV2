@@ -52,6 +52,13 @@ class RequirementAuthoringClausePatch(BaseModel):
     content: str
 
 
+class RequirementAuthoringKnowledgeBindingWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_id: str
+    domain_id: str
+
+
 def default_template_payload(template_code: str = "81433") -> dict:
     name = "软件级需求规格说明模板" if template_code == "81433" else "平台级需求规格说明模板"
     return {

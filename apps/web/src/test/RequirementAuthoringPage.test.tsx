@@ -35,10 +35,16 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
     if (url === "/requirement-authoring/documents") {
       return Promise.resolve({ data: [] });
     }
+    if (url === "/requirement-authoring/knowledge-providers") {
+      return Promise.resolve({ data: buildKnowledgeProviders() });
+    }
     throw new Error(`unexpected get url: ${url}`);
   });
 
   postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-authoring/knowledge-bindings") {
+      return Promise.resolve({ data: buildKnowledgeBinding() });
+    }
     if (url === "/requirement-authoring/documents") {
       return Promise.resolve({ data: document });
     }
@@ -116,6 +122,16 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   );
 
   expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
+  expect(await screen.findByText("P1 知识绑定")).toBeInTheDocument();
+  expect(screen.getByText("空域规划领域知识")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "加载领域知识" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-authoring/knowledge-bindings", {
+      provider_id: "xx-p1-sim",
+      domain_id: "airspace-planning",
+    }),
+  );
+  expect((await screen.findAllByText("领域知识已绑定")).length).toBeGreaterThan(0);
   fireEvent.click(await screen.findByRole("button", { name: "创建规格文档" }));
 
   expect(await screen.findByText("问答模式")).toBeInTheDocument();
@@ -123,6 +139,10 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   expect(screen.getByText("标准需求规格说明")).toBeInTheDocument();
   expect(screen.getByText("2:3")).toBeInTheDocument();
   expect(screen.queryByText("写入正文")).not.toBeInTheDocument();
+  expect(screen.queryByText("XX-P1-Sim")).not.toBeInTheDocument();
+  expect(screen.queryByText("mock")).not.toBeInTheDocument();
+  expect(screen.queryByText("模拟")).not.toBeInTheDocument();
+  expect(screen.queryByText("发生器")).not.toBeInTheDocument();
   expect(screen.getByTestId("requirement-authoring-document-canvas")).toBeInTheDocument();
   expect(screen.getByTestId("requirement-authoring-document-paper")).toBeInTheDocument();
   expect(screen.getByText("可导出稿")).toBeInTheDocument();
@@ -233,6 +253,53 @@ function buildDocument(): RequirementAuthoringDocumentDetail {
       },
     ],
     check_result: { blocking_count: 0, warning_count: 0, passed_count: 0, items: [] },
+    frozen_package: null,
+  };
+}
+
+function buildKnowledgeProviders() {
+  return {
+    items: [
+      {
+        provider_id: "xx-p1-sim",
+        provider_name: "XX-P1-Sim",
+        provider_kind: "p1_knowledge_provider",
+        status: "online",
+        capabilities: ["domain_catalog", "knowledge_archive"],
+        version: "v1.0",
+        seed: "xx-p1-sim-fixed-v1",
+        domains: [
+          {
+            domain_id: "airspace-planning",
+            domain_name: "空域规划领域知识",
+            domain_summary: "包含空域对象、冲突窗口、协同规划流程、会签约束和证据片段。",
+            archive_version: "v1.0",
+            concept_count: 12,
+            rule_count: 8,
+            process_count: 3,
+            evidence_count: 18,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildKnowledgeBinding() {
+  return {
+    binding_id: "binding-xx-p1-sim-airspace-planning",
+    provider: buildKnowledgeProviders().items[0],
+    domain: buildKnowledgeProviders().items[0].domains[0],
+    knowledge_archive: {
+      archive_version: "v1.0",
+      concepts: [{ concept_id: "concept-airspace-cell", name: "空域单元", definition: "用于表达可规划的空域范围。" }],
+      rules: [{ rule_id: "rule-confirm-conflict-window", name: "冲突窗口确认规则", description: "冲突窗口未确认时，不得直接发布规划结果。" }],
+      processes: [{ process_id: "process-airspace-coordination", name: "空域规划协同流程", steps: ["任务创建", "冲突识别"] }],
+      constraints: [{ constraint_id: "constraint-audit-trace", category: "traceability", description: "关键状态变化需要保留责任人、时间和依据。" }],
+      evidence_refs: [{ evidence_id: "evidence-airspace-term", source: "P1 发布态领域知识", excerpt: "空域规划过程应形成可追溯记录。" }],
+    },
+    editor_badge: "领域知识已绑定",
+    created_document: null,
     frozen_package: null,
   };
 }

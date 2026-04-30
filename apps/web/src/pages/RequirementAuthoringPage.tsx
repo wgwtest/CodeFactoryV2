@@ -5,15 +5,19 @@ import { useArchiveContext } from "../context/ArchiveContext";
 import type {
   RequirementAuthoringAnnotation,
   RequirementAuthoringDocumentDetail,
+  RequirementAuthoringKnowledgeBinding,
+  RequirementAuthoringKnowledgeProvider,
   RequirementAuthoringLayoutRatio,
   RequirementAuthoringTemplate,
   RequirementAuthoringTemplateField,
 } from "../lib/api";
 import {
   appendRequirementAuthoringMessage,
+  bindRequirementAuthoringKnowledge,
   createRequirementAuthoringDocument,
   freezeRequirementAuthoringDocument,
   getRequirementAuthoringDocuments,
+  getRequirementAuthoringKnowledgeProviders,
   getRequirementAuthoringTemplates,
   patchRequirementAuthoringFormFields,
   runRequirementAuthoringCheck,
@@ -26,6 +30,10 @@ const { TextArea } = Input;
 export function RequirementAuthoringPage() {
   const { activeArchiveId } = useArchiveContext();
   const [templates, setTemplates] = useState<RequirementAuthoringTemplate[]>([]);
+  const [knowledgeProviders, setKnowledgeProviders] = useState<RequirementAuthoringKnowledgeProvider[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+  const [knowledgeBinding, setKnowledgeBinding] = useState<RequirementAuthoringKnowledgeBinding | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [currentDocument, setCurrentDocument] = useState<RequirementAuthoringDocumentDetail | null>(null);
   const [ratio, setRatio] = useState<RequirementAuthoringLayoutRatio>("2:3");
@@ -41,15 +49,20 @@ export function RequirementAuthoringPage() {
     async function load() {
       try {
         setLoading(true);
-        const [templatesResponse, documentsResponse] = await Promise.all([
+        const [templatesResponse, documentsResponse, providersResponse] = await Promise.all([
           getRequirementAuthoringTemplates(),
           getRequirementAuthoringDocuments(),
+          getRequirementAuthoringKnowledgeProviders(),
         ]);
         if (cancelled) {
           return;
         }
         const nextTemplates = templatesResponse.data;
+        const nextProviders = providersResponse.data.items;
         setTemplates(nextTemplates);
+        setKnowledgeProviders(nextProviders);
+        setSelectedProviderId(nextProviders[0]?.provider_id ?? null);
+        setSelectedDomainId(nextProviders[0]?.domains[0]?.domain_id ?? null);
         setSelectedTemplateId(nextTemplates.find((item) => item.status === "active")?.template_id ?? nextTemplates[0]?.template_id ?? null);
         setCurrentDocument(null);
         setRatio(documentsResponse.data[0]?.layout_ratio ?? "2:3");
@@ -75,6 +88,14 @@ export function RequirementAuthoringPage() {
     () => templates.find((item) => item.template_id === selectedTemplateId) ?? templates[0] ?? null,
     [selectedTemplateId, templates],
   );
+  const selectedProvider = useMemo(
+    () => knowledgeProviders.find((item) => item.provider_id === selectedProviderId) ?? knowledgeProviders[0] ?? null,
+    [knowledgeProviders, selectedProviderId],
+  );
+  const selectedDomain = useMemo(
+    () => selectedProvider?.domains.find((item) => item.domain_id === selectedDomainId) ?? selectedProvider?.domains[0] ?? null,
+    [selectedDomainId, selectedProvider],
+  );
 
   const quickInputs = selectedTemplate?.questionnaire_policy.quick_inputs ?? ["可以", "更正式", "加超时", "重拟", "继续"];
   const fields = currentDocument?.semantic_state.fields ?? {};
@@ -86,10 +107,11 @@ export function RequirementAuthoringPage() {
 
     try {
       setSubmitting(true);
+      const boundArchiveId = knowledgeBinding?.knowledge_archive.archive_id ?? knowledgeBinding?.domain.domain_id;
       const response = await createRequirementAuthoringDocument({
-        title: "空域协同规划软件需求规格说明",
+        title: "未命名软件需求规格说明",
         template_id: selectedTemplate.template_id,
-        archive_ids: activeArchiveId ? [activeArchiveId] : [],
+        archive_ids: boundArchiveId ? [boundArchiveId] : activeArchiveId ? [activeArchiveId] : [],
         layout_ratio: ratio,
       });
       setCurrentDocument(response.data);
@@ -97,6 +119,23 @@ export function RequirementAuthoringPage() {
       setError(null);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "创建规格文档失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleBindKnowledge() {
+    if (!selectedProvider || !selectedDomain) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const response = await bindRequirementAuthoringKnowledge(selectedProvider.provider_id, selectedDomain.domain_id);
+      setKnowledgeBinding(response.data);
+      setError(null);
+    } catch (bindError) {
+      setError(bindError instanceof Error ? bindError.message : "加载领域知识失败");
     } finally {
       setSubmitting(false);
     }
@@ -240,13 +279,36 @@ export function RequirementAuthoringPage() {
       {loading ? (
         <Spin />
       ) : (
-        <div
-          data-testid="requirement-authoring-workbench"
-          className={`requirement-authoring-shell${ratio === "1:1" ? " is-equal" : ""}`}
-        >
+        <>
+          {!currentDocument ? (
+            <KnowledgeBindingPanel
+              providers={knowledgeProviders}
+              selectedProvider={selectedProvider}
+              selectedDomain={selectedDomain}
+              binding={knowledgeBinding}
+              submitting={submitting}
+              onProviderChange={(providerId) => {
+                const provider = knowledgeProviders.find((item) => item.provider_id === providerId) ?? null;
+                setSelectedProviderId(providerId);
+                setSelectedDomainId(provider?.domains[0]?.domain_id ?? null);
+                setKnowledgeBinding(null);
+              }}
+              onDomainChange={(domainId) => {
+                setSelectedDomainId(domainId);
+                setKnowledgeBinding(null);
+              }}
+              onBind={() => void handleBindKnowledge()}
+            />
+          ) : null}
+
+          <div
+            data-testid="requirement-authoring-workbench"
+            className={`requirement-authoring-shell${ratio === "1:1" ? " is-equal" : ""}`}
+          >
           <div className="requirement-authoring-panel requirement-authoring-input-panel">
             <div className="requirement-authoring-ratio-hint">
               <Text type="secondary">可切换分屏</Text>
+              {knowledgeBinding ? <Tag color="green">{knowledgeBinding.editor_badge}</Tag> : null}
               <Tag>1:1</Tag>
             </div>
             <Tabs
@@ -311,7 +373,8 @@ export function RequirementAuthoringPage() {
               </div>
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       <Drawer title="条款批注" open={Boolean(activeAnnotation)} onClose={() => setActiveAnnotation(null)} width={420}>
@@ -347,6 +410,84 @@ export function RequirementAuthoringPage() {
         ) : null}
       </Drawer>
     </div>
+  );
+}
+
+function KnowledgeBindingPanel({
+  providers,
+  selectedProvider,
+  selectedDomain,
+  binding,
+  submitting,
+  onProviderChange,
+  onDomainChange,
+  onBind,
+}: {
+  providers: RequirementAuthoringKnowledgeProvider[];
+  selectedProvider: RequirementAuthoringKnowledgeProvider | null;
+  selectedDomain: RequirementAuthoringKnowledgeProvider["domains"][number] | null;
+  binding: RequirementAuthoringKnowledgeBinding | null;
+  submitting: boolean;
+  onProviderChange: (providerId: string) => void;
+  onDomainChange: (domainId: string) => void;
+  onBind: () => void;
+}) {
+  return (
+    <section className="requirement-authoring-knowledge-binding" aria-label="P1 知识绑定">
+      <div className="requirement-authoring-knowledge-source">
+        <div>
+          <Title level={4}>P1 知识绑定</Title>
+          <Text type="secondary">选择已注册的上游知识服务，按领域拉取知识背景。</Text>
+        </div>
+        {providers.length ? (
+          <div className="requirement-authoring-source-list">
+            {providers.map((provider) => (
+              <button
+                type="button"
+                key={provider.provider_id}
+                className={`requirement-authoring-source-card${provider.provider_id === selectedProvider?.provider_id ? " is-active" : ""}`}
+                onClick={() => onProviderChange(provider.provider_id)}
+              >
+                <Text strong>P1 知识源</Text>
+                <Tag color={provider.status === "online" ? "green" : "orange"}>{provider.status === "online" ? "可用" : "未接入"}</Tag>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty description="未发现 P1 知识源" />
+        )}
+      </div>
+      <div className="requirement-authoring-domain-picker">
+        <div className="requirement-authoring-domain-head">
+          <div>
+            <Title level={4}>选择领域知识</Title>
+            <Text type="secondary">这里选择的是知识背景，不是软件名称；目标软件由后续需求规格编辑确定。</Text>
+          </div>
+          <Button type="primary" loading={submitting} disabled={!selectedProvider || !selectedDomain} onClick={onBind}>
+            加载领域知识
+          </Button>
+        </div>
+        <div className="requirement-authoring-domain-list">
+          {selectedProvider?.domains.map((domain) => (
+            <button
+              type="button"
+              key={domain.domain_id}
+              className={`requirement-authoring-domain-card${domain.domain_id === selectedDomain?.domain_id ? " is-active" : ""}`}
+              onClick={() => onDomainChange(domain.domain_id)}
+            >
+              <span>
+                <Text strong>{domain.domain_name}</Text>
+                <Text type="secondary">{domain.domain_summary}</Text>
+              </span>
+              <Tag color={domain.domain_id === selectedDomain?.domain_id ? "green" : "default"}>
+                {domain.domain_id === selectedDomain?.domain_id ? "选中" : "选择"}
+              </Tag>
+            </button>
+          ))}
+        </div>
+        {binding ? <Alert type="success" showIcon message={binding.editor_badge} /> : null}
+      </div>
+    </section>
   );
 }
 

@@ -15,6 +15,7 @@ import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
 import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP1SimPage } from "./pages/XXP1SimPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
 import { XXP3Page } from "./pages/XXP3Page";
 import { XXP3DocSimPage } from "./pages/XXP3DocSimPage";
@@ -110,6 +111,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/observation" element={<P6ObservationPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p1-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p1-sim" element={<XXP1SimPage />} />
       </Routes>
     );
   }
