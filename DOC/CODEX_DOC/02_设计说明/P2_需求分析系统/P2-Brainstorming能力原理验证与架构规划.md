@@ -38,6 +38,8 @@
 
 本阶段不把 `Brainstorming` 直接嵌入当前 `RequirementAuthoringPage`，而是先建立独立的 `P2 Brainstorming Lab`。
 
+同时必须明确：`Brainstorming` 应作为独立、解耦、可插拔、可替换的能力模块存在。它可以成为 `P2` 的默认需求分析组织方式，但不能被设计成不可替换的系统内核。如果后续验证发现该组织方式效率不佳，`P2` 应能够替换为其他需求分析组织模式，而不重写正式需求规格编辑器、模板管理、知识绑定和草稿保存能力。
+
 ## 3. Brainstorming 的能力定义
 
 `Brainstorming` 不是展示模型内部思维链，也不是传统问卷。
@@ -156,6 +158,28 @@ Brainstorming Service
 
 因此，模型负责生成，`Brainstorming Service` 负责组织、约束、校验和落状态。
 
+### 3.6 可插拔能力定位
+
+`Brainstorming Service` 必须被视为一种可替换的“需求分析组织器”。
+
+它不是 `P2` 的唯一可能组织方式，而是当前优先验证的一种组织方式。后续如果发现连续问答、主动追问和自动修补的效率不稳定，可以替换为其他模式，例如：
+
+- 更传统的向导式分步采集
+- 更强表单驱动的结构化填报
+- 专家先写正文、系统只做缺口检查
+- 多轮评审式需求分析
+- 人工规则优先、模型只做辅助补全
+
+因此，`P2` 架构必须保证：
+
+- 专家工作台不直接依赖某个具体 Brainstorming 实现。
+- 正式需求规格文档模型不依赖 Brainstorming 内部状态。
+- 模板、知识绑定、草稿保存、检查、冻结能力不依赖 Brainstorming 生命周期。
+- `Brainstorming` 输出通过稳定协议进入 `P2`，而不是直接操作页面内部状态。
+- 可以通过配置选择启用、禁用或替换 Brainstorming 组织器。
+
+这能降低用户对具体运行机制不熟悉带来的不确定性：即使当前 Brainstorming 方案不满足预期，也可以替换组织器，而不是推翻整个 `P2`。
+
 ## 4. 架构定位
 
 ### 4.1 P2 后台能力分层
@@ -202,6 +226,69 @@ P2 存储层
 - `Requirement Authoring Service` 负责维护正式草稿、模板实例、正文状态、保存、检查和冻结。
 - 专家工作台是二者的前端组合视图。
 - `P2 Brainstorming Lab` 只消费 `Brainstorming Service`，用于验证原理，不写入正式需求规格文档。
+
+### 4.3 解耦边界
+
+`P2` 必须把以下边界拆开：
+
+```text
+正式文档能力
+  - 模板
+  - 正文
+  - 草稿
+  - 检查
+  - 冻结
+
+知识能力
+  - 知识包选择
+  - P1 / XX-P1-Sim 适配
+  - 来源引用
+
+组织器能力
+  - Brainstorming
+  - 未来其他需求分析组织模式
+
+展示能力
+  - 专家工作台
+  - Brainstorming Lab
+  - 配置台
+```
+
+`Brainstorming` 只能通过稳定接口消费模板、知识和草稿状态，并输出结构化建议。它不应直接拥有正式文档，也不应直接控制冻结、检查和下游输出。
+
+建议在架构上保留 `RequirementAnalysisOrchestrator` 抽象层：
+
+```text
+RequirementAnalysisOrchestrator
+  - BrainstormingOrchestrator
+  - WizardOrchestrator
+  - FormDrivenOrchestrator
+  - RuleBasedReviewOrchestrator
+```
+
+首版只实现 `BrainstormingOrchestrator`，但接口设计必须允许未来替换。
+
+### 4.4 替换条件
+
+如果出现以下情况，允许替换或降级 `Brainstorming` 组织器：
+
+- 追问效率低，用户需要频繁纠正方向。
+- 输出不稳定，结构化结果经常无法校验。
+- 成本、延迟或失败率不可接受。
+- 专家更偏好直接编辑正文或表单。
+- 领域知识注入效果不明显。
+- 模型供应商能力变化导致原有策略失效。
+
+替换时应保持以下对象稳定：
+
+- 正式需求规格文档对象
+- 模板对象
+- 知识绑定对象
+- 草稿保存对象
+- 检查和冻结对象
+- `P2 -> P3` 输出对象
+
+因此，`Brainstorming` 可以替换，但 `P2` 的正式需求规格能力不能被替换动作拖垮。
 
 ## 5. P2 Brainstorming Lab
 
