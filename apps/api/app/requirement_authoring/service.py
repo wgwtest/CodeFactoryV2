@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.db.models.requirements import RequirementAuthoringDocument, RequirementAuthoringTemplate
 from app.requirement_authoring.models import (
     RequirementAuthoringDocumentCreate,
+    RequirementAuthoringDocumentSave,
     RequirementAuthoringFormPatch,
     RequirementAuthoringMessageWrite,
     RequirementAuthoringTemplateWrite,
@@ -115,6 +116,52 @@ class RequirementAuthoringService:
         document = self.session.get(RequirementAuthoringDocument, document_id)
         if document is None:
             return None
+        return self._serialize_document_detail(document)
+
+    def delete_document(self, document_id: str) -> bool:
+        document = self.session.get(RequirementAuthoringDocument, document_id)
+        if document is None:
+            return False
+        self.session.delete(document)
+        self.session.commit()
+        return True
+
+    def save_document(self, document_id: str, payload: RequirementAuthoringDocumentSave) -> dict | None:
+        document = self.session.get(RequirementAuthoringDocument, document_id)
+        if document is None:
+            return None
+        if document.status != "frozen":
+            document.status = "draft"
+        if payload.title is not None:
+            document.title = payload.title.strip() or "未命名软件需求规格说明"
+        template = self._get_document_template(document)
+        if payload.template_id is not None and payload.template_id != document.template_id:
+            next_template = self.session.get(RequirementAuthoringTemplate, payload.template_id)
+            if next_template is None:
+                raise ValueError("template not found")
+            document.template_id = next_template.id
+            template = next_template
+            fields = dict((document.semantic_state or {}).get("fields", {}))
+            document.document = self._render_document(template.payload, fields)
+            document.annotations = self._build_annotations(template.payload, fields)
+            document.check_result = self._empty_check_result()
+        if payload.archive_ids is not None:
+            document.archive_ids = payload.archive_ids
+        semantic_state = dict(document.semantic_state or {})
+        if "knowledge_binding" in payload.model_fields_set:
+            semantic_state["knowledge_binding"] = payload.knowledge_binding
+        elif "knowledge_binding" not in semantic_state:
+            semantic_state["knowledge_binding"] = None
+        semantic_state["template_id"] = template.id
+        semantic_state["template_code"] = template.template_code
+        semantic_state["updated_at"] = self._now()
+        document.semantic_state = semantic_state
+        document.document = dict(document.document or {})
+        document.conversation = list(document.conversation or [])
+        document.annotations = list(document.annotations or [])
+        document.check_result = dict(document.check_result or {})
+        self.session.commit()
+        self.session.refresh(document)
         return self._serialize_document_detail(document)
 
     def append_message(self, document_id: str, payload: RequirementAuthoringMessageWrite) -> dict | None:
@@ -350,12 +397,13 @@ class RequirementAuthoringService:
             "template_id": template.id,
             "template_code": template.template_code,
             "fields": fields,
+            "knowledge_binding": None,
             "updated_at": self._now(),
         }
 
     def _render_document(self, template_payload: dict, fields: dict[str, str]) -> dict:
         return {
-            "title": fields.get("application_name") or "标准需求规格说明",
+            "title": self._standard_document_title(fields),
             "sections": [
                 {
                     "section_id": section["section_id"],
@@ -365,6 +413,14 @@ class RequirementAuthoringService:
                 for section in template_payload.get("sections", [])
             ],
         }
+
+    def _standard_document_title(self, fields: dict[str, str]) -> str:
+        application_name = fields.get("application_name", "").strip()
+        if not application_name:
+            return "标准需求规格说明"
+        if application_name.endswith("需求规格说明"):
+            return application_name
+        return f"{application_name}需求规格说明"
 
     def _render_clause(self, clause: dict, fields: dict[str, str]) -> dict:
         clause_id = clause["clause_id"]

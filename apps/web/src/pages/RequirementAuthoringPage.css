@@ -6,7 +6,9 @@
 .requirement-authoring-workbench-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 112px);
+  height: 100vh;
+  padding: 24px;
+  background: #f4f7fb;
   overflow: hidden;
 }
 
@@ -31,6 +33,19 @@
   gap: 8px;
 }
 
+.requirement-authoring-document-namebar {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 520px) minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d7dde8;
+  border-radius: 8px;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
 .requirement-authoring-shell {
   display: grid;
   grid-template-columns: minmax(380px, 2fr) minmax(520px, 3fr);
@@ -40,12 +55,10 @@
   min-height: 0;
 }
 
-.requirement-authoring-knowledge-binding {
+.requirement-authoring-knowledge-dialog {
   display: grid;
-  grid-template-columns: minmax(260px, 0.85fr) minmax(420px, 2fr);
+  grid-template-columns: minmax(220px, 0.78fr) minmax(360px, 1.5fr);
   gap: 14px;
-  margin-bottom: 14px;
-  flex-shrink: 0;
 }
 
 .requirement-authoring-knowledge-source,
@@ -112,6 +125,40 @@
   gap: 12px;
 }
 
+.requirement-authoring-open-list {
+  display: grid;
+  gap: 10px;
+}
+
+.requirement-authoring-open-note {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.requirement-authoring-open-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid #d7dde8;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+
+.requirement-authoring-open-item.is-current {
+  border-color: #8bc3a3;
+  background: #f0faf4;
+}
+
+.requirement-authoring-open-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .requirement-authoring-shell.is-equal {
   grid-template-columns: minmax(420px, 1fr) minmax(520px, 1fr);
 }
@@ -143,6 +190,11 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.requirement-authoring-workbench-page .requirement-authoring-input-panel .ant-tabs-nav {
+  flex-shrink: 0;
 }
 
 .requirement-authoring-workbench-page .requirement-authoring-input-panel .ant-tabs-content-holder,
@@ -151,11 +203,18 @@
   min-height: 0;
 }
 
+.requirement-authoring-workbench-page .requirement-authoring-input-panel .ant-tabs-content-holder {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .requirement-authoring-workbench-page .requirement-authoring-input-panel .ant-tabs-content,
 .requirement-authoring-workbench-page .requirement-authoring-input-panel .ant-tabs-tabpane-active {
   display: flex;
   flex: 1;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .requirement-authoring-ratio-hint {
@@ -241,12 +300,14 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
+  flex-shrink: 0;
 }
 
 .requirement-authoring-send-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .requirement-authoring-form-groups {
@@ -381,6 +442,10 @@
   .requirement-authoring-knowledge-binding,
   .requirement-authoring-shell,
   .requirement-authoring-shell.is-equal {
+    grid-template-columns: 1fr;
+  }
+
+  .requirement-authoring-document-namebar {
     grid-template-columns: 1fr;
   }
 
