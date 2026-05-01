@@ -614,6 +614,48 @@ function mockXXP1SimApis() {
   });
 }
 
+function mockBrainstormLabApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/brainstorm/orchestrators") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              orchestrator_id: "brainstorming",
+              name: "BrainstormingOrchestrator",
+              status: "active",
+              description: "连续问答、主动追问、轻量选项、结构化 patch。",
+            },
+          ],
+          stable_contract: {
+            formal_document: true,
+            template_object: true,
+            knowledge_binding: true,
+            draft_persistence: true,
+            check_and_freeze: true,
+            p2_to_p3_output: true,
+          },
+          output_protocol: [
+            "previous_interaction",
+            "input_relation",
+            "spec_execution",
+            "post_update_review",
+            "closure_decision",
+            "next_interaction",
+            "decision_trace",
+          ],
+        },
+      });
+    }
+
+    if (url === "/brainstorm/providers") {
+      return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
 function parseEnvFile(filePath: string) {
   if (!existsSync(filePath)) {
     return {} as Record<string, string>;
@@ -874,5 +916,19 @@ test("renders requirement authoring route outside the main shell", async () => {
   );
 
   expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
+
+test("renders P2 Brainstorming Lab route outside the main shell", async () => {
+  mockBrainstormLabApis();
+
+  render(
+    <MemoryRouter initialEntries={["/p2-brainstorm-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 Brainstorming Lab" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

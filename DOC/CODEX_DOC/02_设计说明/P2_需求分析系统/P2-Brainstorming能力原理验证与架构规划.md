@@ -100,7 +100,7 @@
 
 用户输入可以是一段自然语言，也可以只是 `A`、`继续`、`可以`、`重拟` 等短指令。
 
-服务需要结合上一轮问题、当前已确认事实、待确认项、模板章节和知识上下文，判断用户输入的含义，而不是孤立处理一句话。
+服务需要结合上一轮建议话题、当前已确认事实、待确认项、模板章节和知识上下文，判断用户输入的含义，而不是孤立处理一句话。
 
 ### 3.3 服务依赖
 
@@ -328,6 +328,68 @@ RequirementAnalysisOrchestrator
 - 来源知识引用
 - 原始结构化返回调试区
 
+### 5.2.1 CLI 问答交互细节
+
+`P2 Brainstorming Lab` 的 CLI 问答区应接近命令行式协作，而不是重型问卷。
+
+交互规则如下：
+
+- 用户点击“发送”后，`user` 消息必须立即进入对话流，不等待 Provider 完成回复。
+- Provider 调用期间可显示轻量 pending assistant 消息，避免用户误判为未发送。
+- 输入区使用多行文本框，默认 2 行，最多约 6 行；超过后在输入框内部滚动。
+- `Enter` 用于发送；`Shift+Enter` 用于输入换行。
+- `quick_options` 不是每轮强制出现；只有当前 Turn 需要快速决策时才显示。
+- 如果出现 `quick_options`，第一项可作为推荐项；Provider 也可以显式返回 `recommended` 标记。
+- 快捷选项采用纵向列表，每个选项独占一行，以容纳较长选项文本。
+- 选项行本身不可点击，避免误触；只有右侧“选择 A / 选择 B / 选择 C”按钮触发提交。
+- 当消息、pending 状态或快捷选项变化时，对话区应自动滚动到底部，避免新出现的选项遮住最后一轮会话。
+
+这些规则属于 Lab 的产品交互契约。后续并入正式 P2 专家工作台时，应继续保留“自由输入为主、轻量选项为辅、选项可跳过”的原则。
+
+### 5.2.2 会话摘要 / 过程产物模型
+
+会话摘要区不能只展示字符串数组，否则用户会误解“待确认问题”和“已确认事实”是简单此消彼长关系。
+
+Lab 应把过程产物拆成三个有编号、有关联关系的对象：
+
+- `QuestionItem`：问题工作项，编号如 `Q-001`。
+- `ConfirmedFact`：已确认事实，编号如 `F-001`。
+- `DocumentPatchProposal`：文档修补建议，编号如 `P-001`。
+
+问题工作项至少包含：
+
+- `question_id`
+- `content`
+- `status`：`open / confirmed / cancelled / superseded / review`
+- `source_turn_id`
+- `resolution_fact_ids`
+
+已确认事实至少包含：
+
+- `fact_id`
+- `content`
+- `source_turn_id`
+- `source_question_ids`
+
+文档修补建议至少包含：
+
+- `patch_id`
+- `target_section`
+- `operation`
+- `content`
+- `status`：`proposed / accepted / rejected`
+- `source_fact_ids`
+- `source_question_ids`
+
+展示规则：
+
+- “待确认问题”应展示为问题工作项，不再是无编号的静态句子。
+- 已回答的问题不删除，而是改为 `confirmed`，并显示转化出的事实编号。
+- 用户自由输入的新约束可以直接生成事实，也可以生成新的待确认问题。
+- `document_patch` 必须显示目标章节、来源事实和关联问题；如果目标章节来自模板，应明确展示；如果只是模型建议，应标记为建议章节。
+- 会话摘要区展示宽度应略大于 CLI 区，因为它承担过程产物的结构化解释职责。
+- 左侧 Tab 已经说明当前视图，右侧工作区不再重复显示同名大抬头，避免浪费垂直空间。
+
 ### 5.3 页面边界
 
 Lab 页面首版不做以下事项：
@@ -380,7 +442,7 @@ running
   正在多轮问答
 
 waiting_user
-  系统已提出问题，等待用户回答
+  系统等待用户输入；可带有上一轮留下的建议话题
 
 patch_ready
   已产生文档修补建议
@@ -449,19 +511,26 @@ archived
 ```json
 {
   "assistant_message": "已确认主要用户是专业领域专家。我会先把用户角色收敛到需求规格的使用者章节。",
-  "next_question": "这个软件更偏向计算分析工具，还是偏向协同规划平台？",
+  "next_suggestion": {
+    "kind": "topic",
+    "content": "下一轮可以确认这个软件更偏向计算分析工具，还是偏向协同规划平台。",
+    "related_spec_node_ids": ["SPEC-REQ-2.1"]
+  },
   "quick_options": [
     {
       "key": "A",
-      "label": "计算分析工具"
+      "label": "计算分析工具",
+      "recommended": true
     },
     {
       "key": "B",
-      "label": "协同规划平台"
+      "label": "协同规划平台",
+      "recommended": false
     },
     {
       "key": "C",
-      "label": "二者都有"
+      "label": "二者都有",
+      "recommended": false
     }
   ],
   "confirmed_facts_delta": [
@@ -489,7 +558,10 @@ archived
 
 - 输出必须结构化，不能只返回自然语言。
 - `assistant_message` 用于左侧对话区。
+- `next_suggestion` 是下一轮建议话题，可为空；它不是强制问题，也不定义下一轮 Turn 的起点。
 - `quick_options` 必须轻量，可为空。
+- `quick_options[].recommended` 可选；当缺省时，前端可把第一项视为推荐项展示。
+- 选择项点击后应转化为普通用户输入，例如 `B，协同规划平台`，并进入同一 `BrainstormTurn` 处理流程。
 - `document_patch` 是修补意图，不等同于正式写入。
 - `annotations` 是系统解读层，不进入标准正文。
 - `confidence` 用于判断是否需要用户确认。
@@ -687,3 +759,153 @@ Lab 首版使用假知识包验证接口形态。
 - Lab 使用假知识包和独立会话对象验证原理。
 - Lab 的结构化协议稳定后，再统一规划并改造 `P2` 后台架构。
 - 正式工作台未来消费 `Brainstorming Service`，但文档保存、检查、冻结仍归 `Requirement Authoring Service` 管理。
+
+## 14. 2026-05-01 补充：Brainstorming 组织器不是自由聊天
+
+实测后确认，若只把大模型接成自由问答 Provider，会出现两个问题：
+
+1. 模型会根据用户话语里的局部关键词跳章节，例如用户正在讨论系统定位，模型却突然追问外部数据导入。
+2. 页面看不到组织器为什么这么问，用户只能感受到机械推进或偏题，无法判断是模型能力问题还是组织器策略问题。
+
+因此，`Brainstorming Service` 必须承担组织器职责，而不是把职责完全交给模型。
+
+### 14.1 当前基线：用户输入驱动的 Turn 引擎
+
+当前基线以 `P2-Brainstorming-Turn引擎与状态机设计.md` 为准。
+
+核心变化是：`Turn` 不再定义为“系统选择模板节点并提问，用户回答该问题”，而是定义为：
+
+```text
+上一轮系统建议话题（可选）
+  -> 用户输入启动本轮 Turn
+  -> 组织器理解用户真实意图
+  -> 组织器回应用户并更新状态
+  -> 将本轮影响投影到一个或多个规格节点
+  -> 可选地产生下一轮建议话题
+```
+
+这意味着：
+
+- 用户输入是 Turn 的起点和主事实源。
+- 上一轮建议话题只是上下文，不是用户必须回答的问题。
+- 需求规格完成度树是覆盖度视图和投影目标，不是强制问卷流程。
+- 组织器必须解释用户本轮输入与上一轮建议话题的关系，例如采纳、部分承接、改题、反驳、补充或无关。
+- 当前 Turn 审计的是“本轮为什么这样理解、回应和更新状态”，不是“为什么关闭了某个 active 节点”。
+
+### 14.2 模板目标树的正确职责
+
+`spec_tree` 仍然必须来自当前需求规格模板对象。
+
+首版从 `RequirementDocumentTemplate.sections[].clauses[]` 生成：
+
+- 模板根：`需求规格说明完成度树（81433号）`
+- 章节节点：`1 总则`、`2 项目概述`、`3 功能需求` 等
+- 叶子节点：`REQ-1.1 编写目的`、`REQ-2.1 软件定位`、`REQ-3.1 用户与角色` 等
+
+每个叶子节点可以带默认澄清方向或建议话题，但该字段只用于：
+
+- 判断规格说明哪些章节缺少材料。
+- 为下一轮建议话题提供候选方向。
+- 将用户输入产生的事实、问题、风险和文档修补建议投影到目标章节。
+- 在审计视图中解释本轮影响了哪些章节。
+
+它不能用于：
+
+- 强制用户按第一个 open 叶子节点回答。
+- 强制 Provider 只围绕某个 active 节点输出。
+- 把 `document_patch` 机械锁定到单个章节。
+- 把 `next_suggestion` 退化为“下一个模板节点问题”。
+
+### 14.3 Provider 被约束为“结构化候选生成器”
+
+Provider 可以做：
+
+- 理解用户自然语言输入。
+- 生成更自然的 `assistant_message`。
+- 生成 `affected_spec_nodes`、`state_delta`、`document_patch`、`annotations`。
+- 在需要时给出轻量选项。
+- 生成候选 `next_suggestion`。
+
+Provider 不能做：
+
+- 替代组织器决定用户输入和上一轮建议话题的关系。
+- 把用户输入强行解释为对某个预设节点的回答。
+- 直接修改正式需求规格文档。
+- 隐式改变模板、知识绑定、草稿保存、检查或冻结状态。
+
+服务端会在 Provider 返回后再次校正：
+
+- JSON 结构是否合法。
+- 用户输入关系判断是否自洽。
+- `affected_spec_nodes` 是否可以映射到当前模板。
+- `document_patch` 是否有来源事实或合理解释。
+- `next_suggestion` 是否只是建议，而不是强制问题。
+- 快捷选项是否必要、轻量、不会替代自然输入。
+
+### 14.4 BrainstormTurn 增加决策审计字段
+
+每个 `BrainstormTurn` 增加：
+
+```json
+{
+  "previous_suggestion": {
+    "suggestion_id": "suggestion-0003",
+    "content": "下一轮可以确认系统的目标用户和使用职责。",
+    "related_spec_node_ids": ["SPEC-REQ-3.1"]
+  },
+  "user_input": "先不谈目标用户。我觉得这个系统首先要说明它不是协同规划平台，而是计算分析工具。",
+  "input_relation_to_previous_suggestion": {
+    "relation": "topic_shift",
+    "reason": "用户主动改题，要求优先修正系统定位。"
+  },
+  "affected_spec_nodes": [
+    {
+      "node_id": "SPEC-REQ-2.1",
+      "effect": "update",
+      "reason": "用户明确系统定位为计算分析工具。"
+    }
+  ],
+  "closure_assessment": {
+    "user_need_closed": true,
+    "reason": "系统已回应并吸收用户本轮关于系统定位的纠正。"
+  },
+  "current_user_focus": {
+    "summary": "用户要求优先澄清系统定位和非目标。",
+    "closure_status": "closed"
+  },
+  "decision_basis": [
+    "上一轮建议话题是目标用户和职责。",
+    "本轮用户输入未承接该建议，而是转向系统定位。",
+    "组织器优先闭环用户主动提出的系统定位纠正。",
+    "需求规格完成度树只作为投影目标，本轮影响 REQ-2.1。"
+  ],
+  "next_suggestion": {
+    "content": "下一轮可以继续确认目标用户，也可以先补系统边界和非目标。",
+    "related_spec_node_ids": ["SPEC-REQ-3.1", "SPEC-REQ-2.1"]
+  }
+}
+```
+
+这些字段只用于 Lab 解释和调试，不直接进入正式需求规格正文。
+
+## 15. 历史实验记录：active 节点驱动方案不再作为基线
+
+早期 Lab 曾验证过如下方案：
+
+```text
+读取 active_spec_node
+  -> Provider 只围绕 active_spec_node.question 吸收用户回答
+  -> document_patch.section 强制等于 active_spec_node.target_section
+  -> 服务端判断当前节点是否关闭
+  -> 如果关闭，按模板顺序选择下一个 open 叶子
+  -> next_question 强制改写为下一个 open 叶子的 question
+```
+
+该方案解决了“模型自由跳章节”的一部分问题，但实测后暴露出更严重的产品问题：
+
+- 它把 Brainstorming 退化为模板问卷。
+- 它把用户输入错误地降级为“对系统问题的回答”。
+- 它难以处理用户主动改题、反驳、补充或提出新问题的情况。
+- 它让当前 Turn 审计只解释节点推进，不能解释用户本轮真实诉求是否闭环。
+
+因此，该方案只保留为历史过程稿和失败经验，不再作为实现基线。后续实现、原型和测试均应以独立 `Turn 引擎` 设计为准。

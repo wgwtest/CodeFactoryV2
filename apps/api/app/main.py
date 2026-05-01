@@ -1,3 +1,4 @@
+from app.api.routes.brainstorm import router as brainstorm_router
 from app.api.routes.archives import router as archives_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.governance import router as governance_router
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     Base.metadata.create_all(engine)
     app = FastAPI(title=settings.app_name)
     app.include_router(health_router, prefix=settings.api_prefix)
+    app.include_router(brainstorm_router, prefix=settings.api_prefix)
     app.include_router(archives_router, prefix=settings.api_prefix)
     app.include_router(documents_router, prefix=settings.api_prefix)
     app.include_router(governance_router, prefix=settings.api_prefix)

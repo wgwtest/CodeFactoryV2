@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     llm_enrichment_enabled: bool = False
     llm_enrichment_segment_limit: int = 24
     llm_enrichment_char_limit: int = 16000
+    brainstorm_deepseek_api_key: str | None = None
+    brainstorm_deepseek_base_url: str = "https://api.deepseek.com"
+    brainstorm_deepseek_model: str = "deepseek-chat"
     formal_chunk_segment_threshold: int = 120
     formal_chunk_char_threshold: int = 50000
     formal_chunk_char_limit: int = 32000

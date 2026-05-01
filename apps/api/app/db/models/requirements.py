@@ -63,3 +63,24 @@ class RequirementAuthoringDocument(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class BrainstormSession(Base):
+    __tablename__ = "brainstorm_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    topic: Mapped[str] = mapped_column(String(255))
+    orchestrator_id: Mapped[str] = mapped_column(String(64), default="brainstorming")
+    provider_id: Mapped[str] = mapped_column(String(64), default="mock")
+    model: Mapped[str] = mapped_column(String(128), default="mock-brainstorm-v1")
+    template_id: Mapped[str] = mapped_column(String(128), default="81433号")
+    knowledge_package_id: Mapped[str] = mapped_column(String(128), default="airspace-domain-demo")
+    write_policy: Mapped[str] = mapped_column(String(64), default="patch_suggestion_only")
+    status: Mapped[str] = mapped_column(String(32), default="created")
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
