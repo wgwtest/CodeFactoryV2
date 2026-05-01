@@ -57,20 +57,21 @@
 8. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求规格编写系统原型设计.md`
 9. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming能力原理验证与架构规划.md`
 10. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming-Turn引擎与状态机设计.md`
-11. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
-12. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
-13. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`
-14. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-20-真实工具落地验证设计.md`
-15. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-30-Runtime协调器与队列设计.md`
-16. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md`
-17. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md`
-18. `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`
-19. `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5.1-最小构建闭环设计.md`
-20. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6-门户与平台入口设计.md`
-21. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.1-首屏观察门户设计.md`
-22. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.2-跨阶段只读集成与状态投影设计.md`
-23. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.3-设计语言与前端展示基线设计.md`
-24. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.4-前端展示工具化实验场设计.md`
+11. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XG-Orchestrator组织器包规范设计.md`
+12. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
+13. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
+14. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`
+15. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-20-真实工具落地验证设计.md`
+16. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-30-Runtime协调器与队列设计.md`
+17. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md`
+18. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md`
+19. `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`
+20. `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5.1-最小构建闭环设计.md`
+21. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6-门户与平台入口设计.md`
+22. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.1-首屏观察门户设计.md`
+23. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.2-跨阶段只读集成与状态投影设计.md`
+24. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.3-设计语言与前端展示基线设计.md`
+25. `DOC/CODEX_DOC/02_设计说明/P6_门户与平台入口/P6.4-前端展示工具化实验场设计.md`
 
 ## 3. 当前约束
 

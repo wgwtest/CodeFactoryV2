@@ -621,10 +621,19 @@ function mockBrainstormLabApis() {
         data: {
           items: [
             {
-              orchestrator_id: "brainstorming",
-              name: "BrainstormingOrchestrator",
+              orchestrator_id: "xg-brainstorming-orchestrator",
+              name: "XG Brainstorming Orchestrator",
+              version: "0.1.0",
+              stage: "P2",
+              document_type: "xg",
+              contract: "xg-orchestrator-contract@1",
+              mode: "policy_interpreted",
               status: "active",
-              description: "连续问答、主动追问、轻量选项、结构化 patch。",
+              description: "面向需求规格说明的开放式 Brainstorming 组织器。",
+              entry: null,
+              capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+              requires: { template: true, knowledge_binding: true, model_provider: "optional" },
+              package_path: "orchestrators/xg/xg-brainstorming-orchestrator",
             },
           ],
           stable_contract: {

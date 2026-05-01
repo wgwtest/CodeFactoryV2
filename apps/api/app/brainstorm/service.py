@@ -6,37 +6,10 @@ from sqlalchemy import select
 
 from app.brainstorm.deepseek_client import DeepSeekBrainstormClient
 from app.brainstorm.models import BrainstormSessionCreate, BrainstormTurnCreate
+from app.brainstorm.orchestrators import OrchestratorPackage, get_orchestrator_registry
 from app.config import settings
 from app.db.models.requirements import BrainstormSession, RequirementAuthoringTemplate
 from app.requirement_authoring.models import default_template_payload
-
-
-ORCHESTRATORS = [
-    {
-        "orchestrator_id": "brainstorming",
-        "name": "BrainstormingOrchestrator",
-        "status": "active",
-        "description": "连续问答、主动追问、轻量选项、结构化 patch。当前默认验证对象。",
-    },
-    {
-        "orchestrator_id": "wizard",
-        "name": "WizardOrchestrator",
-        "status": "available",
-        "description": "固定步骤向导，适合模型效率不稳定时降级为可控流程。",
-    },
-    {
-        "orchestrator_id": "form_driven",
-        "name": "FormDrivenOrchestrator",
-        "status": "available",
-        "description": "以表单字段为主，模型只做补全和缺口提示。",
-    },
-    {
-        "orchestrator_id": "rule_based_review",
-        "name": "RuleBasedReviewOrchestrator",
-        "status": "available",
-        "description": "规则优先，模型只解释风险、缺口和可能的标准条款。",
-    },
-]
 
 PROVIDER_DEFINITIONS = [
     {"provider_id": "mock", "name": "Mock Provider"},
@@ -60,8 +33,9 @@ class BrainstormService:
         self.session = session
 
     def list_orchestrators(self) -> dict:
+        registry = get_orchestrator_registry()
         return {
-            "items": ORCHESTRATORS,
+            "items": [package.to_api() for package in registry.list_packages()],
             "stable_contract": self._stable_contract(),
             "output_protocol": [
                 "previous_interaction",
@@ -78,8 +52,8 @@ class BrainstormService:
         return {"items": [self._provider(provider["provider_id"]) for provider in PROVIDER_DEFINITIONS]}
 
     def create_session(self, payload: BrainstormSessionCreate) -> dict:
-        if payload.orchestrator_id not in {item["orchestrator_id"] for item in ORCHESTRATORS}:
-            raise ValueError("unsupported orchestrator")
+        orchestrator_id = self._normalize_orchestrator_id(payload.orchestrator_id)
+        orchestrator = self._orchestrator(orchestrator_id)
         if payload.provider_id not in {item["provider_id"] for item in PROVIDER_DEFINITIONS}:
             raise ValueError("unsupported provider")
         if payload.provider_id == "deepseek" and not settings.brainstorm_deepseek_api_key:
@@ -130,7 +104,7 @@ class BrainstormService:
         }
         session = BrainstormSession(
             topic=payload.topic.strip() or "未命名 Brainstorming 课题",
-            orchestrator_id=payload.orchestrator_id,
+            orchestrator_id=orchestrator.orchestrator_id,
             provider_id=payload.provider_id,
             model=model,
             template_id=payload.template_id,
@@ -167,7 +141,13 @@ class BrainstormService:
         patches = list(state.get("patches", []))
         spec_tree = list(state.get("spec_tree") or self._new_spec_tree(session.template_id))
         active_spec_node_id = str(state.get("active_spec_node_id") or self._first_open_spec_node_id(spec_tree) or "")
-        model_output = self._run_provider(session, user_input, normalized)
+        orchestrator = self._orchestrator(session.orchestrator_id)
+        model_output = self._run_orchestrator(
+            orchestrator=orchestrator,
+            session=session,
+            user_input=user_input,
+            normalized=normalized,
+        )
         previous_interaction = self._previous_interaction(
             state.get("next_interaction"),
             last_quick_options=last_quick_options,
@@ -190,6 +170,7 @@ class BrainstormService:
             projection_spec_node=projection_spec_node,
             normalized=normalized,
             next_open_before_update=next_open_before_update,
+            orchestrator=orchestrator,
         )
         structured_update = self._build_structured_summary_update(
             model_output=model_output,
@@ -326,6 +307,8 @@ class BrainstormService:
             {
                 "call_id": f"brainstorm-provider-call-{len(turns):04d}",
                 "provider_id": session.provider_id,
+                "orchestrator_id": orchestrator.orchestrator_id,
+                "orchestrator_mode": orchestrator.mode,
                 "model": session.model,
                 "status": "mocked" if model_output["raw_model_response"].get("mock") else "completed",
                 "created_at": now,
@@ -343,7 +326,7 @@ class BrainstormService:
             "session_id": session.id,
             "topic": session.topic,
             "status": session.status,
-            "orchestrator": self._orchestrator(session.orchestrator_id),
+            "orchestrator": self._orchestrator(session.orchestrator_id).to_api(),
             "provider_id": session.provider_id,
             "model": session.model,
             "template_id": session.template_id,
@@ -369,11 +352,16 @@ class BrainstormService:
             "updated_at": session.updated_at.isoformat(),
         }
 
-    def _orchestrator(self, orchestrator_id: str) -> dict:
-        for orchestrator in ORCHESTRATORS:
-            if orchestrator["orchestrator_id"] == orchestrator_id:
-                return orchestrator
-        raise ValueError("unsupported orchestrator")
+    def _normalize_orchestrator_id(self, orchestrator_id: str) -> str:
+        normalized = orchestrator_id.strip()
+        legacy_map = {
+            "brainstorming": "xg-brainstorming-orchestrator",
+            "rule_based_review": "xg-strong-rule-orchestrator",
+        }
+        return legacy_map.get(normalized, normalized)
+
+    def _orchestrator(self, orchestrator_id: str) -> OrchestratorPackage:
+        return get_orchestrator_registry().require(self._normalize_orchestrator_id(orchestrator_id))
 
     def _provider(self, provider_id: str) -> dict:
         for provider in PROVIDER_DEFINITIONS:
@@ -389,7 +377,26 @@ class BrainstormService:
             return settings.brainstorm_deepseek_model
         return model or "mock-brainstorm-v1"
 
-    def _run_provider(self, session: BrainstormSession, user_input: str, normalized: dict) -> dict:
+    def _run_orchestrator(
+        self,
+        *,
+        orchestrator: OrchestratorPackage,
+        session: BrainstormSession,
+        user_input: str,
+        normalized: dict,
+    ) -> dict:
+        if orchestrator.mode == "local_runner" and orchestrator.orchestrator_id == "xg-strong-rule-orchestrator":
+            return self._strong_rule_model_output(session, user_input, normalized, orchestrator=orchestrator)
+        return self._run_provider(session, user_input, normalized, orchestrator=orchestrator)
+
+    def _run_provider(
+        self,
+        session: BrainstormSession,
+        user_input: str,
+        normalized: dict,
+        *,
+        orchestrator: OrchestratorPackage,
+    ) -> dict:
         if session.provider_id == "deepseek":
             if not settings.brainstorm_deepseek_api_key:
                 raise ValueError("DeepSeek provider is not configured")
@@ -399,7 +406,7 @@ class BrainstormService:
                 model=session.model or settings.brainstorm_deepseek_model,
             )
             return client.run_turn(session=session, user_input=user_input, normalized=normalized)
-        return self._mock_model_output(session, user_input, normalized)
+        return self._mock_model_output(session, user_input, normalized, orchestrator=orchestrator)
 
     def _normalize_input(self, user_input: str, *, quick_options: list[dict] | None = None) -> dict:
         stripped = user_input.strip()
@@ -451,7 +458,14 @@ class BrainstormService:
             "C": "系统同时包含计算分析与协同规划。",
         }[option]
 
-    def _mock_model_output(self, session: BrainstormSession, user_input: str, normalized: dict) -> dict:
+    def _mock_model_output(
+        self,
+        session: BrainstormSession,
+        user_input: str,
+        normalized: dict,
+        *,
+        orchestrator: OrchestratorPackage,
+    ) -> dict:
         semantic = normalized["semantic"]
         state = dict(session.payload or {})
         active_node = self._find_spec_node(
@@ -497,7 +511,39 @@ class BrainstormService:
                 "provider_id": session.provider_id,
                 "model": session.model,
                 "mock": True,
+                "orchestrator_id": orchestrator.orchestrator_id,
+                "mode": orchestrator.mode,
                 "user_input": user_input,
+            },
+        }
+
+    def _strong_rule_model_output(
+        self,
+        session: BrainstormSession,
+        user_input: str,
+        normalized: dict,
+        *,
+        orchestrator: OrchestratorPackage,
+    ) -> dict:
+        base = self._mock_model_output(session, user_input, normalized, orchestrator=orchestrator)
+        current_section = base["document_patch"][0]["section"] if base["document_patch"] else "未绑定模板章节"
+        return {
+            **base,
+            "organizer_interpretation": {
+                "summary": f"强规则组织器将用户输入投影到 {current_section}，并按固定审计顺序处理。",
+                "intent": "supplement_requirement",
+                "confidence": "high",
+            },
+            "assistant_message": f"强规则组织器已按固定闭环更新：{current_section}。",
+            "annotations": [
+                *list(base.get("annotations", [])),
+                "强规则组织器按固定状态机执行：输入关系 -> 规格补充 -> 回看 -> 闭环 -> 下一轮设计。",
+            ],
+            "raw_model_response": {
+                **dict(base.get("raw_model_response") or {}),
+                "orchestrator_id": orchestrator.orchestrator_id,
+                "mode": orchestrator.mode,
+                "mock": True,
             },
         }
 
@@ -694,8 +740,15 @@ class BrainstormService:
         projection_spec_node: dict,
         normalized: dict,
         next_open_before_update: str | None,
+        orchestrator: OrchestratorPackage,
     ) -> list[str]:
+        orchestrator_label = (
+            "强规则组织器"
+            if orchestrator.orchestrator_id == "xg-strong-rule-orchestrator"
+            else orchestrator.name
+        )
         return [
+            f"当前组织器：{orchestrator_label}（{orchestrator.orchestrator_id} / {orchestrator.mode}）。",
             "用户输入是本轮 Turn 起点。",
             f"本轮投影节点为 {projection_spec_node.get('node_id')} / {projection_spec_node.get('title')}。",
             f"投影目标章节为 {projection_spec_node.get('target_section')}。",
@@ -864,7 +917,11 @@ class BrainstormService:
             if next_spec_node.get("node_id")
             else "当前完成度树暂无待确认节点，可以进入整体复核。"
         )
-        assistant_message = f"基于你的输入，本轮更新了：{updated_sections}。{next_content}"
+        orchestrator_id = str(model_output.get("raw_model_response", {}).get("orchestrator_id") or "")
+        if orchestrator_id == "xg-strong-rule-orchestrator":
+            assistant_message = f"强规则组织器已按固定闭环更新：{updated_sections}。{next_content}"
+        else:
+            assistant_message = f"基于你的输入，本轮更新了：{updated_sections}。{next_content}"
         existing_suggestion = model_output.get("next_suggestion")
         existing_suggestion_id = (
             existing_suggestion.get("suggestion_id") if isinstance(existing_suggestion, dict) else ""
@@ -1181,8 +1238,8 @@ class BrainstormService:
             {"step": 1, "title": "接收用户输入", "status": "completed"},
             {"step": 2, "title": "读取会话状态", "status": "completed"},
             {"step": 3, "title": "读取模板与知识包", "status": "completed"},
-            {"step": 4, "title": "组装模型上下文", "status": "completed"},
-            {"step": 5, "title": "调用 Provider", "status": "completed"},
+            {"step": 4, "title": "组装组织器上下文", "status": "completed"},
+            {"step": 5, "title": "调用组织器 / Provider", "status": "completed"},
             {"step": 6, "title": "解析结构化输出", "status": "completed"},
             {"step": 7, "title": "校验并落状态", "status": "completed"},
         ]

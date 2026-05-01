@@ -70,7 +70,7 @@ class BrainstormSession(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     topic: Mapped[str] = mapped_column(String(255))
-    orchestrator_id: Mapped[str] = mapped_column(String(64), default="brainstorming")
+    orchestrator_id: Mapped[str] = mapped_column(String(128), default="xg-brainstorming-orchestrator")
     provider_id: Mapped[str] = mapped_column(String(64), default="mock")
     model: Mapped[str] = mapped_column(String(128), default="mock-brainstorm-v1")
     template_id: Mapped[str] = mapped_column(String(128), default="81433号")
