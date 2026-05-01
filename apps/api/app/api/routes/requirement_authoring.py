@@ -6,6 +6,7 @@ from app.db.session import get_session
 from app.requirement_authoring.models import (
     RequirementAuthoringClausePatch,
     RequirementAuthoringDocumentCreate,
+    RequirementAuthoringDocumentSave,
     RequirementAuthoringFormPatch,
     RequirementAuthoringKnowledgeBindingWrite,
     RequirementAuthoringMessageWrite,
@@ -115,6 +116,32 @@ def get_requirement_authoring_document(
     service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
 ):
     document = service.get_document(document_id)
+    if document is None:
+        raise _not_found("Requirement authoring document not found")
+    return document
+
+
+@router.delete("/documents/{document_id}")
+def delete_requirement_authoring_document(
+    document_id: str,
+    service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
+):
+    deleted = service.delete_document(document_id)
+    if not deleted:
+        raise _not_found("Requirement authoring document not found")
+    return {"deleted": True, "document_id": document_id}
+
+
+@router.post("/documents/{document_id}/save")
+def save_requirement_authoring_document(
+    document_id: str,
+    payload: RequirementAuthoringDocumentSave | None = None,
+    service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
+):
+    try:
+        document = service.save_document(document_id, payload or RequirementAuthoringDocumentSave())
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
     if document is None:
         raise _not_found("Requirement authoring document not found")
     return document

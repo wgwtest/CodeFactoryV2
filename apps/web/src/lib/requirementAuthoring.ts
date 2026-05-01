@@ -48,6 +48,22 @@ export function getRequirementAuthoringDocument(documentId: string) {
   return api.get<RequirementAuthoringDocumentDetail>(`/requirement-authoring/documents/${documentId}`);
 }
 
+export function deleteRequirementAuthoringDocument(documentId: string) {
+  return api.delete<{ deleted: boolean; document_id: string }>(`/requirement-authoring/documents/${documentId}`);
+}
+
+export function saveRequirementAuthoringDocument(
+  documentId: string,
+  payload: {
+    title?: string | null;
+    template_id?: string | null;
+    archive_ids?: string[] | null;
+    knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
+  } = {},
+) {
+  return api.post<RequirementAuthoringDocumentDetail>(`/requirement-authoring/documents/${documentId}/save`, payload);
+}
+
 export function appendRequirementAuthoringMessage(documentId: string, content: string) {
   return api.post<RequirementAuthoringDocumentDetail>(`/requirement-authoring/documents/${documentId}/messages`, { content });
 }

@@ -788,6 +788,7 @@ export type RequirementAuthoringDocumentDetail = RequirementAuthoringDocumentSum
   created_at: string;
   semantic_state: {
     fields: Record<string, string>;
+    knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
     [key: string]: unknown;
   };
   document: RequirementAuthoringStandardDocument;

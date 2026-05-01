@@ -9,12 +9,14 @@ import type { RequirementAuthoringDocumentDetail, RequirementAuthoringTemplate }
 const getMock = vi.fn();
 const postMock = vi.fn();
 const patchMock = vi.fn();
+const deleteMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
     patch: (...args: unknown[]) => patchMock(...args),
+    delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
 
@@ -22,6 +24,7 @@ beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
   patchMock.mockReset();
+  deleteMock.mockReset();
 });
 
 test("renders P2 expert workbench with CLI question mode, form mode, live document, annotation, check and freeze", async () => {
@@ -33,7 +36,22 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
       return Promise.resolve({ data: [template] });
     }
     if (url === "/requirement-authoring/documents") {
-      return Promise.resolve({ data: [] });
+      return Promise.resolve({
+        data: [
+          {
+            document_id: "doc-1",
+            title: "空域协同规划软件需求规格说明",
+            template_id: "tpl-81433-default",
+            status: "draft",
+            layout_ratio: "2:3",
+            archive_ids: ["20161116-nas"],
+            updated_at: "2026-04-30T00:00:00Z",
+          },
+        ],
+      });
+    }
+    if (url === "/requirement-authoring/documents/doc-1") {
+      return Promise.resolve({ data: document });
     }
     if (url === "/requirement-authoring/knowledge-providers") {
       return Promise.resolve({ data: buildKnowledgeProviders() });
@@ -46,6 +64,27 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
       return Promise.resolve({ data: buildKnowledgeBinding() });
     }
     if (url === "/requirement-authoring/documents") {
+      return Promise.resolve({ data: document });
+    }
+    if (url === "/requirement-authoring/documents/doc-1/save") {
+      const title = (body as { title?: string }).title ?? document.title;
+      const saveBody = body as {
+        template_id?: string;
+        archive_ids?: string[];
+        knowledge_binding?: RequirementAuthoringDocumentDetail["semantic_state"]["knowledge_binding"];
+      };
+      document = {
+        ...document,
+        title,
+        template_id: saveBody.template_id ?? document.template_id,
+        archive_ids: saveBody.archive_ids ?? document.archive_ids,
+        semantic_state: {
+          ...document.semantic_state,
+          knowledge_binding: saveBody.knowledge_binding ?? document.semantic_state.knowledge_binding ?? null,
+        },
+        status: "draft",
+        updated_at: "2026-04-30T00:10:00Z",
+      };
       return Promise.resolve({ data: document });
     }
     if (url === "/requirement-authoring/documents/doc-1/messages") {
@@ -114,6 +153,12 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
     }
     throw new Error(`unexpected patch url: ${url}`);
   });
+  deleteMock.mockImplementation((url: string) => {
+    if (url === "/requirement-authoring/documents/doc-1") {
+      return Promise.resolve({ data: { deleted: true, document_id: "doc-1" } });
+    }
+    throw new Error(`unexpected delete url: ${url}`);
+  });
 
   render(
     <MemoryRouter initialEntries={["/requirement-authoring"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -122,9 +167,31 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   );
 
   expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
-  expect(await screen.findByText("P1 知识绑定")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("P1 知识绑定")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "文档模板：81433号" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "领域知识：未选择" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "新建文档" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "打开文档" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "删除文档" })).toBeDisabled();
+
+  fireEvent.click(screen.getByRole("button", { name: "打开文档" }));
+  expect(await screen.findByText("打开文档 / 草稿")).toBeInTheDocument();
+  expect(screen.getByText("打开后会恢复右侧标准正文、左侧问答记录、表单字段、批注和检查状态。")).toBeInTheDocument();
+  expect(screen.getByText("空域协同规划软件需求规格说明")).toBeInTheDocument();
+  expect(screen.getByText("81433号")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "打开" }));
+  await waitFor(() => expect(getMock).toHaveBeenCalledWith("/requirement-authoring/documents/doc-1"));
+  expect(await screen.findByText("我会按标准规格骨架持续起草和修补。你可以直接回：可以 / 更正式 / 加超时 / 重拟 / 继续。")).toBeInTheDocument();
+  expect(screen.getByLabelText("文档名称")).toHaveValue("空域协同规划软件需求规格说明");
+  fireEvent.click(screen.getByRole("button", { name: "删除文档" }));
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+  fireEvent.click(screen.getByRole("button", { name: "领域知识：未选择" }));
+  expect(await screen.findByText("选择领域知识")).toBeInTheDocument();
   expect(screen.getByText("空域规划领域知识")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "加载领域知识" }));
+  fireEvent.click(screen.getByRole("button", { name: "应用领域知识" }));
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/requirement-authoring/knowledge-bindings", {
       provider_id: "xx-p1-sim",
@@ -132,11 +199,12 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
     }),
   );
   expect((await screen.findAllByText("领域知识已绑定")).length).toBeGreaterThan(0);
-  fireEvent.click(await screen.findByRole("button", { name: "创建规格文档" }));
+  expect(await screen.findByRole("button", { name: "领域知识：空域规划" })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "新建文档" }));
 
   expect(await screen.findByText("问答模式")).toBeInTheDocument();
   expect(screen.getByText("表单模式")).toBeInTheDocument();
-  expect(screen.getByText("标准需求规格说明")).toBeInTheDocument();
+  expect(screen.getAllByText("标准需求规格说明").length).toBeGreaterThan(0);
   expect(screen.getByText("2:3")).toBeInTheDocument();
   expect(screen.queryByText("写入正文")).not.toBeInTheDocument();
   expect(screen.queryByText("XX-P1-Sim")).not.toBeInTheDocument();
@@ -146,13 +214,38 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   expect(screen.getByTestId("requirement-authoring-document-canvas")).toBeInTheDocument();
   expect(screen.getByTestId("requirement-authoring-document-paper")).toBeInTheDocument();
   expect(screen.getByText("可导出稿")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "删除文档" })).toBeEnabled();
 
+  fireEvent.change(screen.getByLabelText("文档名称"), { target: { value: "专家评审草稿 A" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-authoring/documents/doc-1/save", expect.objectContaining({
+      title: "专家评审草稿 A",
+      template_id: "tpl-81433-default",
+      archive_ids: ["airspace-planning"],
+      knowledge_binding: expect.objectContaining({ editor_badge: "领域知识已绑定" }),
+    })),
+  );
+  expect(await screen.findByText("草稿已保存")).toBeInTheDocument();
+  expect(screen.getByLabelText("文档名称")).toHaveValue("专家评审草稿 A");
+
+  fireEvent.change(screen.getByLabelText("文档名称"), { target: { value: "问答前临时改名" } });
   const input = screen.getByPlaceholderText("输入 A、可以、更正式、加超时、重拟，或直接补充一句业务事实");
   fireEvent.change(input, { target: { value: "加超时，别写太复杂" } });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-authoring/documents/doc-1/save", expect.objectContaining({
+      title: "问答前临时改名",
+      template_id: "tpl-81433-default",
+      archive_ids: ["airspace-planning"],
+      knowledge_binding: expect.objectContaining({ editor_badge: "领域知识已绑定" }),
+    })),
+  );
   expect(await screen.findByText("异常流程包含超时提醒和人工确认，不扩展复杂补偿链路。")).toBeInTheDocument();
   expect(await screen.findByText(/你可以直接回/)).toBeInTheDocument();
+  expect(screen.getByLabelText("文档名称")).toHaveValue("问答前临时改名");
 
   fireEvent.click(screen.getByText("表单模式"));
   fireEvent.change(screen.getByLabelText("验收准则"), { target: { value: "关键流程可追溯，超时提醒可验证。" } });
@@ -167,9 +260,20 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
 
   fireEvent.click(screen.getByRole("button", { name: "冻结版本" }));
   expect(await screen.findByText("P3 可消费")).toBeInTheDocument();
+  expect(screen.getByLabelText("验收准则")).toBeDisabled();
+  fireEvent.click(screen.getByText("问答模式"));
+  expect(screen.getByPlaceholderText("输入 A、可以、更正式、加超时、重拟，或直接补充一句业务事实")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
 
   const shell = screen.getByTestId("requirement-authoring-workbench");
   expect(within(shell).getByText("1:1")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "删除文档" }));
+  expect(await screen.findByText("删除当前规格文档？")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+  await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/requirement-authoring/documents/doc-1"));
+  expect(await screen.findByText("文档已删除")).toBeInTheDocument();
+  expect(screen.getByText("创建文档后，右侧会持续生成标准正文。")).toBeInTheDocument();
 });
 
 function buildTemplate(): RequirementAuthoringTemplate {
@@ -208,7 +312,7 @@ function buildDocument(): RequirementAuthoringDocumentDetail {
     archive_ids: ["20161116-nas"],
     created_at: "2026-04-30T00:00:00Z",
     updated_at: "2026-04-30T00:00:00Z",
-    semantic_state: { fields: { acceptance_criteria: "" } },
+    semantic_state: { fields: { acceptance_criteria: "" }, knowledge_binding: null },
     conversation: [
       {
         id: "msg-1",

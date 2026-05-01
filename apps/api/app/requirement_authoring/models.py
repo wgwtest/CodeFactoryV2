@@ -46,6 +46,15 @@ class RequirementAuthoringFormPatch(BaseModel):
     fields: dict[str, str]
 
 
+class RequirementAuthoringDocumentSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    template_id: str | None = None
+    archive_ids: list[str] | None = None
+    knowledge_binding: dict | None = None
+
+
 class RequirementAuthoringClausePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

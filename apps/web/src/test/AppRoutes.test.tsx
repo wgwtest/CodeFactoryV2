@@ -849,3 +849,30 @@ test("renders xx-p1-sim route outside the main shell", async () => {
   expect(screen.getByText("P1 服务接口")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
+
+test("renders requirement authoring route outside the main shell", async () => {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-authoring/templates") {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === "/requirement-authoring/documents") {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === "/requirement-authoring/knowledge-providers") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/archives") {
+      return Promise.resolve({ data: [] });
+    }
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/requirement-authoring"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
