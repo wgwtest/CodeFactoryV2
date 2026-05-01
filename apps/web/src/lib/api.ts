@@ -2078,8 +2078,17 @@ export type BrainstormOrchestratorStatus = "active" | "available" | "disabled";
 export type BrainstormOrchestrator = {
   orchestrator_id: string;
   name: string;
+  version?: string;
+  stage?: string;
+  document_type?: string;
+  contract?: string;
+  mode?: string;
   status: BrainstormOrchestratorStatus;
   description: string;
+  entry?: string | null;
+  capabilities?: readonly string[];
+  requires?: Record<string, unknown>;
+  package_path?: string;
 };
 
 export type BrainstormProvider = {

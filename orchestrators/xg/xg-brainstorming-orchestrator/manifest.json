@@ -1,0 +1,26 @@
+{
+  "id": "xg-brainstorming-orchestrator",
+  "name": "XG Brainstorming Orchestrator",
+  "version": "0.1.0",
+  "stage": "P2",
+  "document_type": "xg",
+  "contract": "xg-orchestrator-contract@1",
+  "mode": "policy_interpreted",
+  "entry": null,
+  "status": "active",
+  "priority": 10,
+  "description": "面向需求规格说明的开放式 Brainstorming 组织器，强调用户输入驱动、规格补充和下一轮轻量引导。",
+  "capabilities": [
+    "free_text_input",
+    "guided_question",
+    "quick_options",
+    "spec_tree_update",
+    "document_patch",
+    "turn_audit"
+  ],
+  "requires": {
+    "template": true,
+    "knowledge_binding": true,
+    "model_provider": "optional"
+  }
+}

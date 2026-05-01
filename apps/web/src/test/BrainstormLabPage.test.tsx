@@ -49,7 +49,7 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
     if (url === "/brainstorm/sessions") {
       expect(body).toMatchObject({
         topic: "空域运算软件需求规格探索",
-        orchestrator_id: "brainstorming",
+        orchestrator_id: "xg-brainstorming-orchestrator",
         provider_id: "deepseek",
         write_policy: "patch_suggestion_only",
       });
@@ -85,8 +85,8 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
   expect(screen.getByText("稳定契约 / 输出协议")).toBeInTheDocument();
-  expect(screen.getByText("BrainstormingOrchestrator")).toBeInTheDocument();
-  expect(screen.getByText("WizardOrchestrator")).toBeInTheDocument();
+  expect(screen.getByText("XG Brainstorming Orchestrator")).toBeInTheDocument();
+  expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
@@ -275,28 +275,34 @@ function buildOrchestrators() {
   return {
     items: [
       {
-        orchestrator_id: "brainstorming",
-        name: "BrainstormingOrchestrator",
+        orchestrator_id: "xg-brainstorming-orchestrator",
+        name: "XG Brainstorming Orchestrator",
+        version: "0.1.0",
+        stage: "P2",
+        document_type: "xg",
+        contract: "xg-orchestrator-contract@1",
+        mode: "policy_interpreted",
         status: "active",
-        description: "连续问答、主动追问、轻量选项、结构化 patch。",
+        description: "面向需求规格说明的开放式 Brainstorming 组织器。",
+        entry: null,
+        capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+        requires: { template: true, knowledge_binding: true, model_provider: "optional" },
+        package_path: "orchestrators/xg/xg-brainstorming-orchestrator",
       },
       {
-        orchestrator_id: "wizard",
-        name: "WizardOrchestrator",
-        status: "available",
-        description: "固定步骤向导。",
-      },
-      {
-        orchestrator_id: "form_driven",
-        name: "FormDrivenOrchestrator",
-        status: "available",
-        description: "以表单字段为主。",
-      },
-      {
-        orchestrator_id: "rule_based_review",
-        name: "RuleBasedReviewOrchestrator",
-        status: "available",
-        description: "规则优先。",
+        orchestrator_id: "xg-strong-rule-orchestrator",
+        name: "XG Strong Rule Orchestrator",
+        version: "0.1.0",
+        stage: "P2",
+        document_type: "xg",
+        contract: "xg-orchestrator-contract@1",
+        mode: "local_runner",
+        status: "active",
+        description: "面向需求规格说明的强规则组织器。",
+        entry: "runner.py",
+        capabilities: ["rule_based_flow", "strict_turn_closure", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+        requires: { template: true, knowledge_binding: true, model_provider: "optional" },
+        package_path: "orchestrators/xg/xg-strong-rule-orchestrator",
       },
     ] as const,
     stable_contract: buildStableContract(),

@@ -1,0 +1,26 @@
+{
+  "id": "xg-strong-rule-orchestrator",
+  "name": "XG Strong Rule Orchestrator",
+  "version": "0.1.0",
+  "stage": "P2",
+  "document_type": "xg",
+  "contract": "xg-orchestrator-contract@1",
+  "mode": "local_runner",
+  "entry": "runner.py",
+  "status": "active",
+  "priority": 20,
+  "description": "面向需求规格说明的强规则组织器，强调规则优先、强审计链和严格闭环。",
+  "capabilities": [
+    "rule_based_flow",
+    "strict_turn_closure",
+    "quick_options",
+    "spec_tree_update",
+    "document_patch",
+    "turn_audit"
+  ],
+  "requires": {
+    "template": true,
+    "knowledge_binding": true,
+    "model_provider": "optional"
+  }
+}

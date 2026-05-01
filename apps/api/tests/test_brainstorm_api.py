@@ -47,20 +47,24 @@ def test_brainstorm_lab_session_turn_and_recovery() -> None:
     orchestrators = client.get("/api/brainstorm/orchestrators")
     assert orchestrators.status_code == 200
     items = orchestrators.json()["items"]
-    assert items[0]["orchestrator_id"] == "brainstorming"
+    assert items[0]["orchestrator_id"] == "xg-brainstorming-orchestrator"
     assert items[0]["status"] == "active"
+    assert items[0]["document_type"] == "xg"
+    assert items[0]["contract"] == "xg-orchestrator-contract@1"
+    assert items[0]["mode"] == "policy_interpreted"
     assert {item["orchestrator_id"] for item in items} >= {
-        "brainstorming",
-        "wizard",
-        "form_driven",
-        "rule_based_review",
+        "xg-brainstorming-orchestrator",
+        "xg-strong-rule-orchestrator",
     }
+    strong_rule = next(item for item in items if item["orchestrator_id"] == "xg-strong-rule-orchestrator")
+    assert strong_rule["mode"] == "local_runner"
+    assert "rule_based_flow" in strong_rule["capabilities"]
 
     created = client.post(
         "/api/brainstorm/sessions",
         json={
             "topic": "空域运算软件需求规格探索",
-            "orchestrator_id": "brainstorming",
+            "orchestrator_id": "xg-brainstorming-orchestrator",
             "provider_id": "mock",
             "model": "mock-brainstorm-v1",
             "template_id": "81433号",
@@ -71,7 +75,9 @@ def test_brainstorm_lab_session_turn_and_recovery() -> None:
     assert created.status_code == 200
     session = created.json()
     assert session["status"] == "created"
-    assert session["orchestrator"]["orchestrator_id"] == "brainstorming"
+    assert session["orchestrator"]["orchestrator_id"] == "xg-brainstorming-orchestrator"
+    assert session["orchestrator"]["document_type"] == "xg"
+    assert session["orchestrator"]["mode"] == "policy_interpreted"
     assert session["stable_contract"]["formal_document"] is True
     assert session["write_policy"] == "patch_suggestion_only"
     assert session["document_patch"] == []
@@ -217,7 +223,7 @@ def test_brainstorm_lab_accepts_selected_previous_quick_option() -> None:
         "/api/brainstorm/sessions",
         json={
             "topic": "空域运算软件需求规格探索",
-            "orchestrator_id": "brainstorming",
+            "orchestrator_id": "xg-brainstorming-orchestrator",
             "provider_id": "mock",
             "model": "mock-brainstorm-v1",
             "template_id": "81433号",
@@ -268,6 +274,49 @@ def test_brainstorm_lab_accepts_selected_previous_quick_option() -> None:
     assert third_relation["relation"] == "selected_option"
     assert "上轮选项 A：领域专家直接使用" in third_relation["reason"]
     assert third_payload["turn"]["normalized_input"]["semantic"] == "领域专家直接使用"
+
+
+def test_brainstorm_lab_runs_xg_strong_rule_orchestrator_package() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/brainstorm/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-strong-rule-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-brainstorm-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
+    assert session["orchestrator"]["document_type"] == "xg"
+    assert session["orchestrator"]["mode"] == "local_runner"
+    assert "strict_turn_closure" in session["orchestrator"]["capabilities"]
+
+    turn = client.post(
+        f"/api/brainstorm/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "supplement_requirement"
+    assert "强规则组织器" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
+    assert payload["turn"]["closure_decision"]["status"] == "closed"
+    assert any("强规则组织器" in item for item in payload["turn"]["decision_trace"])
+    assert payload["turn"]["raw_model_response"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
+    assert payload["turn"]["raw_model_response"]["mode"] == "local_runner"
+    assert payload["session"]["provider_logs"][0]["orchestrator_id"] == "xg-strong-rule-orchestrator"
+    assert payload["session"]["provider_logs"][0]["orchestrator_mode"] == "local_runner"
+    assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
 
 
 def test_brainstorm_lab_rejects_unknown_orchestrator() -> None:
@@ -351,7 +400,7 @@ def test_brainstorm_lab_uses_deepseek_provider_when_configured(monkeypatch) -> N
         "/api/brainstorm/sessions",
         json={
             "topic": "空域运算软件需求规格探索",
-            "orchestrator_id": "brainstorming",
+            "orchestrator_id": "xg-brainstorming-orchestrator",
             "provider_id": "deepseek",
             "template_id": "81433号",
             "knowledge_package_id": "airspace-domain-demo",
@@ -437,7 +486,7 @@ def test_brainstorm_lab_projects_provider_patch_to_matching_spec_node_without_co
         "/api/brainstorm/sessions",
         json={
             "topic": "空域运算软件需求规格探索",
-            "orchestrator_id": "brainstorming",
+            "orchestrator_id": "xg-brainstorming-orchestrator",
             "provider_id": "deepseek",
             "template_id": "81433号",
             "knowledge_package_id": "airspace-domain-demo",

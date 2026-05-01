@@ -13,7 +13,7 @@ class BrainstormSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     topic: str
-    orchestrator_id: str = "brainstorming"
+    orchestrator_id: str = "xg-brainstorming-orchestrator"
     provider_id: str = "mock"
     model: str = "mock-brainstorm-v1"
     template_id: str = "81433号"
