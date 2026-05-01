@@ -2022,3 +2022,254 @@ export type P5DeliveryRuntimeClearResult = {
   cleared_attempt_count: number;
   cleared_export_directory_count: number;
 };
+
+export type BrainstormOrchestratorStatus = "active" | "available" | "disabled";
+
+export type BrainstormOrchestrator = {
+  orchestrator_id: string;
+  name: string;
+  status: BrainstormOrchestratorStatus;
+  description: string;
+};
+
+export type BrainstormProvider = {
+  provider_id: string;
+  name: string;
+  status: "active" | "not_configured" | "disabled";
+};
+
+export type BrainstormStableContract = {
+  formal_document: boolean;
+  template_object: boolean;
+  knowledge_binding: boolean;
+  draft_persistence: boolean;
+  check_and_freeze: boolean;
+  p2_to_p3_output: boolean;
+};
+
+export type BrainstormOrchestratorEnvelope = {
+  items: BrainstormOrchestrator[];
+  stable_contract: BrainstormStableContract;
+  output_protocol: string[];
+};
+
+export type BrainstormProviderEnvelope = {
+  items: BrainstormProvider[];
+};
+
+export type BrainstormMessage = {
+  id: string;
+  role: "assistant" | "user" | "system";
+  content: string;
+  turn_id?: string;
+  created_at?: string;
+};
+
+export type BrainstormDocumentPatch = {
+  section: string;
+  operation: string;
+  content: string;
+  write_policy?: string;
+};
+
+export type BrainstormQuestionStatus = "open" | "confirmed" | "cancelled" | "superseded" | "review";
+
+export type BrainstormQuestionItem = {
+  question_id: string;
+  content: string;
+  status: BrainstormQuestionStatus | string;
+  target_section?: string | null;
+  source_turn_id: string | null;
+  resolution_fact_ids: string[];
+};
+
+export type BrainstormConfirmedFactItem = {
+  fact_id: string;
+  content: string;
+  source_turn_id: string;
+  source_question_ids: string[];
+  target_section?: string | null;
+};
+
+export type BrainstormPatchProposal = {
+  patch_id: string;
+  target_section: string;
+  operation: string;
+  content: string;
+  write_policy?: string;
+  status: "proposed" | "accepted" | "rejected" | string;
+  source_fact_ids: string[];
+  source_question_ids: string[];
+};
+
+export type BrainstormSpecTreeNode = {
+  node_id: string;
+  title: string;
+  target_section: string;
+  node_type?: string;
+  question?: string;
+  status: "open" | "partial" | "closed" | "skipped" | string;
+  answer_summary: string;
+  completion_reason: string;
+  children: BrainstormSpecTreeNode[];
+};
+
+export type BrainstormTurnPathItem = {
+  turn_id: string;
+  node_id: string;
+  question_id?: string | null;
+  previous_interaction_id?: string | null;
+  input_relation?: string;
+  affected_node_ids?: string[];
+  next_interaction_id?: string | null;
+  closed_node_ids: string[];
+  answer_summary: string;
+};
+
+export type BrainstormQuickOption = {
+  key: string;
+  label: string;
+  recommended?: boolean;
+};
+
+export type BrainstormServiceStep = {
+  step: number;
+  title: string;
+  status: string;
+};
+
+export type BrainstormInteraction = {
+  interaction_id?: string | null;
+  type: "none" | "open_question" | "choice_question" | "suggestion" | "free_continue" | string;
+  prompt: string;
+  options: BrainstormQuickOption[];
+  target_spec_node_ids: string[];
+  reason?: string;
+};
+
+export type BrainstormInputRelation = {
+  relation: string;
+  reason: string;
+};
+
+export type BrainstormOrganizerInterpretation = {
+  summary: string;
+  intent?: string;
+  confidence?: string;
+};
+
+export type BrainstormAffectedSpecNode = {
+  node_id: string | null;
+  title?: string;
+  target_section?: string;
+  effect: string;
+  reason: string;
+};
+
+export type BrainstormClosureAssessment = {
+  status: string;
+  reason: string;
+  next_action: string;
+};
+
+export type BrainstormStateChanges = {
+  closed_question_ids: string[];
+  created_question_ids: string[];
+  closed_spec_node_ids: string[];
+  next_active_spec_node_id?: string | null;
+};
+
+export type BrainstormSpecExecution = {
+  interpretation: BrainstormOrganizerInterpretation;
+  assistant_message: string;
+  confirmed_facts: string[];
+  affected_spec_nodes: BrainstormAffectedSpecNode[];
+  document_patch: BrainstormDocumentPatch[];
+  state_changes: BrainstormStateChanges;
+  annotations: string[];
+  risks: string[];
+};
+
+export type BrainstormPostUpdateReview = {
+  summary: string;
+  previous_interaction_resolved: boolean;
+  current_spec_node_sufficient: boolean;
+  needs_followup_on_same_topic: boolean;
+  remaining_gaps: string[];
+};
+
+export type BrainstormTurn = {
+  turn_id: string;
+  session_id: string;
+  user_input: string;
+  previous_interaction: BrainstormInteraction;
+  normalized_input: {
+    input_type: string;
+    matched_option: string | null;
+    matched_option_label?: string | null;
+    semantic: string;
+  };
+  input_relation: BrainstormInputRelation;
+  spec_execution: BrainstormSpecExecution;
+  post_update_review: BrainstormPostUpdateReview;
+  closure_decision: BrainstormClosureAssessment;
+  next_interaction: BrainstormInteraction;
+  decision_trace: string[];
+  confidence: string;
+  service_steps: BrainstormServiceStep[];
+  raw_model_response: Record<string, unknown>;
+  created_at: string;
+};
+
+export type BrainstormProviderLog = {
+  call_id: string;
+  provider_id: string;
+  model: string;
+  status: string;
+  created_at: string;
+};
+
+export type BrainstormSession = {
+  session_id: string;
+  topic: string;
+  status: "created" | "waiting_user" | "running" | "failed" | "completed";
+  orchestrator: BrainstormOrchestrator;
+  provider_id: string;
+  model: string;
+  template_id: string;
+  knowledge_package_id: string;
+  write_policy: string;
+  stable_contract: BrainstormStableContract;
+  messages: BrainstormMessage[];
+  turns: BrainstormTurn[];
+  confirmed_facts: string[];
+  open_questions: string[];
+  document_patch: BrainstormDocumentPatch[];
+  questions: BrainstormQuestionItem[];
+  facts: BrainstormConfirmedFactItem[];
+  patches: BrainstormPatchProposal[];
+  spec_tree: BrainstormSpecTreeNode[];
+  active_spec_node_id: string | null;
+  turn_path: BrainstormTurnPathItem[];
+  annotations: string[];
+  risks: string[];
+  provider_logs: BrainstormProviderLog[];
+  next_interaction: BrainstormInteraction | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BrainstormSessionCreateInput = {
+  topic: string;
+  orchestrator_id: string;
+  provider_id: string;
+  model?: string;
+  template_id?: string;
+  knowledge_package_id?: string;
+  write_policy?: string;
+};
+
+export type BrainstormTurnEnvelope = {
+  session: BrainstormSession;
+  turn: BrainstormTurn;
+};
