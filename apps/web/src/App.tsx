@@ -13,6 +13,7 @@ import { P6ObservationPage } from "./pages/P6ObservationPage";
 import { P6PortalDataPage } from "./pages/P6PortalDataPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
 import { P6SimulatorPage } from "./pages/P6SimulatorPage";
+import { P3DesignLabPage } from "./pages/P3DesignLabPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
 import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
@@ -148,6 +149,14 @@ export default function App() {
     return (
       <Routes>
         <Route path="/requirement-authoring" element={<RequirementAuthoringPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/p3-design-lab")) {
+    return (
+      <Routes>
+        <Route path="/p3-design-lab" element={<P3DesignLabPage />} />
       </Routes>
     );
   }

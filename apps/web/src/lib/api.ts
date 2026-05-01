@@ -2022,3 +2022,53 @@ export type P5DeliveryRuntimeClearResult = {
   cleared_attempt_count: number;
   cleared_export_directory_count: number;
 };
+
+export type P3DesignLabInputPackage = {
+  input_package_id: string;
+  source_document_id: string;
+  source_title: string;
+  standard_document: RequirementAuthoringStandardDocument;
+  structured_spec: Record<string, unknown>;
+  annotations: RequirementAuthoringAnnotation[];
+  knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
+  frozen_at?: string | null;
+  p3_consumable: boolean;
+};
+
+export type P3DesignLabDocumentSection = {
+  section_id: string;
+  title: string;
+  content: string;
+  status?: string;
+};
+
+export type P3DesignLabDesignDocument = {
+  title: string;
+  sections: P3DesignLabDocumentSection[];
+};
+
+export type P3DesignLabDesignBaseline = {
+  baseline_id: string;
+  application_name?: string;
+  architecture_mode: string;
+  modules: Array<{ module_id: string; name: string; source_refs?: string[] }>;
+  traceability?: Array<Record<string, string>>;
+  pending_confirmations?: string[];
+};
+
+export type P3DesignLabWorkorderProjection = {
+  package_overview?: Record<string, unknown>;
+  items: Array<{ item_id: string; title: string; module_id?: string }>;
+};
+
+export type P3DesignLabSession = {
+  session_id: string;
+  input_package: P3DesignLabInputPackage;
+  generation_policy: Record<string, string>;
+  status: string;
+  design_document: P3DesignLabDesignDocument | null;
+  design_baseline: P3DesignLabDesignBaseline | null;
+  workorder_projection: P3DesignLabWorkorderProjection | null;
+  turns: Array<Record<string, unknown>>;
+  check_result?: RequirementAuthoringCheckResult | null;
+};
