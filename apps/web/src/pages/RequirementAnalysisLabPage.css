@@ -152,7 +152,7 @@
 }
 
 .requirement-analysis-lab-tab-grid.is-log {
-  grid-template-columns: minmax(260px, 0.3fr) minmax(640px, 0.7fr);
+  grid-template-columns: minmax(220px, 0.24fr) minmax(720px, 0.76fr);
 }
 
 .requirement-analysis-lab-tab-grid.is-turn-single {
@@ -763,6 +763,14 @@
 .requirement-analysis-lab-log-meta .ant-typography {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.requirement-analysis-lab-log-detail-tabs .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.requirement-analysis-lab-log-detail-tabs .ant-tabs-tab {
+  padding: 6px 0;
 }
 
 .requirement-analysis-lab-log-audit-block {
