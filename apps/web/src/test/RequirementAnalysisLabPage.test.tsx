@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
@@ -200,21 +202,42 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText(/deepseek-chat/)).toBeInTheDocument();
   expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
   expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("user_input")).toBeInTheDocument();
+  expect(screen.getByText("（用户本轮提交的原始输入，用于追溯 Provider 调用从哪段用户表达开始。）")).toBeInTheDocument();
+  expect(screen.getByText("normalized_input")).toBeInTheDocument();
+  expect(screen.getByText("（组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。）")).toBeInTheDocument();
   expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "请求" }));
   expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("provider_request.messages")).toBeInTheDocument();
+  expect(screen.getByText("（发给模型的最终 messages 数组，模型调用时直接使用。）")).toBeInTheDocument();
   expect(screen.getByText("provider_request.prompt_bundle.assembled_prompt")).toBeInTheDocument();
+  expect(screen.getByText("（组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。）")).toBeInTheDocument();
+  expect(screen.getByText("（Mock Provider 的调试上下文，仅在本地模拟调用时使用。）")).toBeInTheDocument();
+  expect(screen.getByText("（运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。）")).toBeInTheDocument();
   expect(screen.getByText("assembled prompt")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "上下文" }));
+  expect(screen.getByText("provider_request.prompt_bundle.context_json")).toBeInTheDocument();
+  expect(screen.getByText("（写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。）")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
+  expect(screen.getByText("provider_request.prompt_bundle.schema_json")).toBeInTheDocument();
+  expect(screen.getByText("（要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。）")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "原始输出" }));
   expect(screen.getByText("provider_response.raw_content")).toBeInTheDocument();
+  expect(screen.getByText("（Provider 返回的原始文本，解析失败时优先看这一块。）")).toBeInTheDocument();
+  expect(screen.getByText("provider_response.parsed_json")).toBeInTheDocument();
+  expect(screen.getByText("（从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。）")).toBeInTheDocument();
   expect(screen.getAllByText(/DeepSeek 已确认：本轮把系统定位更新为计算分析工具。/).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("tab", { name: "后处理" }));
   expect(screen.getByText("provider_normalized_output")).toBeInTheDocument();
+  expect(screen.getByText("（Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。）")).toBeInTheDocument();
   expect(screen.getByText("service_output")).toBeInTheDocument();
+  expect(screen.getByText("（Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。）")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
 
@@ -279,6 +302,13 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tab", { name: /当前 Turn.*暂无/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.queryByText("当前 Turn 协议错误")).not.toBeInTheDocument();
+});
+
+test("lets provider log audit outputs expand until near one screen before internal scrolling", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toContain("max-height: min(72vh, 920px);");
+  expect(css).not.toContain("max-height: 320px;");
 });
 
 function createDeferred<T>() {
