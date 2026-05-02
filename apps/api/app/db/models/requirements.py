@@ -65,14 +65,14 @@ class RequirementAuthoringDocument(Base):
     )
 
 
-class BrainstormSession(Base):
-    __tablename__ = "brainstorm_sessions"
+class RequirementAnalysisSession(Base):
+    __tablename__ = "requirement_analysis_sessions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     topic: Mapped[str] = mapped_column(String(255))
-    orchestrator_id: Mapped[str] = mapped_column(String(128), default="xg-brainstorming-orchestrator")
+    orchestrator_id: Mapped[str] = mapped_column(String(128), default="xg-heuristic-orchestrator")
     provider_id: Mapped[str] = mapped_column(String(64), default="mock")
-    model: Mapped[str] = mapped_column(String(128), default="mock-brainstorm-v1")
+    model: Mapped[str] = mapped_column(String(128), default="mock-requirement-analysis-v1")
     template_id: Mapped[str] = mapped_column(String(128), default="81433号")
     knowledge_package_id: Mapped[str] = mapped_column(String(128), default="airspace-domain-demo")
     write_policy: Mapped[str] = mapped_column(String(64), default="patch_suggestion_only")

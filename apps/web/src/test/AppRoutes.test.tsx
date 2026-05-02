@@ -614,26 +614,26 @@ function mockXXP1SimApis() {
   });
 }
 
-function mockBrainstormLabApis() {
+function mockRequirementAnalysisLabApis() {
   getMock.mockImplementation((url: string) => {
-    if (url === "/brainstorm/orchestrators") {
+    if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({
         data: {
           items: [
             {
-              orchestrator_id: "xg-brainstorming-orchestrator",
-              name: "XG Brainstorming Orchestrator",
+              orchestrator_id: "xg-heuristic-orchestrator",
+              name: "XG Requirement Analysis Orchestrator",
               version: "0.1.0",
               stage: "P2",
               document_type: "xg",
               contract: "xg-orchestrator-contract@1",
               mode: "policy_interpreted",
               status: "active",
-              description: "面向需求规格说明的开放式 Brainstorming 组织器。",
+              description: "面向需求规格说明的开放式 Requirement Analysis 组织器。",
               entry: null,
               capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
               requires: { template: true, knowledge_binding: true, model_provider: "optional" },
-              package_path: "orchestrators/xg/xg-brainstorming-orchestrator",
+              package_path: "orchestrators/xg/xg-heuristic-orchestrator",
             },
           ],
           stable_contract: {
@@ -657,7 +657,7 @@ function mockBrainstormLabApis() {
       });
     }
 
-    if (url === "/brainstorm/providers") {
+    if (url === "/requirement-analysis/providers") {
       return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
     }
 
@@ -928,16 +928,16 @@ test("renders requirement authoring route outside the main shell", async () => {
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
 
-test("renders P2 Brainstorming Lab route outside the main shell", async () => {
-  mockBrainstormLabApis();
+test("renders P2 Requirement Analysis Orchestrator Lab route outside the main shell", async () => {
+  mockRequirementAnalysisLabApis();
 
   render(
-    <MemoryRouter initialEntries={["/p2-brainstorm-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Brainstorming Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

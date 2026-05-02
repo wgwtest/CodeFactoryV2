@@ -57,11 +57,11 @@ orchestrators/xg/<orchestrator-id>/
 首版必须提供两个实例：
 
 ```text
-xg-brainstorming-orchestrator
+xg-heuristic-orchestrator
 xg-strong-rule-orchestrator
 ```
 
-`xg-brainstorming-orchestrator`：
+`xg-heuristic-orchestrator`：
 
 - `mode = policy_interpreted`
 - 偏启发式、开放输入、轻量选项、用户输入驱动。
@@ -104,11 +104,11 @@ XG 组织器不允许：
 
 ## 6. 当前落地状态
 
-当前后端新增 `OrchestratorRegistry`，从 `orchestrators/xg/` 读取包信息，并通过 `/api/brainstorm/orchestrators` 暴露注册结果。
+当前后端已落地 `OrchestratorPackageLoader`、`OrchestratorContractValidator` 与 `OrchestratorRunnerHost`，从 `orchestrators/xg/` 读取包信息，并通过 `/api/requirement-analysis/orchestrators` 暴露注册结果。
 
-需要注意：当前 `OrchestratorRegistry` 仍位于 `app.brainstorm` 下，属于 P2/XG 首版实现，不是最终的跨阶段基础注册层。基础注册层的目标形态见总纲级 `Orchestrator基础包壳与注册机制设计`。
+需要注意：当前基础注册与执行运行时位于 `apps/api/app/orchestrators/`，属于 P2/XG 首版实现；跨阶段基础注册层的长期目标形态见总纲级 `Orchestrator基础包壳与注册机制设计`。
 
-当前 `Brainstorming Lab` 仍使用既有 Turn 输出协议：
+当前 `Requirement Analysis Orchestrator Lab` 仍使用既有 Turn 输出协议：
 
 ```text
 previous_interaction
@@ -120,4 +120,4 @@ next_interaction
 decision_trace
 ```
 
-其中 `xg-brainstorming-orchestrator` 继承现有 Brainstorming Lab 能力；`xg-strong-rule-orchestrator` 通过本地规则路径产出符合相同协议的 Turn。
+其中 `xg-heuristic-orchestrator` 继承现有 Requirement Analysis Orchestrator Lab 能力；`xg-strong-rule-orchestrator` 通过本地规则路径产出符合相同协议的 Turn。

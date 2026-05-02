@@ -218,7 +218,7 @@ def default_template_payload(template_code: str = "81433") -> dict:
             {"field_key": "acceptance_criteria", "clause_id": "REQ-5.1", "structured_path": "metrics.acceptance"},
         ],
         "questionnaire_policy": {
-            "mode": "cli_brainstorm",
+            "mode": "cli_requirement_analysis",
             "system_role": "系统主动分析、起草和修补，专家主要判断、选择和短答。",
             "quick_inputs": ["可以", "更正式", "加超时", "重拟", "继续"],
         },

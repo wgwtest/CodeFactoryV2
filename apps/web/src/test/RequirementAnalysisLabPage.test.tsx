@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
 import App from "../App";
-import type { BrainstormSession, BrainstormTurnEnvelope } from "../lib/api";
+import type { RequirementAnalysisSession, RequirementAnalysisTurnEnvelope } from "../lib/api";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
@@ -24,15 +24,15 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 });
 
-test("keeps Brainstorming Lab view tabs explicit while business state changes", async () => {
+test("keeps Requirement Analysis Orchestrator Lab view tabs explicit while business state changes", async () => {
   let session = buildSession("created");
-  const deferredTurn = createDeferred<{ data: BrainstormTurnEnvelope }>();
+  const deferredTurn = createDeferred<{ data: RequirementAnalysisTurnEnvelope }>();
 
   getMock.mockImplementation((url: string) => {
-    if (url === "/brainstorm/orchestrators") {
+    if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({ data: buildOrchestrators() });
     }
-    if (url === "/brainstorm/providers") {
+    if (url === "/requirement-analysis/providers") {
       return Promise.resolve({
         data: {
           items: [
@@ -46,16 +46,16 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   });
 
   postMock.mockImplementation((url: string, body?: unknown) => {
-    if (url === "/brainstorm/sessions") {
+    if (url === "/requirement-analysis/sessions") {
       expect(body).toMatchObject({
         topic: "空域运算软件需求规格探索",
-        orchestrator_id: "xg-brainstorming-orchestrator",
+        orchestrator_id: "xg-heuristic-orchestrator",
         provider_id: "deepseek",
         write_policy: "patch_suggestion_only",
       });
       return Promise.resolve({ data: session });
     }
-    if (url === "/brainstorm/sessions/bs-airspace-001/turns") {
+    if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
       if ((body as { user_input?: string })?.user_input === "A，先按计算分析工具理解") {
         return deferredTurn.promise;
       }
@@ -68,12 +68,12 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   });
 
   render(
-    <MemoryRouter initialEntries={["/p2-brainstorm-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Brainstorming Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
@@ -85,25 +85,25 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
   expect(screen.getByText("稳定契约 / 输出协议")).toBeInTheDocument();
-  expect(screen.getByText("XG Brainstorming Orchestrator")).toBeInTheDocument();
+  expect(screen.getByText("XG Requirement Analysis Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/brainstorm/sessions", expect.any(Object)));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tab", { name: /会话管理.*已创建/ })).toHaveAttribute("aria-selected", "false");
-  expect(screen.getByText("会话已创建：bs-airspace-001")).toBeInTheDocument();
+  expect(screen.getByText("会话已创建：ra-airspace-001")).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
 
   expect(screen.getByRole("tab", { name: /会话管理/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByRole("heading", { name: "会话管理" })).not.toBeInTheDocument();
-  expect(await screen.findByText("会话 bs-airspace-001")).toBeInTheDocument();
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
   expect(screen.getByText("CLI 式问答区")).toBeInTheDocument();
   expect(screen.getAllByText("Provider deepseek").length).toBeGreaterThan(0);
   expect(screen.getByText("空域运算软件需求规格探索")).toBeInTheDocument();
@@ -119,7 +119,7 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
   await waitFor(() =>
-    expect(postMock).toHaveBeenCalledWith("/brainstorm/sessions/bs-airspace-001/turns", {
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions/ra-airspace-001/turns", {
       user_input: "A，先按计算分析工具理解",
     }),
   );
@@ -154,16 +154,16 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
   expect(screen.getByText("先确认输入")).toBeInTheDocument();
   expect(screen.getByText("先确认输出")).toBeInTheDocument();
   const quickOptions = screen.getByLabelText("快捷回复选项");
-  const optionRows = within(quickOptions).getAllByTestId("brainstorm-quick-option");
+  const optionRows = within(quickOptions).getAllByTestId("requirement-analysis-quick-option");
   expect(optionRows).toHaveLength(3);
   fireEvent.click(optionRows[1]);
-  expect(postMock).not.toHaveBeenCalledWith("/brainstorm/sessions/bs-airspace-001/turns", {
+  expect(postMock).not.toHaveBeenCalledWith("/requirement-analysis/sessions/ra-airspace-001/turns", {
     user_input: "B，先确认输出",
   });
 
   fireEvent.click(within(optionRows[1]).getByRole("button", { name: "选择 B" }));
   await waitFor(() =>
-    expect(postMock).toHaveBeenCalledWith("/brainstorm/sessions/bs-airspace-001/turns", {
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions/ra-airspace-001/turns", {
       user_input: "B，先确认输出",
     }),
   );
@@ -200,7 +200,7 @@ test("keeps Brainstorming Lab view tabs explicit while business state changes", 
 
   fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
 
-  const stableContract = screen.getByTestId("brainstorm-stable-contract");
+  const stableContract = screen.getByTestId("requirement-analysis-stable-contract");
   expect(within(stableContract).getByText("正式需求规格文档")).toBeInTheDocument();
   expect(within(stableContract).getByText("P2 -> P3 输出")).toBeInTheDocument();
 });
@@ -210,10 +210,10 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   const malformedEnvelope = buildMalformedTurnEnvelope();
 
   getMock.mockImplementation((url: string) => {
-    if (url === "/brainstorm/orchestrators") {
+    if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({ data: buildOrchestrators() });
     }
-    if (url === "/brainstorm/providers") {
+    if (url === "/requirement-analysis/providers") {
       return Promise.resolve({
         data: {
           items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }],
@@ -224,24 +224,24 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   });
 
   postMock.mockImplementation((url: string) => {
-    if (url === "/brainstorm/sessions") {
+    if (url === "/requirement-analysis/sessions") {
       return Promise.resolve({ data: session });
     }
-    if (url === "/brainstorm/sessions/bs-airspace-001/turns") {
+    if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
       return Promise.resolve({ data: malformedEnvelope });
     }
     throw new Error(`unexpected post url: ${url}`);
   });
 
   render(
-    <MemoryRouter initialEntries={["/p2-brainstorm-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Brainstorming Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/brainstorm/sessions", expect.any(Object)));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
   fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
   fireEvent.change(screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求..."), {
@@ -275,19 +275,19 @@ function buildOrchestrators() {
   return {
     items: [
       {
-        orchestrator_id: "xg-brainstorming-orchestrator",
-        name: "XG Brainstorming Orchestrator",
+        orchestrator_id: "xg-heuristic-orchestrator",
+        name: "XG Requirement Analysis Orchestrator",
         version: "0.1.0",
         stage: "P2",
         document_type: "xg",
         contract: "xg-orchestrator-contract@1",
         mode: "policy_interpreted",
         status: "active",
-        description: "面向需求规格说明的开放式 Brainstorming 组织器。",
+        description: "面向需求规格说明的开放式 Requirement Analysis 组织器。",
         entry: null,
         capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
         requires: { template: true, knowledge_binding: true, model_provider: "optional" },
-        package_path: "orchestrators/xg/xg-brainstorming-orchestrator",
+        package_path: "orchestrators/xg/xg-heuristic-orchestrator",
       },
       {
         orchestrator_id: "xg-strong-rule-orchestrator",
@@ -329,9 +329,9 @@ function buildStableContract() {
   };
 }
 
-function buildSession(status: BrainstormSession["status"]): BrainstormSession {
+function buildSession(status: RequirementAnalysisSession["status"]): RequirementAnalysisSession {
   return {
-    session_id: "bs-airspace-001",
+    session_id: "ra-airspace-001",
     topic: "空域运算软件需求规格探索",
     status,
     orchestrator: buildOrchestrators().items[0],
@@ -376,10 +376,10 @@ function buildSession(status: BrainstormSession["status"]): BrainstormSession {
   };
 }
 
-function buildTurnEnvelope(): BrainstormTurnEnvelope {
+function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
   const turn = {
     turn_id: "turn-0001",
-    session_id: "bs-airspace-001",
+    session_id: "ra-airspace-001",
     user_input: "A，先按计算分析工具理解",
     previous_interaction: {
       interaction_id: null,
@@ -559,9 +559,9 @@ function buildTurnEnvelope(): BrainstormTurnEnvelope {
   };
 }
 
-function buildMalformedTurnEnvelope(): BrainstormTurnEnvelope {
+function buildMalformedTurnEnvelope(): RequirementAnalysisTurnEnvelope {
   const envelope = buildTurnEnvelope();
-  const malformedTurn = { ...envelope.turn } as Partial<BrainstormTurnEnvelope["turn"]>;
+  const malformedTurn = { ...envelope.turn } as Partial<RequirementAnalysisTurnEnvelope["turn"]>;
   delete malformedTurn.previous_interaction;
   delete malformedTurn.input_relation;
   delete malformedTurn.spec_execution;
@@ -572,9 +572,9 @@ function buildMalformedTurnEnvelope(): BrainstormTurnEnvelope {
   return {
     session: {
       ...envelope.session,
-      turns: [malformedTurn as BrainstormTurnEnvelope["turn"]],
+      turns: [malformedTurn as RequirementAnalysisTurnEnvelope["turn"]],
     },
-    turn: malformedTurn as BrainstormTurnEnvelope["turn"],
+    turn: malformedTurn as RequirementAnalysisTurnEnvelope["turn"],
   };
 }
 

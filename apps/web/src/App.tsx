@@ -4,7 +4,7 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
-import { BrainstormLabPage } from "./pages/BrainstormLabPage";
+import { RequirementAnalysisLabPage } from "./pages/RequirementAnalysisLabPage";
 import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
@@ -162,10 +162,10 @@ export default function App() {
     );
   }
 
-  if (location.pathname.startsWith("/p2-brainstorm-lab")) {
+  if (location.pathname.startsWith("/p2-requirement-analysis-lab")) {
     return (
       <Routes>
-        <Route path="/p2-brainstorm-lab" element={<BrainstormLabPage />} />
+        <Route path="/p2-requirement-analysis-lab" element={<RequirementAnalysisLabPage />} />
       </Routes>
     );
   }

@@ -1,4 +1,4 @@
-# P2 Brainstorming Turn 引擎与状态机设计
+# P2 Requirement Analysis Turn 引擎与状态机设计
 
 **日期：** 2026-05-01
 
@@ -6,13 +6,13 @@
 
 ## 1. 设计背景
 
-`P2 Brainstorming Lab` 的早期实现把 `Turn` 理解为：
+`P2 Requirement Analysis Orchestrator Lab` 的早期实现把 `Turn` 理解为：
 
 ```text
 系统选择一个需求规格节点 -> 系统提问 -> 用户回答 -> 系统关闭该节点 -> 系统继续提下一题
 ```
 
-实测后确认，这个模型会把 Brainstorming 退化成问卷或向导。用户被迫回答系统预设问题，系统也容易机械地顺着完成度树追问，而不是围绕用户本轮真正提出的问题、描述、判断或质疑进行理解、补充和状态回看。
+实测后确认，这个模型会把 Requirement Analysis 退化成问卷或向导。用户被迫回答系统预设问题，系统也容易机械地顺着完成度树追问，而不是围绕用户本轮真正提出的问题、描述、判断或质疑进行理解、补充和状态回看。
 
 新的设计基线是：
 
@@ -24,9 +24,9 @@ Turn = 用户输入触发的一次需求规格补充执行闭环
 
 ## 2. 核心定义
 
-### 2.1 Brainstorming Turn
+### 2.1 Requirement Analysis Turn
 
-一个 `BrainstormTurn` 从用户输入开始。
+一个 `RequirementAnalysisTurn` 从用户输入开始。
 
 最小闭环：
 
@@ -181,7 +181,7 @@ Turn = 用户输入触发的一次需求规格补充执行闭环
 
 ## 3. Turn 输出协议
 
-`BrainstormTurn` 主协议使用以下结构：
+`RequirementAnalysisTurn` 主协议使用以下结构：
 
 ```json
 {
@@ -374,12 +374,12 @@ next_interaction 是建议留题，不是约束
 
 ## 7. 插件化边界
 
-`Brainstorming Turn 引擎` 应作为可插拔组织器模块存在。
+`Requirement Analysis Turn 引擎` 应作为可插拔组织器模块存在。
 
 ### 7.1 稳定输入
 
 ```text
-BrainstormSession
+RequirementAnalysisSession
 用户输入
 上轮系统留题
 上轮快捷选项
@@ -393,7 +393,7 @@ BrainstormSession
 ### 7.2 稳定输出
 
 ```text
-BrainstormTurn
+RequirementAnalysisTurn
 previous_interaction
 user_input
 input_relation
@@ -411,7 +411,7 @@ Lab 阶段不保留历史协议界面兼容分支。
 
 规则：
 
-- `BrainstormTurn` 一旦按新版协议确定，前端按新版字段直接渲染。
+- `RequirementAnalysisTurn` 一旦按新版协议确定，前端按新版字段直接渲染。
 - 缺少新版审计字段是接口协议错误，应在页面上明确显示协议错误。
 - 本地测试数据和页面测试不得构造缺字段 Turn 来验证兼容展示。
 - 后端不再向 Turn 对外返回旧主协议字段，例如 `previous_suggestion`、`previous_user_focus`、`input_relation_to_previous_suggestion`、`organizer_interpretation`、`affected_spec_nodes`、`closure_assessment`、`current_user_focus`、`next_suggestion`。
@@ -421,10 +421,10 @@ Lab 阶段不保留历史协议界面兼容分支。
 
 后续可替换为：
 
-- 自建 Brainstorming Turn 引擎。
+- 自建 Requirement Analysis Turn 引擎。
 - 固定向导式组织器。
 - 表单驱动组织器。
-- 外部成熟 brainstorming 引擎。
+- 外部成熟启发式需求收敛引擎。
 - 规则优先 + 模型解释型组织器。
 
 替换组织器时，不应影响：
@@ -452,9 +452,9 @@ Lab 阶段不保留历史协议界面兼容分支。
 
 ## 9. 结论
 
-`Brainstorming Turn 引擎` 的核心不是“系统问、用户答”，而是“用户输入驱动、系统补充规格、回看状态、再决定是否留下一轮交互对象”。
+`Requirement Analysis Turn 引擎` 的核心不是“系统问、用户答”，而是“用户输入驱动、系统补充规格、回看状态、再决定是否留下一轮交互对象”。
 
-这个设计使自建 Brainstorming 能力具备独立边界，后续可以与外部更成熟的 brainstorming 引擎进行同维度比较：
+这个设计使自建 Requirement Analysis 能力具备独立边界，后续可以与外部更成熟的启发式需求收敛引擎进行同维度比较：
 
 - 谁能更好理解用户自由输入。
 - 谁能更好判断用户是否承接上轮系统留题。

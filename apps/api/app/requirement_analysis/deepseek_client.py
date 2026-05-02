@@ -6,26 +6,35 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-from app.db.models.requirements import BrainstormSession
+from app.config import settings
+from app.db.models.requirements import RequirementAnalysisSession
+from app.orchestrators.runner_host import OrchestratorRunnerHost
 
 
-class DeepSeekBrainstormClient:
-    def __init__(self, *, api_key: str, base_url: str, model: str) -> None:
+class DeepSeekRequirementAnalysisClient:
+    def __init__(self, *, api_key: str, base_url: str, model: str, runner_host: OrchestratorRunnerHost | None = None) -> None:
         self.model = model
+        self.runner_host = runner_host or OrchestratorRunnerHost()
         self.client = OpenAI(api_key=api_key, base_url=base_url, http_client=httpx.Client(trust_env=False))
 
-    def run_turn(self, *, session: BrainstormSession, user_input: str, normalized: dict) -> dict:
+    def run_turn(self, *, session: RequirementAnalysisSession, user_input: str, normalized: dict, orchestrator_id: str | None = None) -> dict:
+        prompt_bundle = self._build_prompt_bundle(
+            session=session,
+            user_input=user_input,
+            normalized=normalized,
+            orchestrator_id=orchestrator_id or session.orchestrator_id,
+        )
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "你是 CodeFactory V2 P2 Brainstorming Lab 的可插拔组织器 Provider。"
+                        "你是 CodeFactory V2 P2 Requirement Analysis Orchestrator Lab 的可插拔组织器 Provider。"
                         "你只返回 JSON，不要返回 Markdown。"
                     ),
                 },
-                {"role": "user", "content": self._build_prompt(session=session, user_input=user_input, normalized=normalized)},
+                {"role": "user", "content": prompt_bundle["assembled_prompt"]},
             ],
             temperature=0,
             response_format={"type": "json_object"},
@@ -34,7 +43,14 @@ class DeepSeekBrainstormClient:
         parsed = json.loads(content)
         return self._normalize_output(parsed, session=session, user_input=user_input)
 
-    def _build_prompt(self, *, session: BrainstormSession, user_input: str, normalized: dict) -> str:
+    def _build_prompt_bundle(
+        self,
+        *,
+        session: RequirementAnalysisSession,
+        user_input: str,
+        normalized: dict,
+        orchestrator_id: str,
+    ) -> dict:
         state = dict(session.payload or {})
         spec_tree = list(state.get("spec_tree", []))
         context = {
@@ -82,23 +98,21 @@ class DeepSeekBrainstormClient:
             "risks": ["风险或空数组"],
             "confidence": "low|medium|high",
         }
-        return (
-            "请基于以下会话上下文，生成一轮 Brainstorming Turn 输出。\n"
-            "这只是需求规格说明写作 Lab，不是通用知识图谱。输出必须服务于需求规格章节成文。\n"
-            "用户输入是本轮 Turn 的起点，不是对系统预设问题的必答项。\n"
-            "previous_interaction 是上轮系统留题，可能是开放问题、选择题、建议方向或空。\n"
-            "你必须先判断用户本轮输入的真实意图，再执行规格补充、回看状态，最后设计 next_interaction。\n"
-            "不要把用户输入强行解释为对某个 active 节点的回答。\n"
-            "document_patch 可以指向一个或多个最合理的需求规格章节，章节必须能从 spec_tree 或用户输入解释出来。\n"
-            "next_suggestion 将被服务端转换为 next_interaction；它只是下一轮留题，可以被用户忽略、反驳或改题。\n"
-            "post_update_review 必须解释本轮补充后是否足够、还缺什么，不能刚收到回答就机械进入下一题。\n"
-            "quick_options 只有在确实需要轻量决策时才出现，不要每轮都强行生成。\n"
-            "confirmed_facts_delta 只放本轮用户已经明确确认的事实，不要重复历史事实。\n"
-            "open_questions_delta 只放下一步仍需要确认的问题，不要重复历史 open_questions。\n"
-            "document_patch 只为本轮新增确认事实生成建议。\n"
-            f"会话上下文 JSON：{json.dumps(context, ensure_ascii=False)}\n"
-            f"必须返回且只返回符合此结构的 JSON：{json.dumps(schema, ensure_ascii=False)}"
+        return self.runner_host.build_provider_prompt_bundle(
+            orchestrator_id,
+            context=context,
+            output_schema=schema,
         )
+
+    def _build_prompt(self, *, session: RequirementAnalysisSession, user_input: str, normalized: dict) -> str:
+        runner_host = getattr(self, "runner_host", None) or OrchestratorRunnerHost()
+        self.runner_host = runner_host
+        return self._build_prompt_bundle(
+            session=session,
+            user_input=user_input,
+            normalized=normalized,
+            orchestrator_id=getattr(session, "orchestrator_id", "xg-heuristic-orchestrator"),
+        )["assembled_prompt"]
 
     def _find_spec_node(self, nodes: list[dict], node_id: str) -> dict | None:
         for node in nodes:
@@ -131,7 +145,7 @@ class DeepSeekBrainstormClient:
             raise ValueError("DeepSeek 响应缺少 JSON 文本")
         return content
 
-    def _normalize_output(self, payload: dict[str, Any], *, session: BrainstormSession, user_input: str) -> dict:
+    def _normalize_output(self, payload: dict[str, Any], *, session: RequirementAnalysisSession, user_input: str) -> dict:
         return {
             "organizer_interpretation": self._normalize_organizer_interpretation(payload.get("organizer_interpretation")),
             "assistant_message": str(payload.get("assistant_message") or "已接收，本轮需要继续补齐需求信息。"),
@@ -170,7 +184,7 @@ class DeepSeekBrainstormClient:
         return {
             "summary": str(value.get("summary") or "已理解用户本轮输入。"),
             "intent": str(value.get("intent") or "supplement_requirement"),
-            "confidence": DeepSeekBrainstormClient._normalize_confidence(value.get("confidence")),
+            "confidence": DeepSeekRequirementAnalysisClient._normalize_confidence(value.get("confidence")),
         }
 
     @staticmethod
@@ -205,7 +219,7 @@ class DeepSeekBrainstormClient:
         return options
 
     @staticmethod
-    def _normalize_document_patch(value: Any, *, session: BrainstormSession) -> list[dict]:
+    def _normalize_document_patch(value: Any, *, session: RequirementAnalysisSession) -> list[dict]:
         if not isinstance(value, list):
             return []
         patches = []
@@ -231,7 +245,7 @@ class DeepSeekBrainstormClient:
         for node in nodes:
             if node.get("node_id") == node_id:
                 return node
-            found = DeepSeekBrainstormClient._find_spec_node_static(list(node.get("children", [])), node_id)
+            found = DeepSeekRequirementAnalysisClient._find_spec_node_static(list(node.get("children", [])), node_id)
             if found is not None:
                 return found
         return None

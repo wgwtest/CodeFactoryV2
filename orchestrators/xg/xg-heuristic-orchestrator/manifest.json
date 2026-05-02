@@ -1,6 +1,6 @@
 {
-  "id": "xg-brainstorming-orchestrator",
-  "name": "XG Brainstorming Orchestrator",
+  "id": "xg-heuristic-orchestrator",
+  "name": "XG Requirement Analysis Orchestrator",
   "version": "0.1.0",
   "stage": "P2",
   "document_type": "xg",
@@ -9,7 +9,7 @@
   "entry": null,
   "status": "active",
   "priority": 10,
-  "description": "面向需求规格说明的开放式 Brainstorming 组织器，强调用户输入驱动、规格补充和下一轮轻量引导。",
+  "description": "面向需求规格说明的开放式 Requirement Analysis 组织器，强调用户输入驱动、规格补充和下一轮轻量引导。",
   "capabilities": [
     "free_text_input",
     "guided_question",
