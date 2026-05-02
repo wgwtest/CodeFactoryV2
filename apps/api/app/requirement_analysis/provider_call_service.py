@@ -36,8 +36,12 @@ class RequirementAnalysisProviderCallService:
         orchestrator: OrchestratorPackage,
     ) -> dict:
         state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        )
         active_node = self.owner._find_spec_node(
-            list(state.get("spec_tree") or self.owner._new_spec_tree(session.template_id)),
+            spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
         return self.runner_host.execute_local_runner(
@@ -92,8 +96,12 @@ class RequirementAnalysisProviderCallService:
     ) -> dict:
         semantic = normalized["semantic"]
         state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        )
         active_node = self.owner._find_spec_node(
-            list(state.get("spec_tree") or self.owner._new_spec_tree(session.template_id)),
+            spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
         active_section = active_node.get("target_section") if active_node else "未绑定模板章节"

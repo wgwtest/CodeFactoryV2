@@ -104,7 +104,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "title": "REQ-3.1 用户与角色",
         "target_section": "3 功能需求 / 用户与角色",
         "node_type": "clause",
-        "question": "谁使用这个系统？请说明主要用户角色、职责和是否存在协作者或管理员。",
+        "question": "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。",
         "status": "open",
         "answer_summary": "",
         "completion_reason": "",
@@ -180,7 +180,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
     assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
     assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
-    assert "谁使用这个系统" in second_payload["turn"]["next_interaction"]["prompt"]
+    assert second_payload["turn"]["next_interaction"]["prompt"] == "建议下一步确认：组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
         "领域专家直接使用",
         "管理员配置后专家使用",

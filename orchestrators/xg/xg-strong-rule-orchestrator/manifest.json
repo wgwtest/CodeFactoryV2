@@ -14,6 +14,7 @@
     "rule_based_flow",
     "strict_turn_closure",
     "artifact_rules",
+    "spec_strategy",
     "quick_options",
     "spec_tree_update",
     "document_patch",

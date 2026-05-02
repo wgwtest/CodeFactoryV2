@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from app.orchestrators.package_loader import get_orchestrator_registry
 from app.db.models.requirements import RequirementAuthoringTemplate
-from app.requirement_analysis.question_bank import XG_CLAUSE_QUESTIONS
 from app.requirement_authoring.models import default_template_payload
 
 
@@ -9,15 +9,16 @@ class RequirementSpecTreeService:
     def __init__(self, session) -> None:
         self.session = session
 
-    def new_spec_tree(self, template_id: str = "81433号") -> list[dict]:
+    def new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
         template_payload = self.resolve_template_payload(template_id)
         template_code = self.template_code_from_id(template_id)
+        spec_strategy = self.spec_strategy(orchestrator_id)
         root = {
             "node_id": "SPEC-ROOT",
             "title": f"需求规格说明完成度树（{template_code}号）",
             "target_section": f"{template_code}号 需求规格说明",
             "node_type": "template",
-            "question": "按需求规格模板补齐可写入正文的目标节点。",
+            "question": str(spec_strategy.get("root_question") or "按需求规格模板补齐可写入正文的目标节点。"),
             "status": "open",
             "answer_summary": "",
             "completion_reason": "",
@@ -31,7 +32,7 @@ class RequirementSpecTreeService:
                 "title": section_title,
                 "target_section": section_title,
                 "node_type": "section",
-                "question": f"补齐{section_title}下的需求规格信息。",
+                "question": self.section_question(spec_strategy, section_title=section_title),
                 "status": "open",
                 "answer_summary": "",
                 "completion_reason": "",
@@ -48,7 +49,11 @@ class RequirementSpecTreeService:
                         "title": f"{clause_id} {clause_title}",
                         "target_section": f"{section_title} / {clause_title}",
                         "node_type": "clause",
-                        "question": XG_CLAUSE_QUESTIONS.get(clause_id, f"请补齐{clause_title}。"),
+                        "question": self.clause_question(
+                            spec_strategy,
+                            clause_id=clause_id,
+                            clause_title=clause_title,
+                        ),
                         "status": "open",
                         "answer_summary": "",
                         "completion_reason": "",
@@ -72,6 +77,26 @@ class RequirementSpecTreeService:
         if digits.startswith("82259"):
             return "82259"
         return "81433"
+
+    @staticmethod
+    def spec_strategy(orchestrator_id: str) -> dict:
+        loaded = get_orchestrator_registry().require_loaded(orchestrator_id)
+        return dict(loaded.spec_strategy or {})
+
+    @staticmethod
+    def section_question(spec_strategy: dict, *, section_title: str) -> str:
+        template = str(spec_strategy.get("section_question_template") or "补齐{section_title}下的需求规格信息。")
+        return template.replace("{section_title}", section_title)
+
+    @staticmethod
+    def clause_question(spec_strategy: dict, *, clause_id: str, clause_title: str) -> str:
+        clauses = spec_strategy.get("clauses") if isinstance(spec_strategy.get("clauses"), dict) else {}
+        defaults = spec_strategy.get("defaults") if isinstance(spec_strategy.get("defaults"), dict) else {}
+        clause_rule = clauses.get(clause_id) if isinstance(clauses, dict) else None
+        if isinstance(clause_rule, dict) and str(clause_rule.get("question") or "").strip():
+            return str(clause_rule["question"])
+        template = str(defaults.get("leaf_question_template") or "请补齐{clause_title}。")
+        return template.replace("{clause_title}", clause_title)
 
     def active_spec_node_context(self, spec_tree: list[dict], node_id: str | None) -> dict:
         node = self.find_spec_node(spec_tree, node_id or "") if node_id else None

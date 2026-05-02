@@ -1,0 +1,8 @@
+{
+  "root_question": "按强规则闭环逐项补齐需求规格模板节点。",
+  "section_question_template": "强规则组织器要求补齐章节：{section_title}。",
+  "defaults": {
+    "leaf_question_template": "强规则组织器要求补齐：{clause_title}。"
+  },
+  "clauses": {}
+}

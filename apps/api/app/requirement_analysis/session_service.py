@@ -62,7 +62,7 @@ class RequirementAnalysisSessionService:
 
         now = self._now()
         model = self._resolve_model(payload.provider_id, payload.model)
-        spec_tree = self._new_spec_tree(payload.template_id)
+        spec_tree = self._new_spec_tree(payload.template_id, orchestrator_id=orchestrator.orchestrator_id)
         active_spec_node_id = self._first_open_spec_node_id(spec_tree)
         state = {
             "messages": [
@@ -132,6 +132,10 @@ class RequirementAnalysisSessionService:
 
     def _serialize_session(self, session: RequirementAnalysisSession) -> dict:
         state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self._new_spec_tree(session.template_id, orchestrator_id=session.orchestrator_id)
+        )
         return {
             "session_id": session.id,
             "topic": session.topic,
@@ -151,8 +155,8 @@ class RequirementAnalysisSessionService:
             "questions": list(state.get("questions", [])),
             "facts": list(state.get("facts", [])),
             "patches": list(state.get("patches", [])),
-            "spec_tree": list(state.get("spec_tree") or self._new_spec_tree(session.template_id)),
-            "active_spec_node_id": state.get("active_spec_node_id") or self._first_open_spec_node_id(list(state.get("spec_tree") or [])),
+            "spec_tree": spec_tree,
+            "active_spec_node_id": state.get("active_spec_node_id") or self._first_open_spec_node_id(spec_tree),
             "turn_path": list(state.get("turn_path", [])),
             "next_interaction": state.get("next_interaction"),
             "annotations": list(state.get("annotations", [])),
@@ -273,8 +277,8 @@ class RequirementAnalysisSessionService:
             session=session,
         )
 
-    def _new_spec_tree(self, template_id: str = "81433号") -> list[dict]:
-        return self.spec_tree_service.new_spec_tree(template_id)
+    def _new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
+        return self.spec_tree_service.new_spec_tree(template_id, orchestrator_id=orchestrator_id)
 
     def _resolve_template_payload(self, template_id: str) -> dict:
         return self.spec_tree_service.resolve_template_payload(template_id)

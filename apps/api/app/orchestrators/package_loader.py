@@ -57,6 +57,7 @@ class LoadedOrchestratorPackage:
     policy_text: str
     prompt_text: str
     artifact_rules: dict[str, Any]
+    spec_strategy: dict[str, Any]
     contract_schema: dict[str, Any]
     entry_path: str | None
 
@@ -87,7 +88,15 @@ class OrchestratorPackageLoader:
         package_dir = manifest_path.parent
         mode = str(payload.get("mode") or "")
         entry = payload.get("entry")
-        required_files = ["ORCHESTRATOR.md", "contract.schema.json", "policy.md", "artifact_rules.json", "examples", "tests"]
+        required_files = [
+            "ORCHESTRATOR.md",
+            "contract.schema.json",
+            "policy.md",
+            "artifact_rules.json",
+            "spec_strategy.json",
+            "examples",
+            "tests",
+        ]
         if mode == "policy_interpreted":
             required_files.append("prompt.md")
         elif mode == "local_runner":
@@ -135,6 +144,9 @@ class OrchestratorPackageLoader:
             else "",
             artifact_rules=json.loads((package_dir / "artifact_rules.json").read_text(encoding="utf-8"))
             if (package_dir / "artifact_rules.json").exists()
+            else {"clauses": {}, "defaults": {}},
+            spec_strategy=json.loads((package_dir / "spec_strategy.json").read_text(encoding="utf-8"))
+            if (package_dir / "spec_strategy.json").exists()
             else {"clauses": {}, "defaults": {}},
             contract_schema=json.loads((package_dir / "contract.schema.json").read_text(encoding="utf-8")),
             entry_path=str(package_dir / str(entry)) if entry else None,

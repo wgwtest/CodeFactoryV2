@@ -21,7 +21,9 @@ class RequirementAnalysisTurnEngine:
         facts = list(state.get("facts", []))
         questions = list(state.get("questions", []))
         patches = list(state.get("patches", []))
-        spec_tree = list(state.get("spec_tree") or self.owner._new_spec_tree(session.template_id))
+        spec_tree = list(
+            state.get("spec_tree") or self.owner._new_spec_tree(session.template_id, orchestrator_id=session.orchestrator_id)
+        )
         active_spec_node_id = str(state.get("active_spec_node_id") or self.owner._first_open_spec_node_id(spec_tree) or "")
         orchestrator = self.owner._orchestrator(session.orchestrator_id)
         model_output = self.owner._run_orchestrator(
