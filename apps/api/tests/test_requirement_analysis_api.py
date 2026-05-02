@@ -386,7 +386,25 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                 "annotations": ["DeepSeek Provider 返回结构化 Turn 输出。"],
                 "risks": [],
                 "confidence": "medium",
-                "raw_model_response": {"provider_id": "deepseek", "mock": False},
+                "raw_model_response": {
+                    "provider_id": "deepseek",
+                    "mock": False,
+                    "provider_request": {
+                        "messages": [
+                            {"role": "system", "content": "system prompt"},
+                            {"role": "user", "content": "assembled prompt"},
+                        ],
+                        "prompt_bundle": {
+                            "assembled_prompt": "assembled prompt",
+                            "context_json": '{"user_input":"A，先按计算分析工具理解"}',
+                            "schema_json": '{"assistant_message":"string"}',
+                        },
+                    },
+                    "provider_response": {
+                        "raw_content": '{"assistant_message":"DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"}',
+                        "parsed_json": {"assistant_message": "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"},
+                    },
+                },
             }
 
     monkeypatch.setattr(requirement_analysis_client_module.settings, "requirement_analysis_deepseek_api_key", "test-deepseek-key")
@@ -430,6 +448,17 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert payload["session"]["provider_logs"][0]["provider_id"] == "deepseek"
     assert payload["session"]["provider_logs"][0]["model"] == "deepseek-chat"
     assert payload["session"]["provider_logs"][0]["status"] == "completed"
+    provider_log = payload["session"]["provider_logs"][0]
+    assert provider_log["turn_id"] == "turn-0001"
+    assert provider_log["audit"]["user_input"] == "A，先按计算分析工具理解"
+    assert provider_log["audit"]["normalized_input"]["semantic"] == "先按计算分析工具理解"
+    assert provider_log["audit"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "assembled prompt"
+    assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
+    assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
+        "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
+    )
+    assert provider_log["audit"]["service_output"]["assistant_message"].startswith("基于你的输入，本轮更新了")
+    assert provider_log["audit"]["service_output"]["document_patch"][0]["section"] == "1.1 系统目标"
     assert captured == {
         "api_key": "test-deepseek-key",
         "base_url": "https://api.deepseek.com",
@@ -591,7 +620,15 @@ def test_deepseek_client_run_turn_parses_json_response_without_network() -> None
             self.client = FakeOpenAIClient()
 
         def _build_prompt_bundle(self, *, session, user_input: str, normalized: dict, orchestrator_id: str) -> dict:
-            return {"assembled_prompt": "prompt"}
+            return {
+                "orchestrator_id": orchestrator_id,
+                "mode": "policy_interpreted",
+                "assembled_prompt": "prompt",
+                "context_json": '{"user_input":"这个系统叫空域运算软件"}',
+                "schema_json": '{"assistant_message":"string"}',
+                "policy_text": "policy",
+                "prompt_text": "prompt text",
+            }
 
     class FakeMessage:
         content = (
@@ -636,3 +673,8 @@ def test_deepseek_client_run_turn_parses_json_response_without_network() -> None
     assert output["quick_options"][0]["label"] == "领域专家直接使用"
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["mock"] is False
+    assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "prompt"
+    assert output["raw_model_response"]["provider_request"]["messages"][1]["content"] == "prompt"
+    assert "已更新需求规格" in output["raw_model_response"]["provider_response"]["raw_content"]
+    assert output["raw_model_response"]["provider_response"]["parsed_json"]["assistant_message"] == "已更新需求规格。"
+    assert output["raw_model_response"]["provider_normalized_output"]["assistant_message"] == "已更新需求规格。"

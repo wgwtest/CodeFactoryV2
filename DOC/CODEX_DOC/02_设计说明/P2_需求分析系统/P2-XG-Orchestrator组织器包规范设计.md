@@ -135,3 +135,4 @@ decision_trace
 - `policy_interpreted` 组织器必须提供 `artifact_rules.json`，供 mock 路径和服务端 fallback 使用。
 - `local_runner` 组织器也必须提供 `artifact_rules.json`，由 runner 自己读取；Host 不再额外硬编码章节事实与 patch 文案。
 - 所有 XG 组织器都必须提供 `spec_strategy.json`，Host 不再维护后端条款问题库。
+- 所有 XG 组织器执行结果必须进入 Provider 调用审计链。审计链至少保留 `provider_request`、`provider_response`、`provider_normalized_output` 和 Turn 引擎生成的 `service_output`，用于判断问题来自组织器提示词、模型输出、Provider 适配还是服务端后处理。

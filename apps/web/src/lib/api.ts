@@ -2282,9 +2282,20 @@ export type RequirementAnalysisTurn = {
 
 export type RequirementAnalysisProviderLog = {
   call_id: string;
+  turn_id?: string | null;
   provider_id: string;
+  orchestrator_id?: string;
+  orchestrator_mode?: string;
   model: string;
   status: string;
+  audit?: {
+    user_input?: string;
+    normalized_input?: Record<string, unknown>;
+    provider_request?: Record<string, unknown>;
+    provider_response?: Record<string, unknown>;
+    provider_normalized_output?: Record<string, unknown>;
+    service_output?: Record<string, unknown>;
+  };
   created_at: string;
 };
 

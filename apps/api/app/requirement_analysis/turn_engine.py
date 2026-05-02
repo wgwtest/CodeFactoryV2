@@ -42,6 +42,7 @@ class RequirementAnalysisTurnEngine:
             last_quick_options=last_quick_options,
         )
         model_output = self.owner._normalize_turn_model_output(model_output, session=session)
+        provider_normalized_output = self._provider_normalized_output(model_output)
         projection_spec_node_id = self.owner._select_projection_spec_node_id(spec_tree, model_output, active_spec_node_id)
         projection_spec_node = self.owner._active_spec_node_context(spec_tree, projection_spec_node_id)
         model_output = self.owner._ensure_patch_target_section(
@@ -188,16 +189,71 @@ class RequirementAnalysisTurnEngine:
         state["risks"] = self.owner._append_unique(list(state.get("risks", [])), model_output["risks"])
         state["provider_logs"] = [
             *list(state.get("provider_logs", [])),
-            {
-                "call_id": f"requirement-analysis-provider-call-{len(turns):04d}",
-                "provider_id": session.provider_id,
-                "orchestrator_id": orchestrator.orchestrator_id,
-                "orchestrator_mode": orchestrator.mode,
-                "model": session.model,
-                "status": "mocked" if model_output["raw_model_response"].get("mock") else "completed",
-                "created_at": now,
-            },
+            self._provider_log(
+                turn_id=turn_id,
+                session=session,
+                orchestrator=orchestrator,
+                user_input=user_input,
+                normalized=normalized,
+                model_output=model_output,
+                provider_normalized_output=provider_normalized_output,
+                created_at=now,
+                call_index=len(turns),
+            ),
         ]
         session.payload = state
         session.status = "waiting_user"
         return turn
+
+    @staticmethod
+    def _provider_normalized_output(model_output: dict) -> dict:
+        raw_model_response = dict(model_output.get("raw_model_response") or {})
+        existing = raw_model_response.get("provider_normalized_output")
+        if isinstance(existing, dict):
+            return existing
+        return {
+            key: value
+            for key, value in model_output.items()
+            if key != "raw_model_response"
+        }
+
+    @staticmethod
+    def _service_output(model_output: dict) -> dict:
+        return {
+            key: value
+            for key, value in model_output.items()
+            if key != "raw_model_response"
+        }
+
+    def _provider_log(
+        self,
+        *,
+        turn_id: str,
+        session: RequirementAnalysisSession,
+        orchestrator: Any,
+        user_input: str,
+        normalized: dict,
+        model_output: dict,
+        provider_normalized_output: dict,
+        created_at: str,
+        call_index: int,
+    ) -> dict:
+        raw_model_response = dict(model_output.get("raw_model_response") or {})
+        return {
+            "call_id": f"requirement-analysis-provider-call-{call_index:04d}",
+            "turn_id": turn_id,
+            "provider_id": session.provider_id,
+            "orchestrator_id": orchestrator.orchestrator_id,
+            "orchestrator_mode": orchestrator.mode,
+            "model": session.model,
+            "status": "mocked" if raw_model_response.get("mock") else "completed",
+            "created_at": created_at,
+            "audit": {
+                "user_input": str(raw_model_response.get("user_input") or user_input),
+                "normalized_input": normalized,
+                "provider_request": raw_model_response.get("provider_request") or {},
+                "provider_response": raw_model_response.get("provider_response") or {},
+                "provider_normalized_output": provider_normalized_output,
+                "service_output": self._service_output(model_output),
+            },
+        }

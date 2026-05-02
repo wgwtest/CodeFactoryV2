@@ -24,24 +24,32 @@ class DeepSeekRequirementAnalysisClient:
             normalized=normalized,
             orchestrator_id=orchestrator_id or session.orchestrator_id,
         )
+        request_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是 CodeFactory V2 P2 XG 需求分析组织器 Lab 的可插拔组织器 Provider。"
+                    "你只返回 JSON，不要返回 Markdown。"
+                ),
+            },
+            {"role": "user", "content": prompt_bundle["assembled_prompt"]},
+        ]
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是 CodeFactory V2 P2 XG 需求分析组织器 Lab 的可插拔组织器 Provider。"
-                        "你只返回 JSON，不要返回 Markdown。"
-                    ),
-                },
-                {"role": "user", "content": prompt_bundle["assembled_prompt"]},
-            ],
+            messages=request_messages,
             temperature=0,
             response_format={"type": "json_object"},
         )
         content = self._extract_content(response)
         parsed = json.loads(content)
-        return self._normalize_output(parsed, session=session, user_input=user_input)
+        return self._normalize_output(
+            parsed,
+            session=session,
+            user_input=user_input,
+            prompt_bundle=prompt_bundle,
+            request_messages=request_messages,
+            raw_content=content,
+        )
 
     def _build_prompt_bundle(
         self,
@@ -145,8 +153,17 @@ class DeepSeekRequirementAnalysisClient:
             raise ValueError("DeepSeek 响应缺少 JSON 文本")
         return content
 
-    def _normalize_output(self, payload: dict[str, Any], *, session: RequirementAnalysisSession, user_input: str) -> dict:
-        return {
+    def _normalize_output(
+        self,
+        payload: dict[str, Any],
+        *,
+        session: RequirementAnalysisSession,
+        user_input: str,
+        prompt_bundle: dict[str, Any] | None = None,
+        request_messages: list[dict[str, str]] | None = None,
+        raw_content: str | None = None,
+    ) -> dict:
+        normalized_output = {
             "organizer_interpretation": self._normalize_organizer_interpretation(payload.get("organizer_interpretation")),
             "assistant_message": str(payload.get("assistant_message") or "已接收，本轮需要继续补齐需求信息。"),
             "next_suggestion": self._normalize_next_suggestion(payload.get("next_suggestion")),
@@ -158,11 +175,31 @@ class DeepSeekRequirementAnalysisClient:
             "annotations": self._string_list(payload.get("annotations")),
             "risks": self._string_list(payload.get("risks")),
             "confidence": self._normalize_confidence(payload.get("confidence")),
+        }
+        return {
+            **normalized_output,
             "raw_model_response": {
                 "provider_id": "deepseek",
                 "model": self.model,
                 "mock": False,
                 "user_input": user_input,
+                "orchestrator_id": str((prompt_bundle or {}).get("orchestrator_id") or session.orchestrator_id),
+                "mode": str((prompt_bundle or {}).get("mode") or "provider"),
+                "provider_request": {
+                    "messages": list(request_messages or []),
+                    "prompt_bundle": {
+                        "assembled_prompt": str((prompt_bundle or {}).get("assembled_prompt") or ""),
+                        "context_json": str((prompt_bundle or {}).get("context_json") or ""),
+                        "schema_json": str((prompt_bundle or {}).get("schema_json") or ""),
+                        "policy_text": str((prompt_bundle or {}).get("policy_text") or ""),
+                        "prompt_text": str((prompt_bundle or {}).get("prompt_text") or ""),
+                    },
+                },
+                "provider_response": {
+                    "raw_content": str(raw_content or ""),
+                    "parsed_json": payload,
+                },
+                "provider_normalized_output": normalized_output,
             },
         }
 
