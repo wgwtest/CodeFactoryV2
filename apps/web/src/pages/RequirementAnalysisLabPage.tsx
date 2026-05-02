@@ -29,6 +29,21 @@ const DEFAULT_POLICY = "patch_suggestion_only";
 const DEFAULT_ORCHESTRATOR_ID = "xg-heuristic-orchestrator";
 type RequirementAnalysisLabTab = "config" | "session" | "turn" | "log";
 
+const PROVIDER_LOG_FIELD_NOTES: Record<string, string> = {
+  user_input: "用户本轮提交的原始输入，用于追溯 Provider 调用从哪段用户表达开始。",
+  normalized_input: "组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。",
+  "provider_request.messages": "发给模型的最终 messages 数组，模型调用时直接使用。",
+  "provider_request.prompt_bundle.assembled_prompt": "组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。",
+  "provider_request.prompt_bundle.context_json": "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
+  "provider_request.prompt_bundle.schema_json": "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
+  "provider_request.mock_context": "Mock Provider 的调试上下文，仅在本地模拟调用时使用。",
+  "provider_request.runner_context": "运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。",
+  "provider_response.raw_content": "Provider 返回的原始文本，解析失败时优先看这一块。",
+  "provider_response.parsed_json": "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
+  provider_normalized_output: "Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。",
+  service_output: "Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。",
+};
+
 export function RequirementAnalysisLabPage() {
   const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [providers, setProviders] = useState<RequirementAnalysisProvider[]>([]);
@@ -784,9 +799,13 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
 }
 
 function LogAuditBlock({ title, value }: { title: string; value: unknown }) {
+  const note = PROVIDER_LOG_FIELD_NOTES[title];
   return (
     <div className="requirement-analysis-lab-log-audit-block">
-      <Text strong>{title}</Text>
+      <div className="requirement-analysis-lab-log-audit-title">
+        <Text strong>{title}</Text>
+        {note ? <Text type="secondary">（{note}）</Text> : null}
+      </div>
       <pre>{formatAuditValue(value)}</pre>
     </div>
   );
