@@ -170,6 +170,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
 
   fireEvent.click(screen.getByRole("tab", { name: /当前 Turn/ }));
 
+  expect(screen.getByTestId("requirement-analysis-turn-grid")).toHaveClass("is-turn-single");
   expect(screen.getByText("当前 Turn 决策审计")).toBeInTheDocument();
   expect(screen.getByText("上轮系统留题")).toBeInTheDocument();
   expect(screen.getByText("本轮用户输入")).toBeInTheDocument();
@@ -197,6 +198,23 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("Provider 调用日志")).toBeInTheDocument();
   expect(screen.getAllByText("call-0001").length).toBeGreaterThan(0);
   expect(screen.getByText(/deepseek-chat/)).toBeInTheDocument();
+  expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
+  expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "请求" }));
+  expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("provider_request.messages")).toBeInTheDocument();
+  expect(screen.getByText("provider_request.prompt_bundle.assembled_prompt")).toBeInTheDocument();
+  expect(screen.getByText("assembled prompt")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "原始输出" }));
+  expect(screen.getByText("provider_response.raw_content")).toBeInTheDocument();
+  expect(screen.getAllByText(/DeepSeek 已确认：本轮把系统定位更新为计算分析工具。/).length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole("tab", { name: "后处理" }));
+  expect(screen.getByText("provider_normalized_output")).toBeInTheDocument();
+  expect(screen.getByText("service_output")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
 
@@ -545,6 +563,48 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
           model: "deepseek-chat",
           status: "completed",
           created_at: "2026-05-01T00:00:00Z",
+          turn_id: "turn-0001",
+          orchestrator_id: "xg-heuristic-orchestrator",
+          orchestrator_mode: "policy_interpreted",
+          audit: {
+            user_input: "A，先按计算分析工具理解",
+            normalized_input: {
+              input_type: "quick_option_answer",
+              matched_option: "A",
+              matched_option_label: "先按计算分析工具理解",
+              semantic: "先按计算分析工具理解",
+            },
+            provider_request: {
+              messages: [
+                { role: "system", content: "system prompt" },
+                { role: "user", content: "assembled prompt" },
+              ],
+              prompt_bundle: {
+                assembled_prompt: "assembled prompt",
+                context_json: '{"topic":"空域运算软件需求规格探索"}',
+                schema_json: '{"assistant_message":"string"}',
+              },
+            },
+            provider_response: {
+              raw_content: '{"assistant_message":"DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"}',
+              parsed_json: {
+                assistant_message: "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
+              },
+            },
+            provider_normalized_output: {
+              assistant_message: "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
+            },
+            service_output: {
+              assistant_message: "基于你的输入，本轮更新了：1.1 系统目标。建议下一步确认输入数据来源和输出结果形式。",
+              document_patch: [
+                {
+                  section: "1.1 系统目标",
+                  operation: "append_or_update",
+                  content: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
+                },
+              ],
+            },
+          },
         },
         {
           call_id: "call-0002",
@@ -552,6 +612,48 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
           model: "deepseek-chat",
           status: "completed",
           created_at: "2026-05-01T00:00:01Z",
+          turn_id: "turn-0002",
+          orchestrator_id: "xg-heuristic-orchestrator",
+          orchestrator_mode: "policy_interpreted",
+          audit: {
+            user_input: "B，先确认输出",
+            normalized_input: {
+              input_type: "quick_option_answer",
+              matched_option: "B",
+              matched_option_label: "先确认输出",
+              semantic: "先确认输出",
+            },
+            provider_request: {
+              messages: [
+                { role: "system", content: "system prompt" },
+                { role: "user", content: "assembled prompt 2" },
+              ],
+              prompt_bundle: {
+                assembled_prompt: "assembled prompt 2",
+                context_json: '{"topic":"空域运算软件需求规格探索"}',
+                schema_json: '{"assistant_message":"string"}',
+              },
+            },
+            provider_response: {
+              raw_content: '{"assistant_message":"下一轮建议确认输出结果形式。"}',
+              parsed_json: {
+                assistant_message: "下一轮建议确认输出结果形式。",
+              },
+            },
+            provider_normalized_output: {
+              assistant_message: "下一轮建议确认输出结果形式。",
+            },
+            service_output: {
+              assistant_message: "基于你的输入，本轮更新了：2.1 输出结果。建议下一步确认结果展示形式。",
+              document_patch: [
+                {
+                  section: "2.1 输出结果",
+                  operation: "append_or_update",
+                  content: "系统需要输出计算结果，并支持结果解释与确认。",
+                },
+              ],
+            },
+          },
         },
       ],
     },

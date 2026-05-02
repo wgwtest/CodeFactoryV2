@@ -151,9 +151,12 @@
   grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr) minmax(360px, 1fr);
 }
 
-.requirement-analysis-lab-tab-grid.is-turn,
 .requirement-analysis-lab-tab-grid.is-log {
-  grid-template-columns: minmax(480px, 1.25fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(260px, 0.3fr) minmax(640px, 0.7fr);
+}
+
+.requirement-analysis-lab-tab-grid.is-turn-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .requirement-analysis-lab-tab-grid.is-session {
@@ -725,6 +728,65 @@
   align-items: center;
   gap: 10px;
   padding: 0 12px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.requirement-analysis-lab-log-item.is-selected {
+  border-color: #2f7b7d;
+  background: #edf8f7;
+}
+
+.requirement-analysis-lab-log-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.requirement-analysis-lab-log-main .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requirement-analysis-lab-log-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d5dfda;
+  background: #f7faf9;
+}
+
+.requirement-analysis-lab-log-meta .ant-typography {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.requirement-analysis-lab-log-audit-block {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #d5dfda;
+  background: #ffffff;
+}
+
+.requirement-analysis-lab-log-audit-block pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #e0e7e3;
+  background: #f7faf9;
+  color: #1d2a28;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 1180px) {
@@ -736,7 +798,7 @@
   .requirement-analysis-lab-tab-grid,
   .requirement-analysis-lab-tab-grid.is-config,
   .requirement-analysis-lab-tab-grid.is-session,
-  .requirement-analysis-lab-tab-grid.is-turn,
+  .requirement-analysis-lab-tab-grid.is-turn-single,
   .requirement-analysis-lab-tab-grid.is-log {
     height: auto;
     grid-template-columns: 1fr;

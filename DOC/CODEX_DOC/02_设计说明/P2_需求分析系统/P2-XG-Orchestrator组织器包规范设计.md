@@ -29,6 +29,7 @@ orchestrators/xg/<orchestrator-id>/
   policy.md
   prompt.md
   artifact_rules.json
+  spec_strategy.json
   examples/
   tests/
   runner.py
@@ -42,6 +43,7 @@ orchestrators/xg/<orchestrator-id>/
 - `policy.md` 是面向需求规格说明的组织规则。
 - `prompt.md` 是 XG 模型提示策略，`local_runner` 模式下可作为说明文件。
 - `artifact_rules.json` 是面向规格节点的事实模板、正文 patch 模板和轻量选项规则。
+- `spec_strategy.json` 是面向规格完成度树的节点问题、章节问题模板和默认叶子问题策略。
 - `examples/` 和 `tests/` 用于 XG 包级样例与契约验证。
 - `runner.py` 只在 `local_runner` 模式下强制存在，并由 P2 Host 受控调用。
 
@@ -69,6 +71,7 @@ xg-strong-rule-orchestrator
 - 偏启发式、开放输入、轻量选项、用户输入驱动。
 - 可以调用 `mock / deepseek / openai` Provider。
 - 规格节点的事实模板、patch 模板与快捷选项由包内 `artifact_rules.json` 提供。
+- 完成度树节点问题由包内 `spec_strategy.json` 提供。
 
 `xg-strong-rule-orchestrator`：
 
@@ -76,6 +79,7 @@ xg-strong-rule-orchestrator
 - 偏规则优先、强审计链、强闭环。
 - 模型只作为未来候选文本来源，首版由 Host 受控规则路径执行。
 - 本地 runner 仍遵守同一 `artifact_rules.json`，不在 Host 服务层重复写一套章节模板。
+- 强规则节点问题由包内 `spec_strategy.json` 提供，Host 只负责按模板生成树结构并挂载问题文本。
 
 两者都必须遵守 `xg-orchestrator-contract@1`，并输出同一套 Turn 协议。
 
@@ -130,3 +134,5 @@ decision_trace
 
 - `policy_interpreted` 组织器必须提供 `artifact_rules.json`，供 mock 路径和服务端 fallback 使用。
 - `local_runner` 组织器也必须提供 `artifact_rules.json`，由 runner 自己读取；Host 不再额外硬编码章节事实与 patch 文案。
+- 所有 XG 组织器都必须提供 `spec_strategy.json`，Host 不再维护后端条款问题库。
+- 所有 XG 组织器执行结果必须进入 Provider 调用审计链。审计链至少保留 `provider_request`、`provider_response`、`provider_normalized_output` 和 Turn 引擎生成的 `service_output`，用于判断问题来自组织器提示词、模型输出、Provider 适配还是服务端后处理。

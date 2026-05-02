@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Input, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Input, Space, Spin, Tabs, Tag, Typography } from "antd";
 
 import type {
   RequirementAnalysisOrchestrator,
@@ -537,7 +537,7 @@ function TurnTab({
   const protocolErrors = currentTurn ? validateTurnProtocol(currentTurn) : [];
   return (
     <>
-      <div className="requirement-analysis-lab-tab-grid is-turn">
+      <div className="requirement-analysis-lab-tab-grid is-turn-single" data-testid="requirement-analysis-turn-grid">
         <section className="requirement-analysis-lab-panel requirement-analysis-lab-turn">
           <PanelHead title="当前 Turn 决策审计" subtitle={currentTurn ? currentTurn.turn_id : "请先进入“会话管理”发送一轮输入。"} />
           {currentTurn ? (
@@ -635,20 +635,41 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
-  const selectedLog = logs[0] ?? null;
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const selectedLog =
+    logs.find((log) => log.call_id === selectedCallId) ?? logs[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedLog) {
+      setSelectedCallId(null);
+      return;
+    }
+    if (!logs.some((log) => log.call_id === selectedCallId)) {
+      setSelectedCallId(selectedLog.call_id);
+    }
+  }, [logs, selectedCallId, selectedLog]);
+
   return (
     <>
       <div className="requirement-analysis-lab-tab-grid is-log">
         <section className="requirement-analysis-lab-panel">
-          <PanelHead title="Provider 调用日志" subtitle="按调用时间展示 Provider 请求记录。" />
+          <PanelHead title="Provider 调用日志" subtitle="按调用时间展示每轮组织器 Provider 请求记录。" />
           {logs.length > 0 ? (
             <div className="requirement-analysis-lab-log-list">
               {logs.map((log) => (
-                <div className="requirement-analysis-lab-log-item" key={log.call_id}>
-                  <Text strong>{log.call_id}</Text>
+                <button
+                  className={`requirement-analysis-lab-log-item ${selectedLog?.call_id === log.call_id ? "is-selected" : ""}`}
+                  key={log.call_id}
+                  onClick={() => setSelectedCallId(log.call_id)}
+                  type="button"
+                >
+                  <span className="requirement-analysis-lab-log-main">
+                    <Text strong>{log.call_id}</Text>
+                    <Text type="secondary">{log.turn_id ?? "未绑定 Turn"}</Text>
+                  </span>
                   <Text type="secondary">{log.provider_id}</Text>
                   <Tag>{log.status}</Tag>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -660,12 +681,7 @@ function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
         <section className="requirement-analysis-lab-panel">
           <PanelHead title="调用详情" subtitle={selectedLog ? selectedLog.call_id : "等待 Provider 调用。"} />
           {selectedLog ? (
-            <div className="requirement-analysis-lab-detail-list">
-              <Text>Provider: {selectedLog.provider_id}</Text>
-              <Text>Model: {selectedLog.model}</Text>
-              <Text>Status: {selectedLog.status}</Text>
-              <Text>Time: {selectedLog.created_at}</Text>
-            </div>
+            <ProviderLogDetail log={selectedLog} />
           ) : (
             <Text type="secondary">启动会话或发送输入后，这里会显示 Provider 调用细节。</Text>
           )}
@@ -673,6 +689,141 @@ function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
       </div>
     </>
   );
+}
+
+function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
+  const audit = log.audit ?? {};
+  const promptBundle = getRecord(audit.provider_request, "prompt_bundle");
+  const requestMessages = getArray(audit.provider_request, "messages");
+  const mockContext = getRecord(audit.provider_request, "mock_context");
+  const runnerContext = getRecord(audit.provider_request, "runner_context");
+  const rawContent = getString(audit.provider_response, "raw_content");
+  const parsedProviderOutput = getRecord(audit.provider_response, "parsed_json");
+
+  return (
+    <Tabs
+      className="requirement-analysis-lab-log-detail-tabs"
+      items={[
+        {
+          key: "overview",
+          label: "概览",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <div className="requirement-analysis-lab-log-meta">
+                <Text>Provider: {log.provider_id}</Text>
+                <Text>Model: {log.model}</Text>
+                <Text>Status: {log.status}</Text>
+                <Text>Turn: {log.turn_id ?? "未绑定 Turn"}</Text>
+                <Text>Orchestrator: {log.orchestrator_id ?? "未记录"}</Text>
+                <Text>Mode: {log.orchestrator_mode ?? "未记录"}</Text>
+                <Text>Time: {log.created_at}</Text>
+              </div>
+              <LogAuditBlock title="user_input" value={audit.user_input ?? ""} />
+              <LogAuditBlock title="normalized_input" value={audit.normalized_input ?? {}} />
+            </div>
+          ),
+        },
+        {
+          key: "request",
+          label: "请求",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock title="provider_request.messages" value={requestMessages} />
+              <LogAuditBlock
+                title="provider_request.prompt_bundle.assembled_prompt"
+                value={getString(promptBundle, "assembled_prompt")}
+              />
+              <LogAuditBlock title="provider_request.mock_context" value={mockContext} />
+              <LogAuditBlock title="provider_request.runner_context" value={runnerContext} />
+            </div>
+          ),
+        },
+        {
+          key: "context",
+          label: "上下文",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock title="provider_request.prompt_bundle.context_json" value={getString(promptBundle, "context_json")} />
+              <LogAuditBlock title="provider_request.mock_context" value={mockContext} />
+              <LogAuditBlock title="provider_request.runner_context" value={runnerContext} />
+            </div>
+          ),
+        },
+        {
+          key: "schema",
+          label: "Schema",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock title="provider_request.prompt_bundle.schema_json" value={getString(promptBundle, "schema_json")} />
+            </div>
+          ),
+        },
+        {
+          key: "raw",
+          label: "原始输出",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock title="provider_response.raw_content" value={rawContent} />
+              <LogAuditBlock title="provider_response.parsed_json" value={parsedProviderOutput} />
+            </div>
+          ),
+        },
+        {
+          key: "postprocess",
+          label: "后处理",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock title="provider_normalized_output" value={audit.provider_normalized_output ?? {}} />
+              <LogAuditBlock title="service_output" value={audit.service_output ?? {}} />
+            </div>
+          ),
+        },
+      ]}
+    />
+  );
+}
+
+function LogAuditBlock({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div className="requirement-analysis-lab-log-audit-block">
+      <Text strong>{title}</Text>
+      <pre>{formatAuditValue(value)}</pre>
+    </div>
+  );
+}
+
+function formatAuditValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value || "未记录";
+  }
+  if (value === null || value === undefined) {
+    return "未记录";
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function getRecord(value: unknown, key: string): Record<string, unknown> {
+  if (!isObject(value)) {
+    return {};
+  }
+  const nested = value[key];
+  return isObject(nested) ? nested : {};
+}
+
+function getArray(value: unknown, key: string): unknown[] {
+  if (!isObject(value)) {
+    return [];
+  }
+  const nested = value[key];
+  return Array.isArray(nested) ? nested : [];
+}
+
+function getString(value: unknown, key: string): string {
+  if (!isObject(value)) {
+    return "";
+  }
+  const nested = value[key];
+  return typeof nested === "string" ? nested : "";
 }
 
 function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {

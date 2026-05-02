@@ -36,28 +36,50 @@ class RequirementAnalysisProviderCallService:
         orchestrator: OrchestratorPackage,
     ) -> dict:
         state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        )
         active_node = self.owner._find_spec_node(
-            list(state.get("spec_tree") or self.owner._new_spec_tree(session.template_id)),
+            spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
-        return self.runner_host.execute_local_runner(
-            orchestrator.orchestrator_id,
-            context={
-                "session": {
-                    "session_id": session.id,
-                    "topic": session.topic,
-                    "provider_id": session.provider_id,
-                    "model": session.model,
-                    "template_id": session.template_id,
-                    "knowledge_package_id": session.knowledge_package_id,
-                    "write_policy": session.write_policy,
-                },
-                "user_input": user_input,
-                "normalized": normalized,
-                "active_spec_node": active_node or {},
-                "state": state,
+        context = {
+            "session": {
+                "session_id": session.id,
+                "topic": session.topic,
+                "provider_id": session.provider_id,
+                "model": session.model,
+                "template_id": session.template_id,
+                "knowledge_package_id": session.knowledge_package_id,
+                "write_policy": session.write_policy,
             },
+            "user_input": user_input,
+            "normalized": normalized,
+            "active_spec_node": active_node or {},
+            "state": state,
+        }
+        output = self.runner_host.execute_local_runner(
+            orchestrator.orchestrator_id,
+            context=context,
         )
+        raw_model_response = dict(output.get("raw_model_response") or {})
+        output["raw_model_response"] = {
+            **raw_model_response,
+            "provider_request": {
+                "runner_context": context,
+            },
+            "provider_response": {
+                "raw_content": raw_model_response.get("runner_entry", "local_runner"),
+                "parsed_json": {
+                    key: value for key, value in output.items() if key != "raw_model_response"
+                },
+            },
+            "provider_normalized_output": {
+                key: value for key, value in output.items() if key != "raw_model_response"
+            },
+        }
+        return output
 
     def run_provider(
         self,
@@ -92,8 +114,12 @@ class RequirementAnalysisProviderCallService:
     ) -> dict:
         semantic = normalized["semantic"]
         state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        )
         active_node = self.owner._find_spec_node(
-            list(state.get("spec_tree") or self.owner._new_spec_tree(session.template_id)),
+            spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
         active_section = active_node.get("target_section") if active_node else "未绑定模板章节"
@@ -102,7 +128,49 @@ class RequirementAnalysisProviderCallService:
         next_question = str(active_node.get("question") if active_node else "请继续补充需求规格说明。")
         quick_options = self.owner._quick_options_for_node(active_node, orchestrator_id=orchestrator.orchestrator_id)
 
+        provider_request = {
+            "mock_context": {
+                "topic": session.topic,
+                "template_id": session.template_id,
+                "knowledge_package_id": session.knowledge_package_id,
+                "write_policy": session.write_policy,
+                "user_input": user_input,
+                "normalized_input": normalized,
+                "active_spec_node": active_node or {},
+            }
+        }
+        provider_response = {
+            "organizer_interpretation": {
+                "summary": f"用户输入可转化为 {active_section} 的需求规格材料。",
+                "intent": "supplement_requirement",
+                "confidence": "medium",
+            },
+            "assistant_message": f"基于你的输入，本轮更新了：{active_section}。",
+            "next_suggestion": {
+                "kind": "topic",
+                "content": "",
+                "reason": "",
+                "related_spec_node_ids": [],
+            },
+            "next_question": next_question,
+            "quick_options": quick_options,
+            "confirmed_facts_delta": [fact],
+            "open_questions_delta": [next_question],
+            "document_patch": [
+                {
+                    "section": active_section,
+                    "operation": "append_or_update",
+                    "content": patch_content,
+                    "write_policy": session.write_policy,
+                }
+            ],
+            "annotations": ["该修补建议仅进入 Lab 过程区，不直接写入正式需求规格草稿。"],
+            "risks": [],
+            "confidence": "medium",
+        }
+
         return {
+            **provider_response,
             "organizer_interpretation": {
                 "summary": f"用户输入可转化为 {active_section} 的需求规格材料。",
                 "intent": "supplement_requirement",
@@ -137,6 +205,12 @@ class RequirementAnalysisProviderCallService:
                 "orchestrator_id": orchestrator.orchestrator_id,
                 "mode": orchestrator.mode,
                 "user_input": user_input,
+                "provider_request": provider_request,
+                "provider_response": {
+                    "raw_content": "mock_model_output",
+                    "parsed_json": provider_response,
+                },
+                "provider_normalized_output": provider_response,
             },
         }
 
