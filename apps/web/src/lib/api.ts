@@ -2073,9 +2073,9 @@ export type P3DesignLabSession = {
   check_result?: RequirementAuthoringCheckResult | null;
 };
 
-export type BrainstormOrchestratorStatus = "active" | "available" | "disabled";
+export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
 
-export type BrainstormOrchestrator = {
+export type RequirementAnalysisOrchestrator = {
   orchestrator_id: string;
   name: string;
   version?: string;
@@ -2083,7 +2083,7 @@ export type BrainstormOrchestrator = {
   document_type?: string;
   contract?: string;
   mode?: string;
-  status: BrainstormOrchestratorStatus;
+  status: RequirementAnalysisOrchestratorStatus;
   description: string;
   entry?: string | null;
   capabilities?: readonly string[];
@@ -2091,13 +2091,13 @@ export type BrainstormOrchestrator = {
   package_path?: string;
 };
 
-export type BrainstormProvider = {
+export type RequirementAnalysisProvider = {
   provider_id: string;
   name: string;
   status: "active" | "not_configured" | "disabled";
 };
 
-export type BrainstormStableContract = {
+export type RequirementAnalysisStableContract = {
   formal_document: boolean;
   template_object: boolean;
   knowledge_binding: boolean;
@@ -2106,17 +2106,17 @@ export type BrainstormStableContract = {
   p2_to_p3_output: boolean;
 };
 
-export type BrainstormOrchestratorEnvelope = {
-  items: BrainstormOrchestrator[];
-  stable_contract: BrainstormStableContract;
+export type RequirementAnalysisOrchestratorEnvelope = {
+  items: RequirementAnalysisOrchestrator[];
+  stable_contract: RequirementAnalysisStableContract;
   output_protocol: string[];
 };
 
-export type BrainstormProviderEnvelope = {
-  items: BrainstormProvider[];
+export type RequirementAnalysisProviderEnvelope = {
+  items: RequirementAnalysisProvider[];
 };
 
-export type BrainstormMessage = {
+export type RequirementAnalysisMessage = {
   id: string;
   role: "assistant" | "user" | "system";
   content: string;
@@ -2124,25 +2124,25 @@ export type BrainstormMessage = {
   created_at?: string;
 };
 
-export type BrainstormDocumentPatch = {
+export type RequirementAnalysisDocumentPatch = {
   section: string;
   operation: string;
   content: string;
   write_policy?: string;
 };
 
-export type BrainstormQuestionStatus = "open" | "confirmed" | "cancelled" | "superseded" | "review";
+export type RequirementAnalysisQuestionStatus = "open" | "confirmed" | "cancelled" | "superseded" | "review";
 
-export type BrainstormQuestionItem = {
+export type RequirementAnalysisQuestionItem = {
   question_id: string;
   content: string;
-  status: BrainstormQuestionStatus | string;
+  status: RequirementAnalysisQuestionStatus | string;
   target_section?: string | null;
   source_turn_id: string | null;
   resolution_fact_ids: string[];
 };
 
-export type BrainstormConfirmedFactItem = {
+export type RequirementAnalysisConfirmedFactItem = {
   fact_id: string;
   content: string;
   source_turn_id: string;
@@ -2150,7 +2150,7 @@ export type BrainstormConfirmedFactItem = {
   target_section?: string | null;
 };
 
-export type BrainstormPatchProposal = {
+export type RequirementAnalysisPatchProposal = {
   patch_id: string;
   target_section: string;
   operation: string;
@@ -2161,7 +2161,7 @@ export type BrainstormPatchProposal = {
   source_question_ids: string[];
 };
 
-export type BrainstormSpecTreeNode = {
+export type RequirementAnalysisSpecTreeNode = {
   node_id: string;
   title: string;
   target_section: string;
@@ -2170,10 +2170,10 @@ export type BrainstormSpecTreeNode = {
   status: "open" | "partial" | "closed" | "skipped" | string;
   answer_summary: string;
   completion_reason: string;
-  children: BrainstormSpecTreeNode[];
+  children: RequirementAnalysisSpecTreeNode[];
 };
 
-export type BrainstormTurnPathItem = {
+export type RequirementAnalysisTurnPathItem = {
   turn_id: string;
   node_id: string;
   question_id?: string | null;
@@ -2185,39 +2185,39 @@ export type BrainstormTurnPathItem = {
   answer_summary: string;
 };
 
-export type BrainstormQuickOption = {
+export type RequirementAnalysisQuickOption = {
   key: string;
   label: string;
   recommended?: boolean;
 };
 
-export type BrainstormServiceStep = {
+export type RequirementAnalysisServiceStep = {
   step: number;
   title: string;
   status: string;
 };
 
-export type BrainstormInteraction = {
+export type RequirementAnalysisInteraction = {
   interaction_id?: string | null;
   type: "none" | "open_question" | "choice_question" | "suggestion" | "free_continue" | string;
   prompt: string;
-  options: BrainstormQuickOption[];
+  options: RequirementAnalysisQuickOption[];
   target_spec_node_ids: string[];
   reason?: string;
 };
 
-export type BrainstormInputRelation = {
+export type RequirementAnalysisInputRelation = {
   relation: string;
   reason: string;
 };
 
-export type BrainstormOrganizerInterpretation = {
+export type RequirementAnalysisOrganizerInterpretation = {
   summary: string;
   intent?: string;
   confidence?: string;
 };
 
-export type BrainstormAffectedSpecNode = {
+export type RequirementAnalysisAffectedSpecNode = {
   node_id: string | null;
   title?: string;
   target_section?: string;
@@ -2225,31 +2225,31 @@ export type BrainstormAffectedSpecNode = {
   reason: string;
 };
 
-export type BrainstormClosureAssessment = {
+export type RequirementAnalysisClosureAssessment = {
   status: string;
   reason: string;
   next_action: string;
 };
 
-export type BrainstormStateChanges = {
+export type RequirementAnalysisStateChanges = {
   closed_question_ids: string[];
   created_question_ids: string[];
   closed_spec_node_ids: string[];
   next_active_spec_node_id?: string | null;
 };
 
-export type BrainstormSpecExecution = {
-  interpretation: BrainstormOrganizerInterpretation;
+export type RequirementAnalysisSpecExecution = {
+  interpretation: RequirementAnalysisOrganizerInterpretation;
   assistant_message: string;
   confirmed_facts: string[];
-  affected_spec_nodes: BrainstormAffectedSpecNode[];
-  document_patch: BrainstormDocumentPatch[];
-  state_changes: BrainstormStateChanges;
+  affected_spec_nodes: RequirementAnalysisAffectedSpecNode[];
+  document_patch: RequirementAnalysisDocumentPatch[];
+  state_changes: RequirementAnalysisStateChanges;
   annotations: string[];
   risks: string[];
 };
 
-export type BrainstormPostUpdateReview = {
+export type RequirementAnalysisPostUpdateReview = {
   summary: string;
   previous_interaction_resolved: boolean;
   current_spec_node_sufficient: boolean;
@@ -2257,30 +2257,30 @@ export type BrainstormPostUpdateReview = {
   remaining_gaps: string[];
 };
 
-export type BrainstormTurn = {
+export type RequirementAnalysisTurn = {
   turn_id: string;
   session_id: string;
   user_input: string;
-  previous_interaction: BrainstormInteraction;
+  previous_interaction: RequirementAnalysisInteraction;
   normalized_input: {
     input_type: string;
     matched_option: string | null;
     matched_option_label?: string | null;
     semantic: string;
   };
-  input_relation: BrainstormInputRelation;
-  spec_execution: BrainstormSpecExecution;
-  post_update_review: BrainstormPostUpdateReview;
-  closure_decision: BrainstormClosureAssessment;
-  next_interaction: BrainstormInteraction;
+  input_relation: RequirementAnalysisInputRelation;
+  spec_execution: RequirementAnalysisSpecExecution;
+  post_update_review: RequirementAnalysisPostUpdateReview;
+  closure_decision: RequirementAnalysisClosureAssessment;
+  next_interaction: RequirementAnalysisInteraction;
   decision_trace: string[];
   confidence: string;
-  service_steps: BrainstormServiceStep[];
+  service_steps: RequirementAnalysisServiceStep[];
   raw_model_response: Record<string, unknown>;
   created_at: string;
 };
 
-export type BrainstormProviderLog = {
+export type RequirementAnalysisProviderLog = {
   call_id: string;
   provider_id: string;
   model: string;
@@ -2288,37 +2288,37 @@ export type BrainstormProviderLog = {
   created_at: string;
 };
 
-export type BrainstormSession = {
+export type RequirementAnalysisSession = {
   session_id: string;
   topic: string;
   status: "created" | "waiting_user" | "running" | "failed" | "completed";
-  orchestrator: BrainstormOrchestrator;
+  orchestrator: RequirementAnalysisOrchestrator;
   provider_id: string;
   model: string;
   template_id: string;
   knowledge_package_id: string;
   write_policy: string;
-  stable_contract: BrainstormStableContract;
-  messages: BrainstormMessage[];
-  turns: BrainstormTurn[];
+  stable_contract: RequirementAnalysisStableContract;
+  messages: RequirementAnalysisMessage[];
+  turns: RequirementAnalysisTurn[];
   confirmed_facts: string[];
   open_questions: string[];
-  document_patch: BrainstormDocumentPatch[];
-  questions: BrainstormQuestionItem[];
-  facts: BrainstormConfirmedFactItem[];
-  patches: BrainstormPatchProposal[];
-  spec_tree: BrainstormSpecTreeNode[];
+  document_patch: RequirementAnalysisDocumentPatch[];
+  questions: RequirementAnalysisQuestionItem[];
+  facts: RequirementAnalysisConfirmedFactItem[];
+  patches: RequirementAnalysisPatchProposal[];
+  spec_tree: RequirementAnalysisSpecTreeNode[];
   active_spec_node_id: string | null;
-  turn_path: BrainstormTurnPathItem[];
+  turn_path: RequirementAnalysisTurnPathItem[];
   annotations: string[];
   risks: string[];
-  provider_logs: BrainstormProviderLog[];
-  next_interaction: BrainstormInteraction | null;
+  provider_logs: RequirementAnalysisProviderLog[];
+  next_interaction: RequirementAnalysisInteraction | null;
   created_at: string;
   updated_at: string;
 };
 
-export type BrainstormSessionCreateInput = {
+export type RequirementAnalysisSessionCreateInput = {
   topic: string;
   orchestrator_id: string;
   provider_id: string;
@@ -2328,7 +2328,7 @@ export type BrainstormSessionCreateInput = {
   write_policy?: string;
 };
 
-export type BrainstormTurnEnvelope = {
-  session: BrainstormSession;
-  turn: BrainstormTurn;
+export type RequirementAnalysisTurnEnvelope = {
+  session: RequirementAnalysisSession;
+  turn: RequirementAnalysisTurn;
 };

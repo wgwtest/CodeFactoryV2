@@ -1,4 +1,4 @@
-# XG Brainstorming Orchestrator
+# XG Requirement Analysis Orchestrator
 
 ## 1. 定位
 

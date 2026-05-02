@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-
 from app.db.models.requirements import RequirementAuthoringDocument, RequirementAuthoringTemplate
+from app.requirement_authoring.annotation_service import RequirementAnnotationService
+from app.requirement_authoring.document_repository import RequirementAuthoringRepository
+from app.requirement_authoring.document_renderer import RequirementDocumentRenderer
+from app.requirement_authoring.freeze_service import RequirementFreezeService
+from app.requirement_authoring.gap_checker import RequirementGapChecker
 from app.requirement_authoring.models import (
     RequirementAuthoringDocumentCreate,
     RequirementAuthoringDocumentSave,
@@ -19,12 +22,15 @@ from app.xx_p1_sim.service import XXP1SimService
 class RequirementAuthoringService:
     def __init__(self, session) -> None:
         self.session = session
+        self.repository = RequirementAuthoringRepository(session)
+        self.document_renderer = RequirementDocumentRenderer()
+        self.annotation_service = RequirementAnnotationService()
+        self.gap_checker = RequirementGapChecker()
+        self.freeze_service = RequirementFreezeService()
 
     def list_templates(self) -> list[dict]:
         self._ensure_default_templates()
-        templates = self.session.scalars(
-            select(RequirementAuthoringTemplate).order_by(RequirementAuthoringTemplate.template_code)
-        ).all()
+        templates = self.repository.list_templates()
         return [self._serialize_template(template) for template in templates]
 
     def create_template(self, payload: RequirementAuthoringTemplateWrite) -> dict:
@@ -35,13 +41,10 @@ class RequirementAuthoringService:
             status=payload.status,
             payload=template_payload,
         )
-        self.session.add(template)
-        self.session.commit()
-        self.session.refresh(template)
-        return self._serialize_template(template)
+        return self._serialize_template(self.repository.add_template(template))
 
     def update_template(self, template_id: str, payload: RequirementAuthoringTemplateWrite) -> dict | None:
-        template = self.session.get(RequirementAuthoringTemplate, template_id)
+        template = self.repository.get_template(template_id)
         if template is None:
             return None
 
@@ -49,36 +52,30 @@ class RequirementAuthoringService:
         template.name = payload.name.strip() or payload.template_code.strip()
         template.status = payload.status
         template.payload = self._template_payload_from_write(payload)
-        self.session.commit()
-        self.session.refresh(template)
-        return self._serialize_template(template)
+        return self._serialize_template(self.repository.save_template(template))
 
     def activate_template(self, template_id: str) -> dict | None:
-        template = self.session.get(RequirementAuthoringTemplate, template_id)
+        template = self.repository.get_template(template_id)
         if template is None:
             return None
 
         template.status = "active"
-        self.session.commit()
-        self.session.refresh(template)
-        return self._serialize_template(template)
+        return self._serialize_template(self.repository.save_template(template))
 
     def list_documents(self) -> list[dict]:
-        documents = self.session.scalars(
-            select(RequirementAuthoringDocument).order_by(RequirementAuthoringDocument.updated_at.desc())
-        ).all()
+        documents = self.repository.list_documents()
         return [self._serialize_document_summary(document) for document in documents]
 
     def create_document(self, payload: RequirementAuthoringDocumentCreate) -> dict:
         self._ensure_default_templates()
-        template = self.session.get(RequirementAuthoringTemplate, payload.template_id)
+        template = self.repository.get_template(payload.template_id)
         if template is None:
             raise ValueError("template not found")
 
         fields = self._initial_fields()
         semantic_state = self._build_semantic_state(fields, template)
-        document_body = self._render_document(template.payload, fields)
-        annotations = self._build_annotations(template.payload, fields)
+        document_body = self.document_renderer.render_document(template.payload, fields)
+        annotations = self.annotation_service.build_annotations(template.payload, fields)
         conversation = [
             {
                 "id": "msg-1",
@@ -97,13 +94,10 @@ class RequirementAuthoringService:
             document=document_body,
             conversation=conversation,
             annotations=annotations,
-            check_result=self._empty_check_result(),
+            check_result=self.gap_checker.empty_check_result(),
             frozen_package=None,
         )
-        self.session.add(document)
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.add_document(document))
 
     def list_knowledge_providers(self) -> dict:
         provider = XXP1SimService().build_requirement_authoring_provider()
@@ -113,21 +107,20 @@ class RequirementAuthoringService:
         return XXP1SimService().bind_requirement_authoring_knowledge(provider_id, domain_id)
 
     def get_document(self, document_id: str) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         return self._serialize_document_detail(document)
 
     def delete_document(self, document_id: str) -> bool:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return False
-        self.session.delete(document)
-        self.session.commit()
+        self.repository.delete_document(document)
         return True
 
     def save_document(self, document_id: str, payload: RequirementAuthoringDocumentSave) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         if document.status != "frozen":
@@ -136,15 +129,15 @@ class RequirementAuthoringService:
             document.title = payload.title.strip() or "未命名软件需求规格说明"
         template = self._get_document_template(document)
         if payload.template_id is not None and payload.template_id != document.template_id:
-            next_template = self.session.get(RequirementAuthoringTemplate, payload.template_id)
+            next_template = self.repository.get_template(payload.template_id)
             if next_template is None:
                 raise ValueError("template not found")
             document.template_id = next_template.id
             template = next_template
             fields = dict((document.semantic_state or {}).get("fields", {}))
-            document.document = self._render_document(template.payload, fields)
-            document.annotations = self._build_annotations(template.payload, fields)
-            document.check_result = self._empty_check_result()
+            document.document = self.document_renderer.render_document(template.payload, fields)
+            document.annotations = self.annotation_service.build_annotations(template.payload, fields)
+            document.check_result = self.gap_checker.empty_check_result()
         if payload.archive_ids is not None:
             document.archive_ids = payload.archive_ids
         semantic_state = dict(document.semantic_state or {})
@@ -160,12 +153,10 @@ class RequirementAuthoringService:
         document.conversation = list(document.conversation or [])
         document.annotations = list(document.annotations or [])
         document.check_result = dict(document.check_result or {})
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def append_message(self, document_id: str, payload: RequirementAuthoringMessageWrite) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         if document.status == "frozen":
@@ -205,12 +196,10 @@ class RequirementAuthoringService:
         self._write_document_state(document, template, fields)
         document.conversation = conversation
         document.status = "draft"
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def patch_form_fields(self, document_id: str, payload: RequirementAuthoringFormPatch) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         if document.status == "frozen":
@@ -222,86 +211,35 @@ class RequirementAuthoringService:
             fields[key] = value.strip()
         self._write_document_state(document, template, fields)
         document.status = "draft"
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def patch_clause(self, document_id: str, clause_id: str, content: str) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         if document.status == "frozen":
             raise ValueError("document is frozen")
 
-        next_document = {
-            **document.document,
-            "sections": [
-                {
-                    **section,
-                    "clauses": [
-                        {
-                            **clause,
-                            "content": content.strip(),
-                            "status": "pending_mapping" if clause["clause_id"] == clause_id else clause.get("status", "missing"),
-                        }
-                        if clause["clause_id"] == clause_id
-                        else clause
-                        for clause in section.get("clauses", [])
-                    ],
-                }
-                for section in document.document.get("sections", [])
-            ],
-        }
-        document.document = next_document
-        document.annotations = [
-            {
-                **annotation,
-                "pending_confirmations": ["正文已轻量编辑，结构化映射待确认。"],
-            }
-            if annotation["clause_id"] == clause_id
-            else annotation
-            for annotation in document.annotations
-        ]
+        document.document = self.document_renderer.patch_clause(document.document, clause_id, content)
+        document.annotations = self.annotation_service.mark_clause_pending_mapping(document.annotations, clause_id)
         document.status = "draft"
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def run_check(self, document_id: str) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
 
         template = self._get_document_template(document)
         fields = document.semantic_state.get("fields", {})
-        required_fields = template.payload.get("gap_rules", {}).get("required_fields", [])
-        form_labels = self._form_labels(template.payload)
-        blocking_items = [
-            {
-                "severity": "blocking",
-                "field_key": field_key,
-                "clause_id": self._field_clause_id(template.payload, field_key),
-                "message": f"{form_labels.get(field_key, field_key)} 缺少确认内容。",
-            }
-            for field_key in required_fields
-            if not fields.get(field_key)
-        ]
-        passed_count = max(len(required_fields) - len(blocking_items), 0)
-        check_result = {
-            "blocking_count": len(blocking_items),
-            "warning_count": 0,
-            "passed_count": passed_count,
-            "items": blocking_items,
-        }
+        check_result = self.gap_checker.run(template.payload, fields)
         document.check_result = check_result
-        document.status = "ready_to_freeze" if not blocking_items else "checking"
-        document.annotations = self._build_annotations(template.payload, fields, blocking_items)
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        document.status = "ready_to_freeze" if not check_result["items"] else "checking"
+        document.annotations = self.annotation_service.build_annotations(template.payload, fields, check_result["items"])
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def freeze(self, document_id: str) -> dict | None:
-        document = self.session.get(RequirementAuthoringDocument, document_id)
+        document = self.repository.get_document(document_id)
         if document is None:
             return None
         if document.status != "ready_to_freeze":
@@ -311,40 +249,19 @@ class RequirementAuthoringService:
             raise ValueError("document has blocking gaps")
 
         fields = document.semantic_state.get("fields", {})
-        frozen_package = {
-            "p3_consumable": True,
-            "frozen_at": self._now(),
-            "standard_document": document.document,
-            "annotations": document.annotations,
-            "structured_spec": self._build_structured_spec(fields, document.archive_ids),
-        }
+        frozen_package = self.freeze_service.build_frozen_package(
+            standard_document=document.document,
+            annotations=document.annotations,
+            fields=fields,
+            archive_ids=document.archive_ids,
+            frozen_at=self._now(),
+        )
         document.status = "frozen"
         document.frozen_package = frozen_package
-        self.session.commit()
-        self.session.refresh(document)
-        return self._serialize_document_detail(document)
+        return self._serialize_document_detail(self.repository.save_document(document))
 
     def _ensure_default_templates(self) -> None:
-        existing_codes = {
-            template.template_code
-            for template in self.session.scalars(select(RequirementAuthoringTemplate)).all()
-        }
-        for template_code, name in [
-            ("81433", "软件级需求规格说明模板"),
-            ("82259", "平台级需求规格说明模板"),
-        ]:
-            if template_code in existing_codes:
-                continue
-            self.session.add(
-                RequirementAuthoringTemplate(
-                    id=f"tpl-{template_code}-default",
-                    template_code=template_code,
-                    name=name,
-                    status="active",
-                    payload=default_template_payload(template_code),
-                )
-            )
-        self.session.commit()
+        self.repository.ensure_default_templates()
 
     def _template_payload_from_write(self, payload: RequirementAuthoringTemplateWrite) -> dict:
         base_payload = default_template_payload(payload.template_code)
@@ -364,7 +281,7 @@ class RequirementAuthoringService:
         return base_payload
 
     def _get_document_template(self, document: RequirementAuthoringDocument) -> RequirementAuthoringTemplate:
-        template = self.session.get(RequirementAuthoringTemplate, document.template_id)
+        template = self.repository.get_template(document.template_id)
         if template is None:
             raise ValueError("template not found")
         return template
@@ -376,9 +293,9 @@ class RequirementAuthoringService:
         fields: dict[str, str],
     ) -> None:
         document.semantic_state = self._build_semantic_state(fields, template)
-        document.document = self._render_document(template.payload, fields)
-        document.annotations = self._build_annotations(template.payload, fields)
-        document.check_result = self._empty_check_result()
+        document.document = self.document_renderer.render_document(template.payload, fields)
+        document.annotations = self.annotation_service.build_annotations(template.payload, fields)
+        document.check_result = self.gap_checker.empty_check_result()
 
     def _initial_fields(self) -> dict[str, str]:
         return {
@@ -401,119 +318,6 @@ class RequirementAuthoringService:
             "updated_at": self._now(),
         }
 
-    def _render_document(self, template_payload: dict, fields: dict[str, str]) -> dict:
-        return {
-            "title": self._standard_document_title(fields),
-            "sections": [
-                {
-                    "section_id": section["section_id"],
-                    "title": section["title"],
-                    "clauses": [self._render_clause(clause, fields) for clause in section.get("clauses", [])],
-                }
-                for section in template_payload.get("sections", [])
-            ],
-        }
-
-    def _standard_document_title(self, fields: dict[str, str]) -> str:
-        application_name = fields.get("application_name", "").strip()
-        if not application_name:
-            return "标准需求规格说明"
-        if application_name.endswith("需求规格说明"):
-            return application_name
-        return f"{application_name}需求规格说明"
-
-    def _render_clause(self, clause: dict, fields: dict[str, str]) -> dict:
-        clause_id = clause["clause_id"]
-        content_by_clause = {
-            "REQ-1.1": self._render_text(
-                fields,
-                ["application_name", "domain_scope"],
-                f"本文档用于定义{fields.get('application_name') or '该软件'}在{fields.get('domain_scope') or '目标领域'}内的需求边界、功能行为和验收准则。",
-                "待补齐：软件名称和领域范围。",
-            ),
-            "REQ-2.1": self._render_text(
-                fields,
-                ["application_name", "domain_scope", "target_users"],
-                f"{fields.get('application_name')}面向{fields.get('domain_scope')}，服务于{fields.get('target_users')}。",
-                "待补齐：软件定位、领域范围和目标用户。",
-            ),
-            "REQ-3.1": self._render_text(
-                fields,
-                ["target_users"],
-                f"本软件的主要使用对象包括：{fields.get('target_users')}。",
-                "待补齐：目标用户、角色和职责。",
-            ),
-            "REQ-3.2": self._render_text(
-                fields,
-                ["main_process", "normal_flow"],
-                f"核心流程为{fields.get('main_process')}；正常流程包括：{fields.get('normal_flow')}",
-                "待补齐：核心业务流程和正常流程。",
-            ),
-            "REQ-3.3": self._render_text(
-                fields,
-                ["exception_flow"],
-                fields.get("exception_flow", ""),
-                "待补齐：异常流程、超时和补偿策略。",
-            ),
-            "REQ-4.1": self._render_text(
-                fields,
-                ["non_functional"],
-                fields.get("non_functional", ""),
-                "待补齐：性能、可靠性和可追溯要求。",
-            ),
-            "REQ-5.1": self._render_text(
-                fields,
-                ["acceptance_criteria"],
-                fields.get("acceptance_criteria", ""),
-                "待补齐：验收准则。",
-            ),
-        }
-        content = content_by_clause.get(clause_id, "待补齐：条款正文。")
-        return {
-            "clause_id": clause_id,
-            "title": clause["title"],
-            "content": content,
-            "status": "missing" if content.startswith("待补齐") else "synced",
-        }
-
-    def _render_text(self, fields: dict[str, str], required: list[str], text: str, fallback: str) -> str:
-        if any(not fields.get(field_key) for field_key in required):
-            return fallback
-        return text
-
-    def _build_annotations(
-        self,
-        template_payload: dict,
-        fields: dict[str, str],
-        blocking_items: list[dict] | None = None,
-    ) -> list[dict]:
-        blocking_by_clause = {item["clause_id"]: item for item in blocking_items or []}
-        field_mappings = template_payload.get("field_mappings", [])
-        annotations = []
-        for section in template_payload.get("sections", []):
-            for clause in section.get("clauses", []):
-                clause_id = clause["clause_id"]
-                mappings = [item for item in field_mappings if item.get("clause_id") == clause_id]
-                annotations.append(
-                    {
-                        "clause_id": clause_id,
-                        "title": clause["title"],
-                        "interpretation": f"{clause['title']}用于约束标准规格正文与后台语义字段的一致性。",
-                        "source_refs": [
-                            binding["label"]
-                            for binding in template_payload.get("knowledge_bindings", [])
-                            if binding.get("enabled", True)
-                        ],
-                        "semantic_mapping": mappings,
-                        "p3_mapping": [item.get("structured_path") for item in mappings],
-                        "gaps": [blocking_by_clause[clause_id]["message"]] if clause_id in blocking_by_clause else [],
-                        "pending_confirmations": []
-                        if any(fields.get(field_key) for field_key in clause.get("field_keys", []))
-                        else ["该条款仍需专家确认。"],
-                    }
-                )
-        return annotations
-
     def _build_assistant_reply(self, fields: dict[str, str], user_content: str) -> str:
         if "超时" in user_content:
             return "已补入一个克制版超时提醒，不扩展复杂补偿链路。你可以直接回：可以 / 更正式 / 重拟。"
@@ -525,57 +329,6 @@ class RequirementAuthoringService:
         if not value:
             return "系统应支持核心业务流程的创建、校验、协同确认与结果留痕。"
         return f"系统应支持{value.rstrip('。')}，并形成可审计的处理记录。"
-
-    def _build_structured_spec(self, fields: dict[str, str], archive_ids: list[str]) -> dict:
-        return {
-            "application": {
-                "name": fields.get("application_name", ""),
-                "domain": fields.get("domain_scope", ""),
-                "summary": fields.get("normal_flow", ""),
-                "target_users": [item.strip() for item in fields.get("target_users", "").replace("、", ",").split(",") if item.strip()],
-            },
-            "objects": [],
-            "processes": [
-                {
-                    "id": "process-main",
-                    "name": fields.get("main_process", ""),
-                    "process_kind": "collaboration",
-                    "source_kind": "temporary",
-                    "description": fields.get("normal_flow", ""),
-                    "participant_object_ids": [],
-                    "source_archive_id": archive_ids[0] if archive_ids else None,
-                    "source_item_type": None,
-                    "source_item_id": None,
-                }
-            ],
-            "rules": [{"id": "rule-exception-flow", "name": "异常流程", "description": fields.get("exception_flow", "")}],
-            "metrics": [{"id": "metric-acceptance", "name": "验收准则", "description": fields.get("acceptance_criteria", "")}],
-            "non_functional_constraints": [
-                {
-                    "id": "constraint-performance",
-                    "name": "性能与可靠性",
-                    "category": "quality",
-                    "description": fields.get("non_functional", ""),
-                }
-            ],
-        }
-
-    def _form_labels(self, template_payload: dict) -> dict[str, str]:
-        labels = {}
-        for group in template_payload.get("form_groups", []):
-            for field in group.get("fields", []):
-                labels[field["field_key"]] = field["label"]
-        return labels
-
-    def _field_clause_id(self, template_payload: dict, field_key: str) -> str:
-        for group in template_payload.get("form_groups", []):
-            for field in group.get("fields", []):
-                if field["field_key"] == field_key:
-                    return field["clause_id"]
-        return "REQ-1.1"
-
-    def _empty_check_result(self) -> dict:
-        return {"blocking_count": 0, "warning_count": 0, "passed_count": 0, "items": []}
 
     def _serialize_template(self, template: RequirementAuthoringTemplate) -> dict:
         return {

@@ -215,9 +215,9 @@
 - fixture id
 - 规则引擎名
 
-## 8. 与 LLM / Brainstorming 的关系
+## 8. 与 LLM / Requirement Analysis 的关系
 
-`XX-P1-Sim` 不负责 Brainstorming。
+`XX-P1-Sim` 不负责 Requirement Analysis。
 
 后续如果 `P2` 接入大模型，它应在 `P2` 的问答和规格生成链路中消费已绑定的领域知识，并输出经过 `P2` 校验的结构化补丁。`XX-P1-Sim` 只提供知识背景，不能直接写正文、补字段或决定冻结。
 

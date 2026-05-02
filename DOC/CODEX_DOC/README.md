@@ -17,8 +17,8 @@
 11. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
 12. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-可配置需求规格说明编写系统设计.md`
 13. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求规格编写系统原型设计.md`
-14. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming能力原理验证与架构规划.md`
-15. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming-Turn引擎与状态机设计.md`
+14. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析能力原理验证与架构规划.md`
+15. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析Turn引擎与状态机设计.md`
 16. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XG-Orchestrator组织器包规范设计.md`
 17. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
 18. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
@@ -65,7 +65,7 @@
 
 适用对象：
 
-- brainstorming 产物
+- 方案推演产物
 - 设计草案与局部方案
 - 执行计划
 - issue tree mirror

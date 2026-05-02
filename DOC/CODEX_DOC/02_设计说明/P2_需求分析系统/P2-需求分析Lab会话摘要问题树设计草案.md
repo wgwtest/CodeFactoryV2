@@ -1,17 +1,17 @@
-# P2 Brainstorming Lab 会话摘要问题树设计草案
+# P2 Requirement Analysis Orchestrator Lab 会话摘要问题树设计草案
 
 **日期：** 2026-05-01
 
 **文档状态：** 草案，待用户评审
 
-> 2026-05-01 修订说明：本文件 1-7 节记录了从线性摘要升级为 `Q/F/P` 问题树的第一版思路。经实测评审，该方案仍然把过程产物混入主树，不能回答“需求规格说明补齐到什么程度”。自第 8 节起，完成度树作为覆盖度视图保留；原“提问路径”表述已修订为“沟通路径”，并以 `P2-Brainstorming-Turn引擎与状态机设计.md` 的用户输入驱动模型为当前基线。
+> 2026-05-01 修订说明：本文件 1-7 节记录了从线性摘要升级为 `Q/F/P` 问题树的第一版思路。经实测评审，该方案仍然把过程产物混入主树，不能回答“需求规格说明补齐到什么程度”。自第 8 节起，完成度树作为覆盖度视图保留；原“提问路径”表述已修订为“沟通路径”，并以 `P2-Requirement Analysis-Turn引擎与状态机设计.md` 的用户输入驱动模型为当前基线。
 
 ## 1. 设计背景
 
-当前 `P2 Brainstorming Lab` 的“会话摘要 / 过程产物”已经从字符串列表升级为 `QuestionItem / ConfirmedFact / DocumentPatchProposal` 三类对象，但实际观感仍有两个问题：
+当前 `P2 Requirement Analysis Orchestrator Lab` 的“会话摘要 / 过程产物”已经从字符串列表升级为 `QuestionItem / ConfirmedFact / DocumentPatchProposal` 三类对象，但实际观感仍有两个问题：
 
 1. 信息不够紧凑。`Q-001`、状态、问题文本、事实、Patch 分散成多行卡片，缺少层级结构。
-2. 线性列表不符合 Brainstorming 的真实过程。一个问题被确认后，可能产生事实、文档建议和顺延问题；这些关系用并列列表展示不直观。
+2. 线性列表不符合 Requirement Analysis 的真实过程。一个问题被确认后，可能产生事实、文档建议和顺延问题；这些关系用并列列表展示不直观。
 
 因此，下一版会话摘要区建议改为 **面向需求规格说明文档撰写的问题树**。
 
@@ -22,7 +22,7 @@
 它必须服务于 `P2` 的核心目标：
 
 ```text
-通过 Brainstorming Lab 验证如何把专家问答过程转化为可写入需求规格说明的结构化材料。
+通过 Requirement Analysis Orchestrator Lab 验证如何把专家问答过程转化为可写入需求规格说明的结构化材料。
 ```
 
 因此，问题树的组织导向必须优先参考：
@@ -202,7 +202,7 @@ P-001 -> 1.1 系统目标      待采纳
 
 ## 5. 状态更新规则
 
-每一轮 `BrainstormTurn` 返回后，后台应产生树变更，而不是只返回列表增量。
+每一轮 `RequirementAnalysisTurn` 返回后，后台应产生树变更，而不是只返回列表增量。
 
 建议输出协议：
 
@@ -246,7 +246,7 @@ P-001 -> 1.1 系统目标      待采纳
 }
 ```
 
-前端不自己推断问题是否已确认。状态必须来自 `Brainstorming Service` 的结构化结果。
+前端不自己推断问题是否已确认。状态必须来自 `Requirement Analysis Service` 的结构化结果。
 
 ## 6. 与正式需求规格文档的关系
 
@@ -350,7 +350,7 @@ P-001 -> 1.1 系统目标      待采纳
 
 ### 8.3 历史推进规则与当前修订
 
-第一版曾认为，每轮 Brainstorming 不应先问“模型想问的问题”，而应先定位当前目标叶子：
+第一版曾认为，每轮 Requirement Analysis 不应先问“模型想问的问题”，而应先定位当前目标叶子：
 
 ```text
 读取 spec_tree
@@ -421,7 +421,7 @@ turn-0001  SPEC-1.1  用户输入补齐系统定位
 
 ### 8.6 当前实现落点
 
-当前实现已将以下字段加入 `BrainstormSession`：
+当前实现已将以下字段加入 `RequirementAnalysisSession`：
 
 - `spec_tree`
 - `active_spec_node_id`（历史字段，后续应替换为 `current_focus_node_id` 或由 Turn 的 `affected_spec_nodes` 推导）
@@ -443,7 +443,7 @@ turn-0001  SPEC-1.1  用户输入补齐系统定位
 
 因此，本阶段曾尝试把完成度树改为从当前 `RequirementDocumentTemplate` 的 `sections / clauses` 生成，并让组织器围绕当前模板节点推进。
 
-> 重要修订：该 active 节点驱动方案已被后续 `P2-Brainstorming-Turn引擎与状态机设计.md` 取代。本文第 9 节保留为阶段性实验记录，用于解释为什么曾经这样实现，以及为什么后续不再以它作为基线。
+> 重要修订：该 active 节点驱动方案已被后续 `P2-Requirement Analysis-Turn引擎与状态机设计.md` 取代。本文第 9 节保留为阶段性实验记录，用于解释为什么曾经这样实现，以及为什么后续不再以它作为基线。
 
 首版 `81433号` 内置模板的目标树形态为：
 

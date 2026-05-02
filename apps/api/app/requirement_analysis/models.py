@@ -5,23 +5,23 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-BrainstormOrchestratorId = Literal["brainstorming", "wizard", "form_driven", "rule_based_review"]
-BrainstormProviderId = Literal["mock", "deepseek", "openai"]
+RequirementAnalysisOrchestratorId = Literal["xg-heuristic-orchestrator", "xg-strong-rule-orchestrator"]
+RequirementAnalysisProviderId = Literal["mock", "deepseek", "openai"]
 
 
-class BrainstormSessionCreate(BaseModel):
+class RequirementAnalysisSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     topic: str
-    orchestrator_id: str = "xg-brainstorming-orchestrator"
+    orchestrator_id: str = "xg-heuristic-orchestrator"
     provider_id: str = "mock"
-    model: str = "mock-brainstorm-v1"
+    model: str = "mock-requirement-analysis-v1"
     template_id: str = "81433号"
     knowledge_package_id: str = "airspace-domain-demo"
     write_policy: str = "patch_suggestion_only"
 
 
-class BrainstormTurnCreate(BaseModel):
+class RequirementAnalysisTurnCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_input: str
