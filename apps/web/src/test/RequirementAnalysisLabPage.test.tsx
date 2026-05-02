@@ -24,7 +24,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 });
 
-test("keeps Requirement Analysis Orchestrator Lab view tabs explicit while business state changes", async () => {
+test("keeps XG requirement analysis lab view tabs explicit while business state changes", async () => {
   let session = buildSession("created");
   const deferredTurn = createDeferred<{ data: RequirementAnalysisTurnEnvelope }>();
 
@@ -73,7 +73,7 @@ test("keeps Requirement Analysis Orchestrator Lab view tabs explicit while busin
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
@@ -85,7 +85,7 @@ test("keeps Requirement Analysis Orchestrator Lab view tabs explicit while busin
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
   expect(screen.getByText("稳定契约 / 输出协议")).toBeInTheDocument();
-  expect(screen.getByText("XG Requirement Analysis Orchestrator")).toBeInTheDocument();
+  expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
@@ -239,7 +239,7 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
@@ -276,7 +276,7 @@ function buildOrchestrators() {
     items: [
       {
         orchestrator_id: "xg-heuristic-orchestrator",
-        name: "XG Requirement Analysis Orchestrator",
+        name: "XG Heuristic Orchestrator",
         version: "0.1.0",
         stage: "P2",
         document_type: "xg",
@@ -398,7 +398,7 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       input_type: "quick_option_answer",
       matched_option: "A",
       matched_option_label: "先按计算分析工具理解",
-      semantic: "系统初步定位为计算分析工具。",
+      semantic: "先按计算分析工具理解",
     },
     spec_execution: {
       interpretation: {

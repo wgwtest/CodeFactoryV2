@@ -23,7 +23,10 @@ class RequirementAnalysisTurnOutputService:
         else:
             next_question = str(next_spec_node.get("question") or next_spec_node.get("title"))
             if model_output.get("raw_model_response", {}).get("mock") or not model_output.get("quick_options"):
-                quick_options = self.owner._quick_options_for_node(next_spec_node)
+                quick_options = self.owner._quick_options_for_node(
+                    next_spec_node,
+                    orchestrator_id=session.orchestrator_id,
+                )
             else:
                 quick_options = model_output["quick_options"]
         updated_sections = current_spec_node.get("target_section") or "需求规格说明"

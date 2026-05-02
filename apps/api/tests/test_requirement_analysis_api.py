@@ -76,6 +76,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     session = created.json()
     assert session["status"] == "created"
     assert session["orchestrator"]["orchestrator_id"] == "xg-heuristic-orchestrator"
+    assert session["orchestrator"]["name"] == "XG Heuristic Orchestrator"
     assert session["orchestrator"]["document_type"] == "xg"
     assert session["orchestrator"]["mode"] == "policy_interpreted"
     assert session["stable_contract"]["formal_document"] is True
@@ -177,6 +178,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
+    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
+    assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
     assert "谁使用这个系统" in second_payload["turn"]["next_interaction"]["prompt"]
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
         "领域专家直接使用",
@@ -528,6 +531,7 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
             self.model = "deepseek-chat"
 
     class DummySession:
+        orchestrator_id = "xg-heuristic-orchestrator"
         topic = "空域运算软件需求规格探索"
         template_id = "81433号"
         knowledge_package_id = "airspace-domain-demo"

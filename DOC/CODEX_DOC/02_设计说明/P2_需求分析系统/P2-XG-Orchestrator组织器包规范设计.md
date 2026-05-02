@@ -28,6 +28,7 @@ orchestrators/xg/<orchestrator-id>/
   contract.schema.json
   policy.md
   prompt.md
+  artifact_rules.json
   examples/
   tests/
   runner.py
@@ -40,6 +41,7 @@ orchestrators/xg/<orchestrator-id>/
 - `contract.schema.json` 是 `xg-orchestrator-contract@1` 的契约声明。
 - `policy.md` 是面向需求规格说明的组织规则。
 - `prompt.md` 是 XG 模型提示策略，`local_runner` 模式下可作为说明文件。
+- `artifact_rules.json` 是面向规格节点的事实模板、正文 patch 模板和轻量选项规则。
 - `examples/` 和 `tests/` 用于 XG 包级样例与契约验证。
 - `runner.py` 只在 `local_runner` 模式下强制存在，并由 P2 Host 受控调用。
 
@@ -66,12 +68,14 @@ xg-strong-rule-orchestrator
 - `mode = policy_interpreted`
 - 偏启发式、开放输入、轻量选项、用户输入驱动。
 - 可以调用 `mock / deepseek / openai` Provider。
+- 规格节点的事实模板、patch 模板与快捷选项由包内 `artifact_rules.json` 提供。
 
 `xg-strong-rule-orchestrator`：
 
 - `mode = local_runner`
 - 偏规则优先、强审计链、强闭环。
 - 模型只作为未来候选文本来源，首版由 Host 受控规则路径执行。
+- 本地 runner 仍遵守同一 `artifact_rules.json`，不在 Host 服务层重复写一套章节模板。
 
 两者都必须遵守 `xg-orchestrator-contract@1`，并输出同一套 Turn 协议。
 
@@ -108,7 +112,7 @@ XG 组织器不允许：
 
 需要注意：当前基础注册与执行运行时位于 `apps/api/app/orchestrators/`，属于 P2/XG 首版实现；跨阶段基础注册层的长期目标形态见总纲级 `Orchestrator基础包壳与注册机制设计`。
 
-当前 `Requirement Analysis Orchestrator Lab` 仍使用既有 Turn 输出协议：
+当前 `XG 需求分析组织器 Lab` 仍使用既有 Turn 输出协议：
 
 ```text
 previous_interaction
@@ -120,4 +124,9 @@ next_interaction
 decision_trace
 ```
 
-其中 `xg-heuristic-orchestrator` 继承现有 Requirement Analysis Orchestrator Lab 能力；`xg-strong-rule-orchestrator` 通过本地规则路径产出符合相同协议的 Turn。
+其中 `xg-heuristic-orchestrator` 继承现有 XG 需求分析组织器 Lab 能力；`xg-strong-rule-orchestrator` 通过本地规则路径产出符合相同协议的 Turn。
+
+当前首版的进一步压实约束是：
+
+- `policy_interpreted` 组织器必须提供 `artifact_rules.json`，供 mock 路径和服务端 fallback 使用。
+- `local_runner` 组织器也必须提供 `artifact_rules.json`，由 runner 自己读取；Host 不再额外硬编码章节事实与 patch 文案。

@@ -622,7 +622,7 @@ function mockRequirementAnalysisLabApis() {
           items: [
             {
               orchestrator_id: "xg-heuristic-orchestrator",
-              name: "XG Requirement Analysis Orchestrator",
+              name: "XG Heuristic Orchestrator",
               version: "0.1.0",
               stage: "P2",
               document_type: "xg",
@@ -928,7 +928,7 @@ test("renders requirement authoring route outside the main shell", async () => {
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
 
-test("renders P2 Requirement Analysis Orchestrator Lab route outside the main shell", async () => {
+test("renders P2 XG requirement analysis lab route outside the main shell", async () => {
   mockRequirementAnalysisLabApis();
 
   render(
@@ -937,7 +937,7 @@ test("renders P2 Requirement Analysis Orchestrator Lab route outside the main sh
     </MemoryRouter>,
   );
 
-  expect(await screen.findByRole("heading", { name: "P2 Requirement Analysis Orchestrator Lab" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

@@ -9,10 +9,13 @@ def test_orchestrator_runtime_loads_assets_and_normalizes_output() -> None:
     assert heuristic.package.orchestrator_id == "xg-heuristic-orchestrator"
     assert "用户输入驱动" in heuristic.policy_text
     assert "Host 必须保证" in heuristic.prompt_text
+    assert heuristic.artifact_rules["clauses"]["REQ-2.1"]["fact_template"] == "软件定位初步确认：{semantic}"
+    assert heuristic.artifact_rules["clauses"]["REQ-2.1"]["quick_options"][0]["label"] == "计算分析工具"
 
     strong_rule = loader.load("xg-strong-rule-orchestrator")
     assert strong_rule.package.mode == "local_runner"
     assert strong_rule.entry_path.endswith("runner.py")
+    assert strong_rule.artifact_rules["clauses"]["REQ-2.1"]["patch_template"] == "软件定位为：{semantic}"
 
     validator = OrchestratorContractValidator()
     normalized = validator.normalize_turn_output(

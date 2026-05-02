@@ -6,7 +6,7 @@
 
 ## 1. 设计背景
 
-`P2 Requirement Analysis Orchestrator Lab` 的早期实现把 `Turn` 理解为：
+`P2 XG 需求分析组织器 Lab` 的早期实现把 `Turn` 理解为：
 
 ```text
 系统选择一个需求规格节点 -> 系统提问 -> 用户回答 -> 系统关闭该节点 -> 系统继续提下一题

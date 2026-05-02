@@ -97,11 +97,10 @@ class RequirementAnalysisProviderCallService:
             str(state.get("active_spec_node_id") or ""),
         )
         active_section = active_node.get("target_section") if active_node else "未绑定模板章节"
-        clause_id = self.owner._clause_id_from_node(active_node)
-        fact = self.owner._fact_for_active_node(clause_id, semantic)
-        patch_content = self.owner._patch_for_active_node(clause_id, semantic)
+        fact = self.owner._fact_for_node(orchestrator.orchestrator_id, active_node, semantic)
+        patch_content = self.owner._patch_for_node(orchestrator.orchestrator_id, active_node, semantic)
         next_question = str(active_node.get("question") if active_node else "请继续补充需求规格说明。")
-        quick_options = self.owner._quick_options_for_node(active_node)
+        quick_options = self.owner._quick_options_for_node(active_node, orchestrator_id=orchestrator.orchestrator_id)
 
         return {
             "organizer_interpretation": {

@@ -1,6 +1,6 @@
 {
   "id": "xg-heuristic-orchestrator",
-  "name": "XG Requirement Analysis Orchestrator",
+  "name": "XG Heuristic Orchestrator",
   "version": "0.1.0",
   "stage": "P2",
   "document_type": "xg",
@@ -13,6 +13,7 @@
   "capabilities": [
     "free_text_input",
     "guided_question",
+    "artifact_rules",
     "quick_options",
     "spec_tree_update",
     "document_patch",

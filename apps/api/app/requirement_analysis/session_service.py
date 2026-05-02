@@ -225,9 +225,6 @@ class RequirementAnalysisSessionService:
     def _find_quick_option(self, options: list[dict], key: str) -> dict | None:
         return self.input_normalizer.find_quick_option(options, key)
 
-    def _option_semantic(self, option: str) -> str:
-        return self.input_normalizer.option_semantic(option)
-
     def _mock_model_output(
         self,
         session: RequirementAnalysisSession,
@@ -386,17 +383,14 @@ class RequirementAnalysisSessionService:
             session=session,
         )
 
-    def _clause_id_from_node(self, node: dict | None) -> str:
-        return self.process_artifact_service.clause_id_from_node(node)
+    def _fact_for_node(self, orchestrator_id: str, node: dict | None, semantic: str) -> str:
+        return self.process_artifact_service.fact_for_node(orchestrator_id, node, semantic)
 
-    def _fact_for_active_node(self, clause_id: str, semantic: str) -> str:
-        return self.process_artifact_service.fact_for_active_node(clause_id, semantic)
+    def _patch_for_node(self, orchestrator_id: str, node: dict | None, semantic: str) -> str:
+        return self.process_artifact_service.patch_for_node(orchestrator_id, node, semantic)
 
-    def _patch_for_active_node(self, clause_id: str, semantic: str) -> str:
-        return self.process_artifact_service.patch_for_active_node(clause_id, semantic)
-
-    def _quick_options_for_node(self, node: dict | None) -> list[dict]:
-        return self.process_artifact_service.quick_options_for_node(node)
+    def _quick_options_for_node(self, node: dict | None, *, orchestrator_id: str) -> list[dict]:
+        return self.process_artifact_service.quick_options_for_node(orchestrator_id, node)
 
     def _update_spec_tree(self, *, spec_tree: list[dict], active_node_id: str, answer_summary: str, turn_id: str) -> dict:
         return self.spec_tree_service.update_spec_tree(

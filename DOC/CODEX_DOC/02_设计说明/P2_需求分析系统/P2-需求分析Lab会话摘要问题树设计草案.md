@@ -1,4 +1,4 @@
-# P2 Requirement Analysis Orchestrator Lab 会话摘要问题树设计草案
+# P2 XG 需求分析组织器 Lab 会话摘要问题树设计草案
 
 **日期：** 2026-05-01
 
@@ -8,7 +8,7 @@
 
 ## 1. 设计背景
 
-当前 `P2 Requirement Analysis Orchestrator Lab` 的“会话摘要 / 过程产物”已经从字符串列表升级为 `QuestionItem / ConfirmedFact / DocumentPatchProposal` 三类对象，但实际观感仍有两个问题：
+当前 `P2 XG 需求分析组织器 Lab` 的“会话摘要 / 过程产物”已经从字符串列表升级为 `QuestionItem / ConfirmedFact / DocumentPatchProposal` 三类对象，但实际观感仍有两个问题：
 
 1. 信息不够紧凑。`Q-001`、状态、问题文本、事实、Patch 分散成多行卡片，缺少层级结构。
 2. 线性列表不符合 Requirement Analysis 的真实过程。一个问题被确认后，可能产生事实、文档建议和顺延问题；这些关系用并列列表展示不直观。
@@ -22,7 +22,7 @@
 它必须服务于 `P2` 的核心目标：
 
 ```text
-通过 Requirement Analysis Orchestrator Lab 验证如何把专家问答过程转化为可写入需求规格说明的结构化材料。
+通过 XG 需求分析组织器 Lab 验证如何把专家问答过程转化为可写入需求规格说明的结构化材料。
 ```
 
 因此，问题树的组织导向必须优先参考：

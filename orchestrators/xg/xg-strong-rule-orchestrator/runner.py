@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+
+ARTIFACT_RULES = json.loads((Path(__file__).with_name("artifact_rules.json")).read_text(encoding="utf-8"))
+
 
 def run_turn(context: dict) -> dict:
     session = dict(context.get("session") or {})
@@ -8,8 +14,8 @@ def run_turn(context: dict) -> dict:
     semantic = str(normalized.get("semantic") or context.get("user_input") or "待补充需求信息")
     target_section = str(active_spec_node.get("target_section") or "未绑定模板章节")
     clause_id = str(active_spec_node.get("node_id") or "").removeprefix("SPEC-")
-    fact = _fact_for_clause(clause_id, semantic)
-    patch = _patch_for_clause(clause_id, semantic)
+    fact = _render_rule_template(clause_id, semantic, template_key="fact_template")
+    patch = _render_rule_template(clause_id, semantic, template_key="patch_template")
 
     return {
         "organizer_interpretation": {
@@ -50,37 +56,9 @@ def run_turn(context: dict) -> dict:
     }
 
 
-def _fact_for_clause(clause_id: str, semantic: str) -> str:
-    if clause_id == "REQ-1.1":
-        return f"编写目的初步确认：{semantic}"
-    if clause_id == "REQ-2.1":
-        return f"软件定位初步确认：{semantic}"
-    if clause_id == "REQ-3.1":
-        return f"用户与角色初步确认：{semantic}"
-    if clause_id == "REQ-3.2":
-        return f"核心业务流程初步确认：{semantic}"
-    if clause_id == "REQ-3.3":
-        return f"异常与补偿初步确认：{semantic}"
-    if clause_id == "REQ-4.1":
-        return f"性能与可靠性初步确认：{semantic}"
-    if clause_id == "REQ-5.1":
-        return f"验收准则初步确认：{semantic}"
-    return f"需求规格信息初步确认：{semantic}"
-
-
-def _patch_for_clause(clause_id: str, semantic: str) -> str:
-    if clause_id == "REQ-1.1":
-        return f"本文档用于定义{semantic}相关的软件需求边界、功能行为和验收准则。"
-    if clause_id == "REQ-2.1":
-        return f"软件定位为：{semantic}"
-    if clause_id == "REQ-3.1":
-        return f"本软件的主要使用对象和职责包括：{semantic}"
-    if clause_id == "REQ-3.2":
-        return f"核心业务流程为：{semantic}"
-    if clause_id == "REQ-3.3":
-        return f"异常与补偿要求为：{semantic}"
-    if clause_id == "REQ-4.1":
-        return f"性能与可靠性要求为：{semantic}"
-    if clause_id == "REQ-5.1":
-        return f"验收准则为：{semantic}"
-    return semantic
+def _render_rule_template(clause_id: str, semantic: str, *, template_key: str) -> str:
+    clauses = ARTIFACT_RULES.get("clauses") if isinstance(ARTIFACT_RULES.get("clauses"), dict) else {}
+    defaults = ARTIFACT_RULES.get("defaults") if isinstance(ARTIFACT_RULES.get("defaults"), dict) else {}
+    rule = clauses.get(clause_id) if isinstance(clauses, dict) else None
+    template = str((rule or defaults or {}).get(template_key) or "{semantic}")
+    return template.replace("{semantic}", semantic)

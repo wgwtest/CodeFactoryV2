@@ -64,7 +64,7 @@ export function RequirementAnalysisLabPage() {
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载 Requirement Analysis Orchestrator Lab 失败");
+          setError(loadError instanceof Error ? loadError.message : "加载 XG 需求分析组织器 Lab 失败");
         }
       } finally {
         if (!cancelled) {
@@ -107,7 +107,7 @@ export function RequirementAnalysisLabPage() {
       setCurrentTurn(response.data.turns.at(-1) ?? null);
       setError(null);
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "启动 Requirement Analysis 会话失败");
+      setError(startError instanceof Error ? startError.message : "启动 XG 需求分析会话失败");
     } finally {
       setActing(false);
     }
@@ -154,7 +154,7 @@ export function RequirementAnalysisLabPage() {
         <div className="requirement-analysis-lab-brand">
           <div className="requirement-analysis-lab-mark">LAB</div>
           <div>
-            <Title level={2}>P2 Requirement Analysis Orchestrator Lab</Title>
+            <Title level={2}>P2 XG 需求分析组织器 Lab</Title>
             <Text type="secondary">独立验证问答组织器、模型 Provider 和结构化 Turn 输出，不写入正式需求规格编辑器。</Text>
           </div>
         </div>
@@ -173,7 +173,7 @@ export function RequirementAnalysisLabPage() {
         </section>
       ) : orchestratorsEnvelope ? (
         <section className="requirement-analysis-lab-layout">
-          <aside className="requirement-analysis-lab-sidebar" aria-label="Requirement Analysis Orchestrator Lab 视图导航" role="tablist">
+          <aside className="requirement-analysis-lab-sidebar" aria-label="XG 需求分析组织器 Lab 视图导航" role="tablist">
             <TabNode
               active={activeTab === "config"}
               badge="配置"
@@ -333,7 +333,7 @@ function ConfigTab({
         </section>
 
         <section className="requirement-analysis-lab-panel">
-          <PanelHead title="启动参数" subtitle="用于验证 Requirement Analysis Service 生命周期，不进入正式编辑器状态。" />
+          <PanelHead title="启动参数" subtitle="用于验证 XG 需求分析会话生命周期，不进入正式编辑器状态。" />
           <label className="requirement-analysis-lab-field">
             <Text strong>课题输入</Text>
             <Input value={topic} onChange={(event) => onTopicChange(event.target.value)} />

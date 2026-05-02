@@ -21,6 +21,12 @@ def test_requirement_analysis_modules_cover_turn_core_contract(db_session) -> No
         "matched_option_label": "计算分析工具",
         "semantic": "计算分析工具",
     }
+    assert normalizer.normalize_input("A") == {
+        "input_type": "quick_option_answer",
+        "matched_option": "A",
+        "matched_option_label": None,
+        "semantic": "A",
+    }
 
     relation = InputRelationClassifier(normalizer=normalizer).classify(
         {"type": "choice_question", "prompt": "软件定位是什么？", "options": []},
@@ -38,9 +44,15 @@ def test_requirement_analysis_modules_cover_turn_core_contract(db_session) -> No
     assert node["target_section"] == "2 项目概述 / 软件定位"
 
     artifact_service = ProcessArtifactService()
-    assert artifact_service.fact_for_active_node("REQ-2.1", "计算分析工具") == "软件定位初步确认：计算分析工具"
-    assert artifact_service.patch_for_active_node("REQ-2.1", "计算分析工具") == "软件定位为：计算分析工具"
-    assert artifact_service.quick_options_for_node({"node_id": "SPEC-REQ-2.1"})[0]["label"] == "计算分析工具"
+    assert (
+        artifact_service.fact_for_node("xg-heuristic-orchestrator", {"node_id": "SPEC-REQ-2.1"}, "计算分析工具")
+        == "软件定位初步确认：计算分析工具"
+    )
+    assert (
+        artifact_service.patch_for_node("xg-heuristic-orchestrator", {"node_id": "SPEC-REQ-2.1"}, "计算分析工具")
+        == "软件定位为：计算分析工具"
+    )
+    assert artifact_service.quick_options_for_node("xg-heuristic-orchestrator", {"node_id": "SPEC-REQ-2.1"})[0]["label"] == "计算分析工具"
 
 
 def test_requirement_analysis_session_repository_persists_lab_session(db_session) -> None:

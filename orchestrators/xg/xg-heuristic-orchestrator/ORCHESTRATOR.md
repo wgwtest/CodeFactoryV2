@@ -1,4 +1,4 @@
-# XG Requirement Analysis Orchestrator
+# XG Heuristic Orchestrator
 
 ## 1. 定位
 

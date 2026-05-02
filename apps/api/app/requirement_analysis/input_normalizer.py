@@ -12,9 +12,7 @@ class InputNormalizer:
                 "input_type": "quick_option_answer",
                 "matched_option": option,
                 "matched_option_label": matched_quick_option.get("label") if matched_quick_option else None,
-                "semantic": option_text
-                or str(matched_quick_option.get("label") if matched_quick_option else "")
-                or self.option_semantic(option),
+                "semantic": option_text or str(matched_quick_option.get("label") if matched_quick_option else "") or option,
             }
         if stripped in {"继续", "可以", "下一步"}:
             return {
@@ -44,11 +42,3 @@ class InputNormalizer:
             if str(option.get("key") or "").strip().upper() == normalized_key:
                 return option
         return None
-
-    @staticmethod
-    def option_semantic(option: str) -> str:
-        return {
-            "A": "系统初步定位为计算分析工具。",
-            "B": "系统初步定位为协同规划平台。",
-            "C": "系统同时包含计算分析与协同规划。",
-        }[option]

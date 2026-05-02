@@ -30,7 +30,7 @@ class DeepSeekRequirementAnalysisClient:
                 {
                     "role": "system",
                     "content": (
-                        "你是 CodeFactory V2 P2 Requirement Analysis Orchestrator Lab 的可插拔组织器 Provider。"
+                        "你是 CodeFactory V2 P2 XG 需求分析组织器 Lab 的可插拔组织器 Provider。"
                         "你只返回 JSON，不要返回 Markdown。"
                     ),
                 },
@@ -111,7 +111,7 @@ class DeepSeekRequirementAnalysisClient:
             session=session,
             user_input=user_input,
             normalized=normalized,
-            orchestrator_id=getattr(session, "orchestrator_id", "xg-heuristic-orchestrator"),
+            orchestrator_id=session.orchestrator_id,
         )["assembled_prompt"]
 
     def _find_spec_node(self, nodes: list[dict], node_id: str) -> dict | None:
