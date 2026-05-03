@@ -61,7 +61,7 @@
 | worktree | 分支 | 用途 |
 | --- | --- | --- |
 | `.worktrees/p2-requirement-analysis-system` | `feat/p2-requirement-analysis-system` | P2 需求分析系统辅助分支 |
-| `.worktrees/p3-software-design-system` | `feat/p3-software-design-system` | P3 软件设计系统辅助分支 |
+| `.worktrees/p3-software-design-system` | `feat/p3-software-design-system` | P3 软件设计系统历史集成分支工作树 |
 | `.worktrees/p4-tool-hub` | `feat/p4-tool-hub` | P4 工具仓库辅助分支 |
 | `.worktrees/p5-software-construction-system` | `feat/p5-software-construction-system` | P5 软件构建系统辅助分支 |
 | `.worktrees/p6-portal-platform-entry` | `feat/p6-portal-platform-entry` | P6 门户与平台入口辅助分支 |
@@ -73,6 +73,23 @@
 - 如果 worktree 有独立提交，合入主线前先检查差异，不要盲目 merge。
 - 如果 worktree 只有旧基线，优先同步到最新 `main`。
 - `.data/` 是本地运行数据，默认不提交，除非用户明确要求。
+
+### 3.3 当前 P3 分支特别说明
+
+`feat/p3-software-design-system` 当前保留为**历史集成分支**，不是后续 `P3` 的默认主开发分支。
+
+原因：
+
+- 该分支历史上承载过 `P3`、`P4`、`P5`、`P6` 以及部分 `P2` / 文档治理工作的阶段性集成；
+- 其大量提交已经通过历史 merge 进入 `main`；
+- 继续把该分支当作“当前活跃 P3 功能分支”容易误导后续会话，增加误合并风险。
+
+执行规则：
+
+- 该分支可以保留并推送远端，用于保全历史工作；
+- 不应因为该分支存在，就再次把整条历史重新 merge 到 `main`；
+- 若后续继续推进 `P3` 新工作，默认应从最新 `main` 新建干净分支，例如新的 `feat/p3-*` 分支；
+- 新会话若看到该分支相对远端 ahead 很多，不应直接解读为“有大量未进主线的新功能”，应先检查它相对 `main` 是否还有独有提交。
 
 ## 4. 代码结构速览
 
