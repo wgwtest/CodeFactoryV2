@@ -156,19 +156,19 @@ corepack pnpm install
 启动后端：
 
 ```bash
-uv run uvicorn app.main:app --reload --app-dir apps/api
+just api-dev
 ```
 
 启动前端：
 
 ```bash
-corepack pnpm --dir apps/web dev --host 127.0.0.1 --port 5173
+just web-dev
 ```
 
 常用地址：
 
 - Web：`http://127.0.0.1:5173`
-- API：`http://127.0.0.1:8000/api`
+- API：`http://127.0.0.1:8020/api`
 - MinIO API：`localhost:9000`
 - MinIO Console：`localhost:9001`
 - PostgreSQL：`localhost:5432`
@@ -242,4 +242,3 @@ corepack pnpm --dir apps/web exec vitest run \
 先汇报你对当前项目、当前分支、事实源和工作约束的理解，不要立刻改代码。
 确认无误后，再根据我的任务继续。
 ```
-
