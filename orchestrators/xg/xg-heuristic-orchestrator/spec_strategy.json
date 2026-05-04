@@ -1,6 +1,20 @@
 {
   "root_question": "按需求规格模板补齐可写入正文的目标节点。",
   "section_question_template": "补齐{section_title}下的需求规格信息。",
+  "turn_strategy": {
+    "strategy_id": "write_then_review",
+    "adoption_policy": "adopt_last_completed_stage",
+    "stages": [
+      {
+        "stage_id": "write",
+        "stage_type": "policy_interpreted"
+      },
+      {
+        "stage_id": "review",
+        "stage_type": "server_review"
+      }
+    ]
+  },
   "defaults": {
     "leaf_question_template": "组织器策略问题：请补齐{clause_title}。"
   },

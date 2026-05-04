@@ -1,6 +1,16 @@
 {
   "root_question": "按强规则闭环逐项补齐需求规格模板节点。",
   "section_question_template": "强规则组织器要求补齐章节：{section_title}。",
+  "turn_strategy": {
+    "strategy_id": "local_runner_single_stage",
+    "adoption_policy": "adopt_first_completed_stage",
+    "stages": [
+      {
+        "stage_id": "run",
+        "stage_type": "local_runner"
+      }
+    ]
+  },
   "defaults": {
     "leaf_question_template": "强规则组织器要求补齐：{clause_title}。"
   },

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
-
 from app.orchestrators.package_loader import OrchestratorPackage
+from app.requirement_analysis.input_normalizer import InputNormalizer
 
 
 class RequirementAnalysisTurnAuditService:
-    def __init__(self, owner: Any) -> None:
-        self.owner = owner
+    def __init__(self, normalizer: InputNormalizer | None = None) -> None:
+        self.normalizer = normalizer or InputNormalizer()
 
     def decision_trace_seed(
         self,
@@ -46,7 +45,7 @@ class RequirementAnalysisTurnAuditService:
             "interaction_id": value.get("interaction_id"),
             "type": str(value.get("type") or "suggestion"),
             "prompt": str(value.get("prompt") or ""),
-            "options": self.owner._normalize_quick_options(value.get("options") or last_quick_options),
+            "options": self.normalizer.normalize_quick_options(value.get("options") or last_quick_options),
             "target_spec_node_ids": [
                 str(item) for item in value.get("target_spec_node_ids", []) if str(item).strip()
             ]
@@ -137,37 +136,6 @@ class RequirementAnalysisTurnAuditService:
                 else "本轮已有回应，但尚未形成足够的需求规格正文建议，需要继续追问同一题。"
             ),
             "next_action": next_action,
-        }
-
-    def next_interaction(self, *, next_spec_node: dict, model_output: dict, turn_index: int) -> dict:
-        if not next_spec_node.get("node_id"):
-            return {
-                "interaction_id": f"interaction-{turn_index:04d}",
-                "type": "free_continue",
-                "prompt": "当前完成度树暂无待确认节点，可以进入整体复核。",
-                "options": [],
-                "target_spec_node_ids": [],
-                "reason": "需求规格完成度树暂无 open 叶子节点。",
-            }
-        options = self.owner._normalize_quick_options(model_output.get("quick_options"))
-        interaction_type = "choice_question" if options else "open_question"
-        next_suggestion = model_output.get("next_suggestion")
-        suggestion_prompt = (
-            str(next_suggestion.get("content") or "").strip() if isinstance(next_suggestion, dict) else ""
-        )
-        return {
-            "interaction_id": f"interaction-{turn_index:04d}",
-            "type": interaction_type,
-            "prompt": suggestion_prompt
-            or str(model_output.get("next_question") or next_spec_node.get("question") or next_spec_node.get("title")),
-            "options": options,
-            "target_spec_node_ids": [str(next_spec_node["node_id"])],
-            "reason": str(
-                next_suggestion.get("reason")
-                if isinstance(next_suggestion, dict)
-                else ""
-            )
-            or f"补充后回看发现 {next_spec_node.get('target_section')} 仍缺少可写入材料。",
         }
 
     @staticmethod

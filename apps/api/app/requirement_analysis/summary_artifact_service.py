@@ -1,14 +1,29 @@
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
 
 from app.db.models.requirements import RequirementAnalysisSession
 
 
-class RequirementAnalysisSummaryArtifactService:
-    def __init__(self, owner: Any) -> None:
-        self.owner = owner
+@dataclass(frozen=True)
+class ArtifactUpdateResult:
+    questions: list[dict]
+    facts: list[dict]
+    patches: list[dict]
+    answer_summary: str
+    source_question_id: str | None
 
+    def to_dict(self) -> dict:
+        return {
+            "questions": self.questions,
+            "facts": self.facts,
+            "patches": self.patches,
+            "answer_summary": self.answer_summary,
+            "source_question_id": self.source_question_id,
+        }
+
+
+class RequirementAnalysisSummaryArtifactService:
     def build_structured_summary_update(
         self,
         *,
@@ -54,7 +69,7 @@ class RequirementAnalysisSummaryArtifactService:
             questions[source_index] = {
                 **questions[source_index],
                 "status": "confirmed",
-                "resolution_fact_ids": self.owner._append_unique(
+                "resolution_fact_ids": self.append_unique(
                     list(questions[source_index].get("resolution_fact_ids", [])), new_fact_ids
                 ),
             }
@@ -92,13 +107,13 @@ class RequirementAnalysisSummaryArtifactService:
             )
 
         answer_summary = model_output["confirmed_facts_delta"][0] if model_output["confirmed_facts_delta"] else normalized["semantic"]
-        return {
-            "questions": questions,
-            "facts": facts,
-            "patches": patches,
-            "answer_summary": answer_summary,
-            "source_question_id": source_question_id,
-        }
+        return ArtifactUpdateResult(
+            questions=questions,
+            facts=facts,
+            patches=patches,
+            answer_summary=answer_summary,
+            source_question_id=source_question_id,
+        )
 
     def resolve_answering_question(
         self,
@@ -115,7 +130,7 @@ class RequirementAnalysisSummaryArtifactService:
             if target_spec_node.get("node_id"):
                 question = {
                     "question_id": f"Q-{len(questions) + 1:03d}",
-                    "content": self.owner._suggestion_content_for_node(target_spec_node),
+                    "content": self.suggestion_content_for_node(target_spec_node),
                     "status": "open",
                     "target_section": target_section,
                     "source_turn_id": turn_id,
@@ -148,6 +163,20 @@ class RequirementAnalysisSummaryArtifactService:
         if "目标" in content or "定位" in content or "系统更偏向" in content:
             return "1.1 系统目标"
         return "未归类澄清项"
+
+    @staticmethod
+    def suggestion_content_for_node(node: dict | None) -> str:
+        if node is None:
+            return "请直接描述你希望形成的需求规格说明内容。"
+        return f"可以补齐：{node.get('question') or node.get('title')}"
+
+    @staticmethod
+    def append_unique(current: list[str], additions: list[str]) -> list[str]:
+        result = list(current)
+        for item in additions:
+            if item not in result:
+                result.append(item)
+        return result
 
     @staticmethod
     def is_same_question_content(candidate: str, existing: str) -> bool:
