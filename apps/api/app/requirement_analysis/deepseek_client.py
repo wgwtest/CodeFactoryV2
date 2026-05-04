@@ -7,8 +7,8 @@ import httpx
 from openai import OpenAI
 
 from app.config import settings
-from app.db.models.requirements import RequirementAnalysisSession
 from app.orchestrators.runner_host import OrchestratorRunnerHost
+from app.requirement_analysis.session_snapshot import SessionSnapshot
 
 
 class DeepSeekRequirementAnalysisClient:
@@ -17,7 +17,7 @@ class DeepSeekRequirementAnalysisClient:
         self.runner_host = runner_host or OrchestratorRunnerHost()
         self.client = OpenAI(api_key=api_key, base_url=base_url, http_client=httpx.Client(trust_env=False))
 
-    def run_turn(self, *, session: RequirementAnalysisSession, user_input: str, normalized: dict, orchestrator_id: str | None = None) -> dict:
+    def run_turn(self, *, session: SessionSnapshot, user_input: str, normalized: dict, orchestrator_id: str | None = None) -> dict:
         prompt_bundle = self._build_prompt_bundle(
             session=session,
             user_input=user_input,
@@ -54,7 +54,7 @@ class DeepSeekRequirementAnalysisClient:
     def _build_prompt_bundle(
         self,
         *,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         normalized: dict,
         orchestrator_id: str,
@@ -112,7 +112,7 @@ class DeepSeekRequirementAnalysisClient:
             output_schema=schema,
         )
 
-    def _build_prompt(self, *, session: RequirementAnalysisSession, user_input: str, normalized: dict) -> str:
+    def _build_prompt(self, *, session: SessionSnapshot, user_input: str, normalized: dict) -> str:
         runner_host = getattr(self, "runner_host", None) or OrchestratorRunnerHost()
         self.runner_host = runner_host
         return self._build_prompt_bundle(
@@ -157,7 +157,7 @@ class DeepSeekRequirementAnalysisClient:
         self,
         payload: dict[str, Any],
         *,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         prompt_bundle: dict[str, Any] | None = None,
         request_messages: list[dict[str, str]] | None = None,
@@ -256,7 +256,7 @@ class DeepSeekRequirementAnalysisClient:
         return options
 
     @staticmethod
-    def _normalize_document_patch(value: Any, *, session: RequirementAnalysisSession) -> list[dict]:
+    def _normalize_document_patch(value: Any, *, session: SessionSnapshot) -> list[dict]:
         if not isinstance(value, list):
             return []
         patches = []

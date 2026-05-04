@@ -8,15 +8,23 @@ from app.orchestrators.package_loader import OrchestratorPackage, get_orchestrat
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
+from app.requirement_analysis.next_interaction_service import NextInteractionService
+from app.requirement_analysis.provider_call_log_service import ProviderCallLogService
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
 from app.requirement_analysis.provider_call_service import RequirementAnalysisProviderCallService
 from app.requirement_analysis.provider_registry import PROVIDER_DEFINITIONS, supported_provider_ids
 from app.requirement_analysis.session_repository import RequirementAnalysisSessionRepository
+from app.requirement_analysis.session_snapshot import SessionSnapshot
+from app.requirement_analysis.spec_projection_service import SpecProjectionService
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService
 from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
+from app.requirement_analysis.turn_context_builder import TurnContextBuilder
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
+from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
+from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
+from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 
 
 class RequirementAnalysisSessionService:
@@ -26,12 +34,43 @@ class RequirementAnalysisSessionService:
         self.input_normalizer = InputNormalizer()
         self.input_relation_classifier = InputRelationClassifier(normalizer=self.input_normalizer)
         self.process_artifact_service = ProcessArtifactService()
-        self.provider_call_service = RequirementAnalysisProviderCallService(self)
         self.spec_tree_service = RequirementSpecTreeService(session)
-        self.summary_artifact_service = RequirementAnalysisSummaryArtifactService(self)
-        self.turn_audit_service = RequirementAnalysisTurnAuditService(self)
-        self.turn_output_service = RequirementAnalysisTurnOutputService(self)
-        self.turn_engine = RequirementAnalysisTurnEngine(self)
+        self.provider_call_service = RequirementAnalysisProviderCallService(
+            spec_tree_service=self.spec_tree_service,
+            process_artifact_service=self.process_artifact_service,
+        )
+        self.provider_call_log_service = ProviderCallLogService()
+        self.summary_artifact_service = RequirementAnalysisSummaryArtifactService()
+        self.turn_audit_service = RequirementAnalysisTurnAuditService(normalizer=self.input_normalizer)
+        self.turn_output_service = RequirementAnalysisTurnOutputService(spec_tree_service=self.spec_tree_service)
+        self.spec_projection_service = SpecProjectionService(spec_tree_service=self.spec_tree_service)
+        self.next_interaction_service = NextInteractionService(
+            input_normalizer=self.input_normalizer,
+            process_artifact_service=self.process_artifact_service,
+        )
+        self.turn_strategy_service = TurnStrategyService()
+        self.turn_stage_executor = TurnStageExecutor(
+            provider_call_service=self.provider_call_service,
+        )
+        self.turn_context_builder = TurnContextBuilder(
+            input_normalizer=self.input_normalizer,
+            input_relation_classifier=self.input_relation_classifier,
+            spec_tree_service=self.spec_tree_service,
+            turn_audit_service=self.turn_audit_service,
+        )
+        self.turn_engine = RequirementAnalysisTurnEngine(
+            turn_context_builder=self.turn_context_builder,
+            provider_call_service=self.provider_call_service,
+            provider_call_log_service=self.provider_call_log_service,
+            spec_tree_service=self.spec_tree_service,
+            spec_projection_service=self.spec_projection_service,
+            summary_artifact_service=self.summary_artifact_service,
+            turn_audit_service=self.turn_audit_service,
+            turn_output_service=self.turn_output_service,
+            next_interaction_service=self.next_interaction_service,
+            turn_strategy_service=self.turn_strategy_service,
+            turn_stage_executor=self.turn_stage_executor,
+        )
 
     def list_orchestrators(self) -> dict:
         registry = get_orchestrator_registry()
@@ -78,15 +117,21 @@ class RequirementAnalysisSessionService:
             ],
             "turns": [],
             "confirmed_facts": [],
-            "open_questions": [self._suggestion_content_for_node(self._find_spec_node(spec_tree, active_spec_node_id or ""))],
+            "open_questions": [
+                self.summary_artifact_service.suggestion_content_for_node(
+                    self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+                )
+            ],
             "document_patch": [],
             "questions": [
                 {
                     "question_id": "Q-001",
-                    "content": self._suggestion_content_for_node(self._find_spec_node(spec_tree, active_spec_node_id or "")),
+                    "content": self.summary_artifact_service.suggestion_content_for_node(
+                        self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+                    ),
                     "status": "open",
-                    "target_section": self._find_spec_node(spec_tree, active_spec_node_id or "").get("target_section")
-                    if self._find_spec_node(spec_tree, active_spec_node_id or "")
+                    "target_section": self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "").get("target_section")
+                    if self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
                     else "未绑定模板章节",
                     "source_turn_id": None,
                     "resolution_fact_ids": [],
@@ -126,9 +171,39 @@ class RequirementAnalysisSessionService:
         session = self.repository.get(session_id)
         if session is None:
             return None
-        turn = self.turn_engine.add_turn(session, payload)
+        turn_result = self.turn_engine.run_turn(self.load_snapshot(session), payload)
+        session = self.apply_turn_execution_result(session, turn_result)
         self.repository.save(session)
-        return {"session": self._serialize_session(session), "turn": turn}
+        return {"session": self._serialize_session(session), "turn": turn_result.turn}
+
+    def load_snapshot(self, session: RequirementAnalysisSession) -> SessionSnapshot:
+        return SessionSnapshot(
+            session_id=session.id,
+            topic=session.topic,
+            orchestrator_id=session.orchestrator_id,
+            provider_id=session.provider_id,
+            model=session.model,
+            template_id=session.template_id,
+            knowledge_package_id=session.knowledge_package_id,
+            write_policy=session.write_policy,
+            status=session.status,
+            payload=dict(session.payload or {}),
+        )
+
+    def apply_turn_execution_result(
+        self,
+        session: RequirementAnalysisSession,
+        turn_result: TurnExecutionResult,
+    ) -> RequirementAnalysisSession:
+        state = dict(session.payload or {})
+        state.update(turn_result.state_patch)
+        state["provider_logs"] = [
+            *list(state.get("provider_logs", [])),
+            *turn_result.provider_logs,
+        ]
+        session.payload = state
+        session.status = "waiting_user"
+        return session
 
     def _serialize_session(self, session: RequirementAnalysisSession) -> dict:
         state = dict(session.payload or {})
@@ -187,287 +262,11 @@ class RequirementAnalysisSessionService:
             return settings.requirement_analysis_deepseek_model
         return model or "mock-requirement-analysis-v1"
 
-    def _run_orchestrator(
-        self,
-        *,
-        orchestrator: OrchestratorPackage,
-        session: RequirementAnalysisSession,
-        user_input: str,
-        normalized: dict,
-    ) -> dict:
-        return self.provider_call_service.run_orchestrator(
-            orchestrator=orchestrator,
-            session=session,
-            user_input=user_input,
-            normalized=normalized,
-        )
-
-    def _run_provider(
-        self,
-        session: RequirementAnalysisSession,
-        user_input: str,
-        normalized: dict,
-        *,
-        orchestrator: OrchestratorPackage,
-    ) -> dict:
-        return self.provider_call_service.run_provider(
-            session,
-            user_input,
-            normalized,
-            orchestrator=orchestrator,
-        )
-
-    def _deepseek_client_class(self):
-        return self.provider_call_service._deepseek_client_class()
-
-    def _normalize_input(self, user_input: str, *, quick_options: list[dict] | None = None) -> dict:
-        return self.input_normalizer.normalize_input(user_input, quick_options=quick_options)
-
-    def _normalize_quick_options(self, value: object) -> list[dict]:
-        return self.input_normalizer.normalize_quick_options(value)
-
-    def _find_quick_option(self, options: list[dict], key: str) -> dict | None:
-        return self.input_normalizer.find_quick_option(options, key)
-
-    def _mock_model_output(
-        self,
-        session: RequirementAnalysisSession,
-        user_input: str,
-        normalized: dict,
-        *,
-        orchestrator: OrchestratorPackage,
-    ) -> dict:
-        return self.provider_call_service.mock_model_output(
-            session,
-            user_input,
-            normalized,
-            orchestrator=orchestrator,
-        )
-
-    def _strong_rule_model_output(
-        self,
-        session: RequirementAnalysisSession,
-        user_input: str,
-        normalized: dict,
-        *,
-        orchestrator: OrchestratorPackage,
-    ) -> dict:
-        return self.provider_call_service.run_local_runner(session, user_input, normalized, orchestrator=orchestrator)
-
-    def _build_structured_summary_update(
-        self,
-        *,
-        model_output: dict,
-        normalized: dict,
-        questions: list[dict],
-        facts: list[dict],
-        patches: list[dict],
-        target_spec_node: dict,
-        turn_id: str,
-        session: RequirementAnalysisSession,
-    ) -> dict:
-        return self.summary_artifact_service.build_structured_summary_update(
-            model_output=model_output,
-            normalized=normalized,
-            questions=questions,
-            facts=facts,
-            patches=patches,
-            target_spec_node=target_spec_node,
-            turn_id=turn_id,
-            session=session,
-        )
-
     def _new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
         return self.spec_tree_service.new_spec_tree(template_id, orchestrator_id=orchestrator_id)
 
-    def _resolve_template_payload(self, template_id: str) -> dict:
-        return self.spec_tree_service.resolve_template_payload(template_id)
-
-    def _template_code_from_id(self, template_id: str) -> str:
-        return self.spec_tree_service.template_code_from_id(template_id)
-
-    def _active_spec_node_context(self, spec_tree: list[dict], node_id: str | None) -> dict:
-        return self.spec_tree_service.active_spec_node_context(spec_tree, node_id)
-
-    def _spec_node_path(self, nodes: list[dict], node_id: str, current: list[str] | None = None) -> list[str]:
-        return self.spec_tree_service.spec_node_path(nodes, node_id, current)
-
-    def _decision_trace_seed(
-        self,
-        *,
-        projection_spec_node: dict,
-        normalized: dict,
-        next_open_before_update: str | None,
-        orchestrator: OrchestratorPackage,
-    ) -> list[str]:
-        return self.turn_audit_service.decision_trace_seed(
-            projection_spec_node=projection_spec_node,
-            normalized=normalized,
-            next_open_before_update=next_open_before_update,
-            orchestrator=orchestrator,
-        )
-
-    def _previous_interaction(self, value: object, *, last_quick_options: list[dict]) -> dict:
-        return self.turn_audit_service.previous_interaction(value, last_quick_options=last_quick_options)
-
-    def _state_changes(
-        self,
-        *,
-        previous_questions: list[dict],
-        updated_questions: list[dict],
-        closed_spec_node_ids: list[str],
-        next_active_spec_node_id: str | None,
-    ) -> dict:
-        return self.turn_audit_service.state_changes(
-            previous_questions=previous_questions,
-            updated_questions=updated_questions,
-            closed_spec_node_ids=closed_spec_node_ids,
-            next_active_spec_node_id=next_active_spec_node_id,
-        )
-
-    def _spec_execution(self, *, model_output: dict, affected_spec_nodes: list[dict], state_changes: dict) -> dict:
-        return self.turn_audit_service.spec_execution(
-            model_output=model_output,
-            affected_spec_nodes=affected_spec_nodes,
-            state_changes=state_changes,
-        )
-
-    def _post_update_review(
-        self,
-        *,
-        previous_interaction: dict,
-        next_spec_node: dict,
-        closed_spec_node_ids: list[str],
-    ) -> dict:
-        return self.turn_audit_service.post_update_review(
-            previous_interaction=previous_interaction,
-            next_spec_node=next_spec_node,
-            closed_spec_node_ids=closed_spec_node_ids,
-        )
-
-    def _closure_decision(
-        self,
-        *,
-        spec_execution: dict,
-        post_update_review: dict,
-        closed_spec_node_ids: list[str],
-    ) -> dict:
-        return self.turn_audit_service.closure_decision(
-            spec_execution=spec_execution,
-            post_update_review=post_update_review,
-            closed_spec_node_ids=closed_spec_node_ids,
-        )
-
-    def _next_interaction(self, *, next_spec_node: dict, model_output: dict, turn_index: int) -> dict:
-        return self.turn_audit_service.next_interaction(
-            next_spec_node=next_spec_node,
-            model_output=model_output,
-            turn_index=turn_index,
-        )
-
-    def _align_model_output_to_next_node(
-        self,
-        *,
-        model_output: dict,
-        next_spec_node: dict,
-        current_spec_node: dict,
-        session: RequirementAnalysisSession,
-    ) -> dict:
-        return self.turn_output_service.align_model_output_to_next_node(
-            model_output=model_output,
-            next_spec_node=next_spec_node,
-            current_spec_node=current_spec_node,
-            session=session,
-        )
-
-    def _ensure_patch_target_section(self, *, model_output: dict, current_spec_node: dict, session: RequirementAnalysisSession) -> dict:
-        return self.turn_output_service.ensure_patch_target_section(
-            model_output=model_output,
-            current_spec_node=current_spec_node,
-            session=session,
-        )
-
-    def _fact_for_node(self, orchestrator_id: str, node: dict | None, semantic: str) -> str:
-        return self.process_artifact_service.fact_for_node(orchestrator_id, node, semantic)
-
-    def _patch_for_node(self, orchestrator_id: str, node: dict | None, semantic: str) -> str:
-        return self.process_artifact_service.patch_for_node(orchestrator_id, node, semantic)
-
-    def _quick_options_for_node(self, node: dict | None, *, orchestrator_id: str) -> list[dict]:
-        return self.process_artifact_service.quick_options_for_node(orchestrator_id, node)
-
-    def _update_spec_tree(self, *, spec_tree: list[dict], active_node_id: str, answer_summary: str, turn_id: str) -> dict:
-        return self.spec_tree_service.update_spec_tree(
-            spec_tree=spec_tree,
-            active_node_id=active_node_id,
-            answer_summary=answer_summary,
-            turn_id=turn_id,
-        )
-
-    def _find_spec_node(self, nodes: list[dict], node_id: str) -> dict | None:
-        return self.spec_tree_service.find_spec_node(nodes, node_id)
-
     def _first_open_spec_node_id(self, nodes: list[dict]) -> str | None:
         return self.spec_tree_service.first_open_spec_node_id(nodes)
-
-    def _refresh_parent_statuses(self, nodes: list[dict]) -> None:
-        self.spec_tree_service.refresh_parent_statuses(nodes)
-
-    def _resolve_answering_question(
-        self,
-        questions: list[dict],
-        *,
-        target_section: str | None,
-        target_spec_node: dict,
-        turn_id: str,
-    ) -> dict | None:
-        return self.summary_artifact_service.resolve_answering_question(
-            questions,
-            target_section=target_section,
-            target_spec_node=target_spec_node,
-            turn_id=turn_id,
-        )
-
-    def _infer_target_section(self, content: str) -> str:
-        return self.summary_artifact_service.infer_target_section(content)
-
-    def _infer_target_section_from_model_output(self, model_output: dict, open_question: str) -> str:
-        return self.summary_artifact_service.infer_target_section_from_model_output(model_output, open_question)
-
-    def _select_projection_spec_node_id(self, spec_tree: list[dict], model_output: dict, fallback_node_id: str) -> str:
-        return self.turn_output_service.select_projection_spec_node_id(spec_tree, model_output, fallback_node_id)
-
-    def _find_spec_node_by_target_section(self, nodes: list[dict], target_section: str) -> dict | None:
-        return self.spec_tree_service.find_spec_node_by_target_section(nodes, target_section)
-
-    def _ensure_next_open_question(
-        self,
-        *,
-        questions: list[dict],
-        next_question: str,
-        next_spec_node: dict,
-        turn_id: str,
-    ) -> list[dict]:
-        return self.turn_output_service.ensure_next_open_question(
-            questions=questions,
-            next_question=next_question,
-            next_spec_node=next_spec_node,
-            turn_id=turn_id,
-        )
-
-    def _is_same_question_content(self, candidate: str, existing: str) -> bool:
-        return self.summary_artifact_service.is_same_question_content(candidate, existing)
-
-    def _service_steps(self) -> list[dict]:
-        return [
-            {"step": 1, "title": "接收用户输入", "status": "completed"},
-            {"step": 2, "title": "读取会话状态", "status": "completed"},
-            {"step": 3, "title": "读取模板与知识包", "status": "completed"},
-            {"step": 4, "title": "组装组织器上下文", "status": "completed"},
-            {"step": 5, "title": "调用组织器 / Provider", "status": "completed"},
-            {"step": 6, "title": "解析结构化输出", "status": "completed"},
-            {"step": 7, "title": "校验并落状态", "status": "completed"},
-        ]
 
     def _stable_contract(self) -> dict:
         return {
@@ -478,61 +277,6 @@ class RequirementAnalysisSessionService:
             "check_and_freeze": True,
             "p2_to_p3_output": True,
         }
-
-    def _append_unique(self, current: list[str], additions: list[str]) -> list[str]:
-        result = list(current)
-        for item in additions:
-            if item not in result:
-                result.append(item)
-        return result
-
-    def _normalize_turn_model_output(self, model_output: dict, *, session: RequirementAnalysisSession) -> dict:
-        return self.turn_output_service.normalize_turn_model_output(model_output, session=session)
-
-    def _normalize_organizer_interpretation(self, value: object) -> dict:
-        return self.turn_output_service.normalize_organizer_interpretation(value)
-
-    def _classify_input_relation(
-        self,
-        previous_interaction: object,
-        normalized: dict,
-        *,
-        last_quick_options: list[dict],
-    ) -> dict:
-        return self.input_relation_classifier.classify(
-            previous_interaction,
-            normalized,
-            last_quick_options=last_quick_options,
-        )
-
-    def _affected_spec_nodes(self, *, spec_tree: list[dict], node_ids: list[str]) -> list[dict]:
-        return self.turn_output_service.affected_spec_nodes(spec_tree=spec_tree, node_ids=node_ids)
-
-    def _decision_trace(
-        self,
-        *,
-        previous_interaction: dict,
-        input_relation: dict,
-        spec_execution: dict,
-        post_update_review: dict,
-        closure_decision: dict,
-        next_interaction: dict,
-        seed: list[str],
-    ) -> list[str]:
-        return self.turn_audit_service.decision_trace(
-            previous_interaction=previous_interaction,
-            input_relation=input_relation,
-            spec_execution=spec_execution,
-            post_update_review=post_update_review,
-            closure_decision=closure_decision,
-            next_interaction=next_interaction,
-            seed=seed,
-        )
-
-    def _suggestion_content_for_node(self, node: dict | None) -> str:
-        if node is None:
-            return "请直接描述你希望形成的需求规格说明内容。"
-        return f"可以补齐：{node.get('question') or node.get('title')}"
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()

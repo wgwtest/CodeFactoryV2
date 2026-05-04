@@ -1,52 +1,67 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from inspect import signature
-from typing import Any
-
 from app.config import settings
-from app.db.models.requirements import RequirementAnalysisSession
 from app.orchestrators.runner_host import OrchestratorRunnerHost
 from app.orchestrators.package_loader import OrchestratorPackage
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
+from app.requirement_analysis.process_artifact_service import ProcessArtifactService
+from app.requirement_analysis.session_snapshot import SessionSnapshot
+from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService
+
+
+@dataclass(frozen=True)
+class ProviderRunResult:
+    model_output: dict
+    provider_request: dict
+    provider_response: dict
+    normalized_output: dict
 
 
 class RequirementAnalysisProviderCallService:
-    def __init__(self, owner: Any) -> None:
-        self.owner = owner
+    def __init__(
+        self,
+        *,
+        spec_tree_service: RequirementSpecTreeService,
+        process_artifact_service: ProcessArtifactService,
+    ) -> None:
+        self.spec_tree_service = spec_tree_service
+        self.process_artifact_service = process_artifact_service
         self.runner_host = OrchestratorRunnerHost()
 
     def run_orchestrator(
         self,
         *,
         orchestrator: OrchestratorPackage,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         normalized: dict,
-    ) -> dict:
+    ) -> ProviderRunResult:
         if orchestrator.mode == "local_runner":
             return self.run_local_runner(session, user_input, normalized, orchestrator=orchestrator)
         return self.run_provider(session, user_input, normalized, orchestrator=orchestrator)
 
     def run_local_runner(
         self,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         normalized: dict,
         *,
         orchestrator: OrchestratorPackage,
-    ) -> dict:
+    ) -> ProviderRunResult:
         state = dict(session.payload or {})
         spec_tree = list(
             state.get("spec_tree")
-            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+            or self.spec_tree_service.new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
         )
-        active_node = self.owner._find_spec_node(
+        active_node = self.spec_tree_service.find_spec_node(
             spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
         context = {
             "session": {
-                "session_id": session.id,
+                "session_id": session.session_id,
                 "topic": session.topic,
                 "provider_id": session.provider_id,
                 "model": session.model,
@@ -79,16 +94,16 @@ class RequirementAnalysisProviderCallService:
                 key: value for key, value in output.items() if key != "raw_model_response"
             },
         }
-        return output
+        return self._to_provider_run_result(output)
 
     def run_provider(
         self,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         normalized: dict,
         *,
         orchestrator: OrchestratorPackage,
-    ) -> dict:
+    ) -> ProviderRunResult:
         if session.provider_id == "deepseek":
             if not settings.requirement_analysis_deepseek_api_key:
                 raise ValueError("DeepSeek provider is not configured")
@@ -101,32 +116,32 @@ class RequirementAnalysisProviderCallService:
             run_turn_kwargs = {"session": session, "user_input": user_input, "normalized": normalized}
             if "orchestrator_id" in signature(client.run_turn).parameters:
                 run_turn_kwargs["orchestrator_id"] = orchestrator.orchestrator_id
-            return client.run_turn(**run_turn_kwargs)
+            return self._to_provider_run_result(client.run_turn(**run_turn_kwargs))
         return self.mock_model_output(session, user_input, normalized, orchestrator=orchestrator)
 
     def mock_model_output(
         self,
-        session: RequirementAnalysisSession,
+        session: SessionSnapshot,
         user_input: str,
         normalized: dict,
         *,
         orchestrator: OrchestratorPackage,
-    ) -> dict:
+    ) -> ProviderRunResult:
         semantic = normalized["semantic"]
         state = dict(session.payload or {})
         spec_tree = list(
             state.get("spec_tree")
-            or self.owner._new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
+            or self.spec_tree_service.new_spec_tree(session.template_id, orchestrator_id=orchestrator.orchestrator_id)
         )
-        active_node = self.owner._find_spec_node(
+        active_node = self.spec_tree_service.find_spec_node(
             spec_tree,
             str(state.get("active_spec_node_id") or ""),
         )
         active_section = active_node.get("target_section") if active_node else "未绑定模板章节"
-        fact = self.owner._fact_for_node(orchestrator.orchestrator_id, active_node, semantic)
-        patch_content = self.owner._patch_for_node(orchestrator.orchestrator_id, active_node, semantic)
+        fact = self.process_artifact_service.fact_for_node(orchestrator.orchestrator_id, active_node, semantic)
+        patch_content = self.process_artifact_service.patch_for_node(orchestrator.orchestrator_id, active_node, semantic)
         next_question = str(active_node.get("question") if active_node else "请继续补充需求规格说明。")
-        quick_options = self.owner._quick_options_for_node(active_node, orchestrator_id=orchestrator.orchestrator_id)
+        quick_options = self.process_artifact_service.quick_options_for_node(orchestrator.orchestrator_id, active_node)
 
         provider_request = {
             "mock_context": {
@@ -169,7 +184,7 @@ class RequirementAnalysisProviderCallService:
             "confidence": "medium",
         }
 
-        return {
+        return self._to_provider_run_result({
             **provider_response,
             "organizer_interpretation": {
                 "summary": f"用户输入可转化为 {active_section} 的需求规格材料。",
@@ -212,7 +227,22 @@ class RequirementAnalysisProviderCallService:
                 },
                 "provider_normalized_output": provider_response,
             },
-        }
+        })
+
+    @staticmethod
+    def _to_provider_run_result(model_output: dict) -> ProviderRunResult:
+        raw_model_response = dict(model_output.get("raw_model_response") or {})
+        normalized_output = raw_model_response.get("provider_normalized_output")
+        if not isinstance(normalized_output, dict):
+            normalized_output = {
+                key: value for key, value in model_output.items() if key != "raw_model_response"
+            }
+        return ProviderRunResult(
+            model_output=model_output,
+            provider_request=dict(raw_model_response.get("provider_request") or {}),
+            provider_response=dict(raw_model_response.get("provider_response") or {}),
+            normalized_output=normalized_output,
+        )
 
     @staticmethod
     def _deepseek_client_class():

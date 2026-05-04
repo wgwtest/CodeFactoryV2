@@ -1,8 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.orchestrators.package_loader import get_orchestrator_registry
 from app.db.models.requirements import RequirementAuthoringTemplate
 from app.requirement_authoring.models import default_template_payload
+
+
+@dataclass(frozen=True)
+class SpecTreeUpdateResult:
+    spec_tree: list[dict]
+    closed_node_ids: list[str]
+    active_spec_node_id: str | None
+    next_spec_node: dict
+
+    def to_dict(self) -> dict:
+        return {
+            "spec_tree": self.spec_tree,
+            "closed_node_ids": self.closed_node_ids,
+            "active_spec_node_id": self.active_spec_node_id,
+            "next_spec_node": self.next_spec_node,
+        }
 
 
 class RequirementSpecTreeService:
@@ -131,7 +149,7 @@ class RequirementSpecTreeService:
                 return child_path
         return []
 
-    def update_spec_tree(self, *, spec_tree: list[dict], active_node_id: str, answer_summary: str, turn_id: str) -> dict:
+    def update_spec_tree(self, *, spec_tree: list[dict], active_node_id: str, answer_summary: str, turn_id: str) -> SpecTreeUpdateResult:
         closed_node_ids: list[str] = []
         node = self.find_spec_node(spec_tree, active_node_id)
         if node is not None:
@@ -140,11 +158,13 @@ class RequirementSpecTreeService:
             node["completion_reason"] = f"{turn_id} 用户已确认"
             closed_node_ids.append(active_node_id)
         self.refresh_parent_statuses(spec_tree)
-        return {
-            "spec_tree": spec_tree,
-            "active_spec_node_id": self.first_open_spec_node_id(spec_tree),
-            "closed_node_ids": closed_node_ids,
-        }
+        active_spec_node_id = self.first_open_spec_node_id(spec_tree)
+        return SpecTreeUpdateResult(
+            spec_tree=spec_tree,
+            active_spec_node_id=active_spec_node_id,
+            closed_node_ids=closed_node_ids,
+            next_spec_node=self.active_spec_node_context(spec_tree, active_spec_node_id),
+        )
 
     def find_spec_node(self, nodes: list[dict], node_id: str) -> dict | None:
         for node in nodes:
