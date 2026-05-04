@@ -1,0 +1,2 @@
+"""Requirement template configuration module."""
+
