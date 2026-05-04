@@ -1,5 +1,6 @@
 from app.requirement_authoring.annotation_service import RequirementAnnotationService
 from app.requirement_authoring.document_renderer import RequirementDocumentRenderer
+from app.requirement_authoring.document_repository import RequirementAuthoringRepository
 from app.requirement_authoring.freeze_service import RequirementFreezeService
 from app.requirement_authoring.gap_checker import RequirementGapChecker
 from app.requirement_authoring.models import default_template_payload
@@ -40,3 +41,17 @@ def test_requirement_authoring_modules_preserve_document_contract() -> None:
     assert frozen_package["p3_consumable"] is True
     assert frozen_package["structured_spec"]["application"]["name"] == "空域运算软件"
     assert frozen_package["structured_spec"]["processes"][0]["source_archive_id"] == "20161116-nas"
+
+
+def test_requirement_authoring_repository_only_exposes_document_persistence() -> None:
+    repository_methods = set(dir(RequirementAuthoringRepository))
+    assert "list_documents" in repository_methods
+    assert "get_document" in repository_methods
+    assert "add_document" in repository_methods
+    assert "save_document" in repository_methods
+    assert "delete_document" in repository_methods
+    assert "list_templates" not in repository_methods
+    assert "get_template" not in repository_methods
+    assert "add_template" not in repository_methods
+    assert "save_template" not in repository_methods
+    assert "ensure_default_templates" not in repository_methods
