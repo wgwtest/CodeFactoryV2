@@ -345,7 +345,8 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert payload["turn"]["raw_model_response"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
     assert payload["turn"]["raw_model_response"]["mode"] == "local_runner"
     assert payload["turn"]["raw_model_response"]["runner_invoked"] is True
-    assert payload["turn"]["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")
+    runner_entry = payload["turn"]["raw_model_response"]["runner_entry"].replace("\\", "/")
+    assert runner_entry.endswith("xg-strong-rule-orchestrator/runner.py")
     assert payload["session"]["provider_logs"][0]["orchestrator_id"] == "xg-strong-rule-orchestrator"
     assert payload["session"]["provider_logs"][0]["orchestrator_mode"] == "local_runner"
     assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
