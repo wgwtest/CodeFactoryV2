@@ -9,6 +9,8 @@ from app.requirement_analysis.summary_artifact_service import ArtifactUpdateResu
 from app.requirement_analysis.turn_context_builder import TurnContext
 from app.requirement_analysis.turn_stage_executor import TurnStageExecutor, TurnStageResult
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
+from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
+from app.requirement_analysis.working_document_service import WorkingDocumentService
 
 
 def test_requirement_analysis_modules_cover_turn_core_contract(db_session) -> None:
@@ -159,6 +161,60 @@ def test_requirement_analysis_update_services_return_typed_contracts(db_session)
     assert isinstance(artifact_update, ArtifactUpdateResult)
     assert artifact_update.source_question_id == "Q-001"
     assert artifact_update.to_dict()["facts"][0]["fact_id"] == "F-001"
+
+
+def test_working_document_uses_continuous_blocks_and_revision_fragments() -> None:
+    service = WorkingDocumentService()
+    working_document = service.initialize(topic="运算软件需求规格说明", template_id="81433号")
+
+    assert "sections" not in working_document
+    assert working_document["blocks"] == []
+    assert working_document["revision_fragments"] == []
+
+    update = service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "anchor_path": "1.1/编写目的",
+                "operation": "append_to_block",
+                "content": "本规格说明用于定义运算软件首版的建设目标。",
+                "reason": "补入编写目的首句",
+            },
+            {
+                "anchor_path": "1.2/适用范围",
+                "operation": "create_block_after_anchor",
+                "content": "首版聚焦运算能力，不覆盖协同规划闭环。",
+                "reason": "补入范围边界",
+            },
+        ],
+        patch_proposals=[
+            {"patch_id": "P-001", "source_turn_id": "turn-0001", "target_section": "1 总则 / 编写目的"},
+            {"patch_id": "P-002", "source_turn_id": "turn-0001", "target_section": "1 总则 / 适用范围"},
+        ],
+        projection_spec_node={"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
+        turn_id="turn-0001",
+        user_input_summary="用户确认要建设运算软件需求规格说明",
+    )
+
+    payload = update.to_dict()
+    assert "applied_section_ids" not in payload
+    assert payload["applied_block_ids"] == ["blk-0001", "blk-0002"]
+    assert payload["applied_fragment_ids"] == ["frag-0001", "frag-0002"]
+    assert "本规格说明用于定义运算软件首版的建设目标。" in payload["after_excerpt"]
+    assert working_document["blocks"][0]["anchor_path"] == "1.1/编写目的"
+    assert working_document["blocks"][1]["anchor_path"] == "1.2/适用范围"
+    assert working_document["revision_fragments"][0]["turn_id"] == "turn-0001"
+    assert working_document["revision_fragments"][0]["color_token"] == "turn-color-01"
+    assert working_document["revision_fragments"][1]["color_token"] == "turn-color-01"
+
+    review = WorkingDocumentReviewService(working_document_service=service).review(
+        working_document=working_document,
+        review_target_paths=["1.1/编写目的", "1.2/适用范围"],
+        current_spec_node={"node_id": "SPEC-REQ-1.1", "question": "请确认编写目的。"},
+    )
+    assert review["target_review"]["status"] == "acceptable"
+    assert review["target_review"]["review_target"] == ["1.1/编写目的", "1.2/适用范围"]
+    assert review["global_review"]["status"] in {"move_next_node", "whole_document_review", "continue_same_topic"}
 
 
 def test_requirement_analysis_stage_executor_server_review_is_typed() -> None:

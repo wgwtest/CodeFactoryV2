@@ -102,7 +102,9 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert session["document_patch"] == []
     assert session["working_document"]["document_id"] == "lab-working-document"
     assert session["working_document"]["title"].startswith("81433号需求规格说明")
-    assert session["working_document"]["sections"] == []
+    assert "sections" not in session["working_document"]
+    assert session["working_document"]["blocks"] == []
+    assert session["working_document"]["revision_fragments"] == []
     assert session["questions"][0]["question_id"] == "Q-001"
     assert session["questions"][0]["status"] == "open"
     assert session["facts"] == []
@@ -145,9 +147,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
     assert payload["turn"]["closure_decision"]["status"] == "closed"
-    assert payload["turn"]["spec_execution"]["working_document_update"]["applied_section_ids"] == ["SPEC-REQ-1.1"]
-    assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["working_document_update"]["after"]
-    assert payload["turn"]["post_update_review"]["section_review"]["status"] in {"acceptable", "closed"}
+    assert "applied_section_ids" not in payload["turn"]["spec_execution"]["working_document_update"]
+    assert payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0001"]
+    assert payload["turn"]["spec_execution"]["working_document_update"]["applied_fragment_ids"] == ["frag-0001"]
+    assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["working_document_update"]["after_excerpt"]
+    assert "section_review" not in payload["turn"]["post_update_review"]
+    assert payload["turn"]["post_update_review"]["target_review"]["status"] in {"acceptable", "closed"}
     assert payload["turn"]["post_update_review"]["global_review"]["status"] in {"move_next_node", "continue"}
     assert "空域运算软件" in payload["turn"]["spec_execution"]["confirmed_facts"][0]
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
@@ -167,8 +172,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["confidence"] == "medium"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
-    assert payload["session"]["working_document"]["sections"][0]["section_id"] == "SPEC-REQ-1.1"
-    assert "空域运算软件" in payload["session"]["working_document"]["sections"][0]["content"]
+    assert "sections" not in payload["session"]["working_document"]
+    assert payload["session"]["working_document"]["blocks"][0]["block_id"] == "blk-0001"
+    assert payload["session"]["working_document"]["blocks"][0]["anchor_path"] == "1 总则 / 编写目的"
+    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
+    assert payload["session"]["working_document"]["revision_fragments"][0]["fragment_id"] == "frag-0001"
+    assert payload["session"]["working_document"]["revision_fragments"][0]["turn_id"] == "turn-0001"
     assert payload["session"]["questions"][0]["question_id"] == "Q-001"
     assert payload["session"]["questions"][0]["status"] == "confirmed"
     assert payload["session"]["questions"][0]["resolution_fact_ids"] == ["F-001"]
@@ -202,8 +211,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert_new_turn_contract(second_payload["turn"])
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
-    assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_section_ids"] == ["SPEC-REQ-2.1"]
-    assert second_payload["turn"]["post_update_review"]["section_review"]["status"] in {"acceptable", "closed"}
+    assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
+    assert second_payload["turn"]["post_update_review"]["target_review"]["status"] in {"acceptable", "closed"}
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
     assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
     assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
@@ -481,10 +490,15 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert provider_log["audit"]["normalized_input"]["semantic"] == "先按计算分析工具理解"
     assert provider_log["audit"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "assembled prompt"
     assert "working_document_json" in provider_log["audit"]["provider_request"]["prompt_bundle"]
-    assert "current_section_draft" in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "current_section_draft" not in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "working_document_excerpt" in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "review_target_paths" in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "recent_revision_fragments" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "review_goal" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
-    assert "review_json" in provider_log["audit"]["provider_response"]
+    assert "review_json" not in provider_log["audit"]["provider_response"]
+    assert "target_review_json" in provider_log["audit"]["provider_response"]
+    assert "global_review_json" in provider_log["audit"]["provider_response"]
     assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
         "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
     )

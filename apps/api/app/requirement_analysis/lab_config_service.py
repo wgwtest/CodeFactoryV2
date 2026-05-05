@@ -74,9 +74,21 @@ class RequirementAnalysisLabConfigService:
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
-                        "path": "provider_request.prompt_bundle.current_section_draft",
-                        "label": "Current Section Draft",
-                        "description": "当前焦点章节在调用前的正文草稿，用于检查模型面对的是哪一段具体内容。",
+                        "path": "provider_request.prompt_bundle.working_document_excerpt",
+                        "label": "Working Document Excerpt",
+                        "description": "与本轮目标最相关的正文摘录，用于检查模型面对的是哪一段正文。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.review_target_paths",
+                        "label": "Review Target Paths",
+                        "description": "本轮重点审查的规格锚点路径，用于解释当前回看到底在看哪里。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.recent_revision_fragments",
+                        "label": "Recent Revision Fragments",
+                        "description": "最近几轮命中的修订片段摘要，用于判断模型是否看到了最近修改痕迹。",
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
@@ -116,9 +128,15 @@ class RequirementAnalysisLabConfigService:
                         "used_when": "Provider 响应解析后使用。",
                     },
                     {
-                        "path": "provider_response.review_json",
-                        "label": "Review JSON",
-                        "description": "服务端或模型给出的章节回看与全局回看结果，用于判断为什么继续追问或进入下一节点。",
+                        "path": "provider_response.target_review_json",
+                        "label": "Target Review JSON",
+                        "description": "服务端或模型给出的目标范围回看结果，用于判断本轮命中范围是否已足够。",
+                        "used_when": "本轮临时正文回看完成后使用。",
+                    },
+                    {
+                        "path": "provider_response.global_review_json",
+                        "label": "Global Review JSON",
+                        "description": "服务端或模型给出的全局回看结果，用于判断为什么继续追问或进入下一节点。",
                         "used_when": "本轮临时正文回看完成后使用。",
                     },
                     {

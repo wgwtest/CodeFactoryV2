@@ -104,12 +104,12 @@ class RequirementAnalysisTurnAuditService:
     @staticmethod
     def post_update_review(
         *,
-        section_review: dict,
+        target_review: dict,
         global_review: dict,
     ) -> dict:
         return {
-            "summary": f"{section_review.get('reason')} {global_review.get('summary')}".strip(),
-            "section_review": section_review,
+            "summary": f"{target_review.get('reason')} {global_review.get('summary')}".strip(),
+            "target_review": target_review,
             "global_review": global_review,
         }
 
@@ -119,11 +119,11 @@ class RequirementAnalysisTurnAuditService:
         post_update_review: dict,
         closed_spec_node_ids: list[str],
     ) -> dict:
-        section_review = post_update_review.get("section_review") or {}
+        target_review = post_update_review.get("target_review") or {}
         global_review = post_update_review.get("global_review") or {}
-        status = "closed" if str(section_review.get("status") or "") in {"acceptable", "closed"} else "needs_followup"
+        status = "closed" if str(target_review.get("status") or "") in {"acceptable", "closed"} else "needs_followup"
         global_status = str(global_review.get("status") or "")
-        if global_status == "continue_same_section":
+        if global_status == "continue_same_topic":
             next_action = "continue_same_topic"
         elif global_status == "whole_document_review":
             next_action = "whole_document_review"
@@ -159,8 +159,9 @@ class RequirementAnalysisTurnAuditService:
         )
         trace.append(f"先执行规格补充：{affected_labels or '无'}。")
         working_document_update = spec_execution.get("working_document_update") or {}
-        if working_document_update.get("after"):
-            trace.append(f"临时正文应用后内容：{working_document_update.get('after')}")
+        after_excerpt = working_document_update.get("after_excerpt") or working_document_update.get("after")
+        if after_excerpt:
+            trace.append(f"临时正文应用后内容：{after_excerpt}")
         trace.append(f"补充后回看：{post_update_review.get('summary')}")
         trace.append(
             f"本轮处理闭环：{closure_decision.get('status')}，下一步策略 {closure_decision.get('next_action')}。"

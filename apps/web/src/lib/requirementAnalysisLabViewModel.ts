@@ -41,16 +41,36 @@ export function getRequirementAnalysisProviderLogFieldNote(logSchema: Requiremen
 }
 
 export function buildRequirementAnalysisWorkingDocumentViewModel(session: RequirementAnalysisSession) {
+  const fragmentsByBlock = new Map<string, RequirementAnalysisSession["working_document"]["revision_fragments"]>();
+  for (const fragment of session.working_document.revision_fragments) {
+    const current = fragmentsByBlock.get(fragment.target_block_id) ?? [];
+    current.push(fragment);
+    fragmentsByBlock.set(fragment.target_block_id, current);
+  }
+  const blocks = [...session.working_document.blocks]
+    .sort((left, right) => (left.order_index ?? 0) - (right.order_index ?? 0))
+    .map((block) => ({
+      blockId: block.block_id,
+      anchorPath: block.anchor_path,
+      blockType: block.block_type,
+      text: block.text,
+      lastTurnId: block.last_turn_id,
+      sourceFragmentIds: block.source_fragment_ids,
+      fragments: (fragmentsByBlock.get(block.block_id) ?? []).sort((left, right) => left.start_offset - right.start_offset),
+    }));
+
   return {
     title: session.working_document.title,
-    sections: session.working_document.sections.map((section) => ({
-      sectionId: section.section_id,
-      targetSection: section.target_section,
-      content: section.content,
-      sourcePatchIds: section.source_patch_ids,
-      lastTurnId: section.last_turn_id,
-      reviewStatus: section.review_status,
-      reviewReason: section.review_reason,
+    topic: session.working_document.topic,
+    blocks,
+    marginMarkers: session.working_document.revision_fragments.map((fragment) => ({
+      fragmentId: fragment.fragment_id,
+      turnId: fragment.turn_id,
+      colorToken: fragment.color_token,
+      targetBlockId: fragment.target_block_id,
+      summary: fragment.user_input_summary ?? "",
+      reason: fragment.supplement_reason ?? "",
+      hitSpecNodes: fragment.hit_spec_nodes ?? [],
     })),
   };
 }
@@ -78,7 +98,7 @@ export function validateRequirementAnalysisTurnProtocol(turn: RequirementAnalysi
   }
   if (!isRecord(value.post_update_review)) {
     missing.push("post_update_review.summary");
-    missing.push("post_update_review.section_review");
+    missing.push("post_update_review.target_review");
     missing.push("post_update_review.global_review");
   }
   if (!isRecord(value.closure_decision)) {
