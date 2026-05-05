@@ -69,12 +69,16 @@ class TurnStagePlanner:
                 else execution_mode in {"model", "local_runner"}
             ),
             "adopt_fields": list(stage.get("adopt_fields") or TurnStagePlanner._adopt_fields(stage_kind)),
-            "fallback_policy": str(stage.get("fallback_policy") or "keep_prior_stage_and_audit"),
+            "failure_policy": str(stage.get("failure_policy") or "block_turn"),
         }
 
     @staticmethod
     def _infer_stage_kind(stage_id: str, stage_type: str) -> str:
-        if stage_type == "server_review" or "review" in stage_id:
+        if "intent" in stage_id:
+            return "intent"
+        if "next_interaction" in stage_id or "planning" in stage_id:
+            return "next_interaction"
+        if "review" in stage_id:
             return "review"
         if stage_type == "local_runner":
             return "write"
@@ -84,18 +88,30 @@ class TurnStagePlanner:
     def _execution_mode(stage_type: str) -> str:
         if stage_type == "local_runner":
             return "local_runner"
-        if stage_type == "server_review":
-            return "server_review"
         return "model"
 
     @staticmethod
     def _input_sources(stage_kind: str) -> list[str]:
+        if stage_kind == "intent":
+            return ["turn_context", "previous_interaction", "working_document", "spec_tree"]
         if stage_kind == "review":
-            return ["working_document_after_apply"]
+            return ["working_document_after_apply", "working_document_update"]
+        if stage_kind == "next_interaction":
+            return ["review_after_apply", "spec_tree", "working_document"]
         return ["session_snapshot", "turn_context"]
 
     @staticmethod
     def _adopt_fields(stage_kind: str) -> list[str]:
+        if stage_kind == "intent":
+            return [
+                "intent_understanding_result",
+                "target_document_structure",
+                "stage_task_definition",
+                "stage_quality_constraints",
+                "confidence",
+            ]
         if stage_kind == "review":
             return ["post_update_review", "annotations"]
+        if stage_kind == "next_interaction":
+            return ["next_interaction_plan", "planning_trace", "confidence"]
         return ["organizer_interpretation", "confirmed_facts_delta", "document_patch", "next_interaction_candidate"]

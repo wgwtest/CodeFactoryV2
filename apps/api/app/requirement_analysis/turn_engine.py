@@ -9,6 +9,7 @@ from app.requirement_analysis.provider_call_log_service import ProviderCallLogSe
 from app.requirement_analysis.provider_call_service import RequirementAnalysisProviderCallService
 from app.requirement_analysis.session_snapshot import SessionSnapshot
 from app.requirement_analysis.spec_projection_service import SpecProjectionService
+from app.requirement_analysis.stage_runtime_context_builder import StageRuntimeContextBuilder
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService
 from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
@@ -61,6 +62,9 @@ class RequirementAnalysisTurnEngine:
         self.working_document_service = working_document_service
         self.working_document_review_service = working_document_review_service
         self.turn_decision_service = turn_decision_service
+        self.stage_runtime_context_builder = StageRuntimeContextBuilder(
+            working_document_service=working_document_service,
+        )
 
     def run_turn(self, session: SessionSnapshot, payload: RequirementAnalysisTurnCreate) -> TurnExecutionResult:
         state = dict(session.payload or {})
@@ -74,13 +78,58 @@ class RequirementAnalysisTurnEngine:
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
         stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
         stage_results: list[TurnStageResult] = []
-        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
+
+        working_document = dict(
+            context.working_document
+            or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+        )
+        intent_output = {
+            "intent_understanding_result": {},
+            "target_document_structure": {},
+            "stage_task_definition": {},
+            "stage_quality_constraints": {},
+            "confidence": "medium",
+        }
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="intent"):
+            stage_input = self.stage_runtime_context_builder.build(
+                session=session,
+                context=context,
+                stage=stage,
+                working_document=working_document,
+            ).to_prompt_context()
             stage_results.append(
                 self.turn_stage_executor.run(
                     stage=stage,
                     orchestrator=orchestrator,
                     session=session,
                     context=context,
+                    stage_input=stage_input,
+                )
+            )
+        intent_output = self.turn_stage_reducer.reduce_intent_stage(plan=stage_plan, stage_results=stage_results)
+        intent_understanding_result = dict(intent_output.get("intent_understanding_result") or {})
+        target_document_structure = dict(intent_output.get("target_document_structure") or {})
+        stage_task_definition = dict(intent_output.get("stage_task_definition") or {})
+        stage_quality_constraints = dict(intent_output.get("stage_quality_constraints") or {})
+
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
+            stage_input = self.stage_runtime_context_builder.build(
+                session=session,
+                context=context,
+                stage=stage,
+                intent_understanding_result=intent_understanding_result,
+                target_document_structure=target_document_structure,
+                stage_task_definition=stage_task_definition,
+                stage_quality_constraints=stage_quality_constraints,
+                working_document=working_document,
+            ).to_prompt_context()
+            stage_results.append(
+                self.turn_stage_executor.run(
+                    stage=stage,
+                    orchestrator=orchestrator,
+                    session=session,
+                    context=context,
+                    stage_input=stage_input,
                 )
             )
         model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
@@ -95,7 +144,7 @@ class RequirementAnalysisTurnEngine:
             current_spec_node=projection.projection_spec_node,
             session=session,
         )
-        provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
+        write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
         next_open_before_update = self.spec_tree_service.first_open_spec_node_id(context.spec_tree)
         decision_trace_seed = self.turn_audit_service.decision_trace_seed(
@@ -115,10 +164,6 @@ class RequirementAnalysisTurnEngine:
             session=session,
         )
         structured_update = artifact_update.to_dict()
-        working_document = dict(
-            context.working_document
-            or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
-        )
         working_document_update_result = self.working_document_service.apply_patches(
             working_document=working_document,
             document_patch=model_output["document_patch"],
@@ -128,7 +173,7 @@ class RequirementAnalysisTurnEngine:
             user_input_summary=context.normalized_input.get("semantic") or user_input,
         )
         working_document_update = working_document_update_result.to_dict()
-        review_result = self.working_document_review_service.review(
+        server_review_evidence = self.working_document_review_service.review(
             working_document=working_document,
             review_target_paths=[
                 str(block.get("anchor_path") or "")
@@ -138,7 +183,51 @@ class RequirementAnalysisTurnEngine:
             or [str(projection.projection_spec_node.get("target_section") or "")],
             current_spec_node=projection.projection_spec_node,
         )
-        target_review = review_result["target_review"]
+        target_review = dict(server_review_evidence["target_review"])
+        global_review = dict(server_review_evidence["global_review"])
+        review_stage_input = self._review_stage_input(
+            working_document=working_document,
+            working_document_update=working_document_update,
+            target_review=target_review,
+            global_review=global_review,
+            review_target_paths=target_review.get("review_target", []),
+        )
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="review"):
+            stage_input = self.stage_runtime_context_builder.build(
+                session=session,
+                context=context,
+                stage=stage,
+                intent_understanding_result=intent_understanding_result,
+                target_document_structure=target_document_structure,
+                stage_task_definition=stage_task_definition,
+                stage_quality_constraints=stage_quality_constraints,
+                working_document=working_document,
+                working_document_after_apply=review_stage_input["working_document_after_apply"],
+                working_document_update=working_document_update,
+            ).to_prompt_context()
+            stage_input.update(review_stage_input)
+            stage_results.append(
+                self.turn_stage_executor.run(
+                    stage=stage,
+                    orchestrator=orchestrator,
+                    session=session,
+                    context=context,
+                    stage_input=review_stage_input,
+                )
+            )
+        review_reduction = self.turn_stage_reducer.reduce_review_stage(
+            plan=stage_plan,
+            stage_results=stage_results,
+            target_review=target_review,
+            global_review=global_review,
+        )
+        target_review = dict(review_reduction["target_review"])
+        global_review = dict(review_reduction["global_review"])
+        review_after_apply_result = {
+            **dict(review_reduction.get("review_stage_output") or {}),
+            "target_review": target_review,
+            "global_review": global_review,
+        }
         can_close = target_review["status"] in {"acceptable", "closed"}
         spec_update = self.spec_tree_service.update_spec_tree(
             spec_tree=context.spec_tree,
@@ -149,47 +238,79 @@ class RequirementAnalysisTurnEngine:
         )
         spec_update_payload = spec_update.to_dict()
         next_spec_node = spec_update.next_spec_node
-        global_review = self.working_document_review_service.build_global_review(
+        model_global_review = dict(global_review)
+        global_review = self._resolved_global_review(
+            model_global_review=model_global_review,
             next_spec_node=next_spec_node,
             target_review=target_review,
         )
-        review_stage_input = self._review_stage_input(
-            working_document=working_document,
-            working_document_update=working_document_update,
-            target_review=target_review,
-            global_review=global_review,
-            review_target_paths=target_review.get("review_target", []),
-        )
-        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="review"):
+        review_after_apply_result = {
+            **review_after_apply_result,
+            "target_review": target_review,
+            "global_review": global_review,
+            "model_global_review": model_global_review,
+        }
+        continue_same_topic = global_review["status"] == "continue_same_topic"
+        focus_spec_node = projection.projection_spec_node if continue_same_topic else next_spec_node
+
+        next_planning_output = {
+            "next_interaction_plan": {},
+            "planning_trace": [],
+            "confidence": "medium",
+        }
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="next_interaction"):
+            stage_input = self.stage_runtime_context_builder.build(
+                session=session,
+                context=context,
+                stage=stage,
+                intent_understanding_result=intent_understanding_result,
+                target_document_structure=target_document_structure,
+                stage_task_definition=stage_task_definition,
+                stage_quality_constraints=stage_quality_constraints,
+                working_document=working_document,
+                working_document_after_apply=review_stage_input["working_document_after_apply"],
+                working_document_update=working_document_update,
+                review_after_apply_result=review_after_apply_result,
+            ).to_prompt_context()
+            stage_input.update(
+                {
+                    "review_after_apply_result": review_after_apply_result,
+                    "target_review": target_review,
+                    "global_review": global_review,
+                    "next_spec_node": next_spec_node,
+                    "current_spec_node": projection.projection_spec_node,
+                    "focus_spec_node": focus_spec_node,
+                    "spec_tree": spec_update_payload["spec_tree"],
+                }
+            )
             stage_results.append(
                 self.turn_stage_executor.run(
                     stage=stage,
                     orchestrator=orchestrator,
                     session=session,
                     context=context,
-                    stage_input=review_stage_input,
+                    stage_input=stage_input,
                 )
             )
-        self.turn_stage_reducer.reduce_review_stage(
+        next_planning_output = self.turn_stage_reducer.reduce_next_interaction_stage(
             plan=stage_plan,
             stage_results=stage_results,
-            target_review=target_review,
-            global_review=global_review,
         )
-        continue_same_topic = global_review["status"] == "continue_same_topic"
-        model_output = self.next_interaction_service.align_model_output_to_next_node(
+        next_interaction_plan = dict(next_planning_output.get("next_interaction_plan") or {})
+        next_interaction = self._next_interaction_from_plan(
+            plan=next_interaction_plan,
+            focus_spec_node=focus_spec_node,
+            turn_index=context.turn_index,
+        )
+        model_output = self._apply_next_interaction_plan_to_model_output(
             model_output=model_output,
-            next_spec_node=next_spec_node,
-            current_spec_node=projection.projection_spec_node,
-            session=session,
-            continue_same_topic=continue_same_topic,
-            target_review=target_review,
-            global_review=global_review,
+            next_interaction_plan=next_interaction_plan,
+            next_interaction=next_interaction,
         )
         structured_update["questions"] = self.next_interaction_service.ensure_next_open_question(
             questions=structured_update["questions"],
             next_question=model_output["next_question"],
-            next_spec_node=projection.projection_spec_node if continue_same_topic else next_spec_node,
+            next_spec_node=focus_spec_node,
             turn_id=turn_id,
         )
         state_changes = self.turn_audit_service.state_changes(
@@ -207,11 +328,6 @@ class RequirementAnalysisTurnEngine:
         post_update_review = self.turn_audit_service.post_update_review(
             target_review=target_review,
             global_review=global_review,
-        )
-        next_interaction = self.next_interaction_service.build(
-            next_spec_node=projection.projection_spec_node if continue_same_topic else next_spec_node,
-            model_output=model_output,
-            turn_index=context.turn_index,
         )
         preliminary_closure_decision = self.turn_decision_service.build_closure_decision(
             post_update_review=post_update_review,
@@ -234,7 +350,7 @@ class RequirementAnalysisTurnEngine:
             normalized=context.normalized_input,
             stage_results=stage_results,
             final_write_model_output=model_output,
-            final_write_provider_normalized_output=provider_normalized_output,
+            final_write_provider_normalized_output=write_provider_normalized_output,
             working_document=working_document,
             working_document_update=working_document_update,
             target_review=target_review,
@@ -271,8 +387,14 @@ class RequirementAnalysisTurnEngine:
             "previous_interaction": context.previous_interaction,
             "normalized_input": context.normalized_input,
             "input_relation": context.input_relation,
+            "intent_understanding_result": intent_understanding_result,
+            "target_document_structure": target_document_structure,
+            "stage_task_definition": stage_task_definition,
+            "stage_quality_constraints": stage_quality_constraints,
             "spec_execution": spec_execution,
             "post_update_review": post_update_review,
+            "review_after_apply_result": review_after_apply_result,
+            "next_interaction_plan": next_interaction_plan,
             "closure_decision": closure_decision,
             "next_interaction": next_interaction,
             "stage_audits": stage_audits,
@@ -387,6 +509,127 @@ class RequirementAnalysisTurnEngine:
             "global_review": global_review,
         }
 
+    def _next_interaction_from_plan(self, *, plan: dict, focus_spec_node: dict, turn_index: int) -> dict:
+        options = self.next_interaction_service.input_normalizer.normalize_quick_options(plan.get("quick_options"))
+        question = str(plan.get("next_question") or "").strip()
+        if not question:
+            question = str(focus_spec_node.get("question") or focus_spec_node.get("title") or "请继续补充需求规格说明。")
+        target_nodes = [
+            str(item)
+            for item in list(plan.get("target_spec_nodes") or [])
+            if str(item).strip()
+        ]
+        if not target_nodes and focus_spec_node.get("node_id"):
+            target_nodes = [str(focus_spec_node["node_id"])]
+        if not focus_spec_node.get("node_id") and not target_nodes:
+            interaction_type = "free_continue"
+        else:
+            interaction_type = "choice_question" if options else "open_question"
+        return {
+            "interaction_id": f"interaction-{turn_index:04d}",
+            "type": interaction_type,
+            "prompt": question,
+            "options": options,
+            "target_spec_node_ids": target_nodes,
+            "reason": str(plan.get("plan_reason") or plan.get("review_acknowledgement") or ""),
+        }
+
+    def _resolved_global_review(self, *, model_global_review: dict, next_spec_node: dict, target_review: dict) -> dict:
+        status = str(model_global_review.get("status") or "")
+        if status == "continue_same_target":
+            status = "continue_same_topic"
+        if status == "continue_same_topic":
+            return {
+                **self.working_document_review_service.build_global_review(
+                    next_spec_node={},
+                    target_review={"status": "insufficient", "missing_aspects": model_global_review.get("remaining_gaps") or []},
+                ),
+                **model_global_review,
+                "status": "continue_same_topic",
+            }
+        return self.working_document_review_service.build_global_review(
+            next_spec_node=next_spec_node,
+            target_review=target_review,
+        )
+
+    @staticmethod
+    def _apply_next_interaction_plan_to_model_output(
+        *,
+        model_output: dict,
+        next_interaction_plan: dict,
+        next_interaction: dict,
+    ) -> dict:
+        user_message = str(next_interaction_plan.get("user_message") or "").strip()
+        next_question = str(next_interaction_plan.get("next_question") or next_interaction.get("prompt") or "").strip()
+        quick_options = list(next_interaction_plan.get("quick_options") or next_interaction.get("options") or [])
+        assistant_message = RequirementAnalysisTurnEngine._assistant_message_after_planning(
+            model_output=model_output,
+            planning_user_message=user_message,
+            next_question=next_question,
+        )
+        next_suggestion = {
+            "suggestion_id": "",
+            "kind": str(next_interaction_plan.get("planning_strategy") or "topic"),
+            "content": next_question,
+            "reason": str(next_interaction_plan.get("plan_reason") or ""),
+            "related_spec_node_ids": list(next_interaction.get("target_spec_node_ids") or []),
+        }
+        return {
+            **model_output,
+            "assistant_message": assistant_message,
+            "next_suggestion": next_suggestion,
+            "next_question": next_question,
+            "quick_options": quick_options,
+            "open_questions_delta": [next_question] if next_question else [],
+        }
+
+    @staticmethod
+    def _assistant_message_after_planning(
+        *,
+        model_output: dict,
+        planning_user_message: str,
+        next_question: str,
+    ) -> str:
+        sections = []
+        for patch in list(model_output.get("document_patch") or []):
+            section = str(patch.get("section") or "").strip()
+            if section and section not in sections:
+                sections.append(section)
+        if sections:
+            write_summary = f"本轮已把{'、'.join(sections)}写入临时正文。"
+        else:
+            write_summary = str(model_output.get("assistant_message") or "本轮已更新临时正文。").strip()
+
+        planning_message = planning_user_message
+        if planning_message and "临时正文" in planning_message:
+            base_message = planning_message
+            if sections and not any(section in base_message for section in sections):
+                base_message = RequirementAnalysisTurnEngine._append_sentence(
+                    base_message,
+                    f"写入位置：{'、'.join(sections)}。",
+                )
+        else:
+            base_message = write_summary
+        if next_question and next_question not in planning_message:
+            base_message = RequirementAnalysisTurnEngine._append_sentence(
+                base_message,
+                f"建议下一步确认：{next_question}",
+            )
+        return base_message
+
+    @staticmethod
+    def _append_sentence(base: str, addition: str) -> str:
+        base = base.strip()
+        addition = addition.strip()
+        if not addition:
+            return base
+        if not base:
+            return addition
+        if addition in base:
+            return base
+        separator = "" if base.endswith(("。", "！", "？", ".", "!", "?")) else "。"
+        return f"{base}{separator}{addition}"
+
     def _build_provider_logs(
         self,
         *,
@@ -436,8 +679,13 @@ class RequirementAnalysisTurnEngine:
                 service_output = {
                     "target_review": target_review,
                     "global_review": global_review,
+                    "review_after_apply_result": {
+                        **self.provider_call_log_service.service_output(model_output),
+                        "target_review": target_review,
+                        "global_review": global_review,
+                    },
                 }
-            else:
+            elif stage_kind == "write":
                 model_output = final_write_model_output
                 provider_normalized_output = final_write_provider_normalized_output
                 service_output = {
@@ -445,6 +693,10 @@ class RequirementAnalysisTurnEngine:
                     "working_document_update": working_document_update,
                     "post_update_review": post_update_review,
                 }
+            else:
+                model_output = stage_result.model_output
+                provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
+                service_output = self.provider_call_log_service.service_output(model_output)
             logs.append(
                 self.provider_call_log_service.build(
                     turn_id=turn_id,
@@ -482,7 +734,11 @@ class RequirementAnalysisTurnEngine:
 
     @staticmethod
     def _stage_kind(*, stage_result: TurnStageResult) -> str:
-        if stage_result.stage_type == "server_review" or "review" in stage_result.stage_id:
+        if "intent" in stage_result.stage_id:
+            return "intent"
+        if "next_interaction" in stage_result.stage_id or "planning" in stage_result.stage_id:
+            return "next_interaction"
+        if "review" in stage_result.stage_id:
             return "review"
         return "write"
 
@@ -497,9 +753,6 @@ class RequirementAnalysisTurnEngine:
         if not stage_results:
             raise ValueError("turn strategy produced no stage results")
         if adoption_policy == "adopt_last_completed_stage":
-            for result in reversed(stage_results):
-                if result.stage_type != "server_review":
-                    return result.model_output
             return stage_results[-1].model_output
         return stage_results[0].model_output
 

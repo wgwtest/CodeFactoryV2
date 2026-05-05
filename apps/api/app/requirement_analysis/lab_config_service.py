@@ -62,16 +62,46 @@ class RequirementAnalysisLabConfigService:
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
+                        "path": "provider_request.prompt_bundle.stage_id",
+                        "label": "Stage ID",
+                        "description": "当前模型调用所属的轮次阶段标识，用于区分 intent_understanding、write、review_after_apply 与 next_interaction_planning。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.prompt_id",
+                        "label": "Prompt ID",
+                        "description": "当前阶段使用的 Prompt 资产标识，用于核对是否命中了正确的阶段提示词。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
                         "path": "provider_request.prompt_bundle.context_json",
-                        "label": "Context JSON",
+                        "label": "当前 turn 上下文 JSON",
                         "description": "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
                         "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.stage_task_definition_json",
+                        "label": "Stage Task Definition JSON",
+                        "description": "本阶段任务定义，用于追溯模型被要求解决什么问题、写入哪些章节和按什么标准接受。",
+                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.quality_constraints_json",
+                        "label": "Quality Constraints JSON",
+                        "description": "本阶段质量约束，用于追溯最低写作深度、必须覆盖维度和助手回复要求。",
+                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_json",
                         "label": "Working Document JSON",
                         "description": "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
                         "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.working_document_after_apply_json",
+                        "label": "Working Document After Apply JSON",
+                        "description": "Review 阶段使用的应用后正文快照，用于确认回看基于真实落地后的正文。",
+                        "used_when": "review_after_apply 阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_excerpt",
@@ -99,8 +129,8 @@ class RequirementAnalysisLabConfigService:
                     },
                     {
                         "path": "provider_request.prompt_bundle.schema_json",
-                        "label": "Schema JSON",
-                        "description": "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
+                        "label": "输出格式要求 JSON",
+                        "description": "要求模型返回的 JSON 输出格式约束，用于校验输出字段是否齐全。",
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
@@ -124,7 +154,7 @@ class RequirementAnalysisLabConfigService:
                     {
                         "path": "provider_response.parsed_json",
                         "label": "Parsed JSON",
-                        "description": "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
+                        "description": "从原始文本解析出的 JSON 对象，用于判断模型是否按输出格式要求返回。",
                         "used_when": "Provider 响应解析后使用。",
                     },
                     {
@@ -158,8 +188,14 @@ class RequirementAnalysisLabConfigService:
                 "required_fields": [
                     "previous_interaction",
                     "input_relation",
+                    "intent_understanding_result",
+                    "target_document_structure",
+                    "stage_task_definition",
+                    "stage_quality_constraints",
                     "spec_execution",
                     "post_update_review",
+                    "review_after_apply_result",
+                    "next_interaction_plan",
                     "closure_decision",
                     "next_interaction",
                     "decision_trace",

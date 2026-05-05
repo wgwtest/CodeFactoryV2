@@ -1,0 +1,9 @@
+{
+  "adopt_fields": [
+    "next_interaction_plan",
+    "planning_trace",
+    "confidence"
+  ],
+  "ignore_fields": ["document_patch", "target_review", "global_review"],
+  "failure_policy": "block_turn"
+}

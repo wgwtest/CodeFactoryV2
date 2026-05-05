@@ -18,8 +18,14 @@ def find_spec_node(nodes: list[dict], node_id: str) -> dict | None:
 def assert_new_turn_contract(turn: dict) -> None:
     assert "previous_interaction" in turn
     assert "input_relation" in turn
+    assert "intent_understanding_result" in turn
+    assert "target_document_structure" in turn
+    assert "stage_task_definition" in turn
+    assert "stage_quality_constraints" in turn
     assert "spec_execution" in turn
     assert "post_update_review" in turn
+    assert "review_after_apply_result" in turn
+    assert "next_interaction_plan" in turn
     assert "closure_decision" in turn
     assert "next_interaction" in turn
     assert "decision_trace" in turn
@@ -144,10 +150,22 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["status"] == "waiting_user"
     assert payload["turn"]["turn_id"] == "turn-0001"
     assert_new_turn_contract(payload["turn"])
-    assert payload["turn"]["stage_audits"][0]["stage_id"] == "write"
-    assert payload["turn"]["stage_audits"][1]["stage_id"] == "review"
-    assert payload["turn"]["stage_audits"][0]["stage_kind"] == "write"
-    assert payload["turn"]["stage_audits"][1]["stage_kind"] == "review"
+    assert [item["stage_id"] for item in payload["turn"]["stage_audits"]] == [
+        "intent_understanding",
+        "write",
+        "review_after_apply",
+        "next_interaction_planning",
+    ]
+    assert [item["stage_kind"] for item in payload["turn"]["stage_audits"]] == [
+        "intent",
+        "write",
+        "review",
+        "next_interaction",
+    ]
+    assert payload["turn"]["intent_understanding_result"]["input_type"] == "first_round_product_concept"
+    assert payload["turn"]["stage_task_definition"]["target_sections"] == ["1 总则 / 编写目的"]
+    assert payload["turn"]["review_after_apply_result"]["target_review"]["status"] == "acceptable"
+    assert payload["turn"]["next_interaction_plan"]["target_spec_nodes"] == ["SPEC-REQ-2.1"]
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
     assert payload["turn"]["closure_decision"]["status"] == "closed"
@@ -162,7 +180,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
     assert any("用户输入是本轮 Turn 起点" in item for item in payload["turn"]["decision_trace"])
     assert payload["turn"]["normalized_input"]["input_type"] == "free_text"
-    assert "基于你的输入，本轮更新了" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "本轮已补入临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "软件定位" in payload["turn"]["next_interaction"]["prompt"]
     assert payload["turn"]["next_interaction"]["type"] == "choice_question"
@@ -174,10 +192,22 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["spec_execution"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
     assert payload["turn"]["spec_execution"]["document_patch"][0]["operation"] == "append_or_update"
     assert payload["turn"]["confidence"] == "medium"
-    assert payload["session"]["provider_logs"][0]["stage_id"] == "write"
-    assert len(payload["session"]["provider_logs"]) == 1
-    assert [item["call_id"] for item in payload["session"]["provider_logs"]] == ["requirement-analysis-provider-call-0001"]
+    assert [item["stage_id"] for item in payload["session"]["provider_logs"]] == [
+        "intent_understanding",
+        "write",
+        "review_after_apply",
+        "next_interaction_planning",
+    ]
+    assert [item["call_id"] for item in payload["session"]["provider_logs"]] == [
+        "requirement-analysis-provider-call-0001",
+        "requirement-analysis-provider-call-0002",
+        "requirement-analysis-provider-call-0003",
+        "requirement-analysis-provider-call-0004",
+    ]
     assert payload["session"]["provider_logs"][0]["stage_type"] == "policy_interpreted"
+    assert payload["session"]["provider_logs"][2]["stage_type"] == "policy_interpreted"
+    assert payload["session"]["provider_logs"][2]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "review_after_apply"
+    assert payload["session"]["provider_logs"][3]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "next_interaction_planning"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
     assert "sections" not in payload["session"]["working_document"]
@@ -217,7 +247,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     second_payload = second_turn.json()
     assert second_payload["turn"]["turn_id"] == "turn-0002"
     assert_new_turn_contract(second_payload["turn"])
-    assert [item["stage_id"] for item in second_payload["turn"]["stage_audits"]] == ["write", "review"]
+    assert [item["stage_id"] for item in second_payload["turn"]["stage_audits"]] == [
+        "intent_understanding",
+        "write",
+        "review_after_apply",
+        "next_interaction_planning",
+    ]
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
@@ -225,7 +260,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
     assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
     assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
-    assert second_payload["turn"]["next_interaction"]["prompt"] == "建议下一步确认：组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
+    assert second_payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
         "领域专家直接使用",
         "管理员配置后专家使用",
@@ -246,6 +281,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert [item["call_id"] for item in second_payload["session"]["provider_logs"]] == [
         "requirement-analysis-provider-call-0001",
         "requirement-analysis-provider-call-0002",
+        "requirement-analysis-provider-call-0003",
+        "requirement-analysis-provider-call-0004",
+        "requirement-analysis-provider-call-0005",
+        "requirement-analysis-provider-call-0006",
+        "requirement-analysis-provider-call-0007",
+        "requirement-analysis-provider-call-0008",
     ]
     second_spec_leaf = find_spec_node(second_payload["session"]["spec_tree"], "SPEC-REQ-2.1")
     assert second_spec_leaf["status"] == "closed"
@@ -403,10 +444,112 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
             captured["base_url"] = base_url
             captured["model"] = model
 
-        def run_turn(self, *, session, user_input: str, normalized: dict) -> dict:
+        def run_stage(self, *, session, user_input: str, normalized: dict, orchestrator_id: str, stage: dict, stage_input: dict | None = None) -> dict:
             captured["session_provider"] = session.provider_id
             captured["user_input"] = user_input
             captured["normalized"] = normalized
+            stage_id = stage["stage_id"]
+            prompt_bundle = {
+                "assembled_prompt": "assembled prompt",
+                "context_json": '{"user_input":"A，先按计算分析工具理解"}',
+                "schema_json": '{"assistant_message":"string"}',
+                "stage_id": stage_id,
+                "prompt_id": stage.get("prompt_id", stage_id),
+            }
+            if stage_id == "intent_understanding":
+                return {
+                    "intent_understanding_result": {
+                        "user_goal_summary": "先按计算分析工具理解。",
+                        "input_type": "option_answer_with_supplement",
+                        "relation_to_previous_interaction": "selected_option",
+                        "option_handling": "matched_option_with_supplement",
+                        "matched_option": "A",
+                        "supplemental_facts": ["先按计算分析工具理解"],
+                        "target_section_candidates": ["2 项目概述 / 软件定位"],
+                        "document_strategy": "write_targeted_sections",
+                        "write_task_candidate": "将软件定位写入需求规格正文。",
+                        "review_focus_candidate": "检查软件定位是否成文。",
+                        "ambiguities": [],
+                    },
+                    "target_document_structure": {
+                        "target_sections": ["2 项目概述 / 软件定位"],
+                        "target_anchor_paths": ["2 项目概述 / 软件定位"],
+                        "current_major_gaps": ["软件定位仍需写入正文。"],
+                    },
+                    "stage_task_definition": {
+                        "task_summary": "将软件定位写入需求规格正文。",
+                        "target_sections": ["2 项目概述 / 软件定位"],
+                        "non_goals": [],
+                        "must_output": ["document_patch", "assistant_message"],
+                        "review_standard": "软件定位需要形成可接受表达。",
+                    },
+                    "stage_quality_constraints": {
+                        "minimum_depth": "明确系统定位和阶段边界。",
+                        "must_cover_dimensions": ["定位", "边界"],
+                        "assistant_reply_style": "先解释写入结果。",
+                    },
+                    "confidence": "high",
+                    "raw_model_response": {
+                        "provider_id": "deepseek",
+                        "mock": False,
+                        "provider_request": {"messages": [{"role": "system", "content": "system prompt"}, {"role": "user", "content": "assembled prompt"}], "prompt_bundle": prompt_bundle},
+                        "provider_response": {"raw_content": '{"intent_understanding_result":{}}', "parsed_json": {}},
+                    },
+                }
+            if stage_id == "review_after_apply":
+                return {
+                    "compliance_result": "pass",
+                    "written_fact_summary": ["软件定位已形成正文"],
+                    "blocking_findings": [],
+                    "blocking_reasons": [],
+                    "planning_evidence": ["blk-0001", "frag-0001"],
+                    "target_review": {
+                        "status": "acceptable",
+                        "reason": "模型基于应用后的临时正文确认目标范围已覆盖。",
+                        "review_target": ["2 项目概述 / 软件定位"],
+                        "covered_points": ["软件定位"],
+                        "missing_aspects": [],
+                        "evidence_block_ids": ["blk-0001"],
+                        "evidence_fragment_ids": ["frag-0001"],
+                    },
+                    "global_review": {
+                        "status": "move_next_node",
+                        "summary": "模型建议推进到输入数据来源。",
+                        "remaining_gaps": [],
+                    },
+                    "rewrite_advice": [],
+                    "review_annotations": ["模型 Review 读取了应用后的临时正文。"],
+                    "confidence": "high",
+                    "raw_model_response": {
+                        "provider_id": "deepseek",
+                        "mock": False,
+                        "provider_request": {"messages": [{"role": "system", "content": "system prompt"}, {"role": "user", "content": "assembled prompt"}], "prompt_bundle": prompt_bundle},
+                        "provider_response": {"raw_content": '{"target_review":{"status":"acceptable"}}', "parsed_json": {"target_review": {"status": "acceptable"}}},
+                    },
+                }
+            if stage_id == "next_interaction_planning":
+                return {
+                    "next_interaction_plan": {
+                        "planning_strategy": "move_next_node",
+                        "user_message": "本轮已把软件定位写入临时正文。",
+                        "next_question": "下一轮可以确认输入数据来源。",
+                        "quick_options": [
+                            {"key": "A", "label": "先确认输入", "recommended": True},
+                            {"key": "B", "label": "先确认输出", "recommended": False},
+                        ],
+                        "plan_reason": "系统定位已补充，输入章节仍薄弱。",
+                        "review_acknowledgement": "软件定位已覆盖。",
+                        "target_spec_nodes": ["SPEC-REQ-3.2"],
+                    },
+                    "planning_trace": ["规划阶段基于 review 结果推进输入章节。"],
+                    "confidence": "medium",
+                    "raw_model_response": {
+                        "provider_id": "deepseek",
+                        "mock": False,
+                        "provider_request": {"messages": [{"role": "system", "content": "system prompt"}, {"role": "user", "content": "assembled prompt"}], "prompt_bundle": prompt_bundle},
+                        "provider_response": {"raw_content": '{"next_interaction_plan":{"next_question":"下一轮可以确认输入数据来源。"}}', "parsed_json": {}},
+                    },
+                }
             return {
                 "organizer_interpretation": {
                     "summary": "用户选择先按计算分析工具理解。",
@@ -428,7 +571,7 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                 "open_questions_delta": ["输入数据来源尚未确认。"],
                 "document_patch": [
                     {
-                        "section": "1.1 系统目标",
+                        "section": "2 项目概述 / 软件定位",
                         "operation": "append_or_update",
                         "content": "本系统支持空域计算分析任务的需求澄清。",
                         "write_policy": session.write_policy,
@@ -445,11 +588,7 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                             {"role": "system", "content": "system prompt"},
                             {"role": "user", "content": "assembled prompt"},
                         ],
-                        "prompt_bundle": {
-                            "assembled_prompt": "assembled prompt",
-                            "context_json": '{"user_input":"A，先按计算分析工具理解"}',
-                            "schema_json": '{"assistant_message":"string"}',
-                        },
+                        "prompt_bundle": prompt_bundle,
                     },
                     "provider_response": {
                         "raw_content": '{"assistant_message":"DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"}',
@@ -496,10 +635,16 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert_new_turn_contract(payload["turn"])
     assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "confirm_direction"
     assert payload["turn"]["next_interaction"]["prompt"] == "下一轮可以确认输入数据来源。"
+    assert [log["stage_id"] for log in payload["session"]["provider_logs"]] == [
+        "intent_understanding",
+        "write",
+        "review_after_apply",
+        "next_interaction_planning",
+    ]
     assert payload["session"]["provider_logs"][0]["provider_id"] == "deepseek"
     assert payload["session"]["provider_logs"][0]["model"] == "deepseek-chat"
     assert payload["session"]["provider_logs"][0]["status"] == "completed"
-    provider_log = payload["session"]["provider_logs"][0]
+    provider_log = payload["session"]["provider_logs"][1]
     assert provider_log["turn_id"] == "turn-0001"
     assert provider_log["audit"]["user_input"] == "A，先按计算分析工具理解"
     assert provider_log["audit"]["normalized_input"]["semantic"] == "先按计算分析工具理解"
@@ -511,14 +656,12 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert "recent_revision_fragments" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "review_goal" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
-    assert "review_json" not in provider_log["audit"]["provider_response"]
-    assert "target_review_json" in provider_log["audit"]["provider_response"]
-    assert "global_review_json" in provider_log["audit"]["provider_response"]
     assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
         "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
     )
-    assert provider_log["audit"]["service_output"]["assistant_message"].startswith("基于你的输入，本轮更新了")
-    assert provider_log["audit"]["service_output"]["document_patch"][0]["section"] == "1.1 系统目标"
+    assert provider_log["audit"]["service_output"]["assistant_message"].startswith("本轮已把软件定位写入临时正文")
+    assert "写入位置：2 项目概述 / 软件定位" in provider_log["audit"]["service_output"]["assistant_message"]
+    assert provider_log["audit"]["service_output"]["document_patch"][0]["section"] == "2 项目概述 / 软件定位"
     assert captured == {
         "api_key": "test-deepseek-key",
         "base_url": "https://api.deepseek.com",
@@ -534,6 +677,207 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
         }
 
 
+def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class FakeDeepSeekClient:
+        def __init__(self, *, api_key: str, base_url: str, model: str) -> None:
+            self.model = model
+
+        def run_stage(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict,
+            stage_input: dict | None = None,
+        ) -> dict:
+            calls.append({"stage": dict(stage), "stage_input": dict(stage_input or {})})
+            stage_id = str(stage["stage_id"])
+            raw = {
+                "provider_id": "deepseek",
+                "model": self.model,
+                "mock": False,
+                "user_input": user_input,
+                "orchestrator_id": orchestrator_id,
+                "mode": "policy_interpreted",
+                "stage_id": stage_id,
+                "provider_request": {
+                    "messages": [{"role": "user", "content": f"{stage_id} prompt"}],
+                    "prompt_bundle": {
+                        "stage_id": stage_id,
+                        "prompt_id": str(stage.get("prompt_id") or stage_id),
+                        "assembled_prompt": f"{stage_id} prompt",
+                        "schema_json": "{}",
+                    },
+                },
+                "provider_response": {
+                    "raw_content": "{}",
+                    "parsed_json": {},
+                },
+            }
+            if stage["stage_kind"] == "intent":
+                output = {
+                    "intent_understanding_result": {
+                        "user_goal_summary": "用户确认系统名称和编写目的。",
+                        "input_type": "first_round_product_concept",
+                        "relation_to_previous_interaction": "none",
+                        "option_handling": "not_option",
+                        "matched_option": None,
+                        "supplemental_facts": ["系统名称和编写目的已确认。"],
+                        "target_section_candidates": ["1 总则 / 编写目的"],
+                        "document_strategy": "bootstrap_document",
+                        "write_task_candidate": "补写编写目的。",
+                        "review_focus_candidate": "检查编写目的是否成文。",
+                        "ambiguities": [],
+                    },
+                    "target_document_structure": {
+                        "target_sections": ["1 总则 / 编写目的"],
+                        "target_anchor_paths": ["1 总则 / 编写目的"],
+                        "current_major_gaps": ["编写目的仍缺正文。"],
+                    },
+                    "stage_task_definition": {
+                        "task_summary": "补写编写目的。",
+                        "target_sections": ["1 总则 / 编写目的"],
+                        "non_goals": [],
+                        "must_output": ["document_patch", "confirmed_facts_delta"],
+                        "review_standard": "编写目的形成完整段落。",
+                    },
+                    "stage_quality_constraints": {
+                        "minimum_depth": "至少一段完整正文。",
+                        "must_cover_dimensions": ["系统名称", "编写目的"],
+                        "assistant_reply_style": "先说明写入结果。",
+                    },
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+            if stage["stage_kind"] == "review":
+                output = {
+                    "target_review": {
+                        "status": "acceptable",
+                        "review_target": ["1 总则 / 编写目的"],
+                        "reason": "模型基于应用后的临时正文确认目标范围已覆盖。",
+                        "covered_points": ["系统名称", "编写目的"],
+                        "missing_aspects": [],
+                        "evidence_block_ids": ["blk-0001"],
+                        "evidence_fragment_ids": ["frag-0001"],
+                    },
+                    "global_review": {
+                        "status": "move_next_node",
+                        "summary": "模型建议推进到软件定位节点。",
+                        "remaining_gaps": [],
+                    },
+                    "compliance_result": "pass",
+                    "written_fact_summary": ["系统名称", "编写目的"],
+                    "blocking_findings": [],
+                    "blocking_reasons": [],
+                    "planning_evidence": ["blk-0001", "frag-0001"],
+                    "rewrite_advice": [],
+                    "review_annotations": ["模型 Review 读取了应用后的临时正文。"],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+            if stage["stage_kind"] == "next_interaction":
+                output = {
+                    "next_interaction_plan": {
+                        "planning_strategy": "move_next_node",
+                        "user_message": "模型规划：编写目的已补齐，下一步确认软件定位。",
+                        "next_question": "建议下一步确认软件定位。",
+                        "quick_options": [{"key": "A", "label": "计算分析工具", "recommended": True}],
+                        "plan_reason": "Review 已通过，完成度树下一 open 节点为软件定位。",
+                        "review_acknowledgement": "编写目的已覆盖。",
+                        "target_spec_nodes": ["SPEC-REQ-2.1"],
+                    },
+                    "planning_trace": ["模型规划阶段已执行。"],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+            output = {
+                "organizer_interpretation": {
+                    "summary": "用户确认系统名称和编写目的。",
+                    "intent": "supplement_requirement",
+                    "confidence": "high",
+                },
+                "assistant_message": "已补充编写目的。",
+                "next_suggestion": {
+                    "kind": "topic",
+                    "content": "下一轮确认软件定位。",
+                    "reason": "总则已有正文。",
+                    "related_spec_node_ids": ["SPEC-REQ-2.1"],
+                },
+                "quick_options": [],
+                "confirmed_facts_delta": ["系统名称和编写目的已确认。"],
+                "open_questions_delta": ["下一轮确认软件定位。"],
+                "document_patch": [
+                    {
+                        "section": "1 总则 / 编写目的",
+                        "operation": "append_or_update",
+                        "content": "本需求规格说明用于定义默认运算软件的建设目标和需求边界。",
+                        "write_policy": session.write_policy,
+                    }
+                ],
+                "annotations": [],
+                "risks": [],
+                "confidence": "high",
+            }
+            return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+
+    monkeypatch.setattr(requirement_analysis_client_module.settings, "requirement_analysis_deepseek_api_key", "test-deepseek-key")
+    monkeypatch.setattr(requirement_analysis_client_module, "DeepSeekRequirementAnalysisClient", FakeDeepSeekClient)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "默认运算软件需求规格说明",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "deepseek",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+    session = created.json()
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫默认运算软件，用于沉淀需求规格说明。"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    provider_logs = payload["session"]["provider_logs"]
+    assert [log["stage_id"] for log in provider_logs] == [
+        "intent_understanding",
+        "write",
+        "review_after_apply",
+        "next_interaction_planning",
+    ]
+    assert [log["call_id"] for log in provider_logs] == [
+        "requirement-analysis-provider-call-0001",
+        "requirement-analysis-provider-call-0002",
+        "requirement-analysis-provider-call-0003",
+        "requirement-analysis-provider-call-0004",
+    ]
+    assert provider_logs[0]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "intent_understanding"
+    assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "write"
+    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "review_after_apply"
+    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["prompt_id"] == "review_after_apply"
+    assert provider_logs[3]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "next_interaction_planning"
+    assert provider_logs[2]["audit"]["provider_normalized_output"]["target_review"]["status"] == "acceptable"
+    assert provider_logs[2]["audit"]["service_output"]["target_review"]["status"] == "acceptable"
+    assert provider_logs[2]["audit"]["service_output"]["target_review"]["review_target"] == ["1 总则 / 编写目的"]
+    assert payload["turn"]["post_update_review"]["target_review"]["review_target"] == ["1 总则 / 编写目的"]
+    assert payload["turn"]["post_update_review"]["target_review"]["reason"] == "模型基于应用后的临时正文确认目标范围已覆盖。"
+    assert payload["turn"]["next_interaction_plan"]["next_question"] == "建议下一步确认软件定位。"
+    assert calls[2]["stage"]["prompt_id"] == "review_after_apply"
+    assert calls[2]["stage_input"]["working_document_after_apply"]["blocks"][0]["block_id"] == "blk-0001"
+    assert calls[3]["stage"]["prompt_id"] == "next_interaction_planning"
+
+
 def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_without_confirming_first_open_question(
     monkeypatch,
 ) -> None:
@@ -541,8 +885,113 @@ def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_
         def __init__(self, *, api_key: str, base_url: str, model: str) -> None:
             self.model = model
 
-        def run_turn(self, *, session, user_input: str, normalized: dict) -> dict:
-            return {
+        def run_stage(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict,
+            stage_input: dict | None = None,
+        ) -> dict:
+            stage_id = str(stage["stage_id"])
+            raw_model_response = {
+                "provider_id": "deepseek",
+                "model": self.model,
+                "mock": False,
+                "user_input": user_input,
+                "orchestrator_id": orchestrator_id,
+                "mode": "policy_interpreted",
+                "stage_id": stage_id,
+                "provider_request": {
+                    "messages": [{"role": "user", "content": f"{stage_id} prompt"}],
+                    "prompt_bundle": {
+                        "stage_id": stage_id,
+                        "prompt_id": str(stage.get("prompt_id") or stage_id),
+                        "assembled_prompt": f"{stage_id} prompt",
+                        "schema_json": "{}",
+                    },
+                },
+                "provider_response": {"raw_content": "{}", "parsed_json": {}},
+            }
+            if stage["stage_kind"] == "intent":
+                output = {
+                    "intent_understanding_result": {
+                        "user_goal_summary": "用户本轮直接补充了目标用户，而不是回答编写目的。",
+                        "input_type": "free_supplement",
+                        "relation_to_previous_interaction": "none",
+                        "option_handling": "not_option",
+                        "matched_option": None,
+                        "supplemental_facts": ["领域专家直接使用，管理员负责初始化配置。"],
+                        "target_section_candidates": ["3 功能需求 / 用户与角色"],
+                        "document_strategy": "write_targeted_sections",
+                        "write_task_candidate": "补写用户与角色。",
+                        "review_focus_candidate": "检查用户与角色是否成文。",
+                        "ambiguities": [],
+                    },
+                    "target_document_structure": {
+                        "target_sections": ["3 功能需求 / 用户与角色"],
+                        "target_anchor_paths": ["3 功能需求 / 用户与角色"],
+                        "current_major_gaps": ["用户与角色仍缺正文。"],
+                    },
+                    "stage_task_definition": {
+                        "task_summary": "补写用户与角色。",
+                        "target_sections": ["3 功能需求 / 用户与角色"],
+                        "non_goals": [],
+                        "must_output": ["document_patch", "confirmed_facts_delta"],
+                        "review_standard": "用户与角色形成完整段落。",
+                    },
+                    "stage_quality_constraints": {
+                        "minimum_depth": "至少一段完整正文。",
+                        "must_cover_dimensions": ["主要用户", "管理员职责"],
+                        "assistant_reply_style": "先说明写入结果。",
+                    },
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw_model_response, "provider_normalized_output": output}}
+            if stage["stage_kind"] == "review":
+                output = {
+                    "target_review": {
+                        "status": "acceptable",
+                        "review_target": ["3 功能需求 / 用户与角色"],
+                        "reason": "模型基于应用后的临时正文确认用户与角色已覆盖。",
+                        "covered_points": ["领域专家", "管理员"],
+                        "missing_aspects": [],
+                        "evidence_block_ids": ["blk-0001"],
+                        "evidence_fragment_ids": ["frag-0001"],
+                    },
+                    "global_review": {
+                        "status": "move_next_node",
+                        "summary": "模型建议回到第一个未完成节点。",
+                        "remaining_gaps": [],
+                    },
+                    "compliance_result": "pass",
+                    "written_fact_summary": ["领域专家", "管理员"],
+                    "blocking_findings": [],
+                    "blocking_reasons": [],
+                    "planning_evidence": ["blk-0001", "frag-0001"],
+                    "rewrite_advice": [],
+                    "review_annotations": ["模型 Review 读取了应用后的临时正文。"],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw_model_response, "provider_normalized_output": output}}
+            if stage["stage_kind"] == "next_interaction":
+                output = {
+                    "next_interaction_plan": {
+                        "planning_strategy": "move_next_node",
+                        "user_message": "目标用户已写入临时正文。",
+                        "next_question": "下一轮可以补充编写目的。",
+                        "quick_options": [],
+                        "plan_reason": "目标用户已确认，但编写目的仍为空。",
+                        "review_acknowledgement": "用户与角色已覆盖。",
+                        "target_spec_nodes": ["SPEC-REQ-1.1"],
+                    },
+                    "planning_trace": ["规划阶段选择回到第一个未完成节点。"],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw_model_response, "provider_normalized_output": output}}
+            output = {
                 "organizer_interpretation": {
                     "summary": "用户本轮直接补充了目标用户，而不是回答编写目的。",
                     "intent": "supplement_requirement",
@@ -569,8 +1018,8 @@ def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_
                 "annotations": [],
                 "risks": [],
                 "confidence": "high",
-                "raw_model_response": {"provider_id": "deepseek", "mock": False},
             }
+            return {**output, "raw_model_response": {**raw_model_response, "provider_normalized_output": output}}
 
     monkeypatch.setattr(requirement_analysis_client_module.settings, "requirement_analysis_deepseek_api_key", "test-deepseek-key")
     monkeypatch.setattr(requirement_analysis_client_module, "DeepSeekRequirementAnalysisClient", FakeDeepSeekClient)
@@ -618,6 +1067,7 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
     class DummyClient(DeepSeekRequirementAnalysisClient):
         def __init__(self) -> None:
             self.model = "deepseek-chat"
+            self.runner_host = None
 
     class DummySession:
         orchestrator_id = "xg-heuristic-orchestrator"
@@ -658,31 +1108,45 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
             "open_questions": [],
         }
 
-    prompt = DummyClient()._build_prompt(  # noqa: SLF001
+    prompt = DummyClient()._build_prompt_bundle(  # noqa: SLF001
         session=DummySession(),
         user_input="主要给领域专家使用",
         normalized={"input_type": "free_text", "matched_option": None, "semantic": "主要给领域专家使用"},
-    )
+        orchestrator_id="xg-heuristic-orchestrator",
+        stage={"stage_id": "intent_understanding", "stage_kind": "intent", "prompt_id": "intent_understanding"},
+        stage_input={},
+    )["assembled_prompt"]
 
     assert "用户输入是本轮 Turn 的起点" in prompt
     assert "previous_interaction" in prompt
     assert "REQ-3.1 用户与角色" in prompt
-    assert "不要把用户输入强行解释为对某个 active 节点的回答" in prompt
-    assert "next_interaction" in prompt
-    assert "post_update_review" in prompt
+    assert "不要强行把它解释成当前 active 节点的答案" in prompt
+    assert "intent_understanding_result" in prompt
+    assert "stage_task_definition" in prompt
 
 
-def test_deepseek_client_run_turn_parses_json_response_without_network() -> None:
+def test_deepseek_client_run_stage_parses_write_json_response_without_network() -> None:
     class DummyClient(DeepSeekRequirementAnalysisClient):
         def __init__(self) -> None:
             self.model = "deepseek-chat"
             self.runner_host = None
             self.client = FakeOpenAIClient()
 
-        def _build_prompt_bundle(self, *, session, user_input: str, normalized: dict, orchestrator_id: str) -> dict:
+        def _build_prompt_bundle(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict | None = None,
+            stage_input: dict | None = None,
+        ) -> dict:
             return {
                 "orchestrator_id": orchestrator_id,
                 "mode": "policy_interpreted",
+                "stage_id": str((stage or {}).get("stage_id") or "write"),
+                "prompt_id": str((stage or {}).get("prompt_id") or "write"),
                 "assembled_prompt": "prompt",
                 "context_json": '{"user_input":"这个系统叫空域运算软件"}',
                 "schema_json": '{"assistant_message":"string"}',
@@ -722,10 +1186,13 @@ def test_deepseek_client_run_turn_parses_json_response_without_network() -> None
         orchestrator_id = "xg-heuristic-orchestrator"
         write_policy = "patch_suggestion_only"
 
-    output = DummyClient().run_turn(
+    output = DummyClient().run_stage(
         session=DummySession(),
         user_input="这个系统叫空域运算软件",
         normalized={"input_type": "free_text", "semantic": "这个系统叫空域运算软件"},
+        orchestrator_id="xg-heuristic-orchestrator",
+        stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+        stage_input={},
     )
 
     assert output["organizer_interpretation"]["confidence"] == "high"

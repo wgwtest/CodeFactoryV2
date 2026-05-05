@@ -2384,6 +2384,7 @@ export type RequirementAnalysisTurn = {
   post_update_review: RequirementAnalysisPostUpdateReview;
   closure_decision: RequirementAnalysisClosureAssessment;
   next_interaction: RequirementAnalysisInteraction;
+  stage_audits?: RequirementAnalysisTurnStageAudit[];
   decision_trace: string[];
   confidence: string;
   service_steps: RequirementAnalysisServiceStep[];
@@ -2391,9 +2392,23 @@ export type RequirementAnalysisTurn = {
   created_at: string;
 };
 
+export type RequirementAnalysisTurnStageAudit = {
+  stage_id: string;
+  stage_kind: string;
+  stage_type: string;
+  execution_mode: string;
+  provider_call_log_id: string | null;
+  validation_status: string;
+  blocking_used?: boolean;
+  adopted_fields: string[];
+  summary: string;
+};
+
 export type RequirementAnalysisProviderLog = {
   call_id: string;
   turn_id?: string | null;
+  stage_id?: string;
+  stage_type?: string;
   provider_id: string;
   orchestrator_id?: string;
   orchestrator_mode?: string;

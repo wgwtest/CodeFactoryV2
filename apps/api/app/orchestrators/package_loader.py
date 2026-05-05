@@ -56,6 +56,9 @@ class LoadedOrchestratorPackage:
     orchestrator_text: str
     policy_text: str
     prompt_text: str
+    stage_prompts: dict[str, str]
+    stage_schemas: dict[str, Any]
+    stage_adoption_policies: dict[str, Any]
     artifact_rules: dict[str, Any]
     spec_strategy: dict[str, Any]
     contract_schema: dict[str, Any]
@@ -99,6 +102,7 @@ class OrchestratorPackageLoader:
         ]
         if mode == "policy_interpreted":
             required_files.append("prompt.md")
+            required_files.extend(["prompts", "schemas", "adoption"])
         elif mode == "local_runner":
             required_files.append(str(entry or "runner.py"))
         elif mode == "remote_service":
@@ -142,6 +146,9 @@ class OrchestratorPackageLoader:
             prompt_text=(package_dir / "prompt.md").read_text(encoding="utf-8")
             if (package_dir / "prompt.md").exists()
             else "",
+            stage_prompts=self._load_stage_prompts(package_dir / "prompts"),
+            stage_schemas=self._load_stage_json_assets(package_dir / "schemas", suffix=".output.schema.json"),
+            stage_adoption_policies=self._load_stage_json_assets(package_dir / "adoption", suffix=".adoption.json"),
             artifact_rules=json.loads((package_dir / "artifact_rules.json").read_text(encoding="utf-8"))
             if (package_dir / "artifact_rules.json").exists()
             else {"clauses": {}, "defaults": {}},
@@ -160,6 +167,25 @@ class OrchestratorPackageLoader:
                 return value
             seen.add(value)
         return None
+
+    @staticmethod
+    def _load_stage_prompts(directory: Path) -> dict[str, str]:
+        if not directory.exists():
+            return {}
+        prompts: dict[str, str] = {}
+        for path in sorted(directory.glob("*.md")):
+            prompts[path.stem] = path.read_text(encoding="utf-8")
+        return prompts
+
+    @staticmethod
+    def _load_stage_json_assets(directory: Path, *, suffix: str) -> dict[str, Any]:
+        if not directory.exists():
+            return {}
+        assets: dict[str, Any] = {}
+        for path in sorted(directory.glob(f"*{suffix}")):
+            key = path.name[: -len(suffix)]
+            assets[key] = json.loads(path.read_text(encoding="utf-8"))
+        return assets
 
 
 class OrchestratorRegistry:
