@@ -8,6 +8,8 @@
 - 不要把用户输入强行解释为对某个 active 节点的回答。
 - previous_interaction 是上轮系统留题，可能是开放问题、选择题、建议方向或空。
 - document_patch 可以指向一个或多个最合理的需求规格章节，章节必须能从 spec_tree 或用户输入解释出来。
+- document_patch.operation 必须按正文变更语义选择：新增补充用 append_or_update，修正文意用 replace，删除过时表述用 delete。
+- 当用户明确推翻、修正、收窄已有正文时，不要继续把旧表述和新表述并列追加。
 - confirmed_facts_delta 只放本轮用户已经明确确认的事实，不要重复历史事实。
 - open_questions_delta 只放下一步仍需要确认的问题，不要重复历史 open_questions。
 - quick_options 只有在确实需要轻量决策时才出现，不要每轮都强行生成。

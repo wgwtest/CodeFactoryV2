@@ -18,6 +18,7 @@ describe("buildRequirementAnalysisWorkingDocumentViewModel", () => {
       firstAnchorPath: "1 总则 / 编写目的",
       fragmentIds: ["frag-0003"],
       hitSpecNodes: ["SPEC-REQ-1.1"],
+      deletedTexts: ["本规格说明用于定义通用分析软件。"],
     });
     expect(viewModel.revisionEvents[1]).toMatchObject({
       turnId: "turn-0001",
@@ -137,9 +138,10 @@ function buildSessionWithCrossBlockRevisions(): RequirementAnalysisSession {
           turn_id: "turn-0002",
           color_token: "turn-color-02",
           target_block_id: "blk-0001",
-          apply_mode: "append_to_block",
-          start_offset: 25,
+          apply_mode: "replace",
+          start_offset: 0,
           end_offset: 42,
+          deleted_text: "本规格说明用于定义通用分析软件。",
           user_input_summary: "用户补充审查边界",
           supplement_reason: "补入审查目标",
           hit_spec_nodes: ["SPEC-REQ-1.1"],

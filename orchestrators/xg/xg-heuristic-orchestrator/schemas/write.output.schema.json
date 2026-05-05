@@ -46,7 +46,10 @@
         "type": "object",
         "properties": {
           "section": {"type": "string"},
-          "operation": {"type": "string"},
+          "operation": {
+            "type": "string",
+            "enum": ["append_or_update", "append_to_block", "replace", "replace_range", "delete", "delete_range"]
+          },
           "content": {"type": "string"},
           "write_policy": {"type": "string"}
         }

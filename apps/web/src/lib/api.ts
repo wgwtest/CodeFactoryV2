@@ -2343,6 +2343,7 @@ export type RequirementAnalysisRevisionFragment = {
   apply_mode: string;
   start_offset: number;
   end_offset: number;
+  deleted_text?: string;
   user_input_summary?: string;
   supplement_reason?: string;
   hit_spec_nodes?: string[];

@@ -72,6 +72,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
       summary: string;
       reason: string;
       hitSpecNodes: string[];
+      deletedTexts: string[];
     }
   >();
 
@@ -82,6 +83,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
     const current = revisionEventsByTurn.get(fragment.turn_id);
     const hitSpecNodes = appendUnique(current?.hitSpecNodes ?? [], fragment.hit_spec_nodes ?? []);
     const fragmentIds = [...(current?.fragmentIds ?? []), fragment.fragment_id];
+    const deletedTexts = appendUnique(current?.deletedTexts ?? [], fragment.deleted_text ? [fragment.deleted_text] : []);
 
     if (!current || firstPosition < current.firstPosition) {
       revisionEventsByTurn.set(fragment.turn_id, {
@@ -94,6 +96,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
         summary: fragment.user_input_summary ?? current?.summary ?? "",
         reason: fragment.supplement_reason ?? current?.reason ?? "",
         hitSpecNodes,
+        deletedTexts,
       });
       continue;
     }
@@ -102,6 +105,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
       ...current,
       fragmentIds,
       hitSpecNodes,
+      deletedTexts,
       summary: current.summary || fragment.user_input_summary || "",
       reason: current.reason || fragment.supplement_reason || "",
     });
@@ -130,6 +134,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
       summary: fragment.user_input_summary ?? "",
       reason: fragment.supplement_reason ?? "",
       hitSpecNodes: fragment.hit_spec_nodes ?? [],
+      deletedText: fragment.deleted_text ?? "",
     })),
   };
 }

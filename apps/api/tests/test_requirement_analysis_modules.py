@@ -567,6 +567,66 @@ def test_working_document_uses_continuous_blocks_and_revision_fragments() -> Non
     assert review["global_review"]["status"] in {"move_next_node", "whole_document_review", "continue_same_topic"}
 
 
+def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
+    service = WorkingDocumentService()
+    working_document = service.initialize(topic="运算软件需求规格说明", template_id="81433号")
+
+    service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "section": "2 项目概述 / 软件定位",
+                "operation": "append_or_update",
+                "content": "本软件定位为通用运算分析工具。",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
+        turn_id="turn-0001",
+        user_input_summary="初始定位",
+    )
+
+    replace_update = service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "section": "2 项目概述 / 软件定位",
+                "operation": "replace",
+                "content": "本软件定位为空域运算分析工具，第一阶段不做协同规划。",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
+        turn_id="turn-0002",
+        user_input_summary="修正定位",
+    )
+
+    assert working_document["blocks"][0]["text"] == "本软件定位为空域运算分析工具，第一阶段不做协同规划。"
+    assert "通用运算分析工具" not in replace_update.after_excerpt
+    assert working_document["revision_fragments"][-1]["apply_mode"] == "replace"
+    assert working_document["revision_fragments"][-1]["deleted_text"] == "本软件定位为通用运算分析工具。"
+
+    delete_update = service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "section": "2 项目概述 / 软件定位",
+                "operation": "delete",
+                "content": "第一阶段不做协同规划",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
+        turn_id="turn-0003",
+        user_input_summary="删除阶段边界",
+    )
+
+    assert working_document["blocks"][0]["text"] == "本软件定位为空域运算分析工具，。"
+    assert "第一阶段不做协同规划" not in delete_update.after_excerpt
+    assert working_document["revision_fragments"][-1]["apply_mode"] == "delete"
+    assert working_document["revision_fragments"][-1]["deleted_text"] == "第一阶段不做协同规划"
+
+
 def test_requirement_analysis_session_repository_persists_lab_session(db_session) -> None:
     repository = RequirementAnalysisSessionRepository(db_session)
     session = RequirementAnalysisSession(

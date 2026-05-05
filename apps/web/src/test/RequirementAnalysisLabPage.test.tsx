@@ -98,7 +98,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
-  await screen.findByText("当前 Provider：DeepSeek；当前组织器：XG Heuristic Orchestrator");
+  await waitFor(() => expect(screen.getByDisplayValue("配置下发的需求规格探索课题")).toBeInTheDocument());
 
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
@@ -117,6 +117,8 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getAllByText("Provider deepseek").length).toBeGreaterThan(0);
   expect(screen.getByText("空域运算软件需求规格探索")).toBeInTheDocument();
   expect(screen.getByText("只生成 document_patch 建议")).toBeInTheDocument();
+  const assistantIntroMessage = screen.getByText("我会先验证这个课题的需求边界。当前知识包只作为背景，不会自动写入正式规格。");
+  expect(assistantIntroMessage.closest(".requirement-analysis-lab-message")).toHaveClass("is-assistant");
 
   const input = screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求...");
   expect(input.tagName).toBe("TEXTAREA");
@@ -134,6 +136,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   );
 
   expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
+  expect(screen.getByText("A，先按计算分析工具理解").closest(".requirement-analysis-lab-message")).toHaveClass("is-user");
   expect(screen.getByText("正在生成回应...")).toBeInTheDocument();
 
   const envelope = buildTurnEnvelope();
@@ -421,6 +424,17 @@ test("uses a 4:6 session workspace ratio so the working document is wider than t
   expect(css).toContain(".requirement-analysis-lab-tab-grid.is-session");
   expect(css).toContain("grid-template-columns: minmax(360px, 0.8fr) minmax(560px, 1.2fr);");
   expect(css).not.toContain("grid-template-columns: minmax(420px, 0.95fr) minmax(460px, 1.05fr);");
+});
+
+test("styles user chat messages as a clearer pale-green bubble distinct from assistant messages", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toContain(".requirement-analysis-lab-message.is-user");
+  expect(css).toContain("align-self: flex-end;");
+  expect(css).toContain("background: #dff3d8;");
+  expect(css).toContain("border-color: #b3d7ad;");
+  expect(css).toContain(".requirement-analysis-lab-message.is-assistant");
+  expect(css).toContain("background: #f4f8f7;");
 });
 
 test("places revision markers in a right-side rail outside the paper instead of reserving an in-page left column", () => {
