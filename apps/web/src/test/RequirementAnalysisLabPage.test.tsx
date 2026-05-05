@@ -98,6 +98,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
+  await screen.findByText("当前 Provider：DeepSeek；当前组织器：XG Heuristic Orchestrator");
 
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
