@@ -32,6 +32,9 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   let document: RequirementAuthoringDocumentDetail = buildDocument();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-authoring/workbench-config") {
+      return Promise.resolve({ data: buildWorkbenchConfig() });
+    }
     if (url === "/requirement-authoring/templates") {
       return Promise.resolve({ data: [template] });
     }
@@ -167,6 +170,7 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   );
 
   expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
+  expect(screen.getByText("配置接口下发的专家工作台副标题。")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("P1 知识绑定")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "文档模板：81433号" })).toBeInTheDocument();
@@ -213,7 +217,7 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   expect(screen.queryByText("发生器")).not.toBeInTheDocument();
   expect(screen.getByTestId("requirement-authoring-document-canvas")).toBeInTheDocument();
   expect(screen.getByTestId("requirement-authoring-document-paper")).toBeInTheDocument();
-  expect(screen.getByText("可导出稿")).toBeInTheDocument();
+  expect(screen.getByText("配置可导出稿")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "保存草稿" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "删除文档" })).toBeEnabled();
 
@@ -273,8 +277,52 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
   await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/requirement-authoring/documents/doc-1"));
   expect(await screen.findByText("文档已删除")).toBeInTheDocument();
-  expect(screen.getByText("创建文档后，右侧会持续生成标准正文。")).toBeInTheDocument();
+  expect(screen.getByText("配置下发：创建文档后展示标准正文。")).toBeInTheDocument();
 });
+
+function buildWorkbenchConfig() {
+  return {
+    page: {
+      title: "P2 专家需求规格编写工作台",
+      subtitle: "配置接口下发的专家工作台副标题。",
+    },
+    defaults: {
+      document_title: "配置下发的默认需求规格说明",
+      layout_ratio: "2:3",
+      allow_empty_knowledge_binding: true,
+    },
+    layout_options: [
+      { ratio: "2:3", label: "2:3" },
+      { ratio: "1:1", label: "1:1" },
+    ],
+    document_statuses: [
+      { status: "draft", label: "配置草稿", editable: true },
+      { status: "checking", label: "配置检查中", editable: false },
+      { status: "ready_to_freeze", label: "配置待冻结", editable: true },
+      { status: "frozen", label: "配置已冻结", editable: false },
+      { status: "submitted_to_p3", label: "配置已提交 P3", editable: false },
+      { status: "archived", label: "配置已归档", editable: false },
+    ],
+    actions: [
+      { action_id: "create_document", label: "新建文档", style: "primary" },
+      { action_id: "open_document", label: "打开文档" },
+      { action_id: "save_draft", label: "保存草稿", requires_document: true, disabled_when_frozen: true },
+      { action_id: "delete_document", label: "删除文档", requires_document: true, danger: true },
+      { action_id: "run_check", label: "缺口检查", requires_document: true },
+      { action_id: "freeze", label: "冻结版本", requires_document: true },
+    ],
+    document_surface: {
+      title: "标准需求规格说明",
+      badges: ["配置可导出稿"],
+      ribbon: ["配置页面 A4", "配置样式 标准正文", "配置段落 1.5 倍行距", "配置导出 DOCX / PDF"],
+    },
+    empty_states: {
+      question_mode: "配置下发：创建规格文档后开始问答协作",
+      form_mode: "配置下发：创建规格文档后开始表单校对",
+      document: "配置下发：创建文档后展示标准正文。",
+    },
+  };
+}
 
 function buildTemplate(): RequirementAuthoringTemplate {
   return {

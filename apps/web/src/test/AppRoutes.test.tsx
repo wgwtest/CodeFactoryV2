@@ -616,6 +616,57 @@ function mockXXP1SimApis() {
 
 function mockRequirementAnalysisLabApis() {
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({
+        data: {
+          page: {
+            title: "P2 XG 需求分析组织器 Lab",
+            subtitle: "配置接口下发的 Lab 副标题。",
+          },
+          defaults: {
+            topic: "空域运算软件需求规格探索",
+            orchestrator_id: "xg-heuristic-orchestrator",
+            provider_id: "mock",
+            model: "mock-requirement-analysis-v1",
+            template_id: "81433号",
+            knowledge_package_id: "airspace-domain-demo",
+            write_policy: "patch_suggestion_only",
+          },
+          startup_fields: [
+            {
+              field: "topic",
+              label: "课题输入",
+              control: "textarea",
+              required: true,
+              placeholder: "输入本次需求规格探索课题",
+            },
+          ],
+          write_policies: [
+            {
+              policy_id: "patch_suggestion_only",
+              label: "只生成 document_patch 建议",
+              description: "Lab 只生成 document_patch 建议，不直接写入正式需求规格草稿。",
+            },
+          ],
+          provider_log_schema: {
+            fields: [],
+          },
+          turn_audit_schema: {
+            protocol_version: "xg-turn-audit-v1",
+            required_fields: [
+              "previous_interaction",
+              "input_relation",
+              "spec_execution",
+              "post_update_review",
+              "closure_decision",
+              "next_interaction",
+              "decision_trace",
+            ],
+          },
+        },
+      });
+    }
+
     if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({
         data: {
@@ -903,6 +954,49 @@ expect(screen.getByText("P1 服务接口")).toBeInTheDocument();
 
 test("renders requirement authoring route outside the main shell", async () => {
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-authoring/workbench-config") {
+      return Promise.resolve({
+        data: {
+          page: {
+            title: "P2 专家需求规格编写工作台",
+            subtitle: "配置接口下发的专家工作台副标题。",
+          },
+          defaults: {
+            document_title: "未命名软件需求规格说明",
+            layout_ratio: "2:3",
+            allow_empty_knowledge_binding: true,
+          },
+          layout_options: [
+            { ratio: "2:3", label: "2:3" },
+            { ratio: "1:1", label: "1:1" },
+          ],
+          document_statuses: [
+            { status: "draft", label: "草稿", editable: true },
+            { status: "checking", label: "检查中", editable: false },
+            { status: "ready_to_freeze", label: "待冻结", editable: true },
+            { status: "frozen", label: "已冻结", editable: false },
+          ],
+          actions: [
+            { action_id: "create_document", label: "新建文档", style: "primary" },
+            { action_id: "open_document", label: "打开文档" },
+            { action_id: "save_draft", label: "保存草稿", requires_document: true, disabled_when_frozen: true },
+            { action_id: "delete_document", label: "删除文档", requires_document: true, danger: true },
+            { action_id: "run_check", label: "缺口检查", requires_document: true },
+            { action_id: "freeze", label: "冻结版本", requires_document: true },
+          ],
+          document_surface: {
+            title: "标准需求规格说明",
+            badges: ["可导出稿"],
+            ribbon: ["页面 A4", "样式 标准正文", "段落 1.5 倍行距", "导出 DOCX / PDF"],
+          },
+          empty_states: {
+            question_mode: "创建规格文档后开始问答协作",
+            form_mode: "创建规格文档后开始表单校对",
+            document: "创建文档后，右侧会持续生成标准正文。",
+          },
+        },
+      });
+    }
     if (url === "/requirement-authoring/templates") {
       return Promise.resolve({ data: [] });
     }

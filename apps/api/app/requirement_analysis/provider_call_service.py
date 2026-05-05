@@ -151,6 +151,7 @@ class RequirementAnalysisProviderCallService:
                 "write_policy": session.write_policy,
                 "user_input": user_input,
                 "normalized_input": normalized,
+                "working_document": dict(state.get("working_document") or {}),
                 "active_spec_node": active_node or {},
             }
         }

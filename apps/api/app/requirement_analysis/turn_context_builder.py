@@ -28,6 +28,7 @@ class TurnContext:
     spec_tree: list[dict]
     active_spec_node_id: str
     active_spec_node: dict
+    working_document: dict
     questions: list[dict]
     facts: list[dict]
     patches: list[dict]
@@ -57,6 +58,7 @@ class TurnContextBuilder:
             state.get("spec_tree")
             or self.spec_tree_service.new_spec_tree(session.template_id, orchestrator_id=session.orchestrator_id)
         )
+        working_document = dict(state.get("working_document") or {})
         active_spec_node_id = str(
             state.get("active_spec_node_id") or self.spec_tree_service.first_open_spec_node_id(spec_tree) or ""
         )
@@ -87,6 +89,7 @@ class TurnContextBuilder:
             spec_tree=spec_tree,
             active_spec_node_id=active_spec_node_id,
             active_spec_node=self.spec_tree_service.active_spec_node_context(spec_tree, active_spec_node_id),
+            working_document=working_document,
             questions=list(state.get("questions", [])),
             facts=list(state.get("facts", [])),
             patches=list(state.get("patches", [])),

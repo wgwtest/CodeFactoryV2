@@ -22,28 +22,38 @@ class NextInteractionService:
         next_spec_node: dict,
         current_spec_node: dict,
         session: RequirementAnalysisSession,
+        continue_same_topic: bool = False,
+        section_review: dict | None = None,
+        global_review: dict | None = None,
     ) -> dict:
-        if not next_spec_node.get("node_id"):
+        review = section_review or {}
+        global_state = global_review or {}
+        focus_node = current_spec_node if continue_same_topic else next_spec_node
+
+        if not focus_node.get("node_id"):
             next_question = "当前完成度树已无待确认节点。需要整体复核哪些章节仍显薄弱？"
             quick_options: list[dict] = []
         else:
-            next_question = str(next_spec_node.get("question") or next_spec_node.get("title"))
+            next_question = str(focus_node.get("question") or focus_node.get("title"))
             if model_output.get("raw_model_response", {}).get("mock") or not model_output.get("quick_options"):
                 quick_options = self.process_artifact_service.quick_options_for_node(
                     session.orchestrator_id,
-                    next_spec_node,
+                    focus_node,
                 )
             else:
                 quick_options = model_output["quick_options"]
         updated_sections = current_spec_node.get("target_section") or "需求规格说明"
-        next_content = (
-            f"建议下一步确认：{next_question}"
-            if next_spec_node.get("node_id")
-            else "当前完成度树暂无待确认节点，可以进入整体复核。"
-        )
+        if continue_same_topic:
+            next_content = f"当前章节仍需补齐：{next_question}"
+        elif focus_node.get("node_id"):
+            next_content = f"建议下一步确认：{next_question}"
+        else:
+            next_content = "当前完成度树暂无待确认节点，可以进入整体复核。"
         orchestrator_id = str(model_output.get("raw_model_response", {}).get("orchestrator_id") or "")
         if orchestrator_id == "xg-strong-rule-orchestrator":
             assistant_message = f"强规则组织器已按固定闭环更新：{updated_sections}。{next_content}"
+        elif continue_same_topic:
+            assistant_message = f"基于你的输入，本轮先写入了：{updated_sections}。当前章节仍需继续补齐。"
         else:
             assistant_message = f"基于你的输入，本轮更新了：{updated_sections}。{next_content}"
         existing_suggestion = model_output.get("next_suggestion")
@@ -67,11 +77,12 @@ class NextInteractionService:
             "content": existing_content or next_content,
             "reason": (
                 existing_reason
-                or f"{updated_sections} 已有可写入材料，完成度树建议继续补齐 {next_spec_node.get('target_section')}。"
-                if next_spec_node.get("node_id")
+                or review.get("reason")
+                or f"{updated_sections} 已有可写入材料，完成度树建议继续补齐 {focus_node.get('target_section')}。"
+                if focus_node.get("node_id")
                 else "需求规格完成度树暂无 open 叶子节点。"
             ),
-            "related_spec_node_ids": existing_related or ([next_spec_node["node_id"]] if next_spec_node.get("node_id") else []),
+            "related_spec_node_ids": existing_related or ([focus_node["node_id"]] if focus_node.get("node_id") else []),
         }
         return {
             **model_output,
@@ -82,7 +93,7 @@ class NextInteractionService:
             },
             "next_question": next_question,
             "quick_options": quick_options,
-            "open_questions_delta": [next_question] if next_spec_node.get("node_id") else [],
+            "open_questions_delta": [next_question] if focus_node.get("node_id") else [],
             "document_patch": [
                 {
                     **patch,

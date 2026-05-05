@@ -600,6 +600,39 @@
   gap: 12px;
 }
 
+.requirement-analysis-lab-working-document {
+  display: grid;
+  gap: 10px;
+}
+
+.requirement-analysis-lab-working-document-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d5dfda;
+  background: #ffffff;
+}
+
+.requirement-analysis-lab-working-document-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.requirement-analysis-lab-working-document-card pre {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e0e7e3;
+  background: #f7faf9;
+  color: #1d2a28;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .requirement-analysis-lab-spec-tree {
   display: grid;
   gap: 4px;

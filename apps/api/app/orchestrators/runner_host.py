@@ -25,6 +25,7 @@ class OrchestratorRunnerHost:
         *,
         context: dict[str, Any],
         output_schema: dict[str, Any],
+        extra_prompt_bundle: dict[str, Any] | None = None,
     ) -> dict:
         loaded = self.loader.load(orchestrator_id)
         context_json = json.dumps(context, ensure_ascii=False)
@@ -49,7 +50,7 @@ class OrchestratorRunnerHost:
             f"会话上下文 JSON：{context_json}\n"
             f"必须返回且只返回符合此结构的 JSON：{schema_json}"
         )
-        return {
+        bundle = {
             "orchestrator_id": loaded.package.orchestrator_id,
             "mode": loaded.package.mode,
             "context_json": context_json,
@@ -58,6 +59,9 @@ class OrchestratorRunnerHost:
             "policy_text": loaded.policy_text,
             "prompt_text": loaded.prompt_text,
         }
+        if extra_prompt_bundle:
+            bundle.update(extra_prompt_bundle)
+        return bundle
 
     def normalize_output(
         self,

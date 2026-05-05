@@ -6,6 +6,27 @@ from app.main import create_app
 def test_requirement_authoring_document_lifecycle() -> None:
     client = TestClient(create_app())
 
+    workbench_config = client.get("/api/requirement-authoring/workbench-config")
+    assert workbench_config.status_code == 200
+    config = workbench_config.json()
+    assert config["page"]["title"] == "P2 专家需求规格编写工作台"
+    assert config["defaults"]["document_title"] == "未命名软件需求规格说明"
+    assert config["defaults"]["layout_ratio"] == "2:3"
+    assert config["layout_options"] == [
+        {"ratio": "2:3", "label": "2:3"},
+        {"ratio": "1:1", "label": "1:1"},
+    ]
+    assert next(item for item in config["document_statuses"] if item["status"] == "draft")["label"] == "草稿"
+    assert [item["action_id"] for item in config["actions"]] == [
+        "create_document",
+        "open_document",
+        "save_draft",
+        "delete_document",
+        "run_check",
+        "freeze",
+    ]
+    assert config["document_surface"]["ribbon"] == ["页面 A4", "样式 标准正文", "段落 1.5 倍行距", "导出 DOCX / PDF"]
+
     templates = client.get("/api/requirement-authoring/templates")
     assert templates.status_code == 200
     assert templates.json()[0]["template_code"] == "81433"

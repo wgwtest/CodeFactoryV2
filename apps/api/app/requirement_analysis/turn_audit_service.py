@@ -28,7 +28,7 @@ class RequirementAnalysisTurnAuditService:
             f"投影目标章节为 {projection_spec_node.get('target_section')}。",
             f"本轮输入类型为 {normalized.get('input_type')}，语义摘要为：{normalized.get('semantic')}。",
             f"处理前第一个 open 叶子节点为 {next_open_before_update or '无'}。",
-            "组织器规则：先回应用户本轮输入，再把结果投影到需求规格完成度树。",
+            "组织器规则：先形成临时正文，再基于正文回看结果更新需求规格完成度树。",
         ]
 
     def previous_interaction(self, value: object, *, last_quick_options: list[dict]) -> dict:
@@ -82,13 +82,20 @@ class RequirementAnalysisTurnAuditService:
         }
 
     @staticmethod
-    def spec_execution(*, model_output: dict, affected_spec_nodes: list[dict], state_changes: dict) -> dict:
+    def spec_execution(
+        *,
+        model_output: dict,
+        affected_spec_nodes: list[dict],
+        state_changes: dict,
+        working_document_update: dict,
+    ) -> dict:
         return {
             "interpretation": model_output["organizer_interpretation"],
             "assistant_message": model_output["assistant_message"],
             "confirmed_facts": model_output["confirmed_facts_delta"],
             "affected_spec_nodes": affected_spec_nodes,
             "document_patch": model_output["document_patch"],
+            "working_document_update": working_document_update,
             "state_changes": state_changes,
             "annotations": model_output["annotations"],
             "risks": model_output["risks"],
@@ -97,37 +104,31 @@ class RequirementAnalysisTurnAuditService:
     @staticmethod
     def post_update_review(
         *,
-        previous_interaction: dict,
-        next_spec_node: dict,
-        closed_spec_node_ids: list[str],
+        section_review: dict,
+        global_review: dict,
     ) -> dict:
-        previous_resolved = bool(closed_spec_node_ids) or previous_interaction.get("type") == "none"
-        current_sufficient = bool(closed_spec_node_ids)
-        remaining_gaps = []
-        if next_spec_node.get("node_id"):
-            remaining_gaps.append(str(next_spec_node.get("question") or next_spec_node.get("title")))
-        summary = (
-            f"本轮已形成可写入材料，相关节点可关闭；下一处缺口是 {next_spec_node.get('target_section')}。"
-            if next_spec_node.get("node_id")
-            else "本轮已形成可写入材料，完成度树暂无待确认节点，可进入整体复核。"
-        )
         return {
-            "summary": summary,
-            "previous_interaction_resolved": previous_resolved,
-            "current_spec_node_sufficient": current_sufficient,
-            "needs_followup_on_same_topic": not current_sufficient,
-            "remaining_gaps": remaining_gaps,
+            "summary": f"{section_review.get('reason')} {global_review.get('summary')}".strip(),
+            "section_review": section_review,
+            "global_review": global_review,
         }
 
     @staticmethod
     def closure_decision(
         *,
-        spec_execution: dict,
         post_update_review: dict,
         closed_spec_node_ids: list[str],
     ) -> dict:
-        status = "closed" if closed_spec_node_ids else "needs_followup"
-        next_action = "propose_next_interaction" if not post_update_review["needs_followup_on_same_topic"] else "continue_same_topic"
+        section_review = post_update_review.get("section_review") or {}
+        global_review = post_update_review.get("global_review") or {}
+        status = "closed" if str(section_review.get("status") or "") in {"acceptable", "closed"} else "needs_followup"
+        global_status = str(global_review.get("status") or "")
+        if global_status == "continue_same_section":
+            next_action = "continue_same_topic"
+        elif global_status == "whole_document_review":
+            next_action = "whole_document_review"
+        else:
+            next_action = "propose_next_interaction"
         return {
             "status": status,
             "reason": (
@@ -157,6 +158,9 @@ class RequirementAnalysisTurnAuditService:
             for node in spec_execution.get("affected_spec_nodes", [])
         )
         trace.append(f"先执行规格补充：{affected_labels or '无'}。")
+        working_document_update = spec_execution.get("working_document_update") or {}
+        if working_document_update.get("after"):
+            trace.append(f"临时正文应用后内容：{working_document_update.get('after')}")
         trace.append(f"补充后回看：{post_update_review.get('summary')}")
         trace.append(
             f"本轮处理闭环：{closure_decision.get('status')}，下一步策略 {closure_decision.get('next_action')}。"

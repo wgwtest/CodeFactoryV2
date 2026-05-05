@@ -8,6 +8,7 @@ import type {
   RequirementAuthoringDocumentSummary,
   RequirementAuthoringKnowledgeBinding,
   RequirementAuthoringKnowledgeProvider,
+  RequirementAuthoringWorkbenchConfig,
   RequirementAuthoringLayoutRatio,
   RequirementAuthoringTemplate,
   RequirementAuthoringTemplateField,
@@ -19,13 +20,17 @@ import {
   deleteRequirementAuthoringDocument,
   freezeRequirementAuthoringDocument,
   getRequirementAuthoringDocument,
-  getRequirementAuthoringDocuments,
-  getRequirementAuthoringKnowledgeProviders,
-  getRequirementAuthoringTemplates,
   patchRequirementAuthoringFormFields,
   runRequirementAuthoringCheck,
   saveRequirementAuthoringDocument,
 } from "../lib/requirementAuthoring";
+import {
+  formatRequirementAuthoringDocumentStatusWithConfig,
+  getRequirementAuthoringWorkbenchAction,
+  getRequirementAuthoringWorkbenchActionLabel,
+  isRequirementAuthoringDocumentEditable,
+} from "../lib/requirementAuthoringWorkbenchViewModel";
+import { useRequirementAuthoringWorkbenchBootstrap } from "../lib/useRequirementAuthoringWorkbenchBootstrap";
 import "./RequirementAuthoringPage.css";
 
 const { Text, Title } = Typography;
@@ -47,29 +52,25 @@ function toDocumentSummary(document: RequirementAuthoringDocumentDetail): Requir
   };
 }
 
-function formatDocumentStatus(status: string): string {
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    checking: "检查中",
-    ready_to_freeze: "待冻结",
-    frozen: "已冻结",
-    submitted_to_p3: "已提交 P3",
-    archived: "已归档",
-  };
-  return labels[status] ?? status;
-}
-
 export function RequirementAuthoringPage() {
   const { activeArchiveId } = useArchiveContext();
+  const {
+    workbenchConfig,
+    templates: bootstrappedTemplates,
+    documents: bootstrappedDocuments,
+    knowledgeProviders: bootstrappedKnowledgeProviders,
+    loading,
+    error: bootstrapError,
+  } = useRequirementAuthoringWorkbenchBootstrap();
   const [templates, setTemplates] = useState<RequirementAuthoringTemplate[]>([]);
   const [documents, setDocuments] = useState<RequirementAuthoringDocumentSummary[]>([]);
-  const [knowledgeProviders, setKnowledgeProviders] = useState<RequirementAuthoringKnowledgeProvider[]>([]);
+  const [knowledgeProviders, setKnowledgeProviders] = useState<typeof bootstrappedKnowledgeProviders>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
   const [knowledgeBinding, setKnowledgeBinding] = useState<RequirementAuthoringKnowledgeBinding | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [currentDocument, setCurrentDocument] = useState<RequirementAuthoringDocumentDetail | null>(null);
-  const [documentTitleDraft, setDocumentTitleDraft] = useState("未命名软件需求规格说明");
+  const [documentTitleDraft, setDocumentTitleDraft] = useState("");
   const [documentTitleDirty, setDocumentTitleDirty] = useState(false);
   const titleDirtyRef = useRef(false);
   const titleSavePromiseRef = useRef<Promise<RequirementAuthoringDocumentDetail | null> | null>(null);
@@ -82,56 +83,25 @@ export function RequirementAuthoringPage() {
   const [openModalOpen, setOpenModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        setLoading(true);
-        const [templatesResponse, documentsResponse, providersResponse] = await Promise.all([
-          getRequirementAuthoringTemplates(),
-          getRequirementAuthoringDocuments(),
-          getRequirementAuthoringKnowledgeProviders(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        const nextTemplates = templatesResponse.data;
-        const nextProviders = providersResponse.data.items;
-        setTemplates(nextTemplates);
-        setDocuments(documentsResponse.data);
-        setKnowledgeProviders(nextProviders);
-        setSelectedProviderId(nextProviders[0]?.provider_id ?? null);
-        setSelectedDomainId(nextProviders[0]?.domains[0]?.domain_id ?? null);
-        setSelectedTemplateId(nextTemplates.find((item) => item.status === "active")?.template_id ?? nextTemplates[0]?.template_id ?? null);
-        setCurrentDocument(null);
-        setDocumentTitleDraft("未命名软件需求规格说明");
-        titleDirtyRef.current = false;
-        setDocumentTitleDirty(false);
-        contextDirtyRef.current = false;
-        setContextDirty(false);
-        setRatio(documentsResponse.data[0]?.layout_ratio ?? "2:3");
-        setError(null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载 P2 规格编写配置失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    if (!workbenchConfig) {
+      return;
     }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setTemplates(bootstrappedTemplates);
+    setDocuments(bootstrappedDocuments);
+    setKnowledgeProviders(bootstrappedKnowledgeProviders);
+    setSelectedProviderId((current) => current ?? bootstrappedKnowledgeProviders[0]?.provider_id ?? null);
+    setSelectedDomainId((current) => current ?? bootstrappedKnowledgeProviders[0]?.domains[0]?.domain_id ?? null);
+    setSelectedTemplateId((current) =>
+      current ?? bootstrappedTemplates.find((item) => item.status === "active")?.template_id ?? bootstrappedTemplates[0]?.template_id ?? null,
+    );
+    setDocumentTitleDraft((current) => current || workbenchConfig.defaults.document_title);
+    setRatio((current) => bootstrappedDocuments[0]?.layout_ratio ?? current ?? workbenchConfig.defaults.layout_ratio);
+    setError(null);
+  }, [bootstrappedDocuments, bootstrappedKnowledgeProviders, bootstrappedTemplates, workbenchConfig]);
 
   const selectedTemplate = useMemo(
     () => templates.find((item) => item.template_id === selectedTemplateId) ?? templates[0] ?? null,
@@ -152,6 +122,10 @@ export function RequirementAuthoringPage() {
   const knowledgeButtonLabel = knowledgeBinding
     ? `领域知识：${formatKnowledgeDomainLabel(knowledgeBinding.domain.domain_name)}`
     : "领域知识：未选择";
+  const createDocumentAction = getRequirementAuthoringWorkbenchAction(workbenchConfig, "create_document");
+  const deleteDocumentAction = getRequirementAuthoringWorkbenchAction(workbenchConfig, "delete_document");
+  const currentDocumentEditable = currentDocument ? isRequirementAuthoringDocumentEditable(currentDocument.status, workbenchConfig) : false;
+  const effectiveError = error ?? bootstrapError;
 
   const boundArchiveId = knowledgeBinding?.knowledge_archive.archive_id ?? knowledgeBinding?.domain.domain_id;
 
@@ -193,11 +167,7 @@ export function RequirementAuthoringPage() {
     if (titleSavePromiseRef.current) {
       return titleSavePromiseRef.current;
     }
-    if (
-      !currentDocument ||
-      (!titleDirtyRef.current && !contextDirtyRef.current) ||
-      currentDocument.status === "frozen"
-    ) {
+    if (!currentDocument || (!titleDirtyRef.current && !contextDirtyRef.current) || !currentDocumentEditable) {
       return currentDocument;
     }
     const documentId = currentDocument.document_id;
@@ -223,14 +193,14 @@ export function RequirementAuthoringPage() {
   }
 
   async function handleCreateDocument() {
-    if (!selectedTemplate) {
+    if (!selectedTemplate || !workbenchConfig) {
       return;
     }
 
     try {
       setSubmitting(true);
       const response = await createRequirementAuthoringDocument({
-        title: "未命名软件需求规格说明",
+        title: workbenchConfig.defaults.document_title,
         template_id: selectedTemplate.template_id,
         archive_ids: boundArchiveId ? [boundArchiveId] : activeArchiveId ? [activeArchiveId] : [],
         layout_ratio: ratio,
@@ -276,7 +246,7 @@ export function RequirementAuthoringPage() {
       await deleteRequirementAuthoringDocument(currentDocument.document_id);
       setDocuments((current) => current.filter((item) => item.document_id !== currentDocument.document_id));
       setCurrentDocument(null);
-      setDocumentTitleDraft("未命名软件需求规格说明");
+      setDocumentTitleDraft(workbenchConfig?.defaults.document_title ?? "");
       titleDirtyRef.current = false;
       setDocumentTitleDirty(false);
       contextDirtyRef.current = false;
@@ -346,7 +316,7 @@ export function RequirementAuthoringPage() {
 
   async function handleSend(content = questionInput) {
     const normalized = content.trim();
-    if (!currentDocument || currentDocument.status === "frozen" || !normalized) {
+    if (!currentDocument || !currentDocumentEditable || !normalized) {
       return;
     }
 
@@ -368,7 +338,7 @@ export function RequirementAuthoringPage() {
   }
 
   async function handleFieldChange(field: RequirementAuthoringTemplateField, value: string) {
-    if (!currentDocument || currentDocument.status === "frozen") {
+    if (!currentDocument || !currentDocumentEditable) {
       return;
     }
 
@@ -462,17 +432,14 @@ export function RequirementAuthoringPage() {
       <div className="requirement-authoring-header">
         <div>
           <Title level={2} className="requirement-authoring-title">
-            P2 专家需求规格编写工作台
+            {workbenchConfig?.page.title ?? "加载工作台配置中"}
           </Title>
-          <Text type="secondary">面向专家的标准需求规格说明正文编写、校对、检查与冻结。</Text>
+          <Text type="secondary">{workbenchConfig?.page.subtitle ?? "加载工作台配置中..."}</Text>
         </div>
         <div className="requirement-authoring-actions">
           <Segmented
             value={ratio}
-            options={[
-              { label: "2:3", value: "2:3" },
-              { label: "1:1", value: "1:1" },
-            ]}
+            options={(workbenchConfig?.layout_options ?? []).map((item) => ({ label: item.label, value: item.ratio }))}
             onChange={(value) => setRatio(value as RequirementAuthoringLayoutRatio)}
           />
           <Popover content={settingsContent} trigger="click" placement="bottomRight">
@@ -481,28 +448,33 @@ export function RequirementAuthoringPage() {
           <Button onClick={() => setKnowledgeModalOpen(true)}>
             {knowledgeButtonLabel}
           </Button>
-          <Button type="primary" loading={submitting} disabled={!selectedTemplate} onClick={() => void handleCreateDocument()}>
-            新建文档
+          <Button
+            type={createDocumentAction?.style === "primary" ? "primary" : "default"}
+            loading={submitting}
+            disabled={!selectedTemplate || !workbenchConfig}
+            onClick={() => void handleCreateDocument()}
+          >
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "create_document", "新建文档")}
           </Button>
           <Button onClick={() => setOpenModalOpen(true)}>
-            打开文档
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "open_document", "打开文档")}
           </Button>
-          <Button disabled={!currentDocument || currentDocument.status === "frozen"} loading={submitting} onClick={handleSaveDraft}>
-            保存草稿
+          <Button disabled={!currentDocument || !currentDocumentEditable} loading={submitting} onClick={handleSaveDraft}>
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "save_draft", "保存草稿")}
           </Button>
-          <Button danger disabled={!currentDocument} onClick={() => setDeleteModalOpen(true)}>
-            删除文档
+          <Button danger={deleteDocumentAction?.danger ?? true} disabled={!currentDocument} onClick={() => setDeleteModalOpen(true)}>
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "delete_document", "删除文档")}
           </Button>
           <Button disabled={!currentDocument} loading={submitting} onClick={() => void handleRunCheck()}>
-            缺口检查
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "run_check", "缺口检查")}
           </Button>
           <Button disabled={!currentDocument} loading={submitting} onClick={() => void handleFreeze()}>
-            冻结版本
+            {getRequirementAuthoringWorkbenchActionLabel(workbenchConfig, "freeze", "冻结版本")}
           </Button>
         </div>
       </div>
 
-      {error ? <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} /> : null}
+      {effectiveError ? <Alert type="error" showIcon message={effectiveError} style={{ marginBottom: 12 }} /> : null}
       {notice ? <Alert type="success" showIcon message={notice} style={{ marginBottom: 12 }} /> : null}
       {currentDocument?.frozen_package?.p3_consumable ? (
         <Alert type="success" showIcon message="P3 可消费" style={{ marginBottom: 12 }} />
@@ -512,8 +484,8 @@ export function RequirementAuthoringPage() {
         <Input
           aria-label="文档名称"
           value={documentTitleDraft}
-          disabled={!currentDocument || currentDocument.status === "frozen"}
-          placeholder="未命名软件需求规格说明"
+          disabled={!currentDocument || !currentDocumentEditable}
+          placeholder={workbenchConfig?.defaults.document_title ?? "等待配置加载"}
           onChange={(event) => {
             const nextTitle = event.target.value;
             setDocumentTitleDraft(nextTitle);
@@ -560,12 +532,12 @@ export function RequirementAuthoringPage() {
                       currentDocument={currentDocument}
                       questionInput={questionInput}
                       submitting={submitting}
-                      disabled={currentDocument.status === "frozen"}
+                      disabled={!currentDocumentEditable}
                       onQuestionInputChange={setQuestionInput}
                       onSend={(content) => void handleSend(content)}
                     />
                   ) : (
-                    <Empty description="创建规格文档后开始问答协作" />
+                      <Empty description={workbenchConfig?.empty_states.question_mode ?? "等待工作台配置加载"} />
                   ),
                 },
                 {
@@ -575,11 +547,11 @@ export function RequirementAuthoringPage() {
                     <FormMode
                       template={selectedTemplate}
                       fields={fields}
-                      disabled={currentDocument.status === "frozen"}
+                      disabled={!currentDocumentEditable}
                       onFieldChange={(field, value) => void handleFieldChange(field, value)}
                     />
                   ) : (
-                    <Empty description="创建规格文档后开始表单校对" />
+                    <Empty description={workbenchConfig?.empty_states.form_mode ?? "等待工作台配置加载"} />
                   ),
                 },
               ]}
@@ -589,26 +561,29 @@ export function RequirementAuthoringPage() {
           <div className="requirement-authoring-panel requirement-authoring-document-panel">
             <div className="requirement-authoring-document-toolbar">
               <Space wrap>
-                <Text strong>标准需求规格说明</Text>
-                <Tag color="green">可导出稿</Tag>
-                {currentDocument ? <Tag>{currentDocument.status}</Tag> : null}
+                <Text strong>{workbenchConfig?.document_surface.title ?? "文档区配置加载中"}</Text>
+                {(workbenchConfig?.document_surface.badges ?? []).map((badge) => (
+                  <Tag color="green" key={badge}>
+                    {badge}
+                  </Tag>
+                ))}
+                {currentDocument ? <Tag>{formatRequirementAuthoringDocumentStatusWithConfig(currentDocument.status, workbenchConfig)}</Tag> : null}
                 {currentDocument?.check_result ? <Tag>阻断项 {currentDocument.check_result.blocking_count}</Tag> : null}
               </Space>
               <Text type="secondary">{selectedTemplate?.name ?? "未选择模板"}</Text>
             </div>
             <div className="requirement-authoring-document-ribbon" aria-label="文档编辑状态">
-              <span>页面 A4</span>
-              <span>样式 标准正文</span>
-              <span>段落 1.5 倍行距</span>
-              <span>导出 DOCX / PDF</span>
+              {(workbenchConfig?.document_surface.ribbon ?? []).map((item) => (
+                <span key={item}>{item}</span>
+              ))}
             </div>
             {currentDocument ? (
               <StandardDocumentView currentDocument={currentDocument} onOpenAnnotation={openAnnotation} />
             ) : (
               <div className="requirement-authoring-document-canvas">
                 <div className="requirement-authoring-empty requirement-authoring-document-paper">
-                  <Title level={4}>标准需求规格说明</Title>
-                  <Text type="secondary">创建文档后，右侧会持续生成标准正文。</Text>
+                  <Title level={4}>{workbenchConfig?.document_surface.title ?? "文档区配置加载中"}</Title>
+                  <Text type="secondary">{workbenchConfig?.empty_states.document ?? "等待工作台配置加载"}</Text>
                 </div>
               </div>
             )}
@@ -679,6 +654,7 @@ export function RequirementAuthoringPage() {
           templates={templates}
           currentDocumentId={currentDocument?.document_id ?? null}
           submitting={submitting}
+          workbenchConfig={workbenchConfig}
           onOpen={(documentId) => void handleOpenDocument(documentId)}
         />
       </Modal>
@@ -809,12 +785,14 @@ function DocumentOpenList({
   templates,
   currentDocumentId,
   submitting,
+  workbenchConfig,
   onOpen,
 }: {
   documents: RequirementAuthoringDocumentSummary[];
   templates: RequirementAuthoringTemplate[];
   currentDocumentId: string | null;
   submitting: boolean;
+  workbenchConfig: RequirementAuthoringWorkbenchConfig | null;
   onOpen: (documentId: string) => void;
 }) {
   const templateCodeById = new Map(templates.map((template) => [template.template_id, template.template_code]));
@@ -831,7 +809,7 @@ function DocumentOpenList({
             <Text strong>{document.title}</Text>
             <div className="requirement-authoring-open-meta">
               <Tag>{templateCodeById.get(document.template_id) ?? "未知"}号</Tag>
-              <Tag>{formatDocumentStatus(document.status)}</Tag>
+              <Tag>{formatRequirementAuthoringDocumentStatusWithConfig(document.status, workbenchConfig)}</Tag>
               <Text type="secondary">{new Date(document.updated_at).toLocaleString()}</Text>
             </div>
           </div>

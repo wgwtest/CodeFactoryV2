@@ -44,6 +44,24 @@ def assert_new_turn_contract(turn: dict) -> None:
 def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     client = TestClient(create_app())
 
+    lab_config = client.get("/api/requirement-analysis/lab-config")
+    assert lab_config.status_code == 200
+    config = lab_config.json()
+    assert config["page"]["title"] == "P2 XG 需求分析组织器 Lab"
+    assert config["defaults"] == {
+        "topic": "默认运算软件需求规格说明",
+        "orchestrator_id": "xg-heuristic-orchestrator",
+        "provider_id": "mock",
+        "model": "mock-requirement-analysis-v1",
+        "template_id": "81433号",
+        "knowledge_package_id": "airspace-domain-demo",
+        "write_policy": "patch_suggestion_only",
+    }
+    assert config["provider_log_schema"]["fields"][0]["path"] == "user_input"
+    assert config["provider_log_schema"]["fields"][0]["used_when"]
+    assert "previous_interaction" in config["turn_audit_schema"]["required_fields"]
+    assert "spec_execution" in config["turn_audit_schema"]["required_fields"]
+
     orchestrators = client.get("/api/requirement-analysis/orchestrators")
     assert orchestrators.status_code == 200
     items = orchestrators.json()["items"]
@@ -82,6 +100,9 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert session["stable_contract"]["formal_document"] is True
     assert session["write_policy"] == "patch_suggestion_only"
     assert session["document_patch"] == []
+    assert session["working_document"]["document_id"] == "lab-working-document"
+    assert session["working_document"]["title"].startswith("81433号需求规格说明")
+    assert session["working_document"]["sections"] == []
     assert session["questions"][0]["question_id"] == "Q-001"
     assert session["questions"][0]["status"] == "open"
     assert session["facts"] == []
@@ -124,8 +145,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
     assert payload["turn"]["closure_decision"]["status"] == "closed"
-    assert payload["turn"]["post_update_review"]["previous_interaction_resolved"] is True
-    assert payload["turn"]["post_update_review"]["current_spec_node_sufficient"] is True
+    assert payload["turn"]["spec_execution"]["working_document_update"]["applied_section_ids"] == ["SPEC-REQ-1.1"]
+    assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["working_document_update"]["after"]
+    assert payload["turn"]["post_update_review"]["section_review"]["status"] in {"acceptable", "closed"}
+    assert payload["turn"]["post_update_review"]["global_review"]["status"] in {"move_next_node", "continue"}
     assert "空域运算软件" in payload["turn"]["spec_execution"]["confirmed_facts"][0]
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
     assert any("用户输入是本轮 Turn 起点" in item for item in payload["turn"]["decision_trace"])
@@ -144,6 +167,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["confidence"] == "medium"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
+    assert payload["session"]["working_document"]["sections"][0]["section_id"] == "SPEC-REQ-1.1"
+    assert "空域运算软件" in payload["session"]["working_document"]["sections"][0]["content"]
     assert payload["session"]["questions"][0]["question_id"] == "Q-001"
     assert payload["session"]["questions"][0]["status"] == "confirmed"
     assert payload["session"]["questions"][0]["resolution_fact_ids"] == ["F-001"]
@@ -177,6 +202,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert_new_turn_contract(second_payload["turn"])
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
+    assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_section_ids"] == ["SPEC-REQ-2.1"]
+    assert second_payload["turn"]["post_update_review"]["section_review"]["status"] in {"acceptable", "closed"}
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
     assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
     assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
@@ -453,7 +480,11 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert provider_log["audit"]["user_input"] == "A，先按计算分析工具理解"
     assert provider_log["audit"]["normalized_input"]["semantic"] == "先按计算分析工具理解"
     assert provider_log["audit"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "assembled prompt"
+    assert "working_document_json" in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "current_section_draft" in provider_log["audit"]["provider_request"]["prompt_bundle"]
+    assert "review_goal" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
+    assert "review_json" in provider_log["audit"]["provider_response"]
     assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
         "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
     )

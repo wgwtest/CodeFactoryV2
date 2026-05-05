@@ -36,6 +36,13 @@ def _bad_request(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=message)
 
 
+@router.get("/workbench-config")
+def get_requirement_authoring_workbench_config(
+    service: RequirementAuthoringService = Depends(get_requirement_authoring_service),
+):
+    return service.get_workbench_config()
+
+
 @router.get("/templates")
 def list_requirement_authoring_templates(
     service: RequirementAuthoringService = Depends(get_requirement_authoring_service),

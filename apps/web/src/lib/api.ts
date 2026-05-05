@@ -2116,6 +2116,60 @@ export type RequirementAnalysisProviderEnvelope = {
   items: RequirementAnalysisProvider[];
 };
 
+export type RequirementAnalysisPageMeta = {
+  title: string;
+  subtitle: string;
+};
+
+export type RequirementAnalysisLabDefaults = {
+  topic: string;
+  orchestrator_id: string;
+  provider_id: string;
+  model: string;
+  template_id: string;
+  knowledge_package_id: string;
+  write_policy: string;
+};
+
+export type RequirementAnalysisStartupField = {
+  field: string;
+  label: string;
+  control: string;
+  required?: boolean;
+  placeholder?: string;
+};
+
+export type RequirementAnalysisWritePolicyOption = {
+  policy_id: string;
+  label: string;
+  description: string;
+};
+
+export type RequirementAnalysisFieldSchemaItem = {
+  path: string;
+  label: string;
+  description: string;
+  used_when?: string;
+};
+
+export type RequirementAnalysisFieldSchema = {
+  fields: RequirementAnalysisFieldSchemaItem[];
+};
+
+export type RequirementAnalysisTurnAuditSchema = {
+  protocol_version: string;
+  required_fields: string[];
+};
+
+export type RequirementAnalysisLabConfig = {
+  page: RequirementAnalysisPageMeta;
+  defaults: RequirementAnalysisLabDefaults;
+  startup_fields: RequirementAnalysisStartupField[];
+  write_policies: RequirementAnalysisWritePolicyOption[];
+  provider_log_schema: RequirementAnalysisFieldSchema;
+  turn_audit_schema: RequirementAnalysisTurnAuditSchema;
+};
+
 export type RequirementAnalysisMessage = {
   id: string;
   role: "assistant" | "user" | "system";
@@ -2244,6 +2298,19 @@ export type RequirementAnalysisSpecExecution = {
   confirmed_facts: string[];
   affected_spec_nodes: RequirementAnalysisAffectedSpecNode[];
   document_patch: RequirementAnalysisDocumentPatch[];
+  working_document_update: {
+    applied_section_ids: string[];
+    sections: {
+      section_id: string;
+      target_section: string;
+      before: string;
+      after: string;
+      source_patch_ids: string[];
+      last_turn_id: string;
+    }[];
+    before: string;
+    after: string;
+  };
   state_changes: RequirementAnalysisStateChanges;
   annotations: string[];
   risks: string[];
@@ -2251,10 +2318,35 @@ export type RequirementAnalysisSpecExecution = {
 
 export type RequirementAnalysisPostUpdateReview = {
   summary: string;
-  previous_interaction_resolved: boolean;
-  current_spec_node_sufficient: boolean;
-  needs_followup_on_same_topic: boolean;
-  remaining_gaps: string[];
+  section_review: {
+    section_id: string;
+    target_section: string;
+    status: string;
+    reason: string;
+    missing_aspects: string[];
+  };
+  global_review: {
+    status: string;
+    summary: string;
+    remaining_gaps: string[];
+  };
+};
+
+export type RequirementAnalysisWorkingDocumentSection = {
+  section_id: string;
+  target_section: string;
+  content: string;
+  source_patch_ids: string[];
+  last_turn_id: string | null;
+  review_status: string;
+  review_reason: string;
+};
+
+export type RequirementAnalysisWorkingDocument = {
+  document_id: string;
+  title: string;
+  topic?: string;
+  sections: RequirementAnalysisWorkingDocumentSection[];
 };
 
 export type RequirementAnalysisTurn = {
@@ -2315,6 +2407,7 @@ export type RequirementAnalysisSession = {
   confirmed_facts: string[];
   open_questions: string[];
   document_patch: RequirementAnalysisDocumentPatch[];
+  working_document: RequirementAnalysisWorkingDocument;
   questions: RequirementAnalysisQuestionItem[];
   facts: RequirementAnalysisConfirmedFactItem[];
   patches: RequirementAnalysisPatchProposal[];
@@ -2342,4 +2435,46 @@ export type RequirementAnalysisSessionCreateInput = {
 export type RequirementAnalysisTurnEnvelope = {
   session: RequirementAnalysisSession;
   turn: RequirementAnalysisTurn;
+};
+
+export type RequirementAuthoringWorkbenchDefaults = {
+  document_title: string;
+  layout_ratio: RequirementAuthoringLayoutRatio;
+  allow_empty_knowledge_binding: boolean;
+};
+
+export type RequirementAuthoringLayoutOption = {
+  ratio: RequirementAuthoringLayoutRatio;
+  label: string;
+};
+
+export type RequirementAuthoringStatusDefinition = {
+  status: RequirementAuthoringDocumentStatus | string;
+  label: string;
+  editable: boolean;
+};
+
+export type RequirementAuthoringActionDefinition = {
+  action_id: "create_document" | "open_document" | "save_draft" | "delete_document" | "run_check" | "freeze" | string;
+  label: string;
+  style?: "primary" | string;
+  requires_document?: boolean;
+  disabled_when_frozen?: boolean;
+  danger?: boolean;
+};
+
+export type RequirementAuthoringDocumentSurfaceConfig = {
+  title: string;
+  badges: string[];
+  ribbon: string[];
+};
+
+export type RequirementAuthoringWorkbenchConfig = {
+  page: RequirementAnalysisPageMeta;
+  defaults: RequirementAuthoringWorkbenchDefaults;
+  layout_options: RequirementAuthoringLayoutOption[];
+  document_statuses: RequirementAuthoringStatusDefinition[];
+  actions: RequirementAuthoringActionDefinition[];
+  document_surface: RequirementAuthoringDocumentSurfaceConfig;
+  empty_states: Record<string, string>;
 };
