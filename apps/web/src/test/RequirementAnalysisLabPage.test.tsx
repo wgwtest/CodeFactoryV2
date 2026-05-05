@@ -152,7 +152,20 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   const workingDocumentPage = screen.getByTestId("requirement-analysis-working-document-page");
   expect(workingDocumentPage).toBeInTheDocument();
   expect(workingDocumentPage).toHaveTextContent("本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。");
+  expect(within(workingDocumentPage).queryByText("turn-0001")).not.toBeInTheDocument();
+  expect(within(workingDocumentPage).queryByText("frag-0001")).not.toBeInTheDocument();
   expect(screen.getByText("用户选择先按计算分析工具理解")).toBeInTheDocument();
+  const revisionMarker = screen.getByTestId("requirement-analysis-marker-frag-0001");
+  const revisionHighlight = screen.getByTestId("requirement-analysis-highlight-frag-0001");
+  expect(revisionMarker).toHaveTextContent("第1轮修订");
+  expect(revisionMarker).not.toHaveTextContent("turn-0001");
+  expect(revisionMarker).not.toHaveTextContent("frag-0001");
+  expect(revisionMarker).not.toHaveClass("is-active");
+  expect(revisionHighlight).not.toHaveClass("is-active");
+  fireEvent.click(revisionMarker);
+  expect(revisionMarker).toHaveClass("is-active");
+  expect(revisionHighlight).toHaveClass("is-active");
+  expect(document.querySelectorAll('[data-marker-group="requirement-analysis-revision-marker"]')).toHaveLength(1);
   expect(screen.queryByText("系统要做什么？")).not.toBeInTheDocument();
   expect(screen.queryByText("问题工作项")).not.toBeInTheDocument();
   expect(screen.queryByText("已确认事实")).not.toBeInTheDocument();
@@ -214,8 +227,8 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
 
   fireEvent.click(screen.getByRole("tab", { name: /调用日志/ }));
 
-  expect(screen.getByRole("tab", { name: /调用日志.*2 条/ })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByText("Provider 调用日志")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /调用日志.*1 条/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("模型 / Runner 调用日志")).toBeInTheDocument();
   expect(screen.getAllByText("call-0001").length).toBeGreaterThan(0);
   expect(screen.getByText(/deepseek-chat/)).toBeInTheDocument();
   expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
@@ -330,6 +343,62 @@ test("lets provider log audit outputs expand until near one screen before intern
 
   expect(css).toContain("max-height: min(72vh, 920px);");
   expect(css).not.toContain("max-height: 320px;");
+});
+
+test("uses a 4:6 session workspace ratio so the working document is wider than the CLI column", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toContain(".requirement-analysis-lab-tab-grid.is-session");
+  expect(css).toContain("grid-template-columns: minmax(360px, 0.8fr) minmax(560px, 1.2fr);");
+  expect(css).not.toContain("grid-template-columns: minmax(420px, 0.95fr) minmax(460px, 1.05fr);");
+});
+
+test("places revision markers in a right-side rail outside the paper instead of reserving an in-page left column", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toContain(".requirement-analysis-lab-working-document-sheet");
+  expect(css).toContain("grid-template-columns: minmax(0, 920px) 220px;");
+  expect(css).toContain(".requirement-analysis-lab-working-document-revision-rail");
+  expect(css).not.toContain("grid-template-columns: 184px minmax(0, 1fr);");
+});
+
+test("renders one right-side revision marker per turn even when the turn edits multiple document positions", async () => {
+  mockRequirementAnalysisBootstrap();
+  const session = buildSessionWithCrossPositionRevision();
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+  await screen.findByText("会话已创建：ra-airspace-001");
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+
+  await screen.findByTestId("requirement-analysis-marker-frag-0001");
+  const markers = Array.from(document.querySelectorAll('[data-marker-group="requirement-analysis-revision-marker"]'));
+  expect(markers).toHaveLength(1);
+  expect(markers[0]).toHaveTextContent("第1轮修订");
+  expect(markers[0]).toHaveTextContent("影响 2 处");
+
+  const firstHighlight = screen.getByTestId("requirement-analysis-highlight-frag-0001");
+  const secondHighlight = screen.getByTestId("requirement-analysis-highlight-frag-0002");
+  expect(firstHighlight).not.toHaveClass("is-active");
+  expect(secondHighlight).not.toHaveClass("is-active");
+
+  fireEvent.click(markers[0]);
+
+  expect(firstHighlight).toHaveClass("is-active");
+  expect(secondHighlight).toHaveClass("is-active");
 });
 
 function createDeferred<T>() {
@@ -562,6 +631,28 @@ function buildLabConfig() {
   };
 }
 
+function mockRequirementAnalysisBootstrap() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { provider_id: "mock", name: "Mock Provider", status: "active" },
+            { provider_id: "deepseek", name: "DeepSeek", status: "active" },
+          ],
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+}
+
 function buildSession(status: RequirementAnalysisSession["status"]): RequirementAnalysisSession {
   return {
     session_id: "ra-airspace-001",
@@ -614,6 +705,63 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
   } as unknown as RequirementAnalysisSession;
+}
+
+function buildSessionWithCrossPositionRevision(): RequirementAnalysisSession {
+  return {
+    ...buildSession("waiting_user"),
+    working_document: {
+      document_id: "lab-working-document",
+      title: "81433号需求规格说明（Lab 临时正文）",
+      topic: "空域运算软件需求规格探索",
+      blocks: [
+        {
+          block_id: "blk-0001",
+          anchor_path: "1 总则 / 编写目的",
+          block_type: "paragraph",
+          order_index: 10,
+          text: "本规格说明用于定义态势分析系统的需求规格。",
+          last_turn_id: "turn-0001",
+          source_fragment_ids: ["frag-0001"],
+        },
+        {
+          block_id: "blk-0002",
+          anchor_path: "2 项目概述 / 软件定位",
+          block_type: "paragraph",
+          order_index: 20,
+          text: "本软件是一款态势分析系统，提供展示、分析与部门协同能力。",
+          last_turn_id: "turn-0001",
+          source_fragment_ids: ["frag-0002"],
+        },
+      ],
+      revision_fragments: [
+        {
+          fragment_id: "frag-0001",
+          turn_id: "turn-0001",
+          color_token: "turn-color-01",
+          target_block_id: "blk-0001",
+          apply_mode: "append_to_block",
+          start_offset: 0,
+          end_offset: 24,
+          user_input_summary: "用户描述态势分析系统",
+          supplement_reason: "补入编写目的",
+          hit_spec_nodes: ["SPEC-REQ-1.1"],
+        },
+        {
+          fragment_id: "frag-0002",
+          turn_id: "turn-0001",
+          color_token: "turn-color-01",
+          target_block_id: "blk-0002",
+          apply_mode: "append_to_block",
+          start_offset: 0,
+          end_offset: 29,
+          user_input_summary: "用户描述态势分析系统",
+          supplement_reason: "补入软件定位",
+          hit_spec_nodes: ["SPEC-REQ-2.1"],
+        },
+      ],
+    },
+  };
 }
 
 function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
@@ -880,60 +1028,6 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                   section: "1.1 系统目标",
                   operation: "append_or_update",
                   content: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
-                },
-              ],
-            },
-          },
-        },
-        {
-          call_id: "call-0002",
-          provider_id: "deepseek",
-          model: "deepseek-chat",
-          status: "completed",
-          created_at: "2026-05-01T00:00:01Z",
-          turn_id: "turn-0002",
-          orchestrator_id: "xg-heuristic-orchestrator",
-          orchestrator_mode: "policy_interpreted",
-          audit: {
-            user_input: "B，先确认输出",
-            normalized_input: {
-              input_type: "quick_option_answer",
-              matched_option: "B",
-              matched_option_label: "先确认输出",
-              semantic: "先确认输出",
-            },
-            provider_request: {
-              messages: [
-                { role: "system", content: "system prompt" },
-                { role: "user", content: "assembled prompt 2" },
-              ],
-                prompt_bundle: {
-                  assembled_prompt: "assembled prompt 2",
-                  context_json: '{"topic":"空域运算软件需求规格探索"}',
-                  working_document_json: '{"document_id":"lab-working-document"}',
-                  working_document_excerpt: "本系统面向空域领域专家。",
-                  review_target_paths: ["1.2 系统边界"],
-                  recent_revision_fragments: ["frag-0001"],
-                  review_goal: "系统边界是什么？",
-                  schema_json: '{"assistant_message":"string"}',
-                },
-              },
-            provider_response: {
-              raw_content: '{"assistant_message":"下一轮建议确认输出结果形式。"}',
-              parsed_json: {
-                assistant_message: "下一轮建议确认输出结果形式。",
-              },
-            },
-            provider_normalized_output: {
-              assistant_message: "下一轮建议确认输出结果形式。",
-            },
-            service_output: {
-              assistant_message: "基于你的输入，本轮更新了：2.1 输出结果。建议下一步确认结果展示形式。",
-              document_patch: [
-                {
-                  section: "2.1 输出结果",
-                  operation: "append_or_update",
-                  content: "系统需要输出计算结果，并支持结果解释与确认。",
                 },
               ],
             },

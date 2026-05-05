@@ -20,10 +20,13 @@ from app.requirement_analysis.spec_tree_service import RequirementSpecTreeServic
 from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
 from app.requirement_analysis.turn_context_builder import TurnContextBuilder
+from app.requirement_analysis.turn_decision_service import TurnDecisionService
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
 from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
+from app.requirement_analysis.turn_stage_planner import TurnStagePlanner
+from app.requirement_analysis.turn_stage_reducer import TurnStageReducer
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
@@ -50,6 +53,9 @@ class RequirementAnalysisSessionService:
         self.working_document_review_service = WorkingDocumentReviewService(
             working_document_service=self.working_document_service,
         )
+        self.turn_stage_planner = TurnStagePlanner()
+        self.turn_stage_reducer = TurnStageReducer()
+        self.turn_decision_service = TurnDecisionService()
         self.next_interaction_service = NextInteractionService(
             input_normalizer=self.input_normalizer,
             process_artifact_service=self.process_artifact_service,
@@ -75,9 +81,12 @@ class RequirementAnalysisSessionService:
             turn_output_service=self.turn_output_service,
             next_interaction_service=self.next_interaction_service,
             turn_strategy_service=self.turn_strategy_service,
+            turn_stage_planner=self.turn_stage_planner,
             turn_stage_executor=self.turn_stage_executor,
+            turn_stage_reducer=self.turn_stage_reducer,
             working_document_service=self.working_document_service,
             working_document_review_service=self.working_document_review_service,
+            turn_decision_service=self.turn_decision_service,
         )
 
     def list_orchestrators(self) -> dict:

@@ -34,6 +34,14 @@ const { TextArea } = Input;
 type RequirementAnalysisLabTab = "config" | "session" | "turn" | "log";
 type WorkingDocumentFragment = RequirementAnalysisSession["working_document"]["revision_fragments"][number];
 
+function formatRequirementAnalysisTurnLabel(turnId: string) {
+  const match = turnId.match(/(\d+)$/);
+  if (!match) {
+    return "本轮修订";
+  }
+  return `第${Number(match[1])}轮修订`;
+}
+
 export function RequirementAnalysisLabPage() {
   const { labConfig, orchestratorsEnvelope, providers, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
@@ -184,7 +192,7 @@ export function RequirementAnalysisLabPage() {
               active={activeTab === "log"}
               badge={`${logCount} 条`}
               onClick={() => setActiveTab("log")}
-              subtitle="Provider Calls"
+              subtitle="Model / Runner Calls"
               title="调用日志"
             />
           </aside>
@@ -605,7 +613,7 @@ function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema
     <>
       <div className="requirement-analysis-lab-tab-grid is-log">
         <section className="requirement-analysis-lab-panel">
-          <PanelHead title="Provider 调用日志" subtitle="按调用时间展示每轮组织器 Provider 请求记录。" />
+          <PanelHead title="模型 / Runner 调用日志" subtitle="只展示外部模型 Provider 或本地 Runner 调用；服务端内部阶段审计在当前 Turn 中查看。" />
           {logs.length > 0 ? (
             <div className="requirement-analysis-lab-log-list">
               {logs.map((log) => (
@@ -626,16 +634,16 @@ function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema
             </div>
           ) : (
             <div className="requirement-analysis-lab-empty">
-              <Text type="secondary">暂无 Provider 调用日志。</Text>
+              <Text type="secondary">暂无模型或 Runner 调用日志。</Text>
             </div>
           )}
         </section>
         <section className="requirement-analysis-lab-panel">
-          <PanelHead title="调用详情" subtitle={selectedLog ? selectedLog.call_id : "等待 Provider 调用。"} />
+          <PanelHead title="调用详情" subtitle={selectedLog ? selectedLog.call_id : "等待模型或 Runner 调用。"} />
           {selectedLog ? (
             <ProviderLogDetail log={selectedLog} logSchema={logSchema} />
           ) : (
-            <Text type="secondary">启动会话或发送输入后，这里会显示 Provider 调用细节。</Text>
+            <Text type="secondary">启动会话或发送输入后，这里会显示模型或 Runner 调用细节。</Text>
           )}
         </section>
       </div>
@@ -886,6 +894,23 @@ function SessionSummary({ session }: { session: RequirementAnalysisSession | nul
 
 function WorkingDocumentView({ session }: { session: RequirementAnalysisSession }) {
   const viewModel = buildRequirementAnalysisWorkingDocumentViewModel(session);
+  const allFragmentIds = useMemo(
+    () => viewModel.blocks.flatMap((block) => block.fragments.map((fragment) => fragment.fragment_id)),
+    [viewModel.blocks],
+  );
+  const [selectedRevisionEventTurnId, setSelectedRevisionEventTurnId] = useState<string | null>(null);
+  const selectedRevisionEvent = viewModel.revisionEvents.find((event) => event.turnId === selectedRevisionEventTurnId) ?? null;
+  const selectedFragmentIds = new Set(selectedRevisionEvent?.fragmentIds ?? []);
+
+  useEffect(() => {
+    if (!selectedRevisionEventTurnId) {
+      return;
+    }
+    if (!viewModel.revisionEvents.some((event) => event.turnId === selectedRevisionEventTurnId)) {
+      setSelectedRevisionEventTurnId(null);
+    }
+  }, [allFragmentIds, selectedRevisionEventTurnId, viewModel.revisionEvents]);
+
   return (
     <div className="requirement-analysis-lab-spec-summary">
       <div className="requirement-analysis-lab-summary-title-row">
@@ -894,44 +919,57 @@ function WorkingDocumentView({ session }: { session: RequirementAnalysisSession 
       </div>
       {viewModel.blocks.length ? (
         <div className="requirement-analysis-lab-working-document">
-          <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-working-document-page">
-            <div className="requirement-analysis-lab-working-document-page-head">
-              <Text strong>{viewModel.title}</Text>
-              {viewModel.topic ? <Text type="secondary">{viewModel.topic}</Text> : null}
-            </div>
-            <div className="requirement-analysis-lab-working-document-body">
-              {viewModel.blocks.map((block) => (
-                <div className="requirement-analysis-lab-working-document-block-row" key={block.blockId}>
-                  <div className="requirement-analysis-lab-working-document-margin">
-                    {block.fragments.map((fragment) => (
-                      <div className={`requirement-analysis-lab-margin-marker ${fragment.color_token}`} key={fragment.fragment_id}>
-                        <Text strong>{fragment.turn_id}</Text>
-                        <Text type="secondary">{fragment.user_input_summary || fragment.supplement_reason || "本轮修订"}</Text>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="requirement-analysis-lab-working-document-block">
+          <div className="requirement-analysis-lab-working-document-sheet">
+            <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-working-document-page">
+              <div className="requirement-analysis-lab-working-document-page-head">
+                <Text strong>{viewModel.title}</Text>
+                {viewModel.topic ? <Text type="secondary">{viewModel.topic}</Text> : null}
+              </div>
+              <div className="requirement-analysis-lab-working-document-body">
+                {viewModel.blocks.map((block) => (
+                  <div className="requirement-analysis-lab-working-document-block" key={block.blockId}>
                     <div className="requirement-analysis-lab-working-document-anchor">
                       <Text type="secondary">{block.anchorPath}</Text>
                     </div>
                     <div className="requirement-analysis-lab-working-document-paragraph">
                       {buildWorkingDocumentSegments(block.text, block.fragments).map((segment) => (
                         <span
-                          className={segment.colorToken ? `requirement-analysis-lab-revision-highlight ${segment.colorToken}` : undefined}
+                          className={
+                            segment.colorToken
+                              ? `requirement-analysis-lab-revision-highlight ${segment.colorToken} ${
+                                  selectedFragmentIds.has(segment.key) ? "is-active" : ""
+                                }`
+                              : undefined
+                          }
+                          data-testid={segment.colorToken ? `requirement-analysis-highlight-${segment.key}` : undefined}
                           key={segment.key}
                         >
                           {segment.text}
                         </span>
                       ))}
                     </div>
-                    <div className="requirement-analysis-lab-turn-inline">
-                      {block.lastTurnId ? <Tag>{block.lastTurnId}</Tag> : null}
-                      {block.sourceFragmentIds.map((fragmentId) => (
-                        <Tag key={fragmentId}>{fragmentId}</Tag>
-                      ))}
-                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            </div>
+            <div className="requirement-analysis-lab-working-document-revision-rail" aria-label="临时正文修订标注">
+              {viewModel.revisionEvents.map((event) => (
+                <button
+                  aria-label={`定位${formatRequirementAnalysisTurnLabel(event.turnId)}`}
+                  className={`requirement-analysis-lab-margin-marker ${event.colorToken} ${
+                    selectedRevisionEventTurnId === event.turnId ? "is-active" : ""
+                  }`}
+                  data-testid={`requirement-analysis-marker-${event.fragmentIds[0]}`}
+                  data-marker-group="requirement-analysis-revision-marker"
+                  data-turn-id={event.turnId}
+                  key={event.turnId}
+                  onClick={() => setSelectedRevisionEventTurnId(event.turnId)}
+                  type="button"
+                >
+                  <Text strong>{formatRequirementAnalysisTurnLabel(event.turnId)}</Text>
+                  <Text type="secondary">{event.summary || event.reason || "本轮修订"}</Text>
+                  {event.fragmentIds.length > 1 ? <Text type="secondary">影响 {event.fragmentIds.length} 处，定位到首次修订位置</Text> : null}
+                </button>
               ))}
             </div>
           </div>

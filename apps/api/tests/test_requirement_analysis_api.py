@@ -144,6 +144,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["status"] == "waiting_user"
     assert payload["turn"]["turn_id"] == "turn-0001"
     assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["stage_audits"][0]["stage_id"] == "write"
+    assert payload["turn"]["stage_audits"][1]["stage_id"] == "review"
+    assert payload["turn"]["stage_audits"][0]["stage_kind"] == "write"
+    assert payload["turn"]["stage_audits"][1]["stage_kind"] == "review"
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
     assert payload["turn"]["closure_decision"]["status"] == "closed"
@@ -170,6 +174,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["spec_execution"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
     assert payload["turn"]["spec_execution"]["document_patch"][0]["operation"] == "append_or_update"
     assert payload["turn"]["confidence"] == "medium"
+    assert payload["session"]["provider_logs"][0]["stage_id"] == "write"
+    assert len(payload["session"]["provider_logs"]) == 1
+    assert [item["call_id"] for item in payload["session"]["provider_logs"]] == ["requirement-analysis-provider-call-0001"]
+    assert payload["session"]["provider_logs"][0]["stage_type"] == "policy_interpreted"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
     assert "sections" not in payload["session"]["working_document"]
@@ -209,6 +217,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     second_payload = second_turn.json()
     assert second_payload["turn"]["turn_id"] == "turn-0002"
     assert_new_turn_contract(second_payload["turn"])
+    assert [item["stage_id"] for item in second_payload["turn"]["stage_audits"]] == ["write", "review"]
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
@@ -234,6 +243,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["session"]["patches"][1]["target_section"] == "2 项目概述 / 软件定位"
     assert second_payload["session"]["patches"][1]["source_question_ids"] == ["Q-002"]
     assert second_payload["session"]["active_spec_node_id"] == "SPEC-REQ-3.1"
+    assert [item["call_id"] for item in second_payload["session"]["provider_logs"]] == [
+        "requirement-analysis-provider-call-0001",
+        "requirement-analysis-provider-call-0002",
+    ]
     second_spec_leaf = find_spec_node(second_payload["session"]["spec_tree"], "SPEC-REQ-2.1")
     assert second_spec_leaf["status"] == "closed"
     assert "空域领域" in second_spec_leaf["answer_summary"]
@@ -357,6 +370,8 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert payload["turn"]["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")
     assert payload["session"]["provider_logs"][0]["orchestrator_id"] == "xg-strong-rule-orchestrator"
     assert payload["session"]["provider_logs"][0]["orchestrator_mode"] == "local_runner"
+    assert len(payload["session"]["provider_logs"]) == 1
+    assert payload["session"]["provider_logs"][0]["stage_id"] == "run"
     assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
 
 

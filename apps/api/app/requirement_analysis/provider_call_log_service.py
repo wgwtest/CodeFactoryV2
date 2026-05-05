@@ -39,6 +39,8 @@ class ProviderCallLogService:
         service_output: dict | None = None,
         prompt_bundle_overrides: dict | None = None,
         provider_response_overrides: dict | None = None,
+        stage_id: str | None = None,
+        stage_type: str | None = None,
         created_at: str,
         call_index: int,
     ) -> dict:
@@ -54,6 +56,8 @@ class ProviderCallLogService:
         return {
             "call_id": f"requirement-analysis-provider-call-{call_index:04d}",
             "turn_id": turn_id,
+            "stage_id": stage_id or "stage-001",
+            "stage_type": stage_type or "unknown",
             "provider_id": session.provider_id,
             "orchestrator_id": orchestrator.orchestrator_id,
             "orchestrator_mode": orchestrator.mode,

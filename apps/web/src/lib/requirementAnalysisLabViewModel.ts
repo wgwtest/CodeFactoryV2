@@ -42,6 +42,7 @@ export function getRequirementAnalysisProviderLogFieldNote(logSchema: Requiremen
 
 export function buildRequirementAnalysisWorkingDocumentViewModel(session: RequirementAnalysisSession) {
   const fragmentsByBlock = new Map<string, RequirementAnalysisSession["working_document"]["revision_fragments"]>();
+  const blocksById = new Map(session.working_document.blocks.map((block) => [block.block_id, block]));
   for (const fragment of session.working_document.revision_fragments) {
     const current = fragmentsByBlock.get(fragment.target_block_id) ?? [];
     current.push(fragment);
@@ -58,11 +59,69 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
       sourceFragmentIds: block.source_fragment_ids,
       fragments: (fragmentsByBlock.get(block.block_id) ?? []).sort((left, right) => left.start_offset - right.start_offset),
     }));
+  const blockOrderById = new Map(blocks.map((block, index) => [block.blockId, index]));
+  const revisionEventsByTurn = new Map<
+    string,
+    {
+      turnId: string;
+      colorToken: string;
+      firstBlockId: string;
+      firstAnchorPath: string;
+      firstPosition: number;
+      fragmentIds: string[];
+      summary: string;
+      reason: string;
+      hitSpecNodes: string[];
+    }
+  >();
+
+  for (const fragment of session.working_document.revision_fragments) {
+    const targetBlock = blocksById.get(fragment.target_block_id);
+    const blockIndex = blockOrderById.get(fragment.target_block_id) ?? Number.MAX_SAFE_INTEGER;
+    const firstPosition = blockIndex * 1_000_000 + fragment.start_offset;
+    const current = revisionEventsByTurn.get(fragment.turn_id);
+    const hitSpecNodes = appendUnique(current?.hitSpecNodes ?? [], fragment.hit_spec_nodes ?? []);
+    const fragmentIds = [...(current?.fragmentIds ?? []), fragment.fragment_id];
+
+    if (!current || firstPosition < current.firstPosition) {
+      revisionEventsByTurn.set(fragment.turn_id, {
+        turnId: fragment.turn_id,
+        colorToken: fragment.color_token,
+        firstBlockId: fragment.target_block_id,
+        firstAnchorPath: targetBlock?.anchor_path ?? "",
+        firstPosition,
+        fragmentIds,
+        summary: fragment.user_input_summary ?? current?.summary ?? "",
+        reason: fragment.supplement_reason ?? current?.reason ?? "",
+        hitSpecNodes,
+      });
+      continue;
+    }
+
+    revisionEventsByTurn.set(fragment.turn_id, {
+      ...current,
+      fragmentIds,
+      hitSpecNodes,
+      summary: current.summary || fragment.user_input_summary || "",
+      reason: current.reason || fragment.supplement_reason || "",
+    });
+  }
+  const revisionEvents = [...revisionEventsByTurn.values()]
+    .map((event) => ({
+      ...event,
+      fragmentIds: [...event.fragmentIds].sort((left, right) => {
+        const leftFragment = session.working_document.revision_fragments.find((fragment) => fragment.fragment_id === left);
+        const rightFragment = session.working_document.revision_fragments.find((fragment) => fragment.fragment_id === right);
+        return fragmentDocumentPosition(leftFragment, blockOrderById) - fragmentDocumentPosition(rightFragment, blockOrderById);
+      }),
+    }))
+    .sort((left, right) => left.firstPosition - right.firstPosition);
 
   return {
     title: session.working_document.title,
     topic: session.working_document.topic,
     blocks,
+    revisionEvents,
     marginMarkers: session.working_document.revision_fragments.map((fragment) => ({
       fragmentId: fragment.fragment_id,
       turnId: fragment.turn_id,
@@ -73,6 +132,26 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
       hitSpecNodes: fragment.hit_spec_nodes ?? [],
     })),
   };
+}
+
+function appendUnique(current: string[], additions: string[]) {
+  const result = [...current];
+  for (const addition of additions) {
+    if (addition && !result.includes(addition)) {
+      result.push(addition);
+    }
+  }
+  return result;
+}
+
+function fragmentDocumentPosition(
+  fragment: RequirementAnalysisSession["working_document"]["revision_fragments"][number] | undefined,
+  blockOrderById: Map<string, number>,
+) {
+  if (!fragment) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return (blockOrderById.get(fragment.target_block_id) ?? Number.MAX_SAFE_INTEGER) * 1_000_000 + fragment.start_offset;
 }
 
 export function validateRequirementAnalysisTurnProtocol(turn: RequirementAnalysisTurn, requiredProperties: string[]): string[] {
