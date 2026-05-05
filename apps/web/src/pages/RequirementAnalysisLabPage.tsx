@@ -12,6 +12,7 @@ import type {
   RequirementAnalysisSession,
   RequirementAnalysisSpecTreeNode,
   RequirementAnalysisTurn,
+  RequirementAnalysisTurnStageAudit,
 } from "../lib/api";
 import {
   createRequirementAnalysisSession,
@@ -625,10 +626,15 @@ function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema
                 >
                   <span className="requirement-analysis-lab-log-main">
                     <Text strong>{log.call_id}</Text>
-                    <Text type="secondary">{log.turn_id ?? "未绑定 Turn"}</Text>
+                    <Text type="secondary">
+                      {log.turn_id ?? "未绑定 Turn"} · {formatStageLabel(log.stage_id, log.stage_type, getLogPromptId(log))}
+                    </Text>
                   </span>
                   <Text type="secondary">{log.provider_id}</Text>
-                  <Tag>{log.status}</Tag>
+                  <span className="requirement-analysis-lab-log-tags">
+                    {log.stage_id ? <Tag color={log.stage_id === "review" ? "purple" : "blue"}>{log.stage_id}</Tag> : null}
+                    <Tag>{log.status}</Tag>
+                  </span>
                 </button>
               ))}
             </div>
@@ -674,12 +680,52 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
                 <Text>Model: {log.model}</Text>
                 <Text>Status: {log.status}</Text>
                 <Text>Turn: {log.turn_id ?? "未绑定 Turn"}</Text>
+                <Text>Stage: {formatStageLabel(log.stage_id, log.stage_type, getLogPromptId(log))}</Text>
                 <Text>Orchestrator: {log.orchestrator_id ?? "未记录"}</Text>
                 <Text>Mode: {log.orchestrator_mode ?? "未记录"}</Text>
                 <Text>Time: {log.created_at}</Text>
               </div>
               <LogAuditBlock logSchema={logSchema} title="user_input" value={audit.user_input ?? ""} />
               <LogAuditBlock logSchema={logSchema} title="normalized_input" value={audit.normalized_input ?? {}} />
+            </div>
+          ),
+        },
+        {
+          key: "context",
+          label: "当前 turn 上下文",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.context_json" value={getString(promptBundle, "context_json")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.stage_id" value={getString(promptBundle, "stage_id") || log.stage_id || getString(mockContext, "stage_id")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_json"
+                value={getString(promptBundle, "working_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_after_apply_json"
+                value={getString(promptBundle, "working_document_after_apply_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_excerpt"
+                value={getString(promptBundle, "working_document_excerpt")}
+              />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_target_paths" value={getArray(promptBundle, "review_target_paths")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.recent_revision_fragments" value={getArray(promptBundle, "recent_revision_fragments")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
+            </div>
+          ),
+        },
+        {
+          key: "output-format",
+          label: "输出格式要求",
+          children: (
+            <div className="requirement-analysis-lab-detail-list">
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.schema_json" value={getString(promptBundle, "schema_json")} />
             </div>
           ),
         },
@@ -694,10 +740,17 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
                 title="provider_request.prompt_bundle.assembled_prompt"
                 value={getString(promptBundle, "assembled_prompt")}
               />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.stage_id" value={getString(promptBundle, "stage_id") || log.stage_id || getString(mockContext, "stage_id")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
               <LogAuditBlock
                 logSchema={logSchema}
                 title="provider_request.prompt_bundle.working_document_json"
                 value={getString(promptBundle, "working_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_after_apply_json"
+                value={getString(promptBundle, "working_document_after_apply_json")}
               />
               <LogAuditBlock
                 logSchema={logSchema}
@@ -709,38 +762,6 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_goal" value={getString(promptBundle, "review_goal")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
-            </div>
-          ),
-        },
-        {
-          key: "context",
-          label: "上下文",
-          children: (
-            <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.context_json" value={getString(promptBundle, "context_json")} />
-              <LogAuditBlock
-                logSchema={logSchema}
-                title="provider_request.prompt_bundle.working_document_json"
-                value={getString(promptBundle, "working_document_json")}
-              />
-              <LogAuditBlock
-                logSchema={logSchema}
-                title="provider_request.prompt_bundle.working_document_excerpt"
-                value={getString(promptBundle, "working_document_excerpt")}
-              />
-              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_target_paths" value={getArray(promptBundle, "review_target_paths")} />
-              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.recent_revision_fragments" value={getArray(promptBundle, "recent_revision_fragments")} />
-              <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
-              <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
-            </div>
-          ),
-        },
-        {
-          key: "schema",
-          label: "Schema",
-          children: (
-            <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.schema_json" value={getString(promptBundle, "schema_json")} />
             </div>
           ),
         },
@@ -758,7 +779,7 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
         },
         {
           key: "postprocess",
-          label: "后处理",
+          label: "输出后处理",
           children: (
             <div className="requirement-analysis-lab-detail-list">
               <LogAuditBlock logSchema={logSchema} title="provider_normalized_output" value={audit.provider_normalized_output ?? {}} />
@@ -816,6 +837,33 @@ function getString(value: unknown, key: string): string {
   }
   const nested = value[key];
   return typeof nested === "string" ? nested : "";
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item)).filter((item) => item.trim());
+}
+
+function getNestedRecord(value: unknown, key: string): Record<string, unknown> {
+  if (!isObject(value)) {
+    return {};
+  }
+  return getRecord(value, key);
+}
+
+function getLogPromptId(log: RequirementAnalysisProviderLog) {
+  const audit = log.audit ?? {};
+  const promptBundle = getRecord(audit.provider_request, "prompt_bundle");
+  const mockContext = getRecord(audit.provider_request, "mock_context");
+  const mockStage = getNestedRecord(mockContext, "stage");
+  return getString(promptBundle, "prompt_id") || getString(mockStage, "prompt_id");
+}
+
+function formatStageLabel(stageId?: string, stageType?: string, promptId?: string) {
+  const parts = [stageId || "未记录阶段", promptId || "", stageType || ""].filter(Boolean);
+  return parts.join(" / ");
 }
 
 function buildWorkingDocumentSegments(text: string, fragments: WorkingDocumentFragment[]) {
@@ -1121,19 +1169,31 @@ function PanelHead({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
+  const previousTargetSpecNodeIds = asStringArray(turn.previous_interaction.target_spec_node_ids);
+  const previousOptions = Array.isArray(turn.previous_interaction.options) ? turn.previous_interaction.options : [];
+  const confirmedFacts = asStringArray(turn.spec_execution.confirmed_facts);
+  const affectedSpecNodes = Array.isArray(turn.spec_execution.affected_spec_nodes) ? turn.spec_execution.affected_spec_nodes : [];
+  const documentPatch = Array.isArray(turn.spec_execution.document_patch) ? turn.spec_execution.document_patch : [];
+  const appliedBlockIds = asStringArray(turn.spec_execution.working_document_update.applied_block_ids);
+  const targetReviewPaths = asStringArray(turn.post_update_review.target_review.review_target);
+  const missingAspects = asStringArray(turn.post_update_review.target_review.missing_aspects);
+  const remainingGaps = asStringArray(turn.post_update_review.global_review.remaining_gaps);
+  const nextTargetSpecNodeIds = asStringArray(turn.next_interaction.target_spec_node_ids);
+  const nextOptions = Array.isArray(turn.next_interaction.options) ? turn.next_interaction.options : [];
+  const decisionTrace = asStringArray(turn.decision_trace);
   return (
     <div className="requirement-analysis-lab-turn-view">
       <div className="requirement-analysis-lab-turn-card is-audit">
         <Text type="secondary">上轮系统留题</Text>
         <div className="requirement-analysis-lab-turn-inline">
           <Tag>{formatInteractionType(turn.previous_interaction.type)}</Tag>
-          {turn.previous_interaction.target_spec_node_ids.map((nodeId) => (
+          {previousTargetSpecNodeIds.map((nodeId) => (
             <Tag key={nodeId}>{nodeId}</Tag>
           ))}
         </div>
         <Text strong>{turn.previous_interaction.prompt || "无，用户自由发起。"}</Text>
         {turn.previous_interaction.reason ? <Text type="secondary">{turn.previous_interaction.reason}</Text> : null}
-        {turn.previous_interaction.options.length ? <OptionSummary options={turn.previous_interaction.options} /> : null}
+        {previousOptions.length ? <OptionSummary options={previousOptions} /> : null}
       </div>
       <div className="requirement-analysis-lab-turn-card is-audit">
         <Text type="secondary">本轮用户输入</Text>
@@ -1153,16 +1213,17 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         </Tag>
         <Text>{turn.input_relation.reason}</Text>
       </div>
+      {turn.stage_audits?.length ? <StageAuditSummary stageAudits={turn.stage_audits} /> : null}
       <div className="requirement-analysis-lab-turn-card">
         <Text type="secondary">规格补充执行</Text>
         <Text strong>{turn.spec_execution.interpretation.summary}</Text>
         <Text>{turn.spec_execution.assistant_message}</Text>
         <Text strong>确认事实</Text>
-        {turn.spec_execution.confirmed_facts.map((fact) => (
+        {confirmedFacts.map((fact) => (
           <Text key={fact}>{fact}</Text>
         ))}
         <Text strong>影响节点</Text>
-        {turn.spec_execution.affected_spec_nodes.map((node) => (
+        {affectedSpecNodes.map((node) => (
           <div className="requirement-analysis-lab-affected-node" key={`${node.node_id}-${node.target_section}`}>
             <Text strong>{node.node_id ?? "未绑定节点"}</Text>
             <Text>{node.target_section ?? node.title ?? "未绑定章节"}</Text>
@@ -1170,7 +1231,7 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
           </div>
         ))}
         <Text strong>正文建议</Text>
-        {turn.spec_execution.document_patch.map((patch) => (
+        {documentPatch.map((patch) => (
           <div className="requirement-analysis-lab-patch" key={`${patch.section}-${patch.operation}`}>
             <Text strong>{patch.section}</Text>
             <Text>{patch.content}</Text>
@@ -1182,8 +1243,8 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         <Text type="secondary">临时正文应用结果</Text>
         <Text strong>
           应用正文块：
-          {turn.spec_execution.working_document_update.applied_block_ids.length
-            ? turn.spec_execution.working_document_update.applied_block_ids.join("、")
+          {appliedBlockIds.length
+            ? appliedBlockIds.join("、")
             : "无"}
         </Text>
         <Text>{turn.spec_execution.working_document_update.after_excerpt || "当前未形成临时正文。"}</Text>
@@ -1194,13 +1255,13 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
           {turn.post_update_review.target_review.status}
         </Tag>
         <Text strong>{turn.post_update_review.target_review.reason}</Text>
-        {turn.post_update_review.target_review.review_target.length ? (
-          <Text type="secondary">命中范围：{turn.post_update_review.target_review.review_target.join("、")}</Text>
+        {targetReviewPaths.length ? (
+          <Text type="secondary">命中范围：{targetReviewPaths.join("、")}</Text>
         ) : null}
-        {turn.post_update_review.target_review.missing_aspects.length ? (
+        {missingAspects.length ? (
           <>
             <Text strong>章节缺口</Text>
-            {turn.post_update_review.target_review.missing_aspects.map((gap) => (
+            {missingAspects.map((gap) => (
               <Text key={gap}>{gap}</Text>
             ))}
           </>
@@ -1210,10 +1271,10 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         <Text type="secondary">全局回看</Text>
         <Tag>{turn.post_update_review.global_review.status}</Tag>
         <Text strong>{turn.post_update_review.global_review.summary}</Text>
-        {turn.post_update_review.global_review.remaining_gaps.length ? (
+        {remainingGaps.length ? (
           <>
             <Text strong>剩余缺口</Text>
-            {turn.post_update_review.global_review.remaining_gaps.map((gap) => (
+            {remainingGaps.map((gap) => (
               <Text key={gap}>{gap}</Text>
             ))}
           </>
@@ -1231,21 +1292,44 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         <Text type="secondary">下一轮交互设计</Text>
         <div className="requirement-analysis-lab-turn-inline">
           <Tag>{formatInteractionType(turn.next_interaction.type)}</Tag>
-          {turn.next_interaction.target_spec_node_ids.map((nodeId) => (
+          {nextTargetSpecNodeIds.map((nodeId) => (
             <Tag key={nodeId}>{nodeId}</Tag>
           ))}
         </div>
         <Text strong>{turn.next_interaction.prompt || "无，等待用户自由输入。"}</Text>
         {turn.next_interaction.reason ? <Text type="secondary">{turn.next_interaction.reason}</Text> : null}
-        {turn.next_interaction.options.length ? <OptionSummary options={turn.next_interaction.options} /> : null}
+        {nextOptions.length ? <OptionSummary options={nextOptions} /> : null}
       </div>
       <div className="requirement-analysis-lab-turn-card">
         <Text type="secondary">决策依据</Text>
         <ol>
-          {turn.decision_trace.map((item) => (
+          {decisionTrace.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ol>
+      </div>
+    </div>
+  );
+}
+
+function StageAuditSummary({ stageAudits }: { stageAudits: RequirementAnalysisTurnStageAudit[] }) {
+  return (
+    <div className="requirement-analysis-lab-turn-card is-stage-audit">
+      <Text type="secondary">阶段执行审计</Text>
+      <div className="requirement-analysis-lab-stage-audit-list">
+        {stageAudits.map((stage) => (
+          <div className="requirement-analysis-lab-stage-audit-item" key={stage.stage_id}>
+            <div className="requirement-analysis-lab-turn-inline">
+              <Tag color={stage.stage_kind === "review" ? "purple" : "blue"}>{stage.stage_id}</Tag>
+              <Tag>{stage.execution_mode}</Tag>
+              <Tag color={stage.validation_status === "accepted" ? "green" : "gold"}>{stage.validation_status}</Tag>
+              {stage.blocking_used ? <Tag color="red">阻断</Tag> : null}
+            </div>
+            <Text strong>{stage.summary}</Text>
+            <Text type="secondary">Provider Log：{stage.provider_call_log_id ?? "无独立模型日志"}</Text>
+            {stage.adopted_fields.length ? <Text type="secondary">采纳字段：{stage.adopted_fields.join("、")}</Text> : null}
+          </div>
+        ))}
       </div>
     </div>
   );

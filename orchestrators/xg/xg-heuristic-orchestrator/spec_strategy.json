@@ -2,16 +2,87 @@
   "root_question": "按需求规格模板补齐可写入正文的目标节点。",
   "section_question_template": "补齐{section_title}下的需求规格信息。",
   "turn_strategy": {
-    "strategy_id": "write_then_review",
+    "strategy_id": "intent_write_review_plan",
     "adoption_policy": "adopt_last_completed_stage",
     "stages": [
       {
-        "stage_id": "write",
-        "stage_type": "policy_interpreted"
+        "stage_id": "intent_understanding",
+        "stage_type": "policy_interpreted",
+        "stage_kind": "intent",
+        "prompt_id": "intent_understanding",
+        "execution_mode": "model",
+        "requires_provider_call": true,
+        "input_sources": [
+          "turn_context",
+          "previous_interaction",
+          "working_document",
+          "spec_tree"
+        ],
+        "adopt_fields": [
+          "intent_understanding_result",
+          "target_document_structure",
+          "stage_task_definition",
+          "stage_quality_constraints",
+          "confidence"
+        ]
       },
       {
-        "stage_id": "review",
-        "stage_type": "server_review"
+        "stage_id": "write",
+        "stage_type": "policy_interpreted",
+        "stage_kind": "write",
+        "prompt_id": "write",
+        "execution_mode": "model",
+        "requires_provider_call": true,
+        "input_sources": [
+          "intent_understanding_result",
+          "stage_task_definition",
+          "stage_quality_constraints",
+          "working_document"
+        ],
+        "adopt_fields": [
+          "organizer_interpretation",
+          "confirmed_facts_delta",
+          "document_patch",
+          "annotations",
+          "risks",
+          "confidence"
+        ]
+      },
+      {
+        "stage_id": "review_after_apply",
+        "stage_type": "policy_interpreted",
+        "stage_kind": "review",
+        "prompt_id": "review_after_apply",
+        "execution_mode": "model",
+        "requires_provider_call": true,
+        "input_sources": [
+          "working_document_after_apply",
+          "working_document_update"
+        ],
+        "adopt_fields": [
+          "target_review",
+          "global_review",
+          "review_annotations",
+          "confidence"
+        ]
+      },
+      {
+        "stage_id": "next_interaction_planning",
+        "stage_type": "policy_interpreted",
+        "stage_kind": "next_interaction",
+        "prompt_id": "next_interaction_planning",
+        "execution_mode": "model",
+        "requires_provider_call": true,
+        "input_sources": [
+          "review_after_apply",
+          "spec_tree",
+          "working_document"
+        ],
+        "adopt_fields": [
+          "next_interaction_plan",
+          "planning_trace",
+          "confidence"
+        ]
       }
     ]
   },

@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "required": [
+    "organizer_interpretation",
+    "assistant_message",
+    "confirmed_facts_delta",
+    "open_questions_delta",
+    "document_patch",
+    "confidence"
+  ],
+  "properties": {
+    "organizer_interpretation": {
+      "type": "object",
+      "properties": {
+        "summary": {"type": "string"},
+        "intent": {"type": "string"},
+        "confidence": {"type": "string"}
+      }
+    },
+    "assistant_message": {"type": "string"},
+    "next_suggestion": {
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string"},
+        "content": {"type": "string"},
+        "reason": {"type": "string"},
+        "related_spec_node_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "quick_options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {"type": "string"},
+          "label": {"type": "string"},
+          "recommended": {"type": "boolean"}
+        }
+      }
+    },
+    "confirmed_facts_delta": {"type": "array", "items": {"type": "string"}},
+    "open_questions_delta": {"type": "array", "items": {"type": "string"}},
+    "document_patch": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "section": {"type": "string"},
+          "operation": {"type": "string"},
+          "content": {"type": "string"},
+          "write_policy": {"type": "string"}
+        }
+      }
+    },
+    "annotations": {"type": "array", "items": {"type": "string"}},
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "string"}
+  }
+}

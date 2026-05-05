@@ -210,6 +210,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("本轮处理闭环")).toBeInTheDocument();
   expect(screen.getByText("下一轮交互设计")).toBeInTheDocument();
   expect(screen.getByText("决策依据")).toBeInTheDocument();
+  expect(screen.getByText("阶段执行审计")).toBeInTheDocument();
+  expect(screen.getByText("阶段 write 已生成理解、事实和正文 patch 候选。")).toBeInTheDocument();
+  expect(screen.getByText("阶段 review 已基于应用后的临时正文生成回看审计。")).toBeInTheDocument();
   expect(screen.queryByText("上一轮用户关注点（审计上下文）")).not.toBeInTheDocument();
   expect(screen.queryByText("系统理解与回应")).not.toBeInTheDocument();
   expect(screen.queryByText("影响的规格节点")).not.toBeInTheDocument();
@@ -226,9 +229,11 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
 
   fireEvent.click(screen.getByRole("tab", { name: /调用日志/ }));
 
-  expect(screen.getByRole("tab", { name: /调用日志.*1 条/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /调用日志.*2 条/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("模型 / Runner 调用日志")).toBeInTheDocument();
   expect(screen.getAllByText("call-0001").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("call-0002").length).toBeGreaterThan(0);
+  expect(screen.getByText(/turn-0001 · write \/ write \/ policy_interpreted/)).toBeInTheDocument();
   expect(screen.getByText(/deepseek-chat/)).toBeInTheDocument();
   expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
   expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
@@ -238,32 +243,42 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("（组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。）")).toBeInTheDocument();
   expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
 
+  fireEvent.click(screen.getByRole("tab", { name: "当前 turn 上下文" }));
+  expect(screen.getByRole("tab", { name: "当前 turn 上下文" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("provider_request.prompt_bundle.context_json")).toBeInTheDocument();
+  expect(screen.getByText("（写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。）")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "输出格式要求" }));
+  expect(screen.getByRole("tab", { name: "输出格式要求" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("provider_request.prompt_bundle.schema_json")).toBeInTheDocument();
+  expect(screen.getByText("（要求模型返回的 JSON 输出格式约束，用于校验输出字段是否齐全。）")).toBeInTheDocument();
+
   fireEvent.click(screen.getByRole("tab", { name: "请求" }));
   expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("provider_request.messages")).toBeInTheDocument();
   expect(screen.getByText("（配置接口下发：模型 messages 字段说明。）")).toBeInTheDocument();
   expect(screen.getByText("provider_request.prompt_bundle.assembled_prompt")).toBeInTheDocument();
   expect(screen.getByText("（组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。）")).toBeInTheDocument();
-  expect(screen.getByText("（Mock Provider 的调试上下文，仅在本地模拟调用时使用。）")).toBeInTheDocument();
-  expect(screen.getByText("（运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。）")).toBeInTheDocument();
+  expect(screen.getAllByText("provider_request.prompt_bundle.stage_id").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("provider_request.prompt_bundle.prompt_id").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("（Mock Provider 的调试上下文，仅在本地模拟调用时使用。）").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("（运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。）").length).toBeGreaterThan(0);
   expect(screen.getByText("assembled prompt")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("tab", { name: "上下文" }));
-  expect(screen.getByText("provider_request.prompt_bundle.context_json")).toBeInTheDocument();
-  expect(screen.getByText("（写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。）")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("tab", { name: "Schema" }));
-  expect(screen.getByText("provider_request.prompt_bundle.schema_json")).toBeInTheDocument();
-  expect(screen.getByText("（要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。）")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /call-0002/ }));
+  expect(screen.getByText(/Stage: review \/ review_after_apply \/ policy_interpreted/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "请求" }));
+  expect(screen.getAllByText("provider_request.prompt_bundle.working_document_after_apply_json").length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("tab", { name: "原始输出" }));
   expect(screen.getByText("provider_response.raw_content")).toBeInTheDocument();
   expect(screen.getByText("（Provider 返回的原始文本，解析失败时优先看这一块。）")).toBeInTheDocument();
   expect(screen.getByText("provider_response.parsed_json")).toBeInTheDocument();
-  expect(screen.getByText("（从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。）")).toBeInTheDocument();
-  expect(screen.getAllByText(/DeepSeek 已确认：本轮把系统定位更新为计算分析工具。/).length).toBeGreaterThan(0);
+  expect(screen.getByText("（从原始文本解析出的 JSON 对象，用于判断模型是否按输出格式要求返回。）")).toBeInTheDocument();
+  expect(screen.getAllByText(/"target_review":\{"status":"acceptable"\}/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/当前章节已具备可接受表达。/).length).toBeGreaterThan(0);
 
-  fireEvent.click(screen.getByRole("tab", { name: "后处理" }));
+  fireEvent.click(screen.getByRole("tab", { name: "输出后处理" }));
   expect(screen.getByText("provider_normalized_output")).toBeInTheDocument();
   expect(screen.getByText("（Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。）")).toBeInTheDocument();
   expect(screen.getByText("service_output")).toBeInTheDocument();
@@ -334,6 +349,61 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
 
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tab", { name: /当前 Turn.*暂无/ })).toHaveAttribute("aria-selected", "false");
+  expect(screen.queryByText("当前 Turn 协议错误")).not.toBeInTheDocument();
+});
+
+test("renders Current Turn without blanking when review arrays are omitted", async () => {
+  const session = buildSession("created");
+  const envelope = buildTurnEnvelopeWithSparseReviewArrays();
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }],
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
+      return Promise.resolve({ data: envelope });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
+
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+  fireEvent.change(screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求..."), {
+    target: { value: "A，先按计算分析工具理解" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await screen.findByText("基于你的输入，本轮更新了：1.1 系统目标。建议下一步确认输入数据来源和输出结果形式。");
+
+  fireEvent.click(screen.getByRole("tab", { name: /当前 Turn/ }));
+
+  expect(screen.getByText("目标范围回看")).toBeInTheDocument();
+  expect(screen.getByText("模型确认目标范围已覆盖。")).toBeInTheDocument();
   expect(screen.queryByText("当前 Turn 协议错误")).not.toBeInTheDocument();
 });
 
@@ -524,6 +594,18 @@ function buildLabConfig() {
           used_when: "每次调用模型前使用。",
         },
         {
+          path: "provider_request.prompt_bundle.stage_id",
+          label: "Stage ID",
+          description: "当前模型调用所属的轮次阶段标识，用于区分 write 与 review_after_apply。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.prompt_id",
+          label: "Prompt ID",
+          description: "当前阶段使用的 Prompt 资产标识，用于核对是否命中了正确的阶段提示词。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
           path: "provider_request.prompt_bundle.context_json",
           label: "Context JSON",
           description: "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
@@ -534,6 +616,12 @@ function buildLabConfig() {
           label: "Working Document JSON",
           description: "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
           used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.working_document_after_apply_json",
+          label: "Working Document After Apply JSON",
+          description: "Review 阶段使用的应用后正文快照，用于确认回看基于真实落地后的正文。",
+          used_when: "review_after_apply 阶段调用模型前使用。",
         },
         {
           path: "provider_request.prompt_bundle.working_document_excerpt",
@@ -561,8 +649,8 @@ function buildLabConfig() {
         },
         {
           path: "provider_request.prompt_bundle.schema_json",
-          label: "Schema JSON",
-          description: "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
+          label: "输出格式要求 JSON",
+          description: "要求模型返回的 JSON 输出格式约束，用于校验输出字段是否齐全。",
           used_when: "每次调用模型前使用。",
         },
         {
@@ -586,7 +674,7 @@ function buildLabConfig() {
         {
           path: "provider_response.parsed_json",
           label: "Parsed JSON",
-          description: "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
+          description: "从原始文本解析出的 JSON 对象，用于判断模型是否按输出格式要求返回。",
           used_when: "模型返回后使用。",
         },
         {
@@ -857,6 +945,30 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       target_spec_node_ids: ["SPEC-1.2"],
       reason: "系统定位已确认，输入输出章节仍需补齐。",
     },
+    stage_audits: [
+      {
+        stage_id: "write",
+        stage_kind: "write",
+        stage_type: "policy_interpreted",
+        execution_mode: "model",
+        provider_call_log_id: "call-0001",
+        validation_status: "accepted",
+        blocking_used: false,
+        adopted_fields: ["document_patch"],
+        summary: "阶段 write 已生成理解、事实和正文 patch 候选。",
+      },
+      {
+        stage_id: "review",
+        stage_kind: "review",
+        stage_type: "policy_interpreted",
+        execution_mode: "model",
+        provider_call_log_id: "call-0002",
+        validation_status: "accepted",
+        blocking_used: false,
+        adopted_fields: ["target_review", "global_review"],
+        summary: "阶段 review 已基于应用后的临时正文生成回看审计。",
+      },
+    ],
     confidence: "medium",
     service_steps: [
       { step: 1, title: "接收用户输入", status: "completed" },
@@ -971,6 +1083,8 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       provider_logs: [
         {
           call_id: "call-0001",
+          stage_id: "write",
+          stage_type: "policy_interpreted",
           provider_id: "deepseek",
           model: "deepseek-chat",
           status: "completed",
@@ -992,6 +1106,8 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                 { role: "user", content: "assembled prompt" },
               ],
                 prompt_bundle: {
+                  stage_id: "write",
+                  prompt_id: "write",
                   assembled_prompt: "assembled prompt",
                   context_json: '{"topic":"空域运算软件需求规格探索"}',
                   working_document_json: '{"document_id":"lab-working-document"}',
@@ -1032,6 +1148,83 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
             },
           },
         },
+        {
+          call_id: "call-0002",
+          stage_id: "review",
+          stage_type: "policy_interpreted",
+          provider_id: "deepseek",
+          model: "deepseek-chat",
+          status: "completed",
+          created_at: "2026-05-01T00:00:01Z",
+          turn_id: "turn-0001",
+          orchestrator_id: "xg-heuristic-orchestrator",
+          orchestrator_mode: "policy_interpreted",
+          audit: {
+            user_input: "A，先按计算分析工具理解",
+            normalized_input: {
+              input_type: "quick_option_answer",
+              matched_option: "A",
+              matched_option_label: "先按计算分析工具理解",
+              semantic: "先按计算分析工具理解",
+            },
+            provider_request: {
+              messages: [
+                { role: "system", content: "system prompt" },
+                { role: "user", content: "review assembled prompt" },
+              ],
+              prompt_bundle: {
+                stage_id: "review",
+                prompt_id: "review_after_apply",
+                assembled_prompt: "review assembled prompt",
+                context_json: '{"topic":"空域运算软件需求规格探索"}',
+                working_document_after_apply_json: '{"blocks":[{"block_id":"blk-0001"}]}',
+                review_target_paths: ["1.1 系统目标"],
+                recent_revision_fragments: ["frag-0001"],
+                review_goal: "1.1 系统目标",
+                schema_json: '{"target_review":{}}',
+              },
+            },
+            provider_response: {
+              raw_content: '{"target_review":{"status":"acceptable"}}',
+              parsed_json: {
+                target_review: {
+                  status: "acceptable",
+                  reason: "当前章节已具备可接受表达。",
+                },
+              },
+              target_review_json: {
+                status: "acceptable",
+                review_target: ["1.1 系统目标"],
+                reason: "当前章节已具备可接受表达。",
+              },
+              global_review_json: {
+                status: "move_next_node",
+                summary: "下一处缺口位于 2.1 输入数据。",
+              },
+            },
+            provider_normalized_output: {
+              target_review: {
+                status: "acceptable",
+                reason: "当前章节已具备可接受表达。",
+              },
+              global_review: {
+                status: "move_next_node",
+                summary: "下一处缺口位于 2.1 输入数据。",
+              },
+            },
+            service_output: {
+              target_review: {
+                status: "acceptable",
+                review_target: ["1.1 系统目标"],
+                reason: "当前章节已具备可接受表达。",
+              },
+              global_review: {
+                status: "move_next_node",
+                summary: "下一处缺口位于 2.1 输入数据。",
+              },
+            },
+          },
+        },
       ],
     },
     turn,
@@ -1054,6 +1247,31 @@ function buildMalformedTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       turns: [malformedTurn as RequirementAnalysisTurnEnvelope["turn"]],
     },
     turn: malformedTurn as RequirementAnalysisTurnEnvelope["turn"],
+  };
+}
+
+function buildTurnEnvelopeWithSparseReviewArrays(): RequirementAnalysisTurnEnvelope {
+  const envelope = buildTurnEnvelope();
+  const sparseTurn = {
+    ...envelope.turn,
+    post_update_review: {
+      summary: "模型确认目标范围已覆盖。 可以推进下一节点。",
+      target_review: {
+        status: "acceptable",
+        reason: "模型确认目标范围已覆盖。",
+      },
+      global_review: {
+        status: "move_next_node",
+        summary: "可以推进下一节点。",
+      },
+    },
+  } as unknown as RequirementAnalysisTurnEnvelope["turn"];
+  return {
+    session: {
+      ...envelope.session,
+      turns: [sparseTurn],
+    },
+    turn: sparseTurn,
   };
 }
 

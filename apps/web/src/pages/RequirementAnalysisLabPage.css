@@ -402,6 +402,24 @@
   background: #f6fbfa;
 }
 
+.requirement-analysis-lab-turn-card.is-stage-audit {
+  border-color: #c9bfda;
+  background: #fbf9ff;
+}
+
+.requirement-analysis-lab-stage-audit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.requirement-analysis-lab-stage-audit-item {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #ded7eb;
+  background: #ffffff;
+}
+
 .requirement-analysis-lab-turn-context {
   display: grid;
   gap: 10px;
@@ -867,6 +885,18 @@
   color: inherit;
   cursor: pointer;
   text-align: left;
+}
+
+.requirement-analysis-lab-log-tags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.requirement-analysis-lab-log-tags .ant-tag {
+  margin-inline-end: 0;
 }
 
 .requirement-analysis-lab-log-item.is-selected {

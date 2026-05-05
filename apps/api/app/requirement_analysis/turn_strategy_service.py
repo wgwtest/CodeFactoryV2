@@ -42,6 +42,7 @@ class TurnStrategyService:
     @staticmethod
     def _normalize_stage(stage: dict, *, context: TurnContext, orchestrator: OrchestratorPackage) -> dict:
         return {
+            **stage,
             "stage_id": str(stage.get("stage_id") or "stage-001"),
             "stage_type": str(stage.get("stage_type") or orchestrator.mode),
             "provider_id": str(stage.get("provider_id") or context.provider_id),
