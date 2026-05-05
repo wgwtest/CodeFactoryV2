@@ -118,7 +118,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("空域运算软件需求规格探索")).toBeInTheDocument();
   expect(screen.getByText("只生成 document_patch 建议")).toBeInTheDocument();
   const assistantIntroMessage = screen.getByText("我会先验证这个课题的需求边界。当前知识包只作为背景，不会自动写入正式规格。");
-  expect(assistantIntroMessage.closest(".requirement-analysis-lab-message")).toHaveClass("is-assistant");
+  const assistantIntroBubble = assistantIntroMessage.closest(".requirement-analysis-lab-message") as HTMLElement;
+  expect(assistantIntroBubble).toHaveClass("is-assistant");
+  expect(within(assistantIntroBubble).getByText("助手")).toBeInTheDocument();
 
   const input = screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求...");
   expect(input.tagName).toBe("TEXTAREA");
@@ -136,7 +138,12 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   );
 
   expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
-  expect(screen.getByText("A，先按计算分析工具理解").closest(".requirement-analysis-lab-message")).toHaveClass("is-user");
+  const pendingUserBubble = screen.getByText("A，先按计算分析工具理解").closest(".requirement-analysis-lab-message") as HTMLElement;
+  expect(pendingUserBubble).toHaveClass("is-user");
+  expect(within(pendingUserBubble).getByText("用户")).toBeInTheDocument();
+  const pendingAssistantBubble = screen.getByText("正在生成回应...").closest(".requirement-analysis-lab-message") as HTMLElement;
+  expect(pendingAssistantBubble).toHaveClass("is-assistant");
+  expect(within(pendingAssistantBubble).getByText("助手")).toBeInTheDocument();
   expect(screen.getByText("正在生成回应...")).toBeInTheDocument();
 
   const envelope = buildTurnEnvelope();
@@ -429,11 +436,23 @@ test("uses a 4:6 session workspace ratio so the working document is wider than t
 test("styles user chat messages as a clearer pale-green bubble distinct from assistant messages", () => {
   const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
 
+  expect(css).toMatch(/\.requirement-analysis-lab-message-meta\s*\{[^}]*grid-column: 1;[^}]*grid-row: 1;/s);
+  expect(css).toMatch(/\.requirement-analysis-lab-message-meta\s*\{[^}]*width: 44px;[^}]*justify-items: center;[^}]*text-align: center;/s);
+  expect(css).toMatch(/\.requirement-analysis-lab-message-meta\s*\{[^}]*justify-self: start;/s);
+  expect(css).toMatch(/\.requirement-analysis-lab-message p\s*\{[^}]*grid-column: 2;[^}]*grid-row: 1;/s);
+  expect(css).toContain(".requirement-analysis-lab-message-avatar");
+  expect(css).toContain("width: 44px;");
+  expect(css).toMatch(/\.requirement-analysis-lab-message span\s*\{[^}]*line-height: 1;/s);
   expect(css).toContain(".requirement-analysis-lab-message.is-user");
   expect(css).toContain("align-self: flex-end;");
+  expect(css).toContain("grid-template-columns: minmax(0, 1fr) 72px;");
+  expect(css).toContain(".requirement-analysis-lab-message.is-user .requirement-analysis-lab-message-meta");
+  expect(css).toMatch(/\.requirement-analysis-lab-message\.is-user \.requirement-analysis-lab-message-meta\s*\{[^}]*grid-column: 2;[^}]*grid-row: 1;[^}]*justify-self: end;/s);
+  expect(css).toMatch(/\.requirement-analysis-lab-message.is-user p\s*\{[^}]*grid-column: 1;[^}]*grid-row: 1;/s);
   expect(css).toContain("background: #dff3d8;");
   expect(css).toContain("border-color: #b3d7ad;");
   expect(css).toContain(".requirement-analysis-lab-message.is-assistant");
+  expect(css).toContain("align-items: start;");
   expect(css).toContain("background: #f4f8f7;");
 });
 

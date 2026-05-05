@@ -287,8 +287,9 @@
 
 .requirement-analysis-lab-message {
   align-self: flex-start;
+  align-items: start;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 12px;
   width: min(86%, 720px);
   padding: 12px 14px;
@@ -305,6 +306,7 @@
 
 .requirement-analysis-lab-message.is-user {
   align-self: flex-end;
+  grid-template-columns: minmax(0, 1fr) 72px;
   background: #dff3d8;
   border-color: #b3d7ad;
   box-shadow: 0 6px 16px rgba(103, 151, 94, 0.08);
@@ -318,11 +320,38 @@
   background: #ebf7e6;
 }
 
+.requirement-analysis-lab-message-meta {
+  grid-column: 1;
+  grid-row: 1;
+  width: 44px;
+  justify-self: start;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
 .requirement-analysis-lab-message span {
   color: #2f6f76;
   font-weight: 800;
+  line-height: 1;
   text-transform: lowercase;
   letter-spacing: 0;
+}
+
+.requirement-analysis-lab-message-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(28, 42, 38, 0.08);
+  background: #ffffff;
+  object-fit: cover;
+}
+
+.requirement-analysis-lab-message.is-user .requirement-analysis-lab-message-meta {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
 }
 
 .requirement-analysis-lab-message.is-user span {
@@ -330,10 +359,17 @@
 }
 
 .requirement-analysis-lab-message p {
+  grid-column: 2;
+  grid-row: 1;
   margin: 0;
   color: #1f2b24;
   line-height: 1.65;
   overflow-wrap: anywhere;
+}
+
+.requirement-analysis-lab-message.is-user p {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .requirement-analysis-lab-message-end {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 
 @dataclass(frozen=True)
@@ -159,36 +160,107 @@ class WorkingDocumentService:
                 content = str(section.get("content") or "").strip()
                 if not content:
                     continue
+                anchor_path = str(section.get("target_section") or section.get("section_id") or "")
                 blocks.append(
-                    {
-                        "block_id": f"blk-{index:04d}",
-                        "anchor_path": str(section.get("target_section") or section.get("section_id") or ""),
-                        "block_type": "paragraph",
-                        "order_index": index * 10,
-                        "text": content,
-                        "last_turn_id": section.get("last_turn_id"),
-                        "source_fragment_ids": [],
-                    }
+                    self._document_block(
+                        block_id=f"blk-{index:04d}",
+                        anchor_path=anchor_path,
+                        text=content,
+                        last_turn_id=section.get("last_turn_id"),
+                    )
                 )
             working_document["blocks"] = blocks
         working_document.pop("sections", None)
         working_document.setdefault("revision_fragments", [])
+        for block in working_document["blocks"]:
+            anchor_path = str(block.get("anchor_path") or "")
+            block["order_index"] = self._anchor_order_index(anchor_path)
+            block["display_heading"] = self._anchor_display_heading(anchor_path)
+        working_document["blocks"].sort(key=lambda block: (int(block.get("order_index") or 99_999), str(block.get("block_id") or "")))
 
     def _find_or_create_block(self, *, working_document: dict, anchor_path: str) -> dict:
         for block in working_document["blocks"]:
             if str(block.get("anchor_path") or "") == anchor_path:
                 return block
-        block = {
-            "block_id": f"blk-{len(working_document['blocks']) + 1:04d}",
+        block = self._document_block(
+            block_id=f"blk-{len(working_document['blocks']) + 1:04d}",
+            anchor_path=anchor_path,
+        )
+        working_document["blocks"].append(block)
+        working_document["blocks"].sort(key=lambda item: (int(item.get("order_index") or 99_999), str(item.get("block_id") or "")))
+        return block
+
+    @classmethod
+    def _document_block(
+        cls,
+        *,
+        block_id: str,
+        anchor_path: str,
+        text: str = "",
+        last_turn_id: str | None = None,
+    ) -> dict:
+        return {
+            "block_id": block_id,
             "anchor_path": anchor_path,
             "block_type": "paragraph",
-            "order_index": (len(working_document["blocks"]) + 1) * 10,
-            "text": "",
-            "last_turn_id": None,
+            "order_index": cls._anchor_order_index(anchor_path),
+            "display_heading": cls._anchor_display_heading(anchor_path),
+            "text": text,
+            "last_turn_id": last_turn_id,
             "source_fragment_ids": [],
         }
-        working_document["blocks"].append(block)
-        return block
+
+    @classmethod
+    def _anchor_order_index(cls, anchor_path: str) -> int:
+        section_number, clause_number, _clause_title = cls._parse_anchor_path(anchor_path)
+        if section_number <= 0:
+            return 99_000
+        return section_number * 100 + clause_number * 10
+
+    @classmethod
+    def _anchor_display_heading(cls, anchor_path: str) -> str:
+        section_number, clause_number, clause_title = cls._parse_anchor_path(anchor_path)
+        if section_number > 0 and clause_number > 0 and clause_title:
+            return f"{section_number}.{clause_number} {clause_title}"
+        return anchor_path.strip()
+
+    @staticmethod
+    def _parse_anchor_path(anchor_path: str) -> tuple[int, int, str]:
+        normalized = " ".join(str(anchor_path or "").replace("\\", "/").split())
+        parts = [part.strip() for part in normalized.split("/") if part.strip()]
+        if not parts:
+            return 0, 0, ""
+
+        first_part = parts[0]
+        first_match = re.match(r"^(?P<section>\d+)(?:\.(?P<clause>\d+))?\s*(?P<title>.*)$", first_part)
+        section_number = int(first_match.group("section")) if first_match else 0
+        clause_number = int(first_match.group("clause")) if first_match and first_match.group("clause") else 0
+        clause_title = first_match.group("title").strip() if first_match and first_match.group("clause") else ""
+
+        if len(parts) > 1:
+            clause_title = parts[-1]
+            if clause_number <= 0:
+                clause_number = WorkingDocumentService._infer_clause_number(
+                    section_number=section_number,
+                    clause_title=clause_title,
+                )
+        elif section_number > 0 and clause_number > 0 and not clause_title:
+            clause_title = first_part
+
+        return section_number, clause_number, clause_title
+
+    @staticmethod
+    def _infer_clause_number(*, section_number: int, clause_title: str) -> int:
+        normalized = clause_title.strip()
+        clause_orders = {
+            1: ["编写目的", "适用范围", "术语定义", "参考文献"],
+            2: ["产品范围", "产品功能", "软件定位", "用户特征", "约束", "假设和依赖"],
+            3: ["用户与角色", "核心业务流程", "异常与补偿"],
+        }
+        for index, candidate in enumerate(clause_orders.get(section_number, []), start=1):
+            if normalized == candidate:
+                return index
+        return 9
 
     @staticmethod
     def _apply_patch_text(*, previous_text: str, patch: dict, content: str) -> PatchTextResult:

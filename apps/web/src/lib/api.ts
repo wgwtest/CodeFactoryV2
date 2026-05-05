@@ -2330,6 +2330,7 @@ export type RequirementAnalysisWorkingDocumentBlock = {
   anchor_path: string;
   block_type: string;
   order_index?: number;
+  display_heading?: string;
   text: string;
   last_turn_id: string | null;
   source_fragment_ids: string[];

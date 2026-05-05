@@ -627,6 +627,58 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
     assert working_document["revision_fragments"][-1]["deleted_text"] == "第一阶段不做协同规划"
 
 
+def test_working_document_inserts_late_general_clause_by_template_order() -> None:
+    service = WorkingDocumentService()
+    working_document = service.initialize(topic="运算软件需求规格说明", template_id="81433号")
+
+    service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "section": "2 总体描述 / 产品范围",
+                "operation": "append_or_update",
+                "content": "系统第一阶段覆盖态势展示和地理信息分析。",
+            },
+            {
+                "section": "2 总体描述 / 产品功能",
+                "operation": "append_or_update",
+                "content": "系统提供量算、坡度分析和部署分析工具。",
+            },
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 总体描述 / 产品范围"},
+        turn_id="turn-0001",
+        user_input_summary="先补总体描述",
+    )
+
+    service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "section": "1 总则 / 适用范围",
+                "operation": "append_or_update",
+                "content": "本需求规格说明适用于态势分析系统第一阶段建设。",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-1.2", "target_section": "1 总则 / 适用范围"},
+        turn_id="turn-0002",
+        user_input_summary="回补总则",
+    )
+
+    assert [block["anchor_path"] for block in working_document["blocks"]] == [
+        "1 总则 / 适用范围",
+        "2 总体描述 / 产品范围",
+        "2 总体描述 / 产品功能",
+    ]
+    assert [block["display_heading"] for block in working_document["blocks"]] == [
+        "1.2 适用范围",
+        "2.1 产品范围",
+        "2.2 产品功能",
+    ]
+    assert [block["order_index"] for block in working_document["blocks"]] == [120, 210, 220]
+
+
 def test_requirement_analysis_session_repository_persists_lab_session(db_session) -> None:
     repository = RequirementAnalysisSessionRepository(db_session)
     session = RequirementAnalysisSession(

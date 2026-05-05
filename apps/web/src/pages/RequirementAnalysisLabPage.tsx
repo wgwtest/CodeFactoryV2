@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Input, Space, Spin, Tabs, Tag, Typography } from "antd";
+import assistantAvatar from "../components/requirementAnalysisAssistantAvatar.svg";
+import userAvatar from "../components/requirementAnalysisUserAvatar.svg";
 
 import type {
   RequirementAnalysisOrchestrator,
@@ -41,6 +43,16 @@ function formatRequirementAnalysisTurnLabel(turnId: string) {
     return "本轮修订";
   }
   return `第${Number(match[1])}轮修订`;
+}
+
+function formatRequirementAnalysisMessageRole(role: string) {
+  if (role === "assistant") {
+    return "助手";
+  }
+  if (role === "user") {
+    return "用户";
+  }
+  return role;
 }
 
 export function RequirementAnalysisLabPage() {
@@ -450,21 +462,34 @@ function SessionTab({
                     data-testid={`requirement-analysis-message-${message.role}`}
                     key={message.id}
                   >
-                    <span>{message.role}</span>
+                    <div className="requirement-analysis-lab-message-meta">
+                      <img
+                        alt={message.role === "assistant" ? "助手头像" : "用户头像"}
+                        className="requirement-analysis-lab-message-avatar"
+                        src={message.role === "assistant" ? assistantAvatar : userAvatar}
+                      />
+                      <span>{formatRequirementAnalysisMessageRole(message.role)}</span>
+                    </div>
                     <p>{message.content}</p>
                   </div>
                 ))}
                 {pendingUserInput ? (
                   <>
                     <div className="requirement-analysis-lab-message is-user is-pending" data-testid="requirement-analysis-message-user-pending">
-                      <span>user</span>
+                      <div className="requirement-analysis-lab-message-meta">
+                        <img alt="用户头像" className="requirement-analysis-lab-message-avatar" src={userAvatar} />
+                        <span>{formatRequirementAnalysisMessageRole("user")}</span>
+                      </div>
                       <p>{pendingUserInput}</p>
                     </div>
                     <div
                       className="requirement-analysis-lab-message is-assistant is-pending"
                       data-testid="requirement-analysis-message-assistant-pending"
                     >
-                      <span>assistant</span>
+                      <div className="requirement-analysis-lab-message-meta">
+                        <img alt="助手头像" className="requirement-analysis-lab-message-avatar" src={assistantAvatar} />
+                        <span>{formatRequirementAnalysisMessageRole("assistant")}</span>
+                      </div>
                       <p>正在生成回应...</p>
                     </div>
                   </>
@@ -984,7 +1009,7 @@ function WorkingDocumentView({ session }: { session: RequirementAnalysisSession 
                 {viewModel.blocks.map((block) => (
                   <div className="requirement-analysis-lab-working-document-block" key={block.blockId}>
                     <div className="requirement-analysis-lab-working-document-anchor">
-                      <Text type="secondary">{block.anchorPath}</Text>
+                      <Text type="secondary">{block.displayHeading || block.anchorPath}</Text>
                     </div>
                     <div className="requirement-analysis-lab-working-document-paragraph">
                       {buildWorkingDocumentSegments(block.text, block.fragments).map((segment) => (

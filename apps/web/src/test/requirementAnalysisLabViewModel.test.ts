@@ -29,6 +29,48 @@ describe("buildRequirementAnalysisWorkingDocumentViewModel", () => {
       hitSpecNodes: ["SPEC-REQ-2.1", "SPEC-REQ-3.1"],
     });
   });
+
+  test("projects slash anchor paths into numbered document headings and sorts by document order", () => {
+    const session = buildSessionWithCrossBlockRevisions();
+    session.working_document.blocks = [
+      {
+        block_id: "blk-late-general",
+        anchor_path: "1 总则 / 适用范围",
+        block_type: "paragraph",
+        order_index: 120,
+        text: "本需求规格说明适用于态势分析系统第一阶段建设。",
+        last_turn_id: "turn-0002",
+        source_fragment_ids: [],
+      },
+      {
+        block_id: "blk-product-scope",
+        anchor_path: "2 总体描述 / 产品范围",
+        block_type: "paragraph",
+        order_index: 210,
+        text: "系统第一阶段覆盖态势展示和地理信息分析。",
+        last_turn_id: "turn-0001",
+        source_fragment_ids: [],
+      },
+      {
+        block_id: "blk-product-feature",
+        anchor_path: "2 总体描述 / 产品功能",
+        block_type: "paragraph",
+        order_index: 220,
+        text: "系统提供量算、坡度分析和部署分析工具。",
+        last_turn_id: "turn-0001",
+        source_fragment_ids: [],
+      },
+    ];
+
+    const viewModel = buildRequirementAnalysisWorkingDocumentViewModel(session);
+
+    expect(viewModel.blocks.map((block) => block.anchorPath)).toEqual([
+      "1 总则 / 适用范围",
+      "2 总体描述 / 产品范围",
+      "2 总体描述 / 产品功能",
+    ]);
+    expect(viewModel.blocks.map((block) => block.displayHeading)).toEqual(["1.2 适用范围", "2.1 产品范围", "2.2 产品功能"]);
+  });
 });
 
 function buildSessionWithCrossBlockRevisions(): RequirementAnalysisSession {

@@ -53,6 +53,7 @@ export function buildRequirementAnalysisWorkingDocumentViewModel(session: Requir
     .map((block) => ({
       blockId: block.block_id,
       anchorPath: block.anchor_path,
+      displayHeading: block.display_heading || resolveWorkingDocumentDisplayHeading(block.anchor_path),
       blockType: block.block_type,
       text: block.text,
       lastTurnId: block.last_turn_id,
@@ -147,6 +148,40 @@ function appendUnique(current: string[], additions: string[]) {
     }
   }
   return result;
+}
+
+function resolveWorkingDocumentDisplayHeading(anchorPath: string) {
+  const normalized = String(anchorPath || "").replace(/\\/g, "/").trim();
+  const parts = normalized
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  const sectionMatch = parts[0].match(/^(\d+)(?:\.(\d+))?\s*(.*)$/);
+  if (!sectionMatch) {
+    return normalized;
+  }
+  const sectionNumber = Number(sectionMatch[1]);
+  const explicitClauseNumber = sectionMatch[2] ? Number(sectionMatch[2]) : 0;
+  const explicitClauseTitle = sectionMatch[2] ? sectionMatch[3].trim() : "";
+  const clauseTitle = parts.length > 1 ? parts[parts.length - 1] : explicitClauseTitle;
+  const clauseNumber = explicitClauseNumber || inferRequirementAnalysisClauseNumber(sectionNumber, clauseTitle);
+  if (!sectionNumber || !clauseNumber || !clauseTitle) {
+    return normalized;
+  }
+  return `${sectionNumber}.${clauseNumber} ${clauseTitle}`;
+}
+
+function inferRequirementAnalysisClauseNumber(sectionNumber: number, clauseTitle: string) {
+  const orders: Record<number, string[]> = {
+    1: ["编写目的", "适用范围", "术语定义", "参考文献"],
+    2: ["产品范围", "产品功能", "软件定位", "用户特征", "约束", "假设和依赖"],
+    3: ["用户与角色", "核心业务流程", "异常与补偿"],
+  };
+  const index = (orders[sectionNumber] ?? []).findIndex((candidate) => candidate === clauseTitle.trim());
+  return index >= 0 ? index + 1 : 0;
 }
 
 function fragmentDocumentPosition(
