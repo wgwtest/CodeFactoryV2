@@ -17,6 +17,8 @@ from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
 from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
+from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
+from app.requirement_analysis.working_document_service import WorkingDocumentService
 
 
 class RequirementAnalysisTurnEngine:
@@ -34,6 +36,8 @@ class RequirementAnalysisTurnEngine:
         next_interaction_service: NextInteractionService,
         turn_strategy_service: TurnStrategyService,
         turn_stage_executor: TurnStageExecutor,
+        working_document_service: WorkingDocumentService,
+        working_document_review_service: WorkingDocumentReviewService,
     ) -> None:
         self.turn_context_builder = turn_context_builder
         self.provider_call_service = provider_call_service
@@ -46,6 +50,8 @@ class RequirementAnalysisTurnEngine:
         self.next_interaction_service = next_interaction_service
         self.turn_strategy_service = turn_strategy_service
         self.turn_stage_executor = turn_stage_executor
+        self.working_document_service = working_document_service
+        self.working_document_review_service = working_document_review_service
 
     def run_turn(self, session: SessionSnapshot, payload: RequirementAnalysisTurnCreate) -> TurnExecutionResult:
         state = dict(session.payload or {})
@@ -99,24 +105,51 @@ class RequirementAnalysisTurnEngine:
             session=session,
         )
         structured_update = artifact_update.to_dict()
+        working_document = dict(
+            context.working_document
+            or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+        )
+        working_document_update_result = self.working_document_service.apply_patches(
+            working_document=working_document,
+            document_patch=model_output["document_patch"],
+            patch_proposals=structured_update["patches"],
+            projection_spec_node=projection.projection_spec_node,
+            turn_id=turn_id,
+        )
+        working_document_update = working_document_update_result.to_dict()
+        section_review = self.working_document_review_service.review_section(
+            working_document=working_document,
+            section_id=projection.projection_spec_node_id,
+            current_spec_node=projection.projection_spec_node,
+        )
+        can_close = section_review["status"] in {"acceptable", "closed"}
         spec_update = self.spec_tree_service.update_spec_tree(
             spec_tree=context.spec_tree,
             active_node_id=projection.projection_spec_node_id,
             answer_summary=structured_update["answer_summary"],
             turn_id=turn_id,
+            can_close=can_close,
         )
         spec_update_payload = spec_update.to_dict()
         next_spec_node = spec_update.next_spec_node
+        global_review = self.working_document_review_service.build_global_review(
+            next_spec_node=next_spec_node,
+            section_review=section_review,
+        )
+        continue_same_topic = global_review["status"] == "continue_same_section"
         model_output = self.next_interaction_service.align_model_output_to_next_node(
             model_output=model_output,
             next_spec_node=next_spec_node,
             current_spec_node=projection.projection_spec_node,
             session=session,
+            continue_same_topic=continue_same_topic,
+            section_review=section_review,
+            global_review=global_review,
         )
         structured_update["questions"] = self.next_interaction_service.ensure_next_open_question(
             questions=structured_update["questions"],
             next_question=model_output["next_question"],
-            next_spec_node=next_spec_node,
+            next_spec_node=projection.projection_spec_node if continue_same_topic else next_spec_node,
             turn_id=turn_id,
         )
         state_changes = self.turn_audit_service.state_changes(
@@ -129,19 +162,18 @@ class RequirementAnalysisTurnEngine:
             model_output=model_output,
             affected_spec_nodes=projection.affected_spec_nodes,
             state_changes=state_changes,
+            working_document_update=working_document_update,
         )
         post_update_review = self.turn_audit_service.post_update_review(
-            previous_interaction=context.previous_interaction,
-            next_spec_node=next_spec_node,
-            closed_spec_node_ids=spec_update.closed_node_ids,
+            section_review=section_review,
+            global_review=global_review,
         )
         closure_decision = self.turn_audit_service.closure_decision(
-            spec_execution=spec_execution,
             post_update_review=post_update_review,
             closed_spec_node_ids=spec_update.closed_node_ids,
         )
         next_interaction = self.next_interaction_service.build(
-            next_spec_node=next_spec_node,
+            next_spec_node=projection.projection_spec_node if continue_same_topic else next_spec_node,
             model_output=model_output,
             turn_index=context.turn_index,
         )
@@ -224,6 +256,26 @@ class RequirementAnalysisTurnEngine:
                 normalized=context.normalized_input,
                 model_output=model_output,
                 provider_normalized_output=provider_normalized_output,
+                service_output={
+                    **self.provider_call_log_service.service_output(model_output),
+                    "working_document_update": working_document_update,
+                    "post_update_review": post_update_review,
+                },
+                prompt_bundle_overrides={
+                    "working_document_json": str(working_document),
+                    "current_section_draft": working_document_update["after"],
+                    "review_goal": (
+                        projection.projection_spec_node.get("question")
+                        or projection.projection_spec_node.get("target_section")
+                        or ""
+                    ),
+                },
+                provider_response_overrides={
+                    "review_json": {
+                        "section_review": section_review,
+                        "global_review": global_review,
+                    }
+                },
                 created_at=now,
                 call_index=len(updated_turns),
             ),
@@ -236,6 +288,7 @@ class RequirementAnalysisTurnEngine:
                 "confirmed_facts": confirmed_facts,
                 "open_questions": open_questions,
                 "document_patch": model_output["document_patch"],
+                "working_document": working_document,
                 "questions": structured_update["questions"],
                 "facts": structured_update["facts"],
                 "patches": structured_update["patches"],

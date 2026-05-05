@@ -22,6 +22,13 @@ def _not_found(message: str) -> HTTPException:
     return HTTPException(status_code=404, detail=message)
 
 
+@router.get("/lab-config")
+def get_requirement_analysis_lab_config(
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    return service.get_lab_config()
+
+
 @router.get("/orchestrators")
 def list_requirement_analysis_orchestrators(
     service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),

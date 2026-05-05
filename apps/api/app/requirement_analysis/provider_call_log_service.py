@@ -36,10 +36,21 @@ class ProviderCallLogService:
         normalized: dict,
         model_output: dict,
         provider_normalized_output: dict | None = None,
+        service_output: dict | None = None,
+        prompt_bundle_overrides: dict | None = None,
+        provider_response_overrides: dict | None = None,
         created_at: str,
         call_index: int,
     ) -> dict:
         raw_model_response = dict(model_output.get("raw_model_response") or {})
+        provider_request = dict(raw_model_response.get("provider_request") or {})
+        provider_response = dict(raw_model_response.get("provider_response") or {})
+        if prompt_bundle_overrides:
+            prompt_bundle = dict(provider_request.get("prompt_bundle") or {})
+            prompt_bundle.update(prompt_bundle_overrides)
+            provider_request["prompt_bundle"] = prompt_bundle
+        if provider_response_overrides:
+            provider_response.update(provider_response_overrides)
         return {
             "call_id": f"requirement-analysis-provider-call-{call_index:04d}",
             "turn_id": turn_id,
@@ -52,9 +63,9 @@ class ProviderCallLogService:
             "audit": {
                 "user_input": str(raw_model_response.get("user_input") or user_input),
                 "normalized_input": normalized,
-                "provider_request": raw_model_response.get("provider_request") or {},
-                "provider_response": raw_model_response.get("provider_response") or {},
+                "provider_request": provider_request,
+                "provider_response": provider_response,
                 "provider_normalized_output": provider_normalized_output or self.provider_normalized_output(model_output),
-                "service_output": self.service_output(model_output),
+                "service_output": service_output or self.service_output(model_output),
             },
         }

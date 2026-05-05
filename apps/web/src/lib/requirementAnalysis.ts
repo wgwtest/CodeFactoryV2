@@ -1,11 +1,16 @@
 import { api } from "./api";
 import type {
+  RequirementAnalysisLabConfig,
   RequirementAnalysisOrchestratorEnvelope,
   RequirementAnalysisProviderEnvelope,
   RequirementAnalysisSession,
   RequirementAnalysisSessionCreateInput,
   RequirementAnalysisTurnEnvelope,
 } from "./api";
+
+export function getRequirementAnalysisLabConfig() {
+  return api.get<RequirementAnalysisLabConfig>("/requirement-analysis/lab-config");
+}
 
 export function getRequirementAnalysisOrchestrators() {
   return api.get<RequirementAnalysisOrchestratorEnvelope>("/requirement-analysis/orchestrators");

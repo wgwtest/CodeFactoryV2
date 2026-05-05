@@ -68,6 +68,7 @@ class DeepSeekRequirementAnalysisClient:
             "write_policy": session.write_policy,
             "previous_interaction": state.get("next_interaction"),
             "last_quick_options": list(state.get("last_quick_options", [])),
+            "working_document": dict(state.get("working_document") or {}),
             "spec_tree": spec_tree,
             "messages": list(state.get("messages", []))[-8:],
             "confirmed_facts": list(state.get("confirmed_facts", [])),
@@ -75,6 +76,8 @@ class DeepSeekRequirementAnalysisClient:
             "user_input": user_input,
             "normalized_input": normalized,
         }
+        current_section_draft = self._current_section_draft(state=state)
+        review_goal = self._review_goal(state=state)
         schema = {
             "organizer_interpretation": {
                 "summary": "你对用户本轮输入的理解",
@@ -110,7 +113,27 @@ class DeepSeekRequirementAnalysisClient:
             orchestrator_id,
             context=context,
             output_schema=schema,
+            extra_prompt_bundle={
+                "working_document_json": json.dumps(context["working_document"], ensure_ascii=False),
+                "current_section_draft": current_section_draft,
+                "review_goal": review_goal,
+            },
         )
+
+    @staticmethod
+    def _current_section_draft(*, state: dict) -> str:
+        active_node_id = str(state.get("active_spec_node_id") or "")
+        working_document = dict(state.get("working_document") or {})
+        for section in list(working_document.get("sections", [])):
+            if str(section.get("section_id") or "") == active_node_id:
+                return str(section.get("content") or "")
+        return ""
+
+    def _review_goal(self, *, state: dict) -> str:
+        active_node_id = str(state.get("active_spec_node_id") or "")
+        spec_tree = list(state.get("spec_tree", []))
+        node = self._find_spec_node(spec_tree, active_node_id)
+        return str((node or {}).get("question") or (node or {}).get("target_section") or "")
 
     def _build_prompt(self, *, session: SessionSnapshot, user_input: str, normalized: dict) -> str:
         runner_host = getattr(self, "runner_host", None) or OrchestratorRunnerHost()
@@ -190,6 +213,9 @@ class DeepSeekRequirementAnalysisClient:
                     "prompt_bundle": {
                         "assembled_prompt": str((prompt_bundle or {}).get("assembled_prompt") or ""),
                         "context_json": str((prompt_bundle or {}).get("context_json") or ""),
+                        "working_document_json": str((prompt_bundle or {}).get("working_document_json") or ""),
+                        "current_section_draft": str((prompt_bundle or {}).get("current_section_draft") or ""),
+                        "review_goal": str((prompt_bundle or {}).get("review_goal") or ""),
                         "schema_json": str((prompt_bundle or {}).get("schema_json") or ""),
                         "policy_text": str((prompt_bundle or {}).get("policy_text") or ""),
                         "prompt_text": str((prompt_bundle or {}).get("prompt_text") or ""),

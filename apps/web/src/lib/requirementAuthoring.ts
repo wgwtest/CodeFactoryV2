@@ -7,7 +7,12 @@ import type {
   RequirementAuthoringKnowledgeProviderEnvelope,
   RequirementAuthoringTemplate,
   RequirementAuthoringTemplateWriteInput,
+  RequirementAuthoringWorkbenchConfig,
 } from "./api";
+
+export function getRequirementAuthoringWorkbenchConfig() {
+  return api.get<RequirementAuthoringWorkbenchConfig>("/requirement-authoring/workbench-config");
+}
 
 export function getRequirementAuthoringTemplates() {
   return api.get<RequirementAuthoringTemplate[]>("/requirement-authoring/templates");

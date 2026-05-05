@@ -25,6 +25,8 @@ from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
 from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
+from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
+from app.requirement_analysis.working_document_service import WorkingDocumentService
 
 
 class RequirementAnalysisSessionService:
@@ -44,6 +46,10 @@ class RequirementAnalysisSessionService:
         self.turn_audit_service = RequirementAnalysisTurnAuditService(normalizer=self.input_normalizer)
         self.turn_output_service = RequirementAnalysisTurnOutputService(spec_tree_service=self.spec_tree_service)
         self.spec_projection_service = SpecProjectionService(spec_tree_service=self.spec_tree_service)
+        self.working_document_service = WorkingDocumentService()
+        self.working_document_review_service = WorkingDocumentReviewService(
+            working_document_service=self.working_document_service,
+        )
         self.next_interaction_service = NextInteractionService(
             input_normalizer=self.input_normalizer,
             process_artifact_service=self.process_artifact_service,
@@ -70,6 +76,8 @@ class RequirementAnalysisSessionService:
             next_interaction_service=self.next_interaction_service,
             turn_strategy_service=self.turn_strategy_service,
             turn_stage_executor=self.turn_stage_executor,
+            working_document_service=self.working_document_service,
+            working_document_review_service=self.working_document_review_service,
         )
 
     def list_orchestrators(self) -> dict:
@@ -103,6 +111,10 @@ class RequirementAnalysisSessionService:
         model = self._resolve_model(payload.provider_id, payload.model)
         spec_tree = self._new_spec_tree(payload.template_id, orchestrator_id=orchestrator.orchestrator_id)
         active_spec_node_id = self._first_open_spec_node_id(spec_tree)
+        working_document = self.working_document_service.initialize(
+            topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
+            template_id=payload.template_id,
+        )
         state = {
             "messages": [
                 {
@@ -123,6 +135,7 @@ class RequirementAnalysisSessionService:
                 )
             ],
             "document_patch": [],
+            "working_document": working_document,
             "questions": [
                 {
                     "question_id": "Q-001",
@@ -227,6 +240,10 @@ class RequirementAnalysisSessionService:
             "confirmed_facts": list(state.get("confirmed_facts", [])),
             "open_questions": list(state.get("open_questions", [])),
             "document_patch": list(state.get("document_patch", [])),
+            "working_document": dict(
+                state.get("working_document")
+                or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+            ),
             "questions": list(state.get("questions", [])),
             "facts": list(state.get("facts", [])),
             "patches": list(state.get("patches", [])),

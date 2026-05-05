@@ -4,6 +4,8 @@ import { Alert, Button, Input, Space, Spin, Tabs, Tag, Typography } from "antd";
 import type {
   RequirementAnalysisOrchestrator,
   RequirementAnalysisOrchestratorEnvelope,
+  RequirementAnalysisFieldSchema,
+  RequirementAnalysisLabConfig,
   RequirementAnalysisProviderLog,
   RequirementAnalysisProvider,
   RequirementAnalysisQuickOption,
@@ -14,85 +16,48 @@ import type {
 import {
   createRequirementAnalysisSession,
   createRequirementAnalysisTurn,
-  getRequirementAnalysisOrchestrators,
-  getRequirementAnalysisProviders,
 } from "../lib/requirementAnalysis";
+import {
+  getRequirementAnalysisProviderLogFieldNote,
+  resolveDefaultRequirementAnalysisOrchestratorId,
+  resolveDefaultRequirementAnalysisProviderId,
+  buildRequirementAnalysisWorkingDocumentViewModel,
+  resolveRequirementAnalysisWritePolicyLabel,
+  validateRequirementAnalysisTurnProtocol,
+} from "../lib/requirementAnalysisLabViewModel";
+import { useRequirementAnalysisLabBootstrap } from "../lib/useRequirementAnalysisLabBootstrap";
 import "./RequirementAnalysisLabPage.css";
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 
-const DEFAULT_TOPIC = "空域运算软件需求规格探索";
-const DEFAULT_TEMPLATE = "81433号";
-const DEFAULT_KNOWLEDGE = "airspace-domain-demo";
-const DEFAULT_POLICY = "patch_suggestion_only";
-const DEFAULT_ORCHESTRATOR_ID = "xg-heuristic-orchestrator";
 type RequirementAnalysisLabTab = "config" | "session" | "turn" | "log";
 
-const PROVIDER_LOG_FIELD_NOTES: Record<string, string> = {
-  user_input: "用户本轮提交的原始输入，用于追溯 Provider 调用从哪段用户表达开始。",
-  normalized_input: "组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。",
-  "provider_request.messages": "发给模型的最终 messages 数组，模型调用时直接使用。",
-  "provider_request.prompt_bundle.assembled_prompt": "组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。",
-  "provider_request.prompt_bundle.context_json": "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
-  "provider_request.prompt_bundle.schema_json": "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
-  "provider_request.mock_context": "Mock Provider 的调试上下文，仅在本地模拟调用时使用。",
-  "provider_request.runner_context": "运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。",
-  "provider_response.raw_content": "Provider 返回的原始文本，解析失败时优先看这一块。",
-  "provider_response.parsed_json": "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
-  provider_normalized_output: "Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。",
-  service_output: "Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。",
-};
-
 export function RequirementAnalysisLabPage() {
-  const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
-  const [providers, setProviders] = useState<RequirementAnalysisProvider[]>([]);
-  const [selectedOrchestratorId, setSelectedOrchestratorId] = useState(DEFAULT_ORCHESTRATOR_ID);
-  const [selectedProviderId, setSelectedProviderId] = useState("mock");
-  const [topic, setTopic] = useState(DEFAULT_TOPIC);
+  const { labConfig, orchestratorsEnvelope, providers, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
+  const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
+  const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [topic, setTopic] = useState("");
   const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("config");
   const [session, setSession] = useState<RequirementAnalysisSession | null>(null);
   const [currentTurn, setCurrentTurn] = useState<RequirementAnalysisTurn | null>(null);
   const [userInput, setUserInput] = useState("");
   const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        setLoading(true);
-        const [orchestratorsResponse, providersResponse] = await Promise.all([
-          getRequirementAnalysisOrchestrators(),
-          getRequirementAnalysisProviders(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setOrchestratorsEnvelope(orchestratorsResponse.data);
-        setProviders(providersResponse.data.items);
-        setSelectedOrchestratorId(orchestratorsResponse.data.items[0]?.orchestrator_id ?? DEFAULT_ORCHESTRATOR_ID);
-        setSelectedProviderId(resolveDefaultProviderId(providersResponse.data.items));
-        setError(null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载 XG 需求分析组织器 Lab 失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    if (!labConfig || !orchestratorsEnvelope) {
+      return;
     }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setTopic((current) => current || labConfig.defaults.topic);
+    setSelectedOrchestratorId((current) =>
+      current || resolveDefaultRequirementAnalysisOrchestratorId(orchestratorsEnvelope.items, labConfig.defaults.orchestrator_id),
+    );
+    setSelectedProviderId((current) =>
+      current || resolveDefaultRequirementAnalysisProviderId(providers, labConfig.defaults.provider_id),
+    );
+  }, [labConfig, orchestratorsEnvelope, providers]);
 
   const selectedOrchestrator = useMemo(
     () => orchestratorsEnvelope?.items.find((item) => item.orchestrator_id === selectedOrchestratorId) ?? null,
@@ -105,6 +70,10 @@ export function RequirementAnalysisLabPage() {
   );
 
   const logCount = session?.provider_logs.length ?? 0;
+  const defaultWritePolicyLabel = labConfig
+    ? resolveRequirementAnalysisWritePolicyLabel(labConfig.defaults.write_policy, labConfig.write_policies)
+    : "写入策略加载中";
+  const effectiveError = error ?? bootstrapError;
 
   async function handleStart() {
     try {
@@ -113,10 +82,10 @@ export function RequirementAnalysisLabPage() {
         topic,
         orchestrator_id: selectedOrchestratorId,
         provider_id: selectedProviderId,
-        model: selectedProviderId === "mock" ? "mock-requirement-analysis-v1" : "provider-default",
-        template_id: DEFAULT_TEMPLATE,
-        knowledge_package_id: DEFAULT_KNOWLEDGE,
-        write_policy: DEFAULT_POLICY,
+        model: labConfig?.defaults.model ?? "",
+        template_id: labConfig?.defaults.template_id,
+        knowledge_package_id: labConfig?.defaults.knowledge_package_id,
+        write_policy: labConfig?.defaults.write_policy,
       });
       setSession(response.data);
       setCurrentTurn(response.data.turns.at(-1) ?? null);
@@ -169,24 +138,24 @@ export function RequirementAnalysisLabPage() {
         <div className="requirement-analysis-lab-brand">
           <div className="requirement-analysis-lab-mark">LAB</div>
           <div>
-            <Title level={2}>P2 XG 需求分析组织器 Lab</Title>
-            <Text type="secondary">独立验证问答组织器、模型 Provider 和结构化 Turn 输出，不写入正式需求规格编辑器。</Text>
+              <Title level={2}>{labConfig?.page.title ?? "加载 Lab 配置中"}</Title>
+              <Text type="secondary">{labConfig?.page.subtitle ?? "加载 Lab 配置中..."}</Text>
           </div>
         </div>
         <Space wrap>
           <Tag color="blue">独立路由</Tag>
           <Tag color="green">可插拔组织器</Tag>
-          <Tag color="orange">patch suggestion only</Tag>
+          <Tag color="orange">{defaultWritePolicyLabel}</Tag>
         </Space>
       </header>
 
-      {error ? <Alert type="error" showIcon message={error} /> : null}
+      {effectiveError ? <Alert type="error" showIcon message={effectiveError} /> : null}
 
       {loading ? (
         <section className="requirement-analysis-lab-loading">
           <Spin />
         </section>
-      ) : orchestratorsEnvelope ? (
+      ) : orchestratorsEnvelope && labConfig ? (
         <section className="requirement-analysis-lab-layout">
           <aside className="requirement-analysis-lab-sidebar" aria-label="XG 需求分析组织器 Lab 视图导航" role="tablist">
             <TabNode
@@ -224,6 +193,7 @@ export function RequirementAnalysisLabPage() {
               <ConfigTab
                 activeProvider={activeProvider}
                 acting={acting}
+                labConfig={labConfig}
                 currentSession={session}
                 onEnterSession={() => setActiveTab("session")}
                 onProviderSelect={setSelectedProviderId}
@@ -248,10 +218,11 @@ export function RequirementAnalysisLabPage() {
                 session={session}
                 setUserInput={setUserInput}
                 userInput={userInput}
+                writePolicies={labConfig.write_policies}
               />
             ) : null}
-            {activeTab === "turn" ? <TurnTab currentTurn={currentTurn} onResetSession={handleResetSession} /> : null}
-            {activeTab === "log" ? <LogTab logs={session?.provider_logs ?? []} /> : null}
+            {activeTab === "turn" ? <TurnTab currentTurn={currentTurn} labConfig={labConfig} onResetSession={handleResetSession} /> : null}
+            {activeTab === "log" ? <LogTab logSchema={labConfig.provider_log_schema} logs={session?.provider_logs ?? []} /> : null}
           </section>
         </section>
       ) : null}
@@ -292,6 +263,7 @@ function TabNode({
 function ConfigTab({
   activeProvider,
   acting,
+  labConfig,
   currentSession,
   onEnterSession,
   onProviderSelect,
@@ -307,6 +279,7 @@ function ConfigTab({
 }: {
   activeProvider: RequirementAnalysisProvider | null;
   acting: boolean;
+  labConfig: RequirementAnalysisLabConfig;
   currentSession: RequirementAnalysisSession | null;
   onEnterSession: () => void;
   onProviderSelect: (providerId: string) => void;
@@ -320,6 +293,7 @@ function ConfigTab({
   selectedProviderId: string;
   topic: string;
 }) {
+  const topicField = labConfig.startup_fields.find((field) => field.field === "topic");
   return (
     <>
       <div className="requirement-analysis-lab-tab-grid is-config">
@@ -351,7 +325,11 @@ function ConfigTab({
           <PanelHead title="启动参数" subtitle="用于验证 XG 需求分析会话生命周期，不进入正式编辑器状态。" />
           <label className="requirement-analysis-lab-field">
             <Text strong>课题输入</Text>
-            <Input value={topic} onChange={(event) => onTopicChange(event.target.value)} />
+            <Input
+              placeholder={topicField?.placeholder}
+              value={topic}
+              onChange={(event) => onTopicChange(event.target.value)}
+            />
           </label>
           <div className="requirement-analysis-lab-provider-row">
             {providers.map((provider) => (
@@ -417,6 +395,7 @@ function SessionTab({
   session,
   setUserInput,
   userInput,
+  writePolicies,
 }: {
   acting: boolean;
   currentTurn: RequirementAnalysisTurn | null;
@@ -426,6 +405,7 @@ function SessionTab({
   session: RequirementAnalysisSession | null;
   setUserInput: (value: string) => void;
   userInput: string;
+  writePolicies: RequirementAnalysisLabConfig["write_policies"];
 }) {
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -450,7 +430,7 @@ function SessionTab({
                 <Text strong>会话 {session.session_id}</Text>
                 <Tag>Provider {session.provider_id}</Tag>
                 <Tag>Model {session.model}</Tag>
-                <Tag>{formatWritePolicy(session.write_policy)}</Tag>
+                <Tag>{resolveRequirementAnalysisWritePolicyLabel(session.write_policy, writePolicies)}</Tag>
                 <Tag>{session.topic}</Tag>
               </div>
               <div className="requirement-analysis-lab-message-list" ref={messageListRef}>
@@ -544,12 +524,14 @@ function QuickOptionBar({
 
 function TurnTab({
   currentTurn,
+  labConfig,
   onResetSession,
 }: {
   currentTurn: RequirementAnalysisTurn | null;
+  labConfig: RequirementAnalysisLabConfig;
   onResetSession: () => void;
 }) {
-  const protocolErrors = currentTurn ? validateTurnProtocol(currentTurn) : [];
+  const protocolErrors = currentTurn ? validateRequirementAnalysisTurnProtocol(currentTurn, labConfig.turn_audit_schema.required_fields) : [];
   return (
     <>
       <div className="requirement-analysis-lab-tab-grid is-turn-single" data-testid="requirement-analysis-turn-grid">
@@ -599,57 +581,11 @@ function TurnProtocolError({
   );
 }
 
-function validateTurnProtocol(turn: RequirementAnalysisTurn): string[] {
-  const value = turn as unknown as Record<string, unknown>;
-  const missing: string[] = [];
-  const requiredProperties = [
-    "previous_interaction",
-    "input_relation",
-    "spec_execution",
-    "post_update_review",
-    "closure_decision",
-    "next_interaction",
-    "decision_trace",
-  ];
-
-  for (const property of requiredProperties) {
-    if (!(property in value)) {
-      missing.push(property);
-    }
-  }
-  if (!isObject(value.previous_interaction)) {
-    missing.push("previous_interaction.prompt");
-  }
-  if (!isObject(value.input_relation)) {
-    missing.push("input_relation.relation");
-    missing.push("input_relation.reason");
-  }
-  if (!isObject(value.spec_execution)) {
-    missing.push("spec_execution.interpretation");
-    missing.push("spec_execution.document_patch");
-  }
-  if (!isObject(value.post_update_review)) {
-    missing.push("post_update_review.summary");
-  }
-  if (!isObject(value.closure_decision)) {
-    missing.push("closure_decision.status");
-    missing.push("closure_decision.reason");
-  }
-  if (!isObject(value.next_interaction)) {
-    missing.push("next_interaction.prompt");
-  }
-  if (!Array.isArray(value.decision_trace)) {
-    missing.push("decision_trace");
-  }
-
-  return Array.from(new Set(missing));
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
+function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema; logs: RequirementAnalysisProviderLog[] }) {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const selectedLog =
     logs.find((log) => log.call_id === selectedCallId) ?? logs[0] ?? null;
@@ -696,7 +632,7 @@ function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
         <section className="requirement-analysis-lab-panel">
           <PanelHead title="调用详情" subtitle={selectedLog ? selectedLog.call_id : "等待 Provider 调用。"} />
           {selectedLog ? (
-            <ProviderLogDetail log={selectedLog} />
+            <ProviderLogDetail log={selectedLog} logSchema={logSchema} />
           ) : (
             <Text type="secondary">启动会话或发送输入后，这里会显示 Provider 调用细节。</Text>
           )}
@@ -706,7 +642,7 @@ function LogTab({ logs }: { logs: RequirementAnalysisProviderLog[] }) {
   );
 }
 
-function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
+function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProviderLog; logSchema: RequirementAnalysisFieldSchema }) {
   const audit = log.audit ?? {};
   const promptBundle = getRecord(audit.provider_request, "prompt_bundle");
   const requestMessages = getArray(audit.provider_request, "messages");
@@ -733,8 +669,8 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
                 <Text>Mode: {log.orchestrator_mode ?? "未记录"}</Text>
                 <Text>Time: {log.created_at}</Text>
               </div>
-              <LogAuditBlock title="user_input" value={audit.user_input ?? ""} />
-              <LogAuditBlock title="normalized_input" value={audit.normalized_input ?? {}} />
+              <LogAuditBlock logSchema={logSchema} title="user_input" value={audit.user_input ?? ""} />
+              <LogAuditBlock logSchema={logSchema} title="normalized_input" value={audit.normalized_input ?? {}} />
             </div>
           ),
         },
@@ -743,13 +679,25 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
           label: "请求",
           children: (
             <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock title="provider_request.messages" value={requestMessages} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.messages" value={requestMessages} />
               <LogAuditBlock
+                logSchema={logSchema}
                 title="provider_request.prompt_bundle.assembled_prompt"
                 value={getString(promptBundle, "assembled_prompt")}
               />
-              <LogAuditBlock title="provider_request.mock_context" value={mockContext} />
-              <LogAuditBlock title="provider_request.runner_context" value={runnerContext} />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_json"
+                value={getString(promptBundle, "working_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.current_section_draft"
+                value={getString(promptBundle, "current_section_draft")}
+              />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_goal" value={getString(promptBundle, "review_goal")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
             </div>
           ),
         },
@@ -758,9 +706,19 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
           label: "上下文",
           children: (
             <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock title="provider_request.prompt_bundle.context_json" value={getString(promptBundle, "context_json")} />
-              <LogAuditBlock title="provider_request.mock_context" value={mockContext} />
-              <LogAuditBlock title="provider_request.runner_context" value={runnerContext} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.context_json" value={getString(promptBundle, "context_json")} />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.working_document_json"
+                value={getString(promptBundle, "working_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.current_section_draft"
+                value={getString(promptBundle, "current_section_draft")}
+              />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
             </div>
           ),
         },
@@ -769,7 +727,7 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
           label: "Schema",
           children: (
             <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock title="provider_request.prompt_bundle.schema_json" value={getString(promptBundle, "schema_json")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.schema_json" value={getString(promptBundle, "schema_json")} />
             </div>
           ),
         },
@@ -778,8 +736,9 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
           label: "原始输出",
           children: (
             <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock title="provider_response.raw_content" value={rawContent} />
-              <LogAuditBlock title="provider_response.parsed_json" value={parsedProviderOutput} />
+              <LogAuditBlock logSchema={logSchema} title="provider_response.raw_content" value={rawContent} />
+              <LogAuditBlock logSchema={logSchema} title="provider_response.parsed_json" value={parsedProviderOutput} />
+              <LogAuditBlock logSchema={logSchema} title="provider_response.review_json" value={getRecord(audit.provider_response, "review_json")} />
             </div>
           ),
         },
@@ -788,8 +747,8 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
           label: "后处理",
           children: (
             <div className="requirement-analysis-lab-detail-list">
-              <LogAuditBlock title="provider_normalized_output" value={audit.provider_normalized_output ?? {}} />
-              <LogAuditBlock title="service_output" value={audit.service_output ?? {}} />
+              <LogAuditBlock logSchema={logSchema} title="provider_normalized_output" value={audit.provider_normalized_output ?? {}} />
+              <LogAuditBlock logSchema={logSchema} title="service_output" value={audit.service_output ?? {}} />
             </div>
           ),
         },
@@ -798,8 +757,8 @@ function ProviderLogDetail({ log }: { log: RequirementAnalysisProviderLog }) {
   );
 }
 
-function LogAuditBlock({ title, value }: { title: string; value: unknown }) {
-  const note = PROVIDER_LOG_FIELD_NOTES[title];
+function LogAuditBlock({ logSchema, title, value }: { logSchema: RequirementAnalysisFieldSchema; title: string; value: unknown }) {
+  const note = getRequirementAnalysisProviderLogFieldNote(logSchema, title);
   return (
     <div className="requirement-analysis-lab-log-audit-block">
       <div className="requirement-analysis-lab-log-audit-title">
@@ -848,15 +807,71 @@ function getString(value: unknown, key: string): string {
 function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {
   return (
     <section className="requirement-analysis-lab-panel requirement-analysis-lab-summary">
-      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是需求规格完成度树；沟通路径只记录用户输入产生的影响。" />
+      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是会话内临时正文；完成度树和沟通路径作为辅助对照。" />
       {session ? (
-        <SpecCompletionTree session={session} />
+        <Tabs
+          defaultActiveKey="working-document"
+          items={[
+            {
+              key: "working-document",
+              label: "临时正文",
+              children: <WorkingDocumentView session={session} />,
+            },
+            {
+              key: "spec-tree",
+              label: "需求规格完成度树",
+              children: <SpecCompletionTree session={session} />,
+            },
+            {
+              key: "turn-path",
+              label: "沟通路径",
+              children: <TurnPathView session={session} />,
+            },
+          ]}
+        />
       ) : (
         <div className="requirement-analysis-lab-empty">
           <Text type="secondary">尚未创建会话，暂无摘要。</Text>
         </div>
       )}
     </section>
+  );
+}
+
+function WorkingDocumentView({ session }: { session: RequirementAnalysisSession }) {
+  const viewModel = buildRequirementAnalysisWorkingDocumentViewModel(session);
+  return (
+    <div className="requirement-analysis-lab-spec-summary">
+      <div className="requirement-analysis-lab-summary-title-row">
+        <Text strong>{viewModel.title}</Text>
+        <Tag color="blue">focus: {session.active_spec_node_id ?? "已完成"}</Tag>
+      </div>
+      {viewModel.sections.length ? (
+        <div className="requirement-analysis-lab-working-document">
+          {viewModel.sections.map((section) => (
+            <div className="requirement-analysis-lab-working-document-card" key={section.sectionId}>
+              <div className="requirement-analysis-lab-working-document-head">
+                <Text strong>{section.targetSection}</Text>
+                <Tag>{section.sectionId}</Tag>
+              </div>
+              <pre>{section.content}</pre>
+              <div className="requirement-analysis-lab-turn-inline">
+                {section.lastTurnId ? <Tag>{section.lastTurnId}</Tag> : null}
+                {section.sourcePatchIds.map((patchId) => (
+                  <Tag key={patchId}>{patchId}</Tag>
+                ))}
+                <Tag color={section.reviewStatus === "acceptable" ? "green" : "gold"}>{section.reviewStatus}</Tag>
+              </div>
+              {section.reviewReason ? <Text type="secondary">{section.reviewReason}</Text> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="requirement-analysis-lab-empty">
+          <Text type="secondary">当前会话尚未形成临时正文。发送一轮输入后，这里会显示章节草稿。</Text>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -872,22 +887,26 @@ function SpecCompletionTree({ session }: { session: RequirementAnalysisSession }
           <SpecTreeNode key={node.node_id} node={node} />
         ))}
       </div>
-      <div className="requirement-analysis-lab-turn-path-panel">
-        <Text strong>沟通路径</Text>
-        {session.turn_path.length > 0 ? (
-          <div className="requirement-analysis-lab-turn-path-list">
-            {session.turn_path.map((item) => (
-              <div className="requirement-analysis-lab-turn-path-item" key={item.turn_id}>
-                <Text strong>{item.turn_id}</Text>
-                <Text type="secondary">{item.affected_node_ids?.join("、") || item.node_id}</Text>
-                <Text>{item.answer_summary || "等待回答摘要"}</Text>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Text type="secondary">尚未产生沟通路径。用户输入后会记录影响到的规格节点。</Text>
-        )}
-      </div>
+    </div>
+  );
+}
+
+function TurnPathView({ session }: { session: RequirementAnalysisSession }) {
+  return (
+    <div className="requirement-analysis-lab-turn-path-panel">
+      {session.turn_path.length > 0 ? (
+        <div className="requirement-analysis-lab-turn-path-list">
+          {session.turn_path.map((item) => (
+            <div className="requirement-analysis-lab-turn-path-item" key={item.turn_id}>
+              <Text strong>{item.turn_id}</Text>
+              <Text type="secondary">{item.affected_node_ids?.join("、") || item.node_id}</Text>
+              <Text>{item.answer_summary || "等待回答摘要"}</Text>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Text type="secondary">尚未产生沟通路径。用户输入后会记录影响到的规格节点。</Text>
+      )}
     </div>
   );
 }
@@ -1052,23 +1071,33 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         <StateChangeSummary stateChanges={turn.spec_execution.state_changes} />
       </div>
       <div className="requirement-analysis-lab-turn-card">
-        <Text type="secondary">补充后状态回看</Text>
-        <Text strong>{turn.post_update_review.summary}</Text>
-        <div className="requirement-analysis-lab-turn-inline">
-          <Tag color={turn.post_update_review.previous_interaction_resolved ? "green" : "gold"}>
-            {turn.post_update_review.previous_interaction_resolved ? "上轮留题已处理" : "上轮留题未完全处理"}
-          </Tag>
-          <Tag color={turn.post_update_review.current_spec_node_sufficient ? "green" : "gold"}>
-            {turn.post_update_review.current_spec_node_sufficient ? "当前节点足够" : "当前节点仍不足"}
-          </Tag>
-          <Tag color={turn.post_update_review.needs_followup_on_same_topic ? "gold" : "green"}>
-            {turn.post_update_review.needs_followup_on_same_topic ? "同题继续追问" : "可进入下一步"}
-          </Tag>
-        </div>
-        {turn.post_update_review.remaining_gaps.length ? (
+        <Text type="secondary">临时正文应用结果</Text>
+        <Text strong>应用章节：{turn.spec_execution.working_document_update.applied_section_ids.join("、")}</Text>
+        <Text>{turn.spec_execution.working_document_update.after || "当前未形成临时正文。"}</Text>
+      </div>
+      <div className="requirement-analysis-lab-turn-card">
+        <Text type="secondary">章节回看</Text>
+        <Tag color={turn.post_update_review.section_review.status === "acceptable" ? "green" : "gold"}>
+          {turn.post_update_review.section_review.status}
+        </Tag>
+        <Text strong>{turn.post_update_review.section_review.reason}</Text>
+        {turn.post_update_review.section_review.missing_aspects.length ? (
+          <>
+            <Text strong>章节缺口</Text>
+            {turn.post_update_review.section_review.missing_aspects.map((gap) => (
+              <Text key={gap}>{gap}</Text>
+            ))}
+          </>
+        ) : null}
+      </div>
+      <div className="requirement-analysis-lab-turn-card">
+        <Text type="secondary">全局回看</Text>
+        <Tag>{turn.post_update_review.global_review.status}</Tag>
+        <Text strong>{turn.post_update_review.global_review.summary}</Text>
+        {turn.post_update_review.global_review.remaining_gaps.length ? (
           <>
             <Text strong>剩余缺口</Text>
-            {turn.post_update_review.remaining_gaps.map((gap) => (
+            {turn.post_update_review.global_review.remaining_gaps.map((gap) => (
               <Text key={gap}>{gap}</Text>
             ))}
           </>
@@ -1154,13 +1183,6 @@ function ContractGrid({ stableContract }: { stableContract: Record<string, boole
   );
 }
 
-function formatWritePolicy(policy: string) {
-  if (policy === "patch_suggestion_only") {
-    return "只生成 document_patch 建议";
-  }
-  return policy;
-}
-
 function formatProviderStatus(status: string) {
   if (status === "active") {
     return "已启用";
@@ -1173,12 +1195,4 @@ function formatProviderStatus(status: string) {
 
 function formatQuickOptionInput(option: RequirementAnalysisQuickOption) {
   return `${option.key}，${option.label}`;
-}
-
-function resolveDefaultProviderId(providers: RequirementAnalysisProvider[]) {
-  return (
-    providers.find((provider) => provider.status === "active" && provider.provider_id !== "mock")?.provider_id ??
-    providers[0]?.provider_id ??
-    "mock"
-  );
 }

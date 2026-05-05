@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+
+class RequirementAnalysisLabConfigService:
+    """Builds the frontend Lab configuration owned by the Requirement Analysis backend."""
+
+    def get_config(self) -> dict:
+        return {
+            "page": {
+                "title": "P2 XG 需求分析组织器 Lab",
+                "subtitle": "独立验证问答组织器、模型 Provider 和结构化 Turn 输出，不写入正式需求规格编辑器。",
+            },
+            "defaults": {
+                "topic": "默认运算软件需求规格说明",
+                "orchestrator_id": "xg-heuristic-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "write_policy": "patch_suggestion_only",
+            },
+            "startup_fields": [
+                {
+                    "field": "topic",
+                    "label": "课题输入",
+                    "control": "textarea",
+                    "required": True,
+                    "placeholder": "输入本次需求规格探索课题",
+                }
+            ],
+            "write_policies": [
+                {
+                    "policy_id": "patch_suggestion_only",
+                    "label": "只生成 document_patch 建议",
+                    "description": "Lab 只生成 document_patch 建议，不直接写入正式需求规格草稿。",
+                }
+            ],
+            "provider_log_schema": {
+                "fields": [
+                    {
+                        "path": "user_input",
+                        "label": "User Input",
+                        "description": "用户本轮提交的原始输入，用于追溯 Provider 调用从哪段用户表达开始。",
+                        "used_when": "每次需求分析轮次触发 Provider 调用时使用。",
+                    },
+                    {
+                        "path": "normalized_input",
+                        "label": "Normalized Input",
+                        "description": "组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。",
+                        "used_when": "用户输入归一化后使用。",
+                    },
+                    {
+                        "path": "provider_request.messages",
+                        "label": "Provider Request Messages",
+                        "description": "发给模型的最终 messages 数组，模型调用时直接使用。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.assembled_prompt",
+                        "label": "Assembled Prompt",
+                        "description": "组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.context_json",
+                        "label": "Context JSON",
+                        "description": "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.working_document_json",
+                        "label": "Working Document JSON",
+                        "description": "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.current_section_draft",
+                        "label": "Current Section Draft",
+                        "description": "当前焦点章节在调用前的正文草稿，用于检查模型面对的是哪一段具体内容。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.review_goal",
+                        "label": "Review Goal",
+                        "description": "本轮回看目标，说明当前章节还要确认什么。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.schema_json",
+                        "label": "Schema JSON",
+                        "description": "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
+                        "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.mock_context",
+                        "label": "Mock Context",
+                        "description": "Mock Provider 的调试上下文，仅在本地模拟调用时使用。",
+                        "used_when": "Mock Provider 调用时使用。",
+                    },
+                    {
+                        "path": "provider_request.runner_context",
+                        "label": "Runner Context",
+                        "description": "运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。",
+                        "used_when": "本地组织器 Runner 调用时使用。",
+                    },
+                    {
+                        "path": "provider_response.raw_content",
+                        "label": "Raw Content",
+                        "description": "Provider 返回的原始文本，解析失败时优先看这一块。",
+                        "used_when": "模型 Provider 返回后使用。",
+                    },
+                    {
+                        "path": "provider_response.parsed_json",
+                        "label": "Parsed JSON",
+                        "description": "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
+                        "used_when": "Provider 响应解析后使用。",
+                    },
+                    {
+                        "path": "provider_response.review_json",
+                        "label": "Review JSON",
+                        "description": "服务端或模型给出的章节回看与全局回看结果，用于判断为什么继续追问或进入下一节点。",
+                        "used_when": "本轮临时正文回看完成后使用。",
+                    },
+                    {
+                        "path": "provider_normalized_output",
+                        "label": "Provider Normalized Output",
+                        "description": "Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。",
+                        "used_when": "Provider 适配层归一化后使用。",
+                    },
+                    {
+                        "path": "service_output",
+                        "label": "Service Output",
+                        "description": "Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。",
+                        "used_when": "轮次服务完成后处理后使用。",
+                    },
+                ]
+            },
+            "turn_audit_schema": {
+                "protocol_version": "xg-turn-audit-v1",
+                "required_fields": [
+                    "previous_interaction",
+                    "input_relation",
+                    "spec_execution",
+                    "post_update_review",
+                    "closure_decision",
+                    "next_interaction",
+                    "decision_trace",
+                ],
+            },
+        }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.requirement_authoring.document_application_service import RequirementAuthoringApplicationService
 from app.requirement_authoring.models import RequirementAuthoringTemplateWrite
+from app.requirement_authoring.workbench_config_service import RequirementAuthoringWorkbenchConfigService
 from app.requirement_configuration.template_application_service import RequirementConfigurationApplicationService
 
 
@@ -11,6 +12,10 @@ class RequirementAuthoringService(RequirementAuthoringApplicationService):
     def __init__(self, session) -> None:
         super().__init__(session)
         self.template_application_service = RequirementConfigurationApplicationService(session)
+        self.workbench_config_service = RequirementAuthoringWorkbenchConfigService()
+
+    def get_workbench_config(self) -> dict:
+        return self.workbench_config_service.get_config()
 
     def list_templates(self) -> list[dict]:
         return self.template_application_service.list_templates()

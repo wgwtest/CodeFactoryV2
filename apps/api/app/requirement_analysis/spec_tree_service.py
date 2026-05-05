@@ -149,16 +149,25 @@ class RequirementSpecTreeService:
                 return child_path
         return []
 
-    def update_spec_tree(self, *, spec_tree: list[dict], active_node_id: str, answer_summary: str, turn_id: str) -> SpecTreeUpdateResult:
+    def update_spec_tree(
+        self,
+        *,
+        spec_tree: list[dict],
+        active_node_id: str,
+        answer_summary: str,
+        turn_id: str,
+        can_close: bool = True,
+    ) -> SpecTreeUpdateResult:
         closed_node_ids: list[str] = []
         node = self.find_spec_node(spec_tree, active_node_id)
         if node is not None:
-            node["status"] = "closed"
+            node["status"] = "closed" if can_close else "partial"
             node["answer_summary"] = answer_summary
-            node["completion_reason"] = f"{turn_id} 用户已确认"
-            closed_node_ids.append(active_node_id)
+            node["completion_reason"] = f"{turn_id} 用户已确认" if can_close else f"{turn_id} 临时正文仍需回看补充"
+            if can_close:
+                closed_node_ids.append(active_node_id)
         self.refresh_parent_statuses(spec_tree)
-        active_spec_node_id = self.first_open_spec_node_id(spec_tree)
+        active_spec_node_id = self.first_open_spec_node_id(spec_tree) if can_close else active_node_id
         return SpecTreeUpdateResult(
             spec_tree=spec_tree,
             active_spec_node_id=active_spec_node_id,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.requirement_analysis.lab_config_service import RequirementAnalysisLabConfigService
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
 from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 
@@ -9,6 +10,10 @@ class RequirementAnalysisApplicationService:
 
     def __init__(self, session) -> None:
         self.session_service = RequirementAnalysisSessionService(session)
+        self.lab_config_service = RequirementAnalysisLabConfigService()
+
+    def get_lab_config(self) -> dict:
+        return self.lab_config_service.get_config()
 
     def list_orchestrators(self) -> dict:
         return self.session_service.list_orchestrators()

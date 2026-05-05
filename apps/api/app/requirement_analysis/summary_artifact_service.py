@@ -101,6 +101,7 @@ class RequirementAnalysisSummaryArtifactService:
                     "content": patch.get("content") or "",
                     "write_policy": patch.get("write_policy") or session.write_policy,
                     "status": "proposed",
+                    "source_turn_id": turn_id,
                     "source_fact_ids": new_fact_ids,
                     "source_question_ids": [source_question_id] if source_question_id else [],
                 }

@@ -31,6 +31,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   const deferredTurn = createDeferred<{ data: RequirementAnalysisTurnEnvelope }>();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
     if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({ data: buildOrchestrators() });
     }
@@ -50,10 +53,13 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   postMock.mockImplementation((url: string, body?: unknown) => {
     if (url === "/requirement-analysis/sessions") {
       expect(body).toMatchObject({
-        topic: "空域运算软件需求规格探索",
+        topic: "配置下发的需求规格探索课题",
         orchestrator_id: "xg-heuristic-orchestrator",
         provider_id: "deepseek",
-        write_policy: "patch_suggestion_only",
+        model: "deepseek-config-model",
+        template_id: "配置模板号",
+        knowledge_package_id: "configured-knowledge-package",
+        write_policy: "configured_patch_only",
       });
       return Promise.resolve({ data: session });
     }
@@ -140,18 +146,22 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByRole("tab", { name: /会话管理/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tab", { name: /当前 Turn.*turn-0001/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.queryByText("当前 Turn turn-0001")).not.toBeInTheDocument();
-  expect(screen.getByText("需求规格完成度树")).toBeInTheDocument();
+  expect(screen.getByText("临时正文")).toBeInTheDocument();
+  expect(screen.getByText("81433号需求规格说明（Lab 临时正文）")).toBeInTheDocument();
+  expect(screen.getByText("本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。")).toBeInTheDocument();
+  expect(screen.queryByText("系统要做什么？")).not.toBeInTheDocument();
   expect(screen.queryByText("问题工作项")).not.toBeInTheDocument();
   expect(screen.queryByText("已确认事实")).not.toBeInTheDocument();
   expect(screen.queryByText("文档修补建议")).not.toBeInTheDocument();
-  expect(screen.getByText("focus: SPEC-1.2")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "需求规格完成度树" }));
+  expect(screen.getAllByText("focus: SPEC-1.2").length).toBeGreaterThan(0);
   expect(screen.getAllByText("1. 系统概述").length).toBeGreaterThan(0);
   expect(screen.getByText("系统要做什么？")).toBeInTheDocument();
   expect(screen.getByText("系统边界是什么？")).toBeInTheDocument();
   expect(screen.queryByText("回答摘要：系统初步定位为空域计算分析工具")).not.toBeInTheDocument();
-  expect(screen.getByText("沟通路径")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "沟通路径" }));
   expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
-  expect(screen.getByText("SPEC-1.1")).toBeInTheDocument();
+  expect(screen.getAllByText("SPEC-1.1").length).toBeGreaterThan(0);
   expect(screen.getByText("推荐")).toBeInTheDocument();
   expect(screen.getByText("先确认输入")).toBeInTheDocument();
   expect(screen.getByText("先确认输出")).toBeInTheDocument();
@@ -178,7 +188,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("本轮用户输入")).toBeInTheDocument();
   expect(screen.getByText("输入承接判断")).toBeInTheDocument();
   expect(screen.getByText("规格补充执行")).toBeInTheDocument();
-  expect(screen.getByText("补充后状态回看")).toBeInTheDocument();
+  expect(screen.getByText("临时正文应用结果")).toBeInTheDocument();
+  expect(screen.getByText("章节回看")).toBeInTheDocument();
+  expect(screen.getByText("全局回看")).toBeInTheDocument();
   expect(screen.getByText("本轮处理闭环")).toBeInTheDocument();
   expect(screen.getByText("下一轮交互设计")).toBeInTheDocument();
   expect(screen.getByText("决策依据")).toBeInTheDocument();
@@ -187,11 +199,13 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.queryByText("影响的规格节点")).not.toBeInTheDocument();
   expect(screen.queryByText("本轮状态变化")).not.toBeInTheDocument();
   expect(screen.queryByText("下一轮建议话题")).not.toBeInTheDocument();
-  expect(screen.getByText("SPEC-1.1")).toBeInTheDocument();
+  expect(screen.getAllByText("SPEC-1.1").length).toBeGreaterThan(0);
   expect(screen.getAllByText("quick_option_answer").length).toBeGreaterThan(0);
   expect(screen.getByText("系统初步定位为空域计算分析工具")).toBeInTheDocument();
   expect(screen.getAllByText("1.1 系统目标").length).toBeGreaterThan(0);
-  expect(screen.getByText("系统目标已有可写入材料，当前节点可以关闭；输入数据章节仍需补齐。")).toBeInTheDocument();
+  expect(screen.getByText("应用章节：SPEC-1.1")).toBeInTheDocument();
+  expect(screen.getByText("当前章节已具备可接受表达。")).toBeInTheDocument();
+  expect(screen.getByText("下一处缺口位于 2.1 输入数据。")).toBeInTheDocument();
   expect(screen.getByText("本轮输入已被吸收，并形成系统目标章节的正文建议；无需继续追问同一题。")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /调用日志/ }));
@@ -203,7 +217,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getAllByText("turn-0001").length).toBeGreaterThan(0);
   expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("user_input")).toBeInTheDocument();
-  expect(screen.getByText("（用户本轮提交的原始输入，用于追溯 Provider 调用从哪段用户表达开始。）")).toBeInTheDocument();
+  expect(screen.getByText("（配置接口下发：用户输入字段说明。）")).toBeInTheDocument();
   expect(screen.getByText("normalized_input")).toBeInTheDocument();
   expect(screen.getByText("（组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。）")).toBeInTheDocument();
   expect(screen.getByText("A，先按计算分析工具理解")).toBeInTheDocument();
@@ -211,7 +225,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   fireEvent.click(screen.getByRole("tab", { name: "请求" }));
   expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("provider_request.messages")).toBeInTheDocument();
-  expect(screen.getByText("（发给模型的最终 messages 数组，模型调用时直接使用。）")).toBeInTheDocument();
+  expect(screen.getByText("（配置接口下发：模型 messages 字段说明。）")).toBeInTheDocument();
   expect(screen.getByText("provider_request.prompt_bundle.assembled_prompt")).toBeInTheDocument();
   expect(screen.getByText("（组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。）")).toBeInTheDocument();
   expect(screen.getByText("（Mock Provider 的调试上下文，仅在本地模拟调用时使用。）")).toBeInTheDocument();
@@ -251,6 +265,9 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   const malformedEnvelope = buildMalformedTurnEnvelope();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
     if (url === "/requirement-analysis/orchestrators") {
       return Promise.resolve({ data: buildOrchestrators() });
     }
@@ -377,6 +394,152 @@ function buildStableContract() {
   };
 }
 
+function buildLabConfig() {
+  return {
+    page: {
+      title: "P2 XG 需求分析组织器 Lab",
+      subtitle: "配置接口下发的 Lab 副标题。",
+    },
+    defaults: {
+      topic: "配置下发的需求规格探索课题",
+      orchestrator_id: "xg-heuristic-orchestrator",
+      provider_id: "deepseek",
+      model: "deepseek-config-model",
+      template_id: "配置模板号",
+      knowledge_package_id: "configured-knowledge-package",
+      write_policy: "configured_patch_only",
+    },
+    startup_fields: [
+      {
+        field: "topic",
+        label: "课题输入",
+        control: "textarea",
+        required: true,
+        placeholder: "输入本次需求规格探索课题",
+      },
+    ],
+    write_policies: [
+      {
+        policy_id: "configured_patch_only",
+        label: "配置下发写入策略",
+        description: "由配置接口下发的写入策略说明。",
+      },
+    ],
+    provider_log_schema: {
+      fields: [
+        {
+          path: "user_input",
+          label: "User Input",
+          description: "配置接口下发：用户输入字段说明。",
+          used_when: "每轮用户输入后使用。",
+        },
+        {
+          path: "normalized_input",
+          label: "Normalized Input",
+          description: "组织器对用户输入的归一化理解，用于判断输入类型、选项匹配和语义摘要。",
+          used_when: "每轮输入归一化后使用。",
+        },
+        {
+          path: "provider_request.messages",
+          label: "Provider Request Messages",
+          description: "配置接口下发：模型 messages 字段说明。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.assembled_prompt",
+          label: "Assembled Prompt",
+          description: "组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.context_json",
+          label: "Context JSON",
+          description: "写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.working_document_json",
+          label: "Working Document JSON",
+          description: "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.current_section_draft",
+          label: "Current Section Draft",
+          description: "当前焦点章节在调用前的正文草稿，用于检查模型面对的是哪一段具体内容。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.review_goal",
+          label: "Review Goal",
+          description: "本轮回看目标，说明当前章节还要确认什么。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.schema_json",
+          label: "Schema JSON",
+          description: "要求模型返回的 JSON 结构约束，用于校验输出字段是否齐全。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.mock_context",
+          label: "Mock Context",
+          description: "Mock Provider 的调试上下文，仅在本地模拟调用时使用。",
+          used_when: "Mock Provider 调用时使用。",
+        },
+        {
+          path: "provider_request.runner_context",
+          label: "Runner Context",
+          description: "运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。",
+          used_when: "组织器 Runner 调用时使用。",
+        },
+        {
+          path: "provider_response.raw_content",
+          label: "Raw Content",
+          description: "Provider 返回的原始文本，解析失败时优先看这一块。",
+          used_when: "模型返回后使用。",
+        },
+        {
+          path: "provider_response.parsed_json",
+          label: "Parsed JSON",
+          description: "从原始文本解析出的 JSON 对象，用于判断模型是否按 Schema 返回。",
+          used_when: "模型返回后使用。",
+        },
+        {
+          path: "provider_response.review_json",
+          label: "Review JSON",
+          description: "服务端或模型给出的章节回看与全局回看结果，用于判断为什么继续追问或进入下一节点。",
+          used_when: "临时正文回看后使用。",
+        },
+        {
+          path: "provider_normalized_output",
+          label: "Provider Normalized Output",
+          description: "Provider 输出经过规范化后的中间结果，用于屏蔽不同模型返回格式差异。",
+          used_when: "Provider 适配后使用。",
+        },
+        {
+          path: "service_output",
+          label: "Service Output",
+          description: "Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。",
+          used_when: "Turn 后处理后使用。",
+        },
+      ],
+    },
+    turn_audit_schema: {
+      protocol_version: "xg-turn-audit-v1",
+      required_fields: [
+        "previous_interaction",
+        "input_relation",
+        "spec_execution",
+        "post_update_review",
+        "closure_decision",
+        "next_interaction",
+        "decision_trace",
+      ],
+    },
+  };
+}
+
 function buildSession(status: RequirementAnalysisSession["status"]): RequirementAnalysisSession {
   return {
     session_id: "ra-airspace-001",
@@ -400,6 +563,12 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
     confirmed_facts: [],
     open_questions: ["需要确认系统更偏向计算分析工具、协同规划平台，还是二者都有。"],
     document_patch: [],
+    working_document: {
+      document_id: "lab-working-document",
+      title: "81433号需求规格说明（Lab 临时正文）",
+      topic: "空域运算软件需求规格探索",
+      sections: [],
+    },
     questions: [
       {
         question_id: "Q-001",
@@ -472,6 +641,21 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
           content: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
         },
       ],
+      working_document_update: {
+        applied_section_ids: ["SPEC-1.1"],
+        sections: [
+          {
+            section_id: "SPEC-1.1",
+            target_section: "1.1 系统目标",
+            before: "",
+            after: "1.1 系统目标\n本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
+            source_patch_ids: ["P-001"],
+            last_turn_id: "turn-0001",
+          },
+        ],
+        before: "",
+        after: "1.1 系统目标\n本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
+      },
       state_changes: {
         closed_question_ids: ["Q-001"],
         created_question_ids: ["Q-002"],
@@ -482,11 +666,19 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       risks: [],
     },
     post_update_review: {
-      summary: "系统目标已有可写入材料，当前节点可以关闭；输入数据章节仍需补齐。",
-      previous_interaction_resolved: true,
-      current_spec_node_sufficient: true,
-      needs_followup_on_same_topic: false,
-      remaining_gaps: ["输入数据来源、计算结果形式、专家校核职责尚未确认。"],
+      summary: "当前章节已具备可接受表达。 下一处缺口位于 2.1 输入数据。",
+      section_review: {
+        section_id: "SPEC-1.1",
+        target_section: "1.1 系统目标",
+        status: "acceptable",
+        reason: "当前章节已具备可接受表达。",
+        missing_aspects: [],
+      },
+      global_review: {
+        status: "move_next_node",
+        summary: "下一处缺口位于 2.1 输入数据。",
+        remaining_gaps: ["输入数据来源、计算结果形式、专家校核职责尚未确认。"],
+      },
     },
     closure_decision: {
       status: "closed",
@@ -530,6 +722,22 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       confirmed_facts: ["系统初步定位为空域计算分析工具"],
       open_questions: ["输入数据来源、计算结果形式、专家校核职责尚未确认。"],
       document_patch: turn.spec_execution.document_patch,
+      working_document: {
+        document_id: "lab-working-document",
+        title: "81433号需求规格说明（Lab 临时正文）",
+        topic: "空域运算软件需求规格探索",
+        sections: [
+          {
+            section_id: "SPEC-1.1",
+            target_section: "1.1 系统目标",
+            content: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
+            source_patch_ids: ["P-001"],
+            last_turn_id: "turn-0001",
+            review_status: "acceptable",
+            review_reason: "当前章节已具备可接受表达。",
+          },
+        ],
+      },
       questions: [
         {
           question_id: "Q-001",
@@ -609,16 +817,29 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                 { role: "system", content: "system prompt" },
                 { role: "user", content: "assembled prompt" },
               ],
-              prompt_bundle: {
-                assembled_prompt: "assembled prompt",
-                context_json: '{"topic":"空域运算软件需求规格探索"}',
-                schema_json: '{"assistant_message":"string"}',
+                prompt_bundle: {
+                  assembled_prompt: "assembled prompt",
+                  context_json: '{"topic":"空域运算软件需求规格探索"}',
+                  working_document_json: '{"document_id":"lab-working-document"}',
+                  current_section_draft: "",
+                  review_goal: "系统要做什么？",
+                  schema_json: '{"assistant_message":"string"}',
+                },
               },
-            },
             provider_response: {
               raw_content: '{"assistant_message":"DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"}',
               parsed_json: {
                 assistant_message: "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
+              },
+              review_json: {
+                section_review: {
+                  status: "acceptable",
+                  reason: "当前章节已具备可接受表达。",
+                },
+                global_review: {
+                  status: "move_next_node",
+                  summary: "下一处缺口位于 2.1 输入数据。",
+                },
               },
             },
             provider_normalized_output: {
@@ -658,12 +879,15 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                 { role: "system", content: "system prompt" },
                 { role: "user", content: "assembled prompt 2" },
               ],
-              prompt_bundle: {
-                assembled_prompt: "assembled prompt 2",
-                context_json: '{"topic":"空域运算软件需求规格探索"}',
-                schema_json: '{"assistant_message":"string"}',
+                prompt_bundle: {
+                  assembled_prompt: "assembled prompt 2",
+                  context_json: '{"topic":"空域运算软件需求规格探索"}',
+                  working_document_json: '{"document_id":"lab-working-document"}',
+                  current_section_draft: "本系统面向空域领域专家。",
+                  review_goal: "系统边界是什么？",
+                  schema_json: '{"assistant_message":"string"}',
+                },
               },
-            },
             provider_response: {
               raw_content: '{"assistant_message":"下一轮建议确认输出结果形式。"}',
               parsed_json: {
