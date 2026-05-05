@@ -27,10 +27,11 @@ class TurnStageExecutor:
         orchestrator: OrchestratorPackage,
         session: SessionSnapshot,
         context: TurnContext,
+        stage_input: dict | None = None,
     ) -> TurnStageResult:
         stage_type = str(stage.get("stage_type") or orchestrator.mode)
         if stage_type == "server_review":
-            provider_run_result = self._run_server_review(stage=stage, context=context)
+            provider_run_result = self._run_server_review(stage=stage, context=context, stage_input=stage_input or {})
         else:
             provider_run_result = self.provider_call_service.run_orchestrator(
                 orchestrator=orchestrator,
@@ -46,15 +47,22 @@ class TurnStageExecutor:
         )
 
     @staticmethod
-    def _run_server_review(*, stage: dict, context: TurnContext) -> ProviderRunResult:
+    def _run_server_review(*, stage: dict, context: TurnContext, stage_input: dict) -> ProviderRunResult:
         semantic = str(context.normalized_input.get("semantic") or context.user_input).strip()
         prompt = (
             str(context.previous_interaction.get("prompt") or "").strip()
             if isinstance(context.previous_interaction, dict)
             else ""
         )
+        working_document_after_apply = dict(stage_input.get("working_document_after_apply") or {})
+        working_document_update = dict(stage_input.get("working_document_update") or {})
+        target_review = dict(stage_input.get("target_review") or {})
+        global_review = dict(stage_input.get("global_review") or {})
+        excerpt = str(working_document_after_apply.get("excerpt") or working_document_update.get("after_excerpt") or "").strip()
         review_summary = (
-            f"系统复核：本轮输入“{semantic}”已被吸收，下一步继续围绕“{prompt or context.active_spec_node.get('question') or '需求规格补充'}”推进。"
+            f"系统复核：本轮输入“{semantic}”已被吸收"
+            f"{'，临时正文已形成可回看片段' if excerpt else '，但临时正文片段不足'}"
+            f"，下一步继续围绕“{prompt or context.active_spec_node.get('question') or '需求规格补充'}”推进。"
         )
         model_output = {
             "organizer_interpretation": {
@@ -87,6 +95,10 @@ class TurnStageExecutor:
                         "previous_interaction": context.previous_interaction,
                         "active_spec_node": context.active_spec_node,
                         "normalized_input": context.normalized_input,
+                        "working_document_after_apply": working_document_after_apply,
+                        "working_document_update": working_document_update,
+                        "target_review": target_review,
+                        "global_review": global_review,
                     }
                 },
                 "provider_response": {
@@ -104,7 +116,9 @@ class TurnStageExecutor:
                         "summary": review_summary,
                         "intent": "supplement_requirement",
                         "confidence": "medium",
-                    }
+                    },
+                    "target_review": target_review,
+                    "global_review": global_review,
                 },
             },
         }

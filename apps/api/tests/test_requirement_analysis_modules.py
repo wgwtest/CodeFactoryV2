@@ -7,6 +7,9 @@ from app.requirement_analysis.spec_tree_service import RequirementSpecTreeServic
 from app.db.models.requirements import RequirementAnalysisSession
 from app.requirement_analysis.summary_artifact_service import ArtifactUpdateResult, RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_context_builder import TurnContext
+from app.requirement_analysis.turn_decision_service import TurnDecisionService, TurnDecisionResult
+from app.requirement_analysis.turn_stage_planner import TurnStagePlanner, TurnStagePlan
+from app.requirement_analysis.turn_stage_reducer import TurnStageAudit, TurnStageReducer
 from app.requirement_analysis.turn_stage_executor import TurnStageExecutor, TurnStageResult
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
@@ -108,6 +111,79 @@ def test_requirement_analysis_turn_strategy_comes_from_orchestrator_package() ->
     assert [stage["stage_id"] for stage in strategy.stages] == ["write", "review"]
     assert strategy.stages[0]["stage_type"] == "policy_interpreted"
     assert strategy.stages[1]["stage_type"] == "server_review"
+
+
+def test_requirement_analysis_turn_stage_plan_and_reducer_are_typed() -> None:
+    context = TurnContext(
+        turn_id="turn-0001",
+        turn_index=1,
+        session_id="session-1",
+        topic="空域运算软件需求规格探索",
+        template_id="81433号",
+        knowledge_package_id="airspace-domain-demo",
+        orchestrator_id="xg-heuristic-orchestrator",
+        provider_id="mock",
+        model="mock-requirement-analysis-v1",
+        write_policy="patch_suggestion_only",
+        user_input="补充系统目标",
+        normalized_input={"semantic": "补充系统目标"},
+        previous_interaction={"type": "none"},
+        input_relation={"relation": "none"},
+        spec_tree=[],
+        active_spec_node_id="SPEC-REQ-1.1",
+        active_spec_node={},
+        working_document={},
+        questions=[],
+        facts=[],
+        patches=[],
+        last_quick_options=[],
+    )
+    registry = get_orchestrator_registry()
+    orchestrator = registry.require("xg-heuristic-orchestrator")
+    strategy = TurnStrategyService(registry=registry).load(orchestrator=orchestrator, context=context)
+
+    plan = TurnStagePlanner().build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
+
+    assert isinstance(plan, TurnStagePlan)
+    assert plan.strategy_id.endswith("write_then_review")
+    assert [stage["stage_id"] for stage in plan.stages] == ["write", "review"]
+    assert plan.stages[0]["stage_kind"] == "write"
+    assert plan.stages[0]["requires_provider_call"] is True
+    assert plan.stages[1]["stage_kind"] == "review"
+    assert plan.stages[1]["requires_provider_call"] is False
+    assert plan.stages[1]["input_sources"] == ["working_document_after_apply"]
+
+    reducer = TurnStageReducer()
+    audit = reducer.stage_audit(
+        stage=plan.stages[0],
+        validation_status="accepted",
+        adopted_fields=["document_patch"],
+        provider_call_log_id="call-0001",
+        summary="补写阶段已采纳。",
+    )
+
+    assert isinstance(audit, TurnStageAudit)
+    assert audit.stage_id == "write"
+    assert audit.to_dict()["adopted_fields"] == ["document_patch"]
+
+
+def test_turn_decision_service_decides_after_review() -> None:
+    result = TurnDecisionService().decide(
+        normalized_input={"semantic": "补充系统目标"},
+        working_document_update={"after_excerpt": "1 总则 / 编写目的\n本系统用于空域计算分析。"},
+        post_update_review={
+            "target_review": {"status": "acceptable", "reason": "目标范围已有正文。"},
+            "global_review": {"status": "move_next_node", "summary": "可以推进下一节点。"},
+        },
+        projection={"projection_spec_node_id": "SPEC-REQ-1.1"},
+        next_interaction={"type": "choice_question", "prompt": "建议下一步确认软件定位。"},
+    )
+
+    assert isinstance(result, TurnDecisionResult)
+    assert result.closure_decision["status"] == "closed"
+    assert result.closure_decision["next_action"] == "propose_next_interaction"
+    assert result.next_interaction["prompt"] == "建议下一步确认软件定位。"
+    assert any("正文已应用后再进行回看" in item for item in result.decision_trace)
 
 
 def test_requirement_analysis_update_services_return_typed_contracts(db_session) -> None:

@@ -13,9 +13,12 @@ from app.requirement_analysis.spec_tree_service import RequirementSpecTreeServic
 from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
 from app.requirement_analysis.turn_context_builder import TurnContextBuilder
+from app.requirement_analysis.turn_decision_service import TurnDecisionService
 from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
-from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
+from app.requirement_analysis.turn_stage_executor import TurnStageExecutor, TurnStageResult
+from app.requirement_analysis.turn_stage_planner import TurnStagePlan, TurnStagePlanner
+from app.requirement_analysis.turn_stage_reducer import TurnStageReducer
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
@@ -35,9 +38,12 @@ class RequirementAnalysisTurnEngine:
         turn_output_service: RequirementAnalysisTurnOutputService,
         next_interaction_service: NextInteractionService,
         turn_strategy_service: TurnStrategyService,
+        turn_stage_planner: TurnStagePlanner,
         turn_stage_executor: TurnStageExecutor,
+        turn_stage_reducer: TurnStageReducer,
         working_document_service: WorkingDocumentService,
         working_document_review_service: WorkingDocumentReviewService,
+        turn_decision_service: TurnDecisionService,
     ) -> None:
         self.turn_context_builder = turn_context_builder
         self.provider_call_service = provider_call_service
@@ -49,9 +55,12 @@ class RequirementAnalysisTurnEngine:
         self.turn_output_service = turn_output_service
         self.next_interaction_service = next_interaction_service
         self.turn_strategy_service = turn_strategy_service
+        self.turn_stage_planner = turn_stage_planner
         self.turn_stage_executor = turn_stage_executor
+        self.turn_stage_reducer = turn_stage_reducer
         self.working_document_service = working_document_service
         self.working_document_review_service = working_document_review_service
+        self.turn_decision_service = turn_decision_service
 
     def run_turn(self, session: SessionSnapshot, payload: RequirementAnalysisTurnCreate) -> TurnExecutionResult:
         state = dict(session.payload or {})
@@ -63,19 +72,19 @@ class RequirementAnalysisTurnEngine:
         context = self.turn_context_builder.build(session=session, turn_id=turn_id, user_input=user_input)
 
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
-        stage_results = [
-            self.turn_stage_executor.run(
-                stage=stage,
-                orchestrator=orchestrator,
-                session=session,
-                context=context,
+        stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
+        stage_results: list[TurnStageResult] = []
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
+            stage_results.append(
+                self.turn_stage_executor.run(
+                    stage=stage,
+                    orchestrator=orchestrator,
+                    session=session,
+                    context=context,
+                )
             )
-            for stage in strategy.stages
-        ]
-        model_output = self._adopt_stage_model_output(strategy.adoption_policy, stage_results)
+        model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
         model_output = self.turn_output_service.normalize_turn_model_output(model_output, session=session)
-        provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
-
         projection = self.spec_projection_service.project(
             spec_tree=context.spec_tree,
             model_output=model_output,
@@ -86,6 +95,7 @@ class RequirementAnalysisTurnEngine:
             current_spec_node=projection.projection_spec_node,
             session=session,
         )
+        provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
         next_open_before_update = self.spec_tree_service.first_open_spec_node_id(context.spec_tree)
         decision_trace_seed = self.turn_audit_service.decision_trace_seed(
@@ -143,6 +153,29 @@ class RequirementAnalysisTurnEngine:
             next_spec_node=next_spec_node,
             target_review=target_review,
         )
+        review_stage_input = self._review_stage_input(
+            working_document=working_document,
+            working_document_update=working_document_update,
+            target_review=target_review,
+            global_review=global_review,
+            review_target_paths=target_review.get("review_target", []),
+        )
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="review"):
+            stage_results.append(
+                self.turn_stage_executor.run(
+                    stage=stage,
+                    orchestrator=orchestrator,
+                    session=session,
+                    context=context,
+                    stage_input=review_stage_input,
+                )
+            )
+        self.turn_stage_reducer.reduce_review_stage(
+            plan=stage_plan,
+            stage_results=stage_results,
+            target_review=target_review,
+            global_review=global_review,
+        )
         continue_same_topic = global_review["status"] == "continue_same_topic"
         model_output = self.next_interaction_service.align_model_output_to_next_node(
             model_output=model_output,
@@ -175,24 +208,61 @@ class RequirementAnalysisTurnEngine:
             target_review=target_review,
             global_review=global_review,
         )
-        closure_decision = self.turn_audit_service.closure_decision(
-            post_update_review=post_update_review,
-            closed_spec_node_ids=spec_update.closed_node_ids,
-        )
         next_interaction = self.next_interaction_service.build(
             next_spec_node=projection.projection_spec_node if continue_same_topic else next_spec_node,
             model_output=model_output,
             turn_index=context.turn_index,
         )
-        decision_trace = self.turn_audit_service.decision_trace(
+        preliminary_closure_decision = self.turn_decision_service.build_closure_decision(
+            post_update_review=post_update_review,
+        )
+        preliminary_trace = self.turn_audit_service.decision_trace(
             previous_interaction=context.previous_interaction,
             input_relation=context.input_relation,
             spec_execution=spec_execution,
             post_update_review=post_update_review,
-            closure_decision=closure_decision,
+            closure_decision=preliminary_closure_decision,
             next_interaction=next_interaction,
             seed=decision_trace_seed,
         )
+        provider_logs = self._build_provider_logs(
+            stage_plan=stage_plan,
+            turn_id=turn_id,
+            session=session,
+            orchestrator=orchestrator,
+            user_input=user_input,
+            normalized=context.normalized_input,
+            stage_results=stage_results,
+            final_write_model_output=model_output,
+            final_write_provider_normalized_output=provider_normalized_output,
+            working_document=working_document,
+            working_document_update=working_document_update,
+            target_review=target_review,
+            global_review=global_review,
+            projection_spec_node=projection.projection_spec_node,
+            post_update_review=post_update_review,
+            now=now,
+            first_call_index=len(list(state.get("provider_logs", []))) + 1,
+        )
+        stage_audits = [
+            item.to_dict()
+            for item in self.turn_stage_reducer.build_audits(
+                plan=stage_plan,
+                stage_results=stage_results,
+                provider_logs=provider_logs,
+            )
+        ]
+        decision_result = self.turn_decision_service.decide(
+            normalized_input=context.normalized_input,
+            working_document_update=working_document_update,
+            post_update_review=post_update_review,
+            projection={"projection_spec_node_id": projection.projection_spec_node_id},
+            next_interaction=next_interaction,
+            base_trace=preliminary_trace,
+            closed_spec_node_ids=spec_update.closed_node_ids,
+        )
+        closure_decision = decision_result.closure_decision
+        decision_trace = decision_result.decision_trace
 
         turn = {
             "turn_id": turn_id,
@@ -205,6 +275,7 @@ class RequirementAnalysisTurnEngine:
             "post_update_review": post_update_review,
             "closure_decision": closure_decision,
             "next_interaction": next_interaction,
+            "stage_audits": stage_audits,
             "decision_trace": decision_trace,
             "confidence": model_output["confidence"],
             "service_steps": self._service_steps(),
@@ -254,39 +325,6 @@ class RequirementAnalysisTurnEngine:
             list(state.get("risks", [])),
             model_output["risks"],
         )
-        provider_logs = [
-            self.provider_call_log_service.build(
-                turn_id=turn_id,
-                session=session,
-                orchestrator=orchestrator,
-                user_input=user_input,
-                normalized=context.normalized_input,
-                model_output=model_output,
-                provider_normalized_output=provider_normalized_output,
-                service_output={
-                    **self.provider_call_log_service.service_output(model_output),
-                    "working_document_update": working_document_update,
-                    "post_update_review": post_update_review,
-                },
-                prompt_bundle_overrides={
-                    "working_document_json": str(working_document),
-                    "working_document_excerpt": working_document_update.get("after_excerpt", ""),
-                    "review_target_paths": target_review.get("review_target", []),
-                    "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),
-                    "review_goal": (
-                        projection.projection_spec_node.get("question")
-                        or projection.projection_spec_node.get("target_section")
-                        or ""
-                    ),
-                },
-                provider_response_overrides={
-                    "target_review_json": target_review,
-                    "global_review_json": global_review,
-                },
-                created_at=now,
-                call_index=len(updated_turns),
-            ),
-        ]
         return TurnExecutionResult(
             turn=turn,
             state_patch={
@@ -321,6 +359,132 @@ class RequirementAnalysisTurnEngine:
             {"step": 6, "title": "解析结构化输出", "status": "completed"},
             {"step": 7, "title": "校验并落状态", "status": "completed"},
         ]
+
+    @staticmethod
+    def _stages_by_kind(*, stage_plan: TurnStagePlan, stage_kind: str) -> list[dict]:
+        return [
+            stage
+            for stage in stage_plan.stages
+            if str(stage.get("stage_kind") or "") == stage_kind
+        ]
+
+    def _review_stage_input(
+        self,
+        *,
+        working_document: dict,
+        working_document_update: dict,
+        target_review: dict,
+        global_review: dict,
+        review_target_paths: list[str],
+    ) -> dict:
+        return {
+            "working_document_after_apply": self.working_document_service.build_review_target(
+                working_document=working_document,
+                anchor_paths=[str(path) for path in review_target_paths if str(path).strip()],
+            ),
+            "working_document_update": working_document_update,
+            "target_review": target_review,
+            "global_review": global_review,
+        }
+
+    def _build_provider_logs(
+        self,
+        *,
+        stage_plan: TurnStagePlan,
+        turn_id: str,
+        session: SessionSnapshot,
+        orchestrator: OrchestratorPackage,
+        user_input: str,
+        normalized: dict,
+        stage_results: list[TurnStageResult],
+        final_write_model_output: dict,
+        final_write_provider_normalized_output: dict,
+        working_document: dict,
+        working_document_update: dict,
+        target_review: dict,
+        global_review: dict,
+        projection_spec_node: dict,
+        post_update_review: dict,
+        now: str,
+        first_call_index: int,
+    ) -> list[dict]:
+        logs: list[dict] = []
+        prompt_bundle_overrides = {
+            "working_document_json": str(working_document),
+            "working_document_excerpt": working_document_update.get("after_excerpt", ""),
+            "review_target_paths": target_review.get("review_target", []),
+            "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),
+            "review_goal": (
+                projection_spec_node.get("question")
+                or projection_spec_node.get("target_section")
+                or ""
+            ),
+        }
+        provider_response_overrides = {
+            "target_review_json": target_review,
+            "global_review_json": global_review,
+        }
+        call_offset = 0
+        for stage_result in stage_results:
+            stage = self._stage_for_result(stage_plan=stage_plan, stage_result=stage_result)
+            if not self._should_write_provider_log(stage=stage):
+                continue
+            stage_kind = self._stage_kind(stage_result=stage_result)
+            if stage_kind == "review":
+                model_output = stage_result.model_output
+                provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
+                service_output = {
+                    "target_review": target_review,
+                    "global_review": global_review,
+                }
+            else:
+                model_output = final_write_model_output
+                provider_normalized_output = final_write_provider_normalized_output
+                service_output = {
+                    **self.provider_call_log_service.service_output(final_write_model_output),
+                    "working_document_update": working_document_update,
+                    "post_update_review": post_update_review,
+                }
+            logs.append(
+                self.provider_call_log_service.build(
+                    turn_id=turn_id,
+                    session=session,
+                    orchestrator=orchestrator,
+                    user_input=user_input,
+                    normalized=normalized,
+                    model_output=model_output,
+                    provider_normalized_output=provider_normalized_output,
+                    service_output=service_output,
+                    prompt_bundle_overrides=prompt_bundle_overrides,
+                    provider_response_overrides=provider_response_overrides,
+                    stage_id=stage_result.stage_id,
+                    stage_type=stage_result.stage_type,
+                    created_at=now,
+                    call_index=first_call_index + call_offset,
+                )
+            )
+            call_offset += 1
+        return logs
+
+    @staticmethod
+    def _stage_for_result(*, stage_plan: TurnStagePlan, stage_result: TurnStageResult) -> dict:
+        for stage in stage_plan.stages:
+            if str(stage.get("stage_id") or "") == stage_result.stage_id:
+                return stage
+        return {"stage_id": stage_result.stage_id, "stage_type": stage_result.stage_type}
+
+    @staticmethod
+    def _should_write_provider_log(*, stage: dict) -> bool:
+        if not bool(stage.get("requires_provider_call")):
+            return False
+        execution_mode = str(stage.get("execution_mode") or "")
+        return execution_mode in {"model", "local_runner"}
+
+    @staticmethod
+    def _stage_kind(*, stage_result: TurnStageResult) -> str:
+        if stage_result.stage_type == "server_review" or "review" in stage_result.stage_id:
+            return "review"
+        return "write"
 
     @staticmethod
     def _orchestrator(orchestrator_id: str) -> OrchestratorPackage:
