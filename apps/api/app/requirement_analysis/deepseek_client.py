@@ -76,7 +76,9 @@ class DeepSeekRequirementAnalysisClient:
             "user_input": user_input,
             "normalized_input": normalized,
         }
-        current_section_draft = self._current_section_draft(state=state)
+        working_document_excerpt = self._working_document_excerpt(state=state)
+        review_target_paths = self._review_target_paths(state=state)
+        recent_revision_fragments = self._recent_revision_fragments(state=state)
         review_goal = self._review_goal(state=state)
         schema = {
             "organizer_interpretation": {
@@ -115,19 +117,52 @@ class DeepSeekRequirementAnalysisClient:
             output_schema=schema,
             extra_prompt_bundle={
                 "working_document_json": json.dumps(context["working_document"], ensure_ascii=False),
-                "current_section_draft": current_section_draft,
+                "working_document_excerpt": working_document_excerpt,
+                "review_target_paths": review_target_paths,
+                "recent_revision_fragments": recent_revision_fragments,
                 "review_goal": review_goal,
             },
         )
 
     @staticmethod
-    def _current_section_draft(*, state: dict) -> str:
+    def _working_document_excerpt(*, state: dict) -> str:
         active_node_id = str(state.get("active_spec_node_id") or "")
         working_document = dict(state.get("working_document") or {})
-        for section in list(working_document.get("sections", [])):
-            if str(section.get("section_id") or "") == active_node_id:
-                return str(section.get("content") or "")
-        return ""
+        active_node = DeepSeekRequirementAnalysisClient._find_spec_node_static(
+            list(state.get("spec_tree", [])),
+            active_node_id,
+        )
+        active_anchor = str((active_node or {}).get("target_section") or "").strip()
+        blocks = [block for block in list(working_document.get("blocks", [])) if isinstance(block, dict)]
+        if active_anchor:
+            matched = [
+                str(block.get("text") or "").strip()
+                for block in blocks
+                if str(block.get("anchor_path") or "").strip() == active_anchor and str(block.get("text") or "").strip()
+            ]
+            if matched:
+                return "\n\n".join(matched)
+        return "\n\n".join(str(block.get("text") or "").strip() for block in blocks if str(block.get("text") or "").strip())
+
+    @staticmethod
+    def _review_target_paths(*, state: dict) -> list[str]:
+        active_node_id = str(state.get("active_spec_node_id") or "")
+        active_node = DeepSeekRequirementAnalysisClient._find_spec_node_static(
+            list(state.get("spec_tree", [])),
+            active_node_id,
+        )
+        target = str((active_node or {}).get("target_section") or "").strip()
+        return [target] if target else []
+
+    @staticmethod
+    def _recent_revision_fragments(*, state: dict) -> list[str]:
+        working_document = dict(state.get("working_document") or {})
+        fragments = [
+            str(fragment.get("fragment_id") or "").strip()
+            for fragment in list(working_document.get("revision_fragments", []))[-5:]
+            if isinstance(fragment, dict) and str(fragment.get("fragment_id") or "").strip()
+        ]
+        return fragments
 
     def _review_goal(self, *, state: dict) -> str:
         active_node_id = str(state.get("active_spec_node_id") or "")
@@ -214,7 +249,9 @@ class DeepSeekRequirementAnalysisClient:
                         "assembled_prompt": str((prompt_bundle or {}).get("assembled_prompt") or ""),
                         "context_json": str((prompt_bundle or {}).get("context_json") or ""),
                         "working_document_json": str((prompt_bundle or {}).get("working_document_json") or ""),
-                        "current_section_draft": str((prompt_bundle or {}).get("current_section_draft") or ""),
+                        "working_document_excerpt": str((prompt_bundle or {}).get("working_document_excerpt") or ""),
+                        "review_target_paths": list((prompt_bundle or {}).get("review_target_paths") or []),
+                        "recent_revision_fragments": list((prompt_bundle or {}).get("recent_revision_fragments") or []),
                         "review_goal": str((prompt_bundle or {}).get("review_goal") or ""),
                         "schema_json": str((prompt_bundle or {}).get("schema_json") or ""),
                         "policy_text": str((prompt_bundle or {}).get("policy_text") or ""),

@@ -115,14 +115,21 @@ class RequirementAnalysisTurnEngine:
             patch_proposals=structured_update["patches"],
             projection_spec_node=projection.projection_spec_node,
             turn_id=turn_id,
+            user_input_summary=context.normalized_input.get("semantic") or user_input,
         )
         working_document_update = working_document_update_result.to_dict()
-        section_review = self.working_document_review_service.review_section(
+        review_result = self.working_document_review_service.review(
             working_document=working_document,
-            section_id=projection.projection_spec_node_id,
+            review_target_paths=[
+                str(block.get("anchor_path") or "")
+                for block in working_document_update_result.blocks
+                if str(block.get("anchor_path") or "").strip()
+            ]
+            or [str(projection.projection_spec_node.get("target_section") or "")],
             current_spec_node=projection.projection_spec_node,
         )
-        can_close = section_review["status"] in {"acceptable", "closed"}
+        target_review = review_result["target_review"]
+        can_close = target_review["status"] in {"acceptable", "closed"}
         spec_update = self.spec_tree_service.update_spec_tree(
             spec_tree=context.spec_tree,
             active_node_id=projection.projection_spec_node_id,
@@ -134,16 +141,16 @@ class RequirementAnalysisTurnEngine:
         next_spec_node = spec_update.next_spec_node
         global_review = self.working_document_review_service.build_global_review(
             next_spec_node=next_spec_node,
-            section_review=section_review,
+            target_review=target_review,
         )
-        continue_same_topic = global_review["status"] == "continue_same_section"
+        continue_same_topic = global_review["status"] == "continue_same_topic"
         model_output = self.next_interaction_service.align_model_output_to_next_node(
             model_output=model_output,
             next_spec_node=next_spec_node,
             current_spec_node=projection.projection_spec_node,
             session=session,
             continue_same_topic=continue_same_topic,
-            section_review=section_review,
+            target_review=target_review,
             global_review=global_review,
         )
         structured_update["questions"] = self.next_interaction_service.ensure_next_open_question(
@@ -165,7 +172,7 @@ class RequirementAnalysisTurnEngine:
             working_document_update=working_document_update,
         )
         post_update_review = self.turn_audit_service.post_update_review(
-            section_review=section_review,
+            target_review=target_review,
             global_review=global_review,
         )
         closure_decision = self.turn_audit_service.closure_decision(
@@ -263,7 +270,9 @@ class RequirementAnalysisTurnEngine:
                 },
                 prompt_bundle_overrides={
                     "working_document_json": str(working_document),
-                    "current_section_draft": working_document_update["after"],
+                    "working_document_excerpt": working_document_update.get("after_excerpt", ""),
+                    "review_target_paths": target_review.get("review_target", []),
+                    "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),
                     "review_goal": (
                         projection.projection_spec_node.get("question")
                         or projection.projection_spec_node.get("target_section")
@@ -271,10 +280,8 @@ class RequirementAnalysisTurnEngine:
                     ),
                 },
                 provider_response_overrides={
-                    "review_json": {
-                        "section_review": section_review,
-                        "global_review": global_review,
-                    }
+                    "target_review_json": target_review,
+                    "global_review_json": global_review,
                 },
                 created_at=now,
                 call_index=len(updated_turns),

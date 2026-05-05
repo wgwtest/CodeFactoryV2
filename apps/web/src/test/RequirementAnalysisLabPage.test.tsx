@@ -148,7 +148,10 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.queryByText("当前 Turn turn-0001")).not.toBeInTheDocument();
   expect(screen.getByText("临时正文")).toBeInTheDocument();
   expect(screen.getByText("81433号需求规格说明（Lab 临时正文）")).toBeInTheDocument();
-  expect(screen.getByText("本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。")).toBeInTheDocument();
+  const workingDocumentPage = screen.getByTestId("requirement-analysis-working-document-page");
+  expect(workingDocumentPage).toBeInTheDocument();
+  expect(workingDocumentPage).toHaveTextContent("本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。");
+  expect(screen.getByText("用户选择先按计算分析工具理解")).toBeInTheDocument();
   expect(screen.queryByText("系统要做什么？")).not.toBeInTheDocument();
   expect(screen.queryByText("问题工作项")).not.toBeInTheDocument();
   expect(screen.queryByText("已确认事实")).not.toBeInTheDocument();
@@ -189,7 +192,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("输入承接判断")).toBeInTheDocument();
   expect(screen.getByText("规格补充执行")).toBeInTheDocument();
   expect(screen.getByText("临时正文应用结果")).toBeInTheDocument();
-  expect(screen.getByText("章节回看")).toBeInTheDocument();
+  expect(screen.getByText("目标范围回看")).toBeInTheDocument();
   expect(screen.getByText("全局回看")).toBeInTheDocument();
   expect(screen.getByText("本轮处理闭环")).toBeInTheDocument();
   expect(screen.getByText("下一轮交互设计")).toBeInTheDocument();
@@ -203,7 +206,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getAllByText("quick_option_answer").length).toBeGreaterThan(0);
   expect(screen.getByText("系统初步定位为空域计算分析工具")).toBeInTheDocument();
   expect(screen.getAllByText("1.1 系统目标").length).toBeGreaterThan(0);
-  expect(screen.getByText("应用章节：SPEC-1.1")).toBeInTheDocument();
+  expect(screen.getByText("应用正文块：blk-0001")).toBeInTheDocument();
   expect(screen.getByText("当前章节已具备可接受表达。")).toBeInTheDocument();
   expect(screen.getByText("下一处缺口位于 2.1 输入数据。")).toBeInTheDocument();
   expect(screen.getByText("本轮输入已被吸收，并形成系统目标章节的正文建议；无需继续追问同一题。")).toBeInTheDocument();
@@ -464,9 +467,21 @@ function buildLabConfig() {
           used_when: "每次调用模型前使用。",
         },
         {
-          path: "provider_request.prompt_bundle.current_section_draft",
-          label: "Current Section Draft",
-          description: "当前焦点章节在调用前的正文草稿，用于检查模型面对的是哪一段具体内容。",
+          path: "provider_request.prompt_bundle.working_document_excerpt",
+          label: "Working Document Excerpt",
+          description: "与本轮目标最相关的正文摘录，用于检查模型面对的是哪一段正文。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.review_target_paths",
+          label: "Review Target Paths",
+          description: "本轮重点审查的规格锚点路径，用于解释当前回看到底在看哪里。",
+          used_when: "每次调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.recent_revision_fragments",
+          label: "Recent Revision Fragments",
+          description: "最近几轮命中的修订片段摘要，用于判断模型是否看到了最近修改痕迹。",
           used_when: "每次调用模型前使用。",
         },
         {
@@ -506,9 +521,15 @@ function buildLabConfig() {
           used_when: "模型返回后使用。",
         },
         {
-          path: "provider_response.review_json",
-          label: "Review JSON",
-          description: "服务端或模型给出的章节回看与全局回看结果，用于判断为什么继续追问或进入下一节点。",
+          path: "provider_response.target_review_json",
+          label: "Target Review JSON",
+          description: "服务端或模型给出的目标范围回看结果，用于判断本轮命中范围是否已足够。",
+          used_when: "临时正文回看后使用。",
+        },
+        {
+          path: "provider_response.global_review_json",
+          label: "Global Review JSON",
+          description: "服务端或模型给出的全局回看结果，用于判断为何继续追问或进入下一节点。",
           used_when: "临时正文回看后使用。",
         },
         {
@@ -567,7 +588,8 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
       document_id: "lab-working-document",
       title: "81433号需求规格说明（Lab 临时正文）",
       topic: "空域运算软件需求规格探索",
-      sections: [],
+      blocks: [],
+      revision_fragments: [],
     },
     questions: [
       {
@@ -590,7 +612,7 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
     next_interaction: null,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
-  };
+  } as unknown as RequirementAnalysisSession;
 }
 
 function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
@@ -642,19 +664,10 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
         },
       ],
       working_document_update: {
-        applied_section_ids: ["SPEC-1.1"],
-        sections: [
-          {
-            section_id: "SPEC-1.1",
-            target_section: "1.1 系统目标",
-            before: "",
-            after: "1.1 系统目标\n本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
-            source_patch_ids: ["P-001"],
-            last_turn_id: "turn-0001",
-          },
-        ],
-        before: "",
-        after: "1.1 系统目标\n本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
+        applied_block_ids: ["blk-0001"],
+        applied_fragment_ids: ["frag-0001"],
+        before_excerpt: "",
+        after_excerpt: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
       },
       state_changes: {
         closed_question_ids: ["Q-001"],
@@ -667,10 +680,9 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
     },
     post_update_review: {
       summary: "当前章节已具备可接受表达。 下一处缺口位于 2.1 输入数据。",
-      section_review: {
-        section_id: "SPEC-1.1",
-        target_section: "1.1 系统目标",
+      target_review: {
         status: "acceptable",
+        review_target: ["1.1 系统目标"],
         reason: "当前章节已具备可接受表达。",
         missing_aspects: [],
       },
@@ -726,15 +738,29 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
         document_id: "lab-working-document",
         title: "81433号需求规格说明（Lab 临时正文）",
         topic: "空域运算软件需求规格探索",
-        sections: [
+        blocks: [
           {
-            section_id: "SPEC-1.1",
-            target_section: "1.1 系统目标",
-            content: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
-            source_patch_ids: ["P-001"],
+            block_id: "blk-0001",
+            anchor_path: "1.1 系统目标",
+            block_type: "paragraph",
+            order_index: 10,
+            text: "本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。",
             last_turn_id: "turn-0001",
-            review_status: "acceptable",
-            review_reason: "当前章节已具备可接受表达。",
+            source_fragment_ids: ["frag-0001"],
+          },
+        ],
+        revision_fragments: [
+          {
+            fragment_id: "frag-0001",
+            turn_id: "turn-0001",
+            color_token: "turn-color-01",
+            target_block_id: "blk-0001",
+            apply_mode: "append_to_block",
+            start_offset: 0,
+            end_offset: 30,
+            user_input_summary: "用户选择先按计算分析工具理解",
+            supplement_reason: "补入系统目标正文",
+            hit_spec_nodes: ["SPEC-1.1"],
           },
         ],
       },
@@ -821,7 +847,9 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                   assembled_prompt: "assembled prompt",
                   context_json: '{"topic":"空域运算软件需求规格探索"}',
                   working_document_json: '{"document_id":"lab-working-document"}',
-                  current_section_draft: "",
+                  working_document_excerpt: "",
+                  review_target_paths: ["1.1 系统目标"],
+                  recent_revision_fragments: [],
                   review_goal: "系统要做什么？",
                   schema_json: '{"assistant_message":"string"}',
                 },
@@ -831,15 +859,14 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
               parsed_json: {
                 assistant_message: "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
               },
-              review_json: {
-                section_review: {
-                  status: "acceptable",
-                  reason: "当前章节已具备可接受表达。",
-                },
-                global_review: {
-                  status: "move_next_node",
-                  summary: "下一处缺口位于 2.1 输入数据。",
-                },
+              target_review_json: {
+                status: "acceptable",
+                review_target: ["1.1 系统目标"],
+                reason: "当前章节已具备可接受表达。",
+              },
+              global_review_json: {
+                status: "move_next_node",
+                summary: "下一处缺口位于 2.1 输入数据。",
               },
             },
             provider_normalized_output: {
@@ -883,7 +910,9 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                   assembled_prompt: "assembled prompt 2",
                   context_json: '{"topic":"空域运算软件需求规格探索"}',
                   working_document_json: '{"document_id":"lab-working-document"}',
-                  current_section_draft: "本系统面向空域领域专家。",
+                  working_document_excerpt: "本系统面向空域领域专家。",
+                  review_target_paths: ["1.2 系统边界"],
+                  recent_revision_fragments: ["frag-0001"],
                   review_goal: "系统边界是什么？",
                   schema_json: '{"assistant_message":"string"}',
                 },
@@ -912,7 +941,7 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
       ],
     },
     turn,
-  };
+  } as unknown as RequirementAnalysisTurnEnvelope;
 }
 
 function buildMalformedTurnEnvelope(): RequirementAnalysisTurnEnvelope {

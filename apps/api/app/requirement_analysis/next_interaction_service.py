@@ -23,10 +23,10 @@ class NextInteractionService:
         current_spec_node: dict,
         session: RequirementAnalysisSession,
         continue_same_topic: bool = False,
-        section_review: dict | None = None,
+        target_review: dict | None = None,
         global_review: dict | None = None,
     ) -> dict:
-        review = section_review or {}
+        review = target_review or {}
         global_state = global_review or {}
         focus_node = current_spec_node if continue_same_topic else next_spec_node
 

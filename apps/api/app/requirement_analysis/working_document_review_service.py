@@ -7,58 +7,60 @@ class WorkingDocumentReviewService:
     def __init__(self, *, working_document_service: WorkingDocumentService) -> None:
         self.working_document_service = working_document_service
 
-    def review_section(
+    def review(
         self,
         *,
         working_document: dict,
-        section_id: str,
+        review_target_paths: list[str],
         current_spec_node: dict,
     ) -> dict:
-        snapshot = self.working_document_service.get_section_snapshot(
+        target_snapshot = self.working_document_service.build_review_target(
             working_document=working_document,
-            section_id=section_id,
+            anchor_paths=review_target_paths,
         )
-        content = str(snapshot.get("content") or "").strip()
-        target_section = str(snapshot.get("target_section") or current_spec_node.get("target_section") or "未绑定模板章节")
+        excerpt = str(target_snapshot.get("excerpt") or "").strip()
         missing_aspects = []
-        if current_spec_node.get("question"):
-            missing_aspects.append(str(current_spec_node["question"]))
+        question = str(current_spec_node.get("question") or "").strip()
+        if question and not excerpt:
+            missing_aspects.append(question)
 
-        if not content:
-            reason = "当前章节尚未形成临时正文草稿。"
-            status = "insufficient"
+        if not excerpt:
+            target_review = {
+                "status": "insufficient",
+                "review_target": list(target_snapshot.get("review_target_paths") or review_target_paths),
+                "reason": "当前目标范围尚未形成可审查的正文。",
+                "missing_aspects": missing_aspects or ["缺少正文内容"],
+            }
         else:
-            reason = "当前章节已具备可接受表达。"
-            status = "acceptable"
-            missing_aspects = []
+            target_review = {
+                "status": "acceptable",
+                "review_target": list(target_snapshot.get("review_target_paths") or review_target_paths),
+                "reason": "当前目标范围已具备可接受表达。",
+                "missing_aspects": [],
+            }
 
-        self.working_document_service.update_review_status(
-            working_document=working_document,
-            section_id=section_id,
-            review_status=status,
-            review_reason=reason,
+        global_review = self.build_global_review(
+            next_spec_node={},
+            target_review=target_review,
         )
         return {
-            "section_id": section_id,
-            "target_section": target_section,
-            "status": status,
-            "reason": reason,
-            "missing_aspects": missing_aspects,
+            "target_review": target_review,
+            "global_review": global_review,
         }
 
     @staticmethod
-    def build_global_review(*, next_spec_node: dict, section_review: dict) -> dict:
-        if str(section_review.get("status") or "") == "insufficient":
+    def build_global_review(*, next_spec_node: dict, target_review: dict) -> dict:
+        if str(target_review.get("status") or "") == "insufficient":
             return {
-                "status": "continue_same_section",
-                "summary": "当前章节仍需继续补充，暂不切换到下一节点。",
-                "remaining_gaps": list(section_review.get("missing_aspects") or [section_review.get("reason")]),
+                "status": "continue_same_topic",
+                "summary": "当前目标范围仍需继续补充，暂不切换到下一节点。",
+                "remaining_gaps": list(target_review.get("missing_aspects") or [target_review.get("reason")]),
             }
         if next_spec_node.get("node_id"):
             next_gap = str(next_spec_node.get("question") or next_spec_node.get("title") or "")
             return {
                 "status": "move_next_node",
-                "summary": f"下一处缺口位于 {next_spec_node.get('target_section')}。",
+                "summary": f"下一处缺口位于 {next_spec_node.get('target_section')}.",
                 "remaining_gaps": [next_gap] if next_gap else [],
             }
         return {

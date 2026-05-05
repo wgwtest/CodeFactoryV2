@@ -32,6 +32,7 @@ const { Text, Title } = Typography;
 const { TextArea } = Input;
 
 type RequirementAnalysisLabTab = "config" | "session" | "turn" | "log";
+type WorkingDocumentFragment = RequirementAnalysisSession["working_document"]["revision_fragments"][number];
 
 export function RequirementAnalysisLabPage() {
   const { labConfig, orchestratorsEnvelope, providers, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
@@ -692,9 +693,11 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               />
               <LogAuditBlock
                 logSchema={logSchema}
-                title="provider_request.prompt_bundle.current_section_draft"
-                value={getString(promptBundle, "current_section_draft")}
+                title="provider_request.prompt_bundle.working_document_excerpt"
+                value={getString(promptBundle, "working_document_excerpt")}
               />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_target_paths" value={getArray(promptBundle, "review_target_paths")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.recent_revision_fragments" value={getArray(promptBundle, "recent_revision_fragments")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_goal" value={getString(promptBundle, "review_goal")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
@@ -714,9 +717,11 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               />
               <LogAuditBlock
                 logSchema={logSchema}
-                title="provider_request.prompt_bundle.current_section_draft"
-                value={getString(promptBundle, "current_section_draft")}
+                title="provider_request.prompt_bundle.working_document_excerpt"
+                value={getString(promptBundle, "working_document_excerpt")}
               />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.review_target_paths" value={getArray(promptBundle, "review_target_paths")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.recent_revision_fragments" value={getArray(promptBundle, "recent_revision_fragments")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.mock_context" value={mockContext} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.runner_context" value={runnerContext} />
             </div>
@@ -738,7 +743,8 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
             <div className="requirement-analysis-lab-detail-list">
               <LogAuditBlock logSchema={logSchema} title="provider_response.raw_content" value={rawContent} />
               <LogAuditBlock logSchema={logSchema} title="provider_response.parsed_json" value={parsedProviderOutput} />
-              <LogAuditBlock logSchema={logSchema} title="provider_response.review_json" value={getRecord(audit.provider_response, "review_json")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_response.target_review_json" value={getRecord(audit.provider_response, "target_review_json")} />
+              <LogAuditBlock logSchema={logSchema} title="provider_response.global_review_json" value={getRecord(audit.provider_response, "global_review_json")} />
             </div>
           ),
         },
@@ -804,6 +810,46 @@ function getString(value: unknown, key: string): string {
   return typeof nested === "string" ? nested : "";
 }
 
+function buildWorkingDocumentSegments(text: string, fragments: WorkingDocumentFragment[]) {
+  const content = text ?? "";
+  const validFragments = [...fragments]
+    .filter((fragment) => fragment.end_offset > fragment.start_offset)
+    .sort((left, right) => left.start_offset - right.start_offset);
+  if (!validFragments.length) {
+    return [{ key: "plain-all", text: content, colorToken: "" }];
+  }
+
+  const segments: Array<{ key: string; text: string; colorToken: string }> = [];
+  let cursor = 0;
+  for (const fragment of validFragments) {
+    const start = Math.max(cursor, Math.min(content.length, fragment.start_offset));
+    const end = Math.max(start, Math.min(content.length, fragment.end_offset));
+    if (start > cursor) {
+      segments.push({
+        key: `plain-${cursor}-${start}`,
+        text: content.slice(cursor, start),
+        colorToken: "",
+      });
+    }
+    if (end > start) {
+      segments.push({
+        key: fragment.fragment_id,
+        text: content.slice(start, end),
+        colorToken: fragment.color_token,
+      });
+      cursor = end;
+    }
+  }
+  if (cursor < content.length) {
+    segments.push({
+      key: `plain-${cursor}-${content.length}`,
+      text: content.slice(cursor),
+      colorToken: "",
+    });
+  }
+  return segments.filter((segment) => segment.text);
+}
+
 function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {
   return (
     <section className="requirement-analysis-lab-panel requirement-analysis-lab-summary">
@@ -843,32 +889,56 @@ function WorkingDocumentView({ session }: { session: RequirementAnalysisSession 
   return (
     <div className="requirement-analysis-lab-spec-summary">
       <div className="requirement-analysis-lab-summary-title-row">
-        <Text strong>{viewModel.title}</Text>
+        <Text strong>临时正文 / A4 视图</Text>
         <Tag color="blue">focus: {session.active_spec_node_id ?? "已完成"}</Tag>
       </div>
-      {viewModel.sections.length ? (
+      {viewModel.blocks.length ? (
         <div className="requirement-analysis-lab-working-document">
-          {viewModel.sections.map((section) => (
-            <div className="requirement-analysis-lab-working-document-card" key={section.sectionId}>
-              <div className="requirement-analysis-lab-working-document-head">
-                <Text strong>{section.targetSection}</Text>
-                <Tag>{section.sectionId}</Tag>
-              </div>
-              <pre>{section.content}</pre>
-              <div className="requirement-analysis-lab-turn-inline">
-                {section.lastTurnId ? <Tag>{section.lastTurnId}</Tag> : null}
-                {section.sourcePatchIds.map((patchId) => (
-                  <Tag key={patchId}>{patchId}</Tag>
-                ))}
-                <Tag color={section.reviewStatus === "acceptable" ? "green" : "gold"}>{section.reviewStatus}</Tag>
-              </div>
-              {section.reviewReason ? <Text type="secondary">{section.reviewReason}</Text> : null}
+          <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-working-document-page">
+            <div className="requirement-analysis-lab-working-document-page-head">
+              <Text strong>{viewModel.title}</Text>
+              {viewModel.topic ? <Text type="secondary">{viewModel.topic}</Text> : null}
             </div>
-          ))}
+            <div className="requirement-analysis-lab-working-document-body">
+              {viewModel.blocks.map((block) => (
+                <div className="requirement-analysis-lab-working-document-block-row" key={block.blockId}>
+                  <div className="requirement-analysis-lab-working-document-margin">
+                    {block.fragments.map((fragment) => (
+                      <div className={`requirement-analysis-lab-margin-marker ${fragment.color_token}`} key={fragment.fragment_id}>
+                        <Text strong>{fragment.turn_id}</Text>
+                        <Text type="secondary">{fragment.user_input_summary || fragment.supplement_reason || "本轮修订"}</Text>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="requirement-analysis-lab-working-document-block">
+                    <div className="requirement-analysis-lab-working-document-anchor">
+                      <Text type="secondary">{block.anchorPath}</Text>
+                    </div>
+                    <div className="requirement-analysis-lab-working-document-paragraph">
+                      {buildWorkingDocumentSegments(block.text, block.fragments).map((segment) => (
+                        <span
+                          className={segment.colorToken ? `requirement-analysis-lab-revision-highlight ${segment.colorToken}` : undefined}
+                          key={segment.key}
+                        >
+                          {segment.text}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="requirement-analysis-lab-turn-inline">
+                      {block.lastTurnId ? <Tag>{block.lastTurnId}</Tag> : null}
+                      {block.sourceFragmentIds.map((fragmentId) => (
+                        <Tag key={fragmentId}>{fragmentId}</Tag>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="requirement-analysis-lab-empty">
-          <Text type="secondary">当前会话尚未形成临时正文。发送一轮输入后，这里会显示章节草稿。</Text>
+          <Text type="secondary">当前会话尚未形成临时正文。</Text>
         </div>
       )}
     </div>
@@ -1072,19 +1142,27 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
       </div>
       <div className="requirement-analysis-lab-turn-card">
         <Text type="secondary">临时正文应用结果</Text>
-        <Text strong>应用章节：{turn.spec_execution.working_document_update.applied_section_ids.join("、")}</Text>
-        <Text>{turn.spec_execution.working_document_update.after || "当前未形成临时正文。"}</Text>
+        <Text strong>
+          应用正文块：
+          {turn.spec_execution.working_document_update.applied_block_ids.length
+            ? turn.spec_execution.working_document_update.applied_block_ids.join("、")
+            : "无"}
+        </Text>
+        <Text>{turn.spec_execution.working_document_update.after_excerpt || "当前未形成临时正文。"}</Text>
       </div>
       <div className="requirement-analysis-lab-turn-card">
-        <Text type="secondary">章节回看</Text>
-        <Tag color={turn.post_update_review.section_review.status === "acceptable" ? "green" : "gold"}>
-          {turn.post_update_review.section_review.status}
+        <Text type="secondary">目标范围回看</Text>
+        <Tag color={turn.post_update_review.target_review.status === "acceptable" ? "green" : "gold"}>
+          {turn.post_update_review.target_review.status}
         </Tag>
-        <Text strong>{turn.post_update_review.section_review.reason}</Text>
-        {turn.post_update_review.section_review.missing_aspects.length ? (
+        <Text strong>{turn.post_update_review.target_review.reason}</Text>
+        {turn.post_update_review.target_review.review_target.length ? (
+          <Text type="secondary">命中范围：{turn.post_update_review.target_review.review_target.join("、")}</Text>
+        ) : null}
+        {turn.post_update_review.target_review.missing_aspects.length ? (
           <>
             <Text strong>章节缺口</Text>
-            {turn.post_update_review.section_review.missing_aspects.map((gap) => (
+            {turn.post_update_review.target_review.missing_aspects.map((gap) => (
               <Text key={gap}>{gap}</Text>
             ))}
           </>

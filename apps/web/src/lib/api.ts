@@ -2299,17 +2299,11 @@ export type RequirementAnalysisSpecExecution = {
   affected_spec_nodes: RequirementAnalysisAffectedSpecNode[];
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document_update: {
-    applied_section_ids: string[];
-    sections: {
-      section_id: string;
-      target_section: string;
-      before: string;
-      after: string;
-      source_patch_ids: string[];
-      last_turn_id: string;
-    }[];
-    before: string;
-    after: string;
+    applied_block_ids: string[];
+    applied_fragment_ids: string[];
+    blocks: RequirementAnalysisWorkingDocumentBlock[];
+    before_excerpt: string;
+    after_excerpt: string;
   };
   state_changes: RequirementAnalysisStateChanges;
   annotations: string[];
@@ -2318,10 +2312,9 @@ export type RequirementAnalysisSpecExecution = {
 
 export type RequirementAnalysisPostUpdateReview = {
   summary: string;
-  section_review: {
-    section_id: string;
-    target_section: string;
+  target_review: {
     status: string;
+    review_target: string[];
     reason: string;
     missing_aspects: string[];
   };
@@ -2332,6 +2325,39 @@ export type RequirementAnalysisPostUpdateReview = {
   };
 };
 
+export type RequirementAnalysisWorkingDocumentBlock = {
+  block_id: string;
+  anchor_path: string;
+  block_type: string;
+  order_index?: number;
+  text: string;
+  last_turn_id: string | null;
+  source_fragment_ids: string[];
+};
+
+export type RequirementAnalysisRevisionFragment = {
+  fragment_id: string;
+  turn_id: string;
+  color_token: string;
+  target_block_id: string;
+  apply_mode: string;
+  start_offset: number;
+  end_offset: number;
+  user_input_summary?: string;
+  supplement_reason?: string;
+  hit_spec_nodes?: string[];
+  source_patch_ids?: string[];
+};
+
+export type RequirementAnalysisWorkingDocument = {
+  document_id: string;
+  title: string;
+  topic?: string;
+  template_id?: string;
+  blocks: RequirementAnalysisWorkingDocumentBlock[];
+  revision_fragments: RequirementAnalysisRevisionFragment[];
+};
+
 export type RequirementAnalysisWorkingDocumentSection = {
   section_id: string;
   target_section: string;
@@ -2340,13 +2366,6 @@ export type RequirementAnalysisWorkingDocumentSection = {
   last_turn_id: string | null;
   review_status: string;
   review_reason: string;
-};
-
-export type RequirementAnalysisWorkingDocument = {
-  document_id: string;
-  title: string;
-  topic?: string;
-  sections: RequirementAnalysisWorkingDocumentSection[];
 };
 
 export type RequirementAnalysisTurn = {
