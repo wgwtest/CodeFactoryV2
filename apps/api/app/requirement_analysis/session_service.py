@@ -1,0 +1,299 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from app.config import settings
+from app.db.models.requirements import RequirementAnalysisSession
+from app.orchestrators.package_loader import OrchestratorPackage, get_orchestrator_registry
+from app.requirement_analysis.input_normalizer import InputNormalizer
+from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
+from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
+from app.requirement_analysis.next_interaction_service import NextInteractionService
+from app.requirement_analysis.provider_call_log_service import ProviderCallLogService
+from app.requirement_analysis.process_artifact_service import ProcessArtifactService
+from app.requirement_analysis.provider_call_service import RequirementAnalysisProviderCallService
+from app.requirement_analysis.provider_registry import PROVIDER_DEFINITIONS, supported_provider_ids
+from app.requirement_analysis.session_repository import RequirementAnalysisSessionRepository
+from app.requirement_analysis.session_snapshot import SessionSnapshot
+from app.requirement_analysis.spec_projection_service import SpecProjectionService
+from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService
+from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
+from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
+from app.requirement_analysis.turn_context_builder import TurnContextBuilder
+from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
+from app.requirement_analysis.turn_execution_result import TurnExecutionResult
+from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
+from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
+from app.requirement_analysis.turn_strategy_service import TurnStrategyService
+from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
+from app.requirement_analysis.working_document_service import WorkingDocumentService
+
+
+class RequirementAnalysisSessionService:
+    def __init__(self, session) -> None:
+        self.session = session
+        self.repository = RequirementAnalysisSessionRepository(session)
+        self.input_normalizer = InputNormalizer()
+        self.input_relation_classifier = InputRelationClassifier(normalizer=self.input_normalizer)
+        self.process_artifact_service = ProcessArtifactService()
+        self.spec_tree_service = RequirementSpecTreeService(session)
+        self.provider_call_service = RequirementAnalysisProviderCallService(
+            spec_tree_service=self.spec_tree_service,
+            process_artifact_service=self.process_artifact_service,
+        )
+        self.provider_call_log_service = ProviderCallLogService()
+        self.summary_artifact_service = RequirementAnalysisSummaryArtifactService()
+        self.turn_audit_service = RequirementAnalysisTurnAuditService(normalizer=self.input_normalizer)
+        self.turn_output_service = RequirementAnalysisTurnOutputService(spec_tree_service=self.spec_tree_service)
+        self.spec_projection_service = SpecProjectionService(spec_tree_service=self.spec_tree_service)
+        self.working_document_service = WorkingDocumentService()
+        self.working_document_review_service = WorkingDocumentReviewService(
+            working_document_service=self.working_document_service,
+        )
+        self.next_interaction_service = NextInteractionService(
+            input_normalizer=self.input_normalizer,
+            process_artifact_service=self.process_artifact_service,
+        )
+        self.turn_strategy_service = TurnStrategyService()
+        self.turn_stage_executor = TurnStageExecutor(
+            provider_call_service=self.provider_call_service,
+        )
+        self.turn_context_builder = TurnContextBuilder(
+            input_normalizer=self.input_normalizer,
+            input_relation_classifier=self.input_relation_classifier,
+            spec_tree_service=self.spec_tree_service,
+            turn_audit_service=self.turn_audit_service,
+        )
+        self.turn_engine = RequirementAnalysisTurnEngine(
+            turn_context_builder=self.turn_context_builder,
+            provider_call_service=self.provider_call_service,
+            provider_call_log_service=self.provider_call_log_service,
+            spec_tree_service=self.spec_tree_service,
+            spec_projection_service=self.spec_projection_service,
+            summary_artifact_service=self.summary_artifact_service,
+            turn_audit_service=self.turn_audit_service,
+            turn_output_service=self.turn_output_service,
+            next_interaction_service=self.next_interaction_service,
+            turn_strategy_service=self.turn_strategy_service,
+            turn_stage_executor=self.turn_stage_executor,
+            working_document_service=self.working_document_service,
+            working_document_review_service=self.working_document_review_service,
+        )
+
+    def list_orchestrators(self) -> dict:
+        registry = get_orchestrator_registry()
+        return {
+            "items": [package.to_api() for package in registry.list_packages()],
+            "stable_contract": self._stable_contract(),
+            "output_protocol": [
+                "previous_interaction",
+                "input_relation",
+                "spec_execution",
+                "post_update_review",
+                "closure_decision",
+                "next_interaction",
+                "decision_trace",
+            ],
+        }
+
+    def list_providers(self) -> dict:
+        return {"items": [self._provider(provider["provider_id"]) for provider in PROVIDER_DEFINITIONS]}
+
+    def create_session(self, payload: RequirementAnalysisSessionCreate) -> dict:
+        orchestrator_id = self._normalize_orchestrator_id(payload.orchestrator_id)
+        orchestrator = self._orchestrator(orchestrator_id)
+        if payload.provider_id not in supported_provider_ids():
+            raise ValueError("unsupported provider")
+        if payload.provider_id == "deepseek" and not settings.requirement_analysis_deepseek_api_key:
+            raise ValueError("DeepSeek provider is not configured")
+
+        now = self._now()
+        model = self._resolve_model(payload.provider_id, payload.model)
+        spec_tree = self._new_spec_tree(payload.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        active_spec_node_id = self._first_open_spec_node_id(spec_tree)
+        working_document = self.working_document_service.initialize(
+            topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
+            template_id=payload.template_id,
+        )
+        state = {
+            "messages": [
+                {
+                    "id": "msg-0001",
+                    "role": "assistant",
+                    "content": (
+                        f"我会按{payload.template_id}需求规格模板维护完成度树。"
+                        "你可以直接描述、提问、反驳或补充；我会说明本轮更新了哪些规格内容。"
+                    ),
+                    "created_at": now,
+                }
+            ],
+            "turns": [],
+            "confirmed_facts": [],
+            "open_questions": [
+                self.summary_artifact_service.suggestion_content_for_node(
+                    self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+                )
+            ],
+            "document_patch": [],
+            "working_document": working_document,
+            "questions": [
+                {
+                    "question_id": "Q-001",
+                    "content": self.summary_artifact_service.suggestion_content_for_node(
+                        self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+                    ),
+                    "status": "open",
+                    "target_section": self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "").get("target_section")
+                    if self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+                    else "未绑定模板章节",
+                    "source_turn_id": None,
+                    "resolution_fact_ids": [],
+                }
+            ],
+            "facts": [],
+            "patches": [],
+            "spec_tree": spec_tree,
+            "active_spec_node_id": active_spec_node_id,
+            "turn_path": [],
+            "next_interaction": None,
+            "last_quick_options": [],
+            "annotations": ["Lab 只生成 document_patch 建议，不直接写入正式需求规格草稿。"],
+            "risks": [],
+            "provider_logs": [],
+        }
+        session = RequirementAnalysisSession(
+            topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
+            orchestrator_id=orchestrator.orchestrator_id,
+            provider_id=payload.provider_id,
+            model=model,
+            template_id=payload.template_id,
+            knowledge_package_id=payload.knowledge_package_id,
+            write_policy=payload.write_policy,
+            status="created",
+            payload=state,
+        )
+        return self._serialize_session(self.repository.add(session))
+
+    def get_session(self, session_id: str) -> dict | None:
+        session = self.repository.get(session_id)
+        if session is None:
+            return None
+        return self._serialize_session(session)
+
+    def add_turn(self, session_id: str, payload: RequirementAnalysisTurnCreate) -> dict | None:
+        session = self.repository.get(session_id)
+        if session is None:
+            return None
+        turn_result = self.turn_engine.run_turn(self.load_snapshot(session), payload)
+        session = self.apply_turn_execution_result(session, turn_result)
+        self.repository.save(session)
+        return {"session": self._serialize_session(session), "turn": turn_result.turn}
+
+    def load_snapshot(self, session: RequirementAnalysisSession) -> SessionSnapshot:
+        return SessionSnapshot(
+            session_id=session.id,
+            topic=session.topic,
+            orchestrator_id=session.orchestrator_id,
+            provider_id=session.provider_id,
+            model=session.model,
+            template_id=session.template_id,
+            knowledge_package_id=session.knowledge_package_id,
+            write_policy=session.write_policy,
+            status=session.status,
+            payload=dict(session.payload or {}),
+        )
+
+    def apply_turn_execution_result(
+        self,
+        session: RequirementAnalysisSession,
+        turn_result: TurnExecutionResult,
+    ) -> RequirementAnalysisSession:
+        state = dict(session.payload or {})
+        state.update(turn_result.state_patch)
+        state["provider_logs"] = [
+            *list(state.get("provider_logs", [])),
+            *turn_result.provider_logs,
+        ]
+        session.payload = state
+        session.status = "waiting_user"
+        return session
+
+    def _serialize_session(self, session: RequirementAnalysisSession) -> dict:
+        state = dict(session.payload or {})
+        spec_tree = list(
+            state.get("spec_tree")
+            or self._new_spec_tree(session.template_id, orchestrator_id=session.orchestrator_id)
+        )
+        return {
+            "session_id": session.id,
+            "topic": session.topic,
+            "status": session.status,
+            "orchestrator": self._orchestrator(session.orchestrator_id).to_api(),
+            "provider_id": session.provider_id,
+            "model": session.model,
+            "template_id": session.template_id,
+            "knowledge_package_id": session.knowledge_package_id,
+            "write_policy": session.write_policy,
+            "stable_contract": self._stable_contract(),
+            "messages": list(state.get("messages", [])),
+            "turns": list(state.get("turns", [])),
+            "confirmed_facts": list(state.get("confirmed_facts", [])),
+            "open_questions": list(state.get("open_questions", [])),
+            "document_patch": list(state.get("document_patch", [])),
+            "working_document": dict(
+                state.get("working_document")
+                or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+            ),
+            "questions": list(state.get("questions", [])),
+            "facts": list(state.get("facts", [])),
+            "patches": list(state.get("patches", [])),
+            "spec_tree": spec_tree,
+            "active_spec_node_id": state.get("active_spec_node_id") or self._first_open_spec_node_id(spec_tree),
+            "turn_path": list(state.get("turn_path", [])),
+            "next_interaction": state.get("next_interaction"),
+            "annotations": list(state.get("annotations", [])),
+            "risks": list(state.get("risks", [])),
+            "provider_logs": list(state.get("provider_logs", [])),
+            "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat(),
+        }
+
+    def _normalize_orchestrator_id(self, orchestrator_id: str) -> str:
+        normalized = orchestrator_id.strip()
+        return normalized
+
+    def _orchestrator(self, orchestrator_id: str) -> OrchestratorPackage:
+        return get_orchestrator_registry().require(self._normalize_orchestrator_id(orchestrator_id))
+
+    def _provider(self, provider_id: str) -> dict:
+        for provider in PROVIDER_DEFINITIONS:
+            if provider["provider_id"] == provider_id:
+                status = "active" if provider_id == "mock" else "not_configured"
+                if provider_id == "deepseek" and settings.requirement_analysis_deepseek_api_key:
+                    status = "active"
+                return {**provider, "status": status}
+        raise ValueError("unsupported provider")
+
+    def _resolve_model(self, provider_id: str, model: str) -> str:
+        if provider_id == "deepseek" and (not model or model == "mock-requirement-analysis-v1" or model == "provider-default"):
+            return settings.requirement_analysis_deepseek_model
+        return model or "mock-requirement-analysis-v1"
+
+    def _new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
+        return self.spec_tree_service.new_spec_tree(template_id, orchestrator_id=orchestrator_id)
+
+    def _first_open_spec_node_id(self, nodes: list[dict]) -> str | None:
+        return self.spec_tree_service.first_open_spec_node_id(nodes)
+
+    def _stable_contract(self) -> dict:
+        return {
+            "formal_document": True,
+            "template_object": True,
+            "knowledge_binding": True,
+            "draft_persistence": True,
+            "check_and_freeze": True,
+            "p2_to_p3_output": True,
+        }
+
+    def _now(self) -> str:
+        return datetime.now(UTC).isoformat()

@@ -3,7 +3,6 @@ import { Alert, Card, Col, Empty, Row, Space, Spin } from "antd";
 
 import { P3DesignWorkspace } from "../components/p3/P3DesignWorkspace";
 import { P3Hero } from "../components/p3/P3Hero";
-import { P3OrderContextPanel } from "../components/p3/P3OrderContextPanel";
 import { P3OrderQueue } from "../components/p3/P3OrderQueue";
 import { P3RequirementIntakePanel } from "../components/p3/P3RequirementIntakePanel";
 import { P3ReviewWorkspace } from "../components/p3/P3ReviewWorkspace";
@@ -151,7 +150,7 @@ export function XXP3Page() {
       notes: "由 XX-P3 受理并进入软件设计编制流程。",
     });
     setSelectedOrderId(response.data.order_id);
-    setActiveWorkspace("overview");
+    setActiveWorkspace("design");
     await loadPage(false, response.data.order_id);
   }
 
@@ -218,7 +217,6 @@ export function XXP3Page() {
                   await refreshPageForOrder(orderId);
                 }}
               />
-              <P3OrderContextPanel order={selectedOrder} />
             </Space>
           </Col>
 
@@ -239,11 +237,6 @@ export function XXP3Page() {
                         onSearch={handleSearchStandards}
                       />
                     ),
-                  },
-                  {
-                    key: "overview",
-                    label: "总览",
-                    children: <P3OrderContextPanel order={selectedOrder} />,
                   },
                   {
                     key: "design",

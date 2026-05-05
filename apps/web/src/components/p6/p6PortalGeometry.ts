@@ -1,9 +1,4 @@
-import {
-  P6_PORTAL_WORLD,
-  p6PortalNodes,
-  type P6PortalNodeId,
-  type P6PortalPosition,
-} from "./p6PortalData";
+import { P6_PORTAL_WORLD, type P6PortalNodeId, type P6PortalPosition, type P6PortalViewNode } from "./p6PortalData";
 
 export type P6PortalCameraState = {
   x: number;
@@ -27,12 +22,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-export function getPortalNodeById(nodeId: P6PortalNodeId) {
-  return p6PortalNodes.find((item) => item.id === nodeId) ?? p6PortalNodes[0];
+export function getPortalNodeById(nodes: readonly P6PortalViewNode[], nodeId: P6PortalNodeId) {
+  return nodes.find((item) => item.id === nodeId) ?? nodes[0];
 }
 
-export function clampNodePosition(nodeId: P6PortalNodeId, position: P6PortalPosition): P6PortalPosition {
-  const node = getPortalNodeById(nodeId);
+export function clampNodePosition(
+  nodes: readonly P6PortalViewNode[],
+  nodeId: P6PortalNodeId,
+  position: P6PortalPosition,
+): P6PortalPosition {
+  const node = getPortalNodeById(nodes, nodeId);
 
   return {
     x: clamp(position.x, P6_PORTAL_NODE_PADDING, P6_PORTAL_WORLD.width - node.width - P6_PORTAL_NODE_PADDING),
@@ -67,5 +66,16 @@ export function clampCameraToWorld(
     ...camera,
     x: clamp(camera.x, minX, maxX),
     y: clamp(camera.y, minY, maxY),
+  };
+}
+
+export function createP6PortalFitCamera(viewport: Partial<P6PortalViewportSize>): P6PortalCameraState {
+  const size = normalizeViewportSize(viewport);
+  const scale = Math.min(size.width / P6_PORTAL_WORLD.width, size.height / P6_PORTAL_WORLD.height, 1);
+
+  return {
+    x: (size.width - P6_PORTAL_WORLD.width * scale) / 2,
+    y: (size.height - P6_PORTAL_WORLD.height * scale) / 2,
+    scale,
   };
 }

@@ -1,0 +1,44 @@
+{
+  "root_question": "按需求规格模板补齐可写入正文的目标节点。",
+  "section_question_template": "补齐{section_title}下的需求规格信息。",
+  "turn_strategy": {
+    "strategy_id": "write_then_review",
+    "adoption_policy": "adopt_last_completed_stage",
+    "stages": [
+      {
+        "stage_id": "write",
+        "stage_type": "policy_interpreted"
+      },
+      {
+        "stage_id": "review",
+        "stage_type": "server_review"
+      }
+    ]
+  },
+  "defaults": {
+    "leaf_question_template": "组织器策略问题：请补齐{clause_title}。"
+  },
+  "clauses": {
+    "REQ-1.1": {
+      "question": "组织器策略问题：请先确认软件名称、背景领域和编写目的。"
+    },
+    "REQ-2.1": {
+      "question": "组织器策略问题：请确认软件定位、领域边界、解决的问题，以及第一阶段明确不做的内容。"
+    },
+    "REQ-3.1": {
+      "question": "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
+    },
+    "REQ-3.2": {
+      "question": "组织器策略问题：请按用户从开始到得到结果的主线描述核心业务流程。"
+    },
+    "REQ-3.3": {
+      "question": "组织器策略问题：请说明失败、缺数据、冲突或人工复核时的异常与补偿处理。"
+    },
+    "REQ-4.1": {
+      "question": "组织器策略问题：请确认响应、批处理、稳定性、安全或部署方面的非功能约束。"
+    },
+    "REQ-5.1": {
+      "question": "组织器策略问题：请说明怎样判断这份需求对应的软件已经可接受。"
+    }
+  }
+}

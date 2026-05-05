@@ -1,0 +1,344 @@
+from __future__ import annotations
+
+from copy import deepcopy
+
+
+DEFAULT_SCENARIO_ID = "baseline"
+
+STAGE_ORDER = ["P1", "P2", "P3", "P4", "P5"]
+
+STAGE_METADATA = {
+    "P1": {
+        "node_id": "p1",
+        "stage_name": "业务知识库",
+        "route": "/graph",
+        "entry_label": "图谱入口",
+        "description": "负责沉淀领域知识并向后续阶段提供稳定知识供给。",
+    },
+    "P2": {
+        "node_id": "p2",
+        "stage_name": "需求分析系统",
+        "route": "/requirements",
+        "entry_label": "需求入口",
+        "description": "把业务语言建模为结构化需求规格与需求对象。",
+    },
+    "P3": {
+        "node_id": "p3",
+        "stage_name": "软件设计系统",
+        "route": "/modeling",
+        "entry_label": "软设入口",
+        "description": "承接需求规格并输出软件设计说明与设计结构表达。",
+    },
+    "P4": {
+        "node_id": "p4",
+        "stage_name": "工具仓库",
+        "route": "/xx-p4",
+        "entry_label": "工具仓入口",
+        "description": "沉淀工具供给与能力匹配规则，承接供给扫描与演进。",
+    },
+    "P5": {
+        "node_id": "p5",
+        "stage_name": "软件构建系统",
+        "route": "/build",
+        "entry_label": "构建入口",
+        "description": "整合设计、工具与交付链路，产出构建结果与缺口反馈。",
+    },
+}
+
+PORTAL_FLOWS = [
+    {
+        "flow_id": "p1-p2",
+        "from_node_id": "p1",
+        "to_node_id": "p2",
+        "semantic_type": "knowledge_supply",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "knowledge",
+        "render_style": "dashed",
+        "label": "知识供给",
+    },
+    {
+        "flow_id": "p2-p3",
+        "from_node_id": "p2",
+        "to_node_id": "p3",
+        "semantic_type": "requirement_to_design",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "analysis",
+        "render_style": "solid",
+        "label": "需求规格",
+    },
+    {
+        "flow_id": "p3-p4",
+        "from_node_id": "p3",
+        "to_node_id": "p4",
+        "semantic_type": "work_order_package",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "design",
+        "render_style": "dashed",
+        "label": "模块工单包",
+    },
+    {
+        "flow_id": "p3-p5",
+        "from_node_id": "p3",
+        "to_node_id": "p5",
+        "semantic_type": "design_baseline_to_build",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "design",
+        "render_style": "dashed",
+        "label": "设计基线",
+    },
+    {
+        "flow_id": "p4-p5",
+        "from_node_id": "p4",
+        "to_node_id": "p5",
+        "semantic_type": "tool_supply",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "tooling",
+        "render_style": "solid",
+        "label": "工具供给",
+    },
+    {
+        "flow_id": "p5-delivery",
+        "from_node_id": "p5",
+        "to_node_id": "delivery-catalog",
+        "semantic_type": "delivery_catalog_output",
+        "direction": "forward",
+        "from_pin": "right",
+        "to_pin": "left",
+        "render_tone": "delivery",
+        "render_style": "solid",
+        "label": "交付目录",
+    },
+]
+
+PORTAL_ARTIFACTS = []
+
+BASELINE_STAGES = {
+    "P1": {
+        "primary_status": "knowledge_published",
+        "summary": "知识供给稳定对外发布。",
+        "updated_at": "2026-04-21T09:15:00+08:00",
+        "captured_at": "2026-04-21T09:18:00+08:00",
+        "freshness": "fresh",
+        "entry_available": True,
+        "entry_reason": "图谱入口可用",
+        "metrics": [
+            {"metric_key": "published_knowledge_count", "metric_label": "已发布知识", "metric_value": "132"},
+            {"metric_key": "source_document_count", "metric_label": "来源文档", "metric_value": "28"},
+        ],
+        "health_level": "healthy",
+        "health_message": "最新知识发布已完成，读侧供给正常。",
+        "health_badge_label": "健康",
+        "headline_value": "NAS 战术知识库 v3",
+        "summary_line": "当前知识库已进入对外供给态。",
+        "timestamp_label": "发布于 04-21 09:15",
+        "degraded_hint": None,
+    },
+    "P2": {
+        "primary_status": "requirements_modeling",
+        "summary": "需求批次建模进度稳定。",
+        "updated_at": "2026-04-21T09:28:00+08:00",
+        "captured_at": "2026-04-21T09:29:00+08:00",
+        "freshness": "fresh",
+        "entry_available": True,
+        "entry_reason": "需求入口可用",
+        "metrics": [
+            {"metric_key": "active_requirement_count", "metric_label": "活跃需求", "metric_value": "7"},
+            {"metric_key": "modeled_requirement_count", "metric_label": "已建模", "metric_value": "5"},
+        ],
+        "health_level": "healthy",
+        "health_message": "需求建模批次运行平稳。",
+        "health_badge_label": "健康",
+        "headline_value": "无人协同批次 A",
+        "summary_line": "规格草案已进入稳定整理阶段。",
+        "timestamp_label": "分析于 04-21 09:28",
+        "degraded_hint": None,
+    },
+    "P3": {
+        "primary_status": "design_review_active",
+        "summary": "设计单冻结后进入评审流。",
+        "updated_at": "2026-04-21T09:42:00+08:00",
+        "captured_at": "2026-04-21T09:44:00+08:00",
+        "freshness": "fresh",
+        "entry_available": True,
+        "entry_reason": "软设入口可用",
+        "metrics": [
+            {"metric_key": "active_design_order_count", "metric_label": "活跃设计单", "metric_value": "3"},
+            {"metric_key": "review_pending_count", "metric_label": "待评审", "metric_value": "1"},
+        ],
+        "health_level": "healthy",
+        "health_message": "设计评审节奏正常，无冻结阻塞。",
+        "health_badge_label": "健康",
+        "headline_value": "设计单 SO-240421-02",
+        "summary_line": "当前设计单已冻结并进入评审。",
+        "timestamp_label": "评审于 04-21 09:42",
+        "degraded_hint": None,
+    },
+    "P4": {
+        "primary_status": "tool_snapshot_ready",
+        "summary": "供给快照与工具匹配结果可用。",
+        "updated_at": "2026-04-21T09:56:00+08:00",
+        "captured_at": "2026-04-21T09:58:00+08:00",
+        "freshness": "fresh",
+        "entry_available": True,
+        "entry_reason": "工具仓入口可用",
+        "metrics": [
+            {"metric_key": "active_supply_snapshot_count", "metric_label": "供给快照", "metric_value": "4"},
+            {"metric_key": "tool_demand_open_count", "metric_label": "开放需求单", "metric_value": "2"},
+        ],
+        "health_level": "healthy",
+        "health_message": "供给快照与工具匹配链路稳定。",
+        "health_badge_label": "健康",
+        "headline_value": "供给快照 SUP-240421-A",
+        "summary_line": "工具匹配结果已推送给构建链。",
+        "timestamp_label": "巡检于 04-21 09:56",
+        "degraded_hint": None,
+    },
+    "P5": {
+        "primary_status": "delivery_ready",
+        "summary": "构建主单已具备执行条件。",
+        "updated_at": "2026-04-21T10:05:00+08:00",
+        "captured_at": "2026-04-21T10:07:00+08:00",
+        "freshness": "fresh",
+        "entry_available": True,
+        "entry_reason": "构建入口可用",
+        "metrics": [
+            {"metric_key": "active_delivery_order_count", "metric_label": "活跃交付单", "metric_value": "2"},
+            {"metric_key": "review_pending_attempt_count", "metric_label": "待批阅尝试", "metric_value": "0"},
+        ],
+        "health_level": "healthy",
+        "health_message": "构建主链可执行，当前无交付缺口。",
+        "health_badge_label": "健康",
+        "headline_value": "交付主单 DO-240421-01",
+        "summary_line": "最新交付主单已具备执行窗口。",
+        "timestamp_label": "交付于 04-21 10:05",
+        "degraded_hint": None,
+    },
+}
+
+SCENARIOS = {
+    "baseline": {
+        "summary": {
+            "scenario_id": "baseline",
+            "label": "基线通畅",
+            "description": "主链通畅，五阶段入口可用。",
+            "source_mode": "mock",
+            "recommended_focus_stage": "P2",
+        },
+        "portal_alert_message": "当前模拟源显示主链通畅，可直接观察整体投影。",
+        "archive_label": "平台模拟知识库",
+        "context_hint": "模拟源 · 基线通畅",
+        "stages": BASELINE_STAGES,
+    },
+    "review-pressure": {
+        "summary": {
+            "scenario_id": "review-pressure",
+            "label": "评审压力",
+            "description": "P3 评审积压，P4 跟进承压。",
+            "source_mode": "mock",
+            "recommended_focus_stage": "P3",
+        },
+        "portal_alert_message": "评审与供给跟进出现压力，建议优先关注 P3 到 P4。",
+        "archive_label": "平台模拟知识库",
+        "context_hint": "模拟源 · 评审压力",
+        "stages": {
+            **deepcopy(BASELINE_STAGES),
+            "P3": {
+                **deepcopy(BASELINE_STAGES["P3"]),
+                "primary_status": "review_backlog",
+                "summary": "设计评审积压，冻结单等待批阅。",
+                "metrics": [
+                    {"metric_key": "active_design_order_count", "metric_label": "活跃设计单", "metric_value": "4"},
+                    {"metric_key": "review_pending_count", "metric_label": "待评审", "metric_value": "6"},
+                ],
+                "health_level": "warning",
+                "health_message": "设计评审积压增加，需要人工清空队列。",
+                "health_badge_label": "注意",
+                "headline_value": "设计单 SO-240421-05",
+                "summary_line": "冻结设计单进入评审积压队列。",
+                "timestamp_label": "积压于 04-21 10:16",
+            },
+            "P4": {
+                **deepcopy(BASELINE_STAGES["P4"]),
+                "primary_status": "tool_follow_up",
+                "summary": "供给快照待跟进设计变更。",
+                "metrics": [
+                    {"metric_key": "active_supply_snapshot_count", "metric_label": "供给快照", "metric_value": "4"},
+                    {"metric_key": "tool_demand_open_count", "metric_label": "开放需求单", "metric_value": "5"},
+                ],
+                "health_level": "warning",
+                "health_message": "工具匹配结果需要跟进新增设计差异。",
+                "health_badge_label": "注意",
+                "headline_value": "供给快照 SUP-240421-B",
+                "summary_line": "匹配结果等待评审结论回写。",
+                "timestamp_label": "跟进于 04-21 10:18",
+            },
+        },
+    },
+    "delivery-gap": {
+        "summary": {
+            "scenario_id": "delivery-gap",
+            "label": "交付缺口",
+            "description": "P5 出现交付缺口，P4 与 P5 告警升高。",
+            "source_mode": "mock",
+            "recommended_focus_stage": "P5",
+        },
+        "portal_alert_message": "交付链出现缺口，建议优先处理 P5 并回看 P4 供给命中。",
+        "archive_label": "平台模拟知识库",
+        "context_hint": "模拟源 · 交付缺口",
+        "stages": {
+            **deepcopy(BASELINE_STAGES),
+            "P4": {
+                **deepcopy(BASELINE_STAGES["P4"]),
+                "primary_status": "supply_gap_warning",
+                "summary": "供给命中率下降，部分工具需求待补齐。",
+                "metrics": [
+                    {"metric_key": "active_supply_snapshot_count", "metric_label": "供给快照", "metric_value": "3"},
+                    {"metric_key": "tool_demand_open_count", "metric_label": "开放需求单", "metric_value": "7"},
+                ],
+                "health_level": "warning",
+                "health_message": "供给链存在待补位需求，正在回补工具方案。",
+                "health_badge_label": "注意",
+                "headline_value": "供给快照 SUP-240421-C",
+                "summary_line": "供给命中不足，需回补能力项。",
+                "timestamp_label": "告警于 04-21 10:24",
+            },
+            "P5": {
+                **deepcopy(BASELINE_STAGES["P5"]),
+                "primary_status": "delivery_gap_blocked",
+                "summary": "交付主单执行受阻，缺口待人工确认。",
+                "metrics": [
+                    {"metric_key": "active_delivery_order_count", "metric_label": "活跃交付单", "metric_value": "2"},
+                    {"metric_key": "review_pending_attempt_count", "metric_label": "待批阅尝试", "metric_value": "3"},
+                ],
+                "health_level": "blocked",
+                "health_message": "关键交付缺口未闭合，当前构建结果不可直接放行。",
+                "health_badge_label": "阻塞",
+                "headline_value": "交付主单 DO-240421-04",
+                "summary_line": "最近一次尝试暴露关键交付缺口。",
+                "timestamp_label": "缺口于 04-21 10:27",
+                "degraded_hint": "需人工确认缺口与回补路径。",
+            },
+        },
+    },
+}
+
+
+def get_mock_scenario_catalog() -> list[dict[str, object]]:
+    return [SCENARIOS[scenario_id]["summary"] for scenario_id in ("baseline", "review-pressure", "delivery-gap")]
+
+
+def get_mock_scenario_definition(scenario_id: str) -> dict[str, object] | None:
+    scenario = SCENARIOS.get(scenario_id)
+    if scenario is None:
+        return None
+    return deepcopy(scenario)

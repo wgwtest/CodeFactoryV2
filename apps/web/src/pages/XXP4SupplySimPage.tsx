@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Space, Tag, Typography } from "antd";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import type { P5SupplyInputSource } from "../lib/api";
 import { createSoftwareBuildSupplyInputSim, getSoftwareBuildSupplyInputs } from "../lib/softwareBuild";
@@ -40,7 +40,6 @@ const cardStyle = {
 };
 
 export function XXP4SupplySimPage() {
-  const navigate = useNavigate();
   const [items, setItems] = useState<P5SupplyInputSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -68,8 +67,9 @@ export function XXP4SupplySimPage() {
     try {
       setCreating(true);
       setError(null);
-      await createSoftwareBuildSupplyInputSim({ ...presetPayload });
-      navigate("/build");
+      const response = await createSoftwareBuildSupplyInputSim({ ...presetPayload });
+      setNotice(`已生成供给模拟输出 ${response.data.supply_input_id}`);
+      await loadItems();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "生成供给模拟输出失败");
     } finally {
@@ -90,11 +90,11 @@ export function XXP4SupplySimPage() {
               P4 供给模拟输出台
             </Typography.Title>
             <Typography.Paragraph style={{ margin: 0, color: "#5a6472", maxWidth: 840 }}>
-              这里生成“基于地理信息系统的通视分析软件”可消费的供给快照样例。供给对象保持已审定资产快照形态，并在生成后立即返回 P5 工作台，让当前主单直接看到新的供给候选。
+              这里生成“基于地理信息系统的通视分析软件”可消费的供给快照样例。生成完成后停留在当前页面，供你确认快照内容，再自行返回 P5 工作台继续后续测试。
             </Typography.Paragraph>
             <Space wrap>
               <Button type="primary" onClick={() => void handleCreate()} loading={creating}>
-                生成供给输出并返回 P5
+                生成供给模拟输出
               </Button>
               <Button onClick={() => void loadItems()} loading={loading}>
                 刷新列表

@@ -8,7 +8,7 @@ from app.parsing.service import ParsingService
 
 
 def test_parser_creates_ordered_segments_with_evidence() -> None:
-    source = Path("fixtures/reference_scenarios/minimal_policy.txt")
+    source = Path("tests/fixtures/reference_scenarios/minimal_policy.txt")
     document_text = source.read_text()
 
     service = ParsingService()

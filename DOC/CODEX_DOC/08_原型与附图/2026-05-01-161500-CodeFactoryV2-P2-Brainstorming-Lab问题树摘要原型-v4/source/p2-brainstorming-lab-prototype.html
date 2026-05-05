@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P2 Brainstorming Lab 原型 v3</title>
+    <style>
+      :root {
+        --bg: #eef2f0;
+        --ink: #172221;
+        --muted: #62706d;
+        --line: #c8d3ce;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #183d4d;
+        --navy-2: #e4eef2;
+        --teal: #2d746f;
+        --teal-2: #e1f2ee;
+        --amber: #98631f;
+        --amber-2: #f4e7d4;
+        --green: #257348;
+        --red: #9b4138;
+        --shadow: 0 24px 58px rgba(37, 52, 49, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          linear-gradient(0deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          #eef2f0;
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 14px 38px rgba(45, 61, 56, 0.11);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        color: var(--navy);
+        background: #fff;
+        font-size: 17px;
+        font-weight: 900;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 1.15;
+        font-weight: 900;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .head-actions,
+      .pill-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+
+      .button,
+      .pill {
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--navy);
+        background: var(--navy);
+      }
+
+      .button.teal {
+        color: #fff;
+        border-color: var(--teal);
+        background: var(--teal);
+      }
+
+      .button.ghost {
+        background: #f7f9f8;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+      }
+
+      .pill.navy {
+        color: var(--navy);
+        border-color: #a9c1cd;
+        background: var(--navy-2);
+      }
+
+      .pill.teal {
+        color: var(--teal);
+        border-color: #95c7c0;
+        background: var(--teal-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dcb47a;
+        background: var(--amber-2);
+      }
+
+      .pill.red {
+        color: var(--red);
+        border-color: #d8b1aa;
+        background: #f5dedb;
+      }
+
+      .layout {
+        height: 956px;
+        display: grid;
+        grid-template-columns: 284px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card {
+        border: 1px solid rgba(162, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 20px 18px 16px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        min-height: 0;
+        padding: 14px;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .tab-item {
+        min-height: 82px;
+        padding: 12px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .state-config .nav-config,
+      .state-session .nav-session,
+      .state-turn .nav-turn,
+      .state-log .nav-log {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .tab-desc {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+      }
+
+      .side-rule {
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.55;
+        font-weight: 800;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .work-head {
+        height: 78px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 18px 0 20px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .head-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .head-title {
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .head-sub {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .body {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .state-config .show-config,
+      .state-session .show-session,
+      .state-turn .show-turn,
+      .state-log .show-log {
+        display: grid;
+      }
+
+      .show-config,
+      .show-session,
+      .show-turn,
+      .show-log {
+        display: none;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .show-config {
+        grid-template-columns: 1fr 1fr 1.08fr;
+      }
+
+      .show-session {
+        grid-template-columns: 1.25fr 0.95fr;
+      }
+
+      .show-turn {
+        grid-template-columns: 0.95fr 1.25fr;
+      }
+
+      .show-log {
+        grid-template-columns: 0.78fr 1.22fr;
+      }
+
+      .panel {
+        min-height: 0;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .panel-head {
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 15px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .panel-title {
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .panel-sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .panel-content {
+        min-height: 0;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .stack {
+        display: grid;
+        gap: 11px;
+        align-content: start;
+      }
+
+      .option-card,
+      .field,
+      .contract-row,
+      .msg,
+      .patch,
+      .step-row,
+      .log-row,
+      .detail-box,
+      .fact-row {
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .option-card {
+        min-height: 84px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+      }
+
+      .option-card.selected {
+        border-color: var(--teal);
+        background: #eef9f7;
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .option-title {
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .option-desc {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .field {
+        padding: 12px;
+      }
+
+      .field-label {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .field-value {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 850;
+      }
+
+      .field-value.multi {
+        min-height: 62px;
+        align-items: flex-start;
+        line-height: 1.55;
+        font-weight: 700;
+      }
+
+      .contract-row {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px;
+      }
+
+      .protocol-box {
+        padding: 12px;
+        border: 1px solid #c4d4cf;
+        background: #f7faf9;
+      }
+
+      .protocol-list {
+        margin: 9px 0 0;
+        padding-left: 18px;
+        color: #33423f;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .notice {
+        padding: 12px 13px;
+        border: 1px solid #d9b87f;
+        background: #fff7ea;
+        color: #6f4819;
+        font-size: 13px;
+        line-height: 1.55;
+        font-weight: 800;
+      }
+
+      .conversation {
+        height: 100%;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        gap: 12px;
+      }
+
+      .messages {
+        min-height: 0;
+        overflow: hidden;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .msg {
+        max-width: 92%;
+        padding: 12px 13px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .msg.assistant {
+        border-color: #bad1da;
+        background: #edf6f8;
+      }
+
+      .msg.user {
+        justify-self: end;
+        border-color: #acd0c9;
+        background: #edf8f6;
+      }
+
+      .quick-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 9px;
+      }
+
+      .option {
+        min-width: 74px;
+        padding: 7px 9px;
+        border: 1px solid #a7c5cf;
+        background: #fff;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .input-line {
+        height: 50px;
+        display: grid;
+        grid-template-columns: 1fr 90px;
+        gap: 9px;
+      }
+
+      .input {
+        display: flex;
+        align-items: center;
+        padding: 0 13px;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: #4c5b5f;
+        font-size: 14px;
+      }
+
+      .doc-tree {
+        display: grid;
+        gap: 10px;
+      }
+
+      .doc-section {
+        border: 1px solid #c4d4cf;
+        background: #fbfdfc;
+      }
+
+      .doc-section-head {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        border-bottom: 1px solid #d9e3df;
+        background: #f2f7f5;
+      }
+
+      .doc-section-title {
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .doc-section-meta {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .tree-lines {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px 10px;
+      }
+
+      .tree-row {
+        min-height: 28px;
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 7px;
+        color: #243532;
+        font-size: 12px;
+      }
+
+      .tree-row.child {
+        margin-left: 26px;
+        color: var(--muted);
+      }
+
+      .tree-row.patch-row {
+        color: #6f4819;
+      }
+
+      .tree-status {
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #b9cac5;
+        background: #fff;
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .tree-status.done {
+        border-color: #7cb9aa;
+        color: var(--teal);
+        background: #ecf8f4;
+      }
+
+      .tree-status.open {
+        border-color: #d1ae72;
+        color: #8a5a1f;
+        background: #fff8ea;
+      }
+
+      .tree-status.review {
+        border-color: #d99595;
+        color: #9b3c3c;
+        background: #fff1f1;
+      }
+
+      .tree-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 850;
+      }
+
+      .tree-ref {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .tree-note {
+        padding: 8px 10px;
+        border: 1px dashed #c7d5d1;
+        color: var(--muted);
+        background: #fbfcfc;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .fact-row,
+      .patch,
+      .step-row,
+      .log-row,
+      .detail-box {
+        padding: 12px;
+      }
+
+      .fact-title,
+      .patch-title,
+      .step-title,
+      .detail-title {
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .fact-text,
+      .patch-text,
+      .detail-text {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .turn-object {
+        height: 100%;
+        display: grid;
+        gap: 11px;
+        align-content: start;
+      }
+
+      .step-row {
+        min-height: 48px;
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .step-num {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #aac9c3;
+        color: var(--teal);
+        background: #eff8f6;
+        font-weight: 900;
+      }
+
+      .log-row {
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .code-box {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid #c6d3cf;
+        background: #10262d;
+        color: #d6f0ec;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      .empty-state {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        border: 1px dashed #bdc9c5;
+        background: #fbfcfb;
+        color: var(--muted);
+        font-size: 14px;
+        text-align: center;
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage state-config" id="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">LAB</div>
+          <div>
+            <h1>P2 Brainstorming Lab</h1>
+            <p class="subtitle">显式 Tab 状态机：业务数据变化不自动切换视图，组织器配置先于会话问答。</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">独立路由 /p2-brainstorm-lab</span>
+          <span class="pill teal">可插拔组织器</span>
+          <span class="pill amber">patch suggestion only</span>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">Lab 显式 Tab</div>
+            <div class="side-note">Tab 选中态只由用户点击决定。会话和 Turn 只更新徽标，不自动切换视图。</div>
+          </div>
+
+          <div class="tab-list">
+            <div class="tab-item nav-config">
+              <div class="tab-name">组织器配置 <span class="pill navy">selected</span></div>
+              <div class="tab-desc">RequirementAnalysisOrchestrator 插槽、启动参数、稳定契约。</div>
+            </div>
+            <div class="tab-item nav-session">
+              <div class="tab-name">会话管理 <span class="pill teal">已创建</span></div>
+              <div class="tab-desc">BrainstormSession。CLI 问答只在这里出现。</div>
+            </div>
+            <div class="tab-item nav-turn">
+              <div class="tab-name">当前 Turn <span class="pill amber">turn-0001</span></div>
+              <div class="tab-desc">BrainstormTurn。单轮输入 / 输出对象。</div>
+            </div>
+            <div class="tab-item nav-log">
+              <div class="tab-name">调用日志 <span class="pill teal">2 条</span></div>
+              <div class="tab-desc">Provider 调用、模型、状态和原始结构化响应。</div>
+            </div>
+          </div>
+
+          <div class="side-foot">
+            <div class="side-rule">规则：点击启动验证、发送输入，都不自动切 Tab；只能更新右侧当前视图和左侧徽标。</div>
+          </div>
+        </aside>
+
+        <main class="workspace">
+          <div class="work-head">
+            <div class="head-left">
+              <span class="pill navy">v4 问题树摘要版</span>
+              <div>
+                <div class="head-title" id="headTitle">组织器配置</div>
+                <div class="head-sub" id="headSub">先选组织器，再配置启动参数，再看稳定契约，最后启动验证。</div>
+              </div>
+            </div>
+            <div class="head-actions">
+              <span class="pill teal">session: bs-8f31</span>
+              <span class="pill amber">activeTab: user controlled</span>
+            </div>
+          </div>
+
+          <div class="body">
+            <section class="show-config">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">1. 可替换组织器</div>
+                    <div class="panel-sub">先决定 RequirementAnalysisOrchestrator 插槽使用哪种组织方式。</div>
+                  </div>
+                  <span class="pill teal">active</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="option-card selected">
+                    <div>
+                      <div class="option-title">BrainstormingOrchestrator</div>
+                      <div class="option-desc">连续问答、主动追问、轻量选项、结构化 document_patch。</div>
+                    </div>
+                    <span class="pill teal">当前</span>
+                  </div>
+                  <div class="option-card">
+                    <div>
+                      <div class="option-title">WizardOrchestrator</div>
+                      <div class="option-desc">固定步骤向导。模型不稳定时降级为更可控流程。</div>
+                    </div>
+                    <span class="pill">可替换</span>
+                  </div>
+                  <div class="option-card">
+                    <div>
+                      <div class="option-title">FormDrivenOrchestrator</div>
+                      <div class="option-desc">以表单字段为主，模型只补全缺口和解释字段。</div>
+                    </div>
+                    <span class="pill">可替换</span>
+                  </div>
+                  <div class="option-card">
+                    <div>
+                      <div class="option-title">RuleBasedReviewOrchestrator</div>
+                      <div class="option-desc">规则优先，模型只解释风险、缺口和可能条款。</div>
+                    </div>
+                    <span class="pill">可替换</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">2. 启动参数</div>
+                    <div class="panel-sub">选择组织器后配置课题、Provider、模板、知识包和写入策略。</div>
+                  </div>
+                  <span class="pill amber">不会切Tab</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="field">
+                    <div class="field-label">课题输入</div>
+                    <div class="field-value multi">空域运算软件需求规格探索</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Model Provider</div>
+                    <div class="field-value">Mock Provider / mock-brainstorm-v1</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">模板对象</div>
+                    <div class="field-value">81433号 软件需求规格说明模板</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">知识包</div>
+                    <div class="field-value">airspace-domain-demo</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">写入策略</div>
+                    <div class="field-value">只生成 document_patch 建议，不写入正式草稿</div>
+                  </div>
+                  <div class="button primary">启动验证</div>
+                  <div class="notice">点击后只创建 BrainstormSession，并在“会话管理”Tab 上显示“已创建”徽标；当前视图仍停留在组织器配置。</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">3. 稳定契约 / 输出协议</div>
+                    <div class="panel-sub">组织器可以替换，但正式 P2 文档能力不能被破坏。</div>
+                  </div>
+                  <span class="pill navy">stable</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="contract-row"><strong>正式需求规格文档</strong><span class="pill teal">stable</span></div>
+                  <div class="contract-row"><strong>模板对象</strong><span class="pill teal">stable</span></div>
+                  <div class="contract-row"><strong>知识绑定</strong><span class="pill teal">stable</span></div>
+                  <div class="contract-row"><strong>草稿持久化</strong><span class="pill teal">stable</span></div>
+                  <div class="contract-row"><strong>检查与冻结</strong><span class="pill teal">stable</span></div>
+                  <div class="contract-row"><strong>P2 -> P3 输出</strong><span class="pill teal">stable</span></div>
+                  <div class="protocol-box">
+                    <strong>统一输出协议</strong>
+                    <ol class="protocol-list">
+                      <li>assistant_message</li>
+                      <li>next_question / quick_options</li>
+                      <li>confirmed_facts_delta</li>
+                      <li>document_patch</li>
+                      <li>annotations / risks</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-session">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">CLI 式问答区</div>
+                    <div class="panel-sub">只属于“会话管理”Tab。发送输入后不自动跳 Turn。</div>
+                  </div>
+                  <span class="pill teal">BrainstormSession bs-8f31</span>
+                </div>
+                <div class="panel-content">
+                  <div class="conversation">
+                    <div class="messages">
+                      <div class="msg assistant">
+                        我会先验证这个课题的需求边界。当前知识包只作为背景，不会自动写入正式规格。
+                        <div class="quick-options">
+                          <span class="option">A 计算分析工具</span>
+                          <span class="option">B 协同规划平台</span>
+                          <span class="option">C 二者都有</span>
+                        </div>
+                      </div>
+                      <div class="msg user">A，先按计算分析工具理解</div>
+                      <div class="msg assistant">已确认：系统初步定位为计算分析工具。下一步建议确认输入数据来源和输出结果形式。</div>
+                    </div>
+                    <div class="input-line">
+                      <div class="input">输入 A / 继续 / 更正式 / 或直接描述需求...</div>
+                      <div class="button teal">发送</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">会话摘要 / 过程产物</div>
+                    <div class="panel-sub">按需求规格章节组织问题、事实和文档建议。</div>
+                  </div>
+                  <span class="pill amber">doc tree</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="doc-tree">
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">1.1 系统目标</div>
+                        <div class="doc-section-meta">2 问题 / 1 事实 / 1 建议</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status done">✓</span>
+                          <span class="tree-text">Q-001 系统定位是什么？</span>
+                          <span class="tree-ref">已确认 · F-001 · P-001</span>
+                        </div>
+                        <div class="tree-row child">
+                          <span class="tree-status done">F</span>
+                          <span class="tree-text">F-001 系统定位为空域计算分析工具</span>
+                          <span class="tree-ref">turn-0001</span>
+                        </div>
+                        <div class="tree-row child patch-row">
+                          <span class="tree-status done">P</span>
+                          <span class="tree-text">P-001 -> 1.1 系统目标</span>
+                          <span class="tree-ref">待采纳</span>
+                        </div>
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-002 是否需要说明离线或弱网运行？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">1.2 用户角色</div>
+                        <div class="doc-section-meta">1 问题</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-003 主要用户是谁？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">2.1 输入数据</div>
+                        <div class="doc-section-meta">1 问题</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-004 输入数据来源是什么？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">未归类澄清项</div>
+                        <div class="doc-section-meta">1 需复核</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status review">!</span>
+                          <span class="tree-text">Q-005 专家校核职责应落到用户角色还是业务流程？</span>
+                          <span class="tree-ref">需复核</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tree-note">问题树只服务于需求规格说明成文：每个问题都必须能落到章节、事实或 document_patch；不能落文档的内容进入注记或风险。</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-turn">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">本轮输入对象</div>
+                    <div class="panel-sub">当前 Tab 只聚焦 turn-0001，不显示整个会话目录。</div>
+                  </div>
+                  <span class="pill amber">turn-0001</span>
+                </div>
+                <div class="panel-content turn-object">
+                  <div class="field">
+                    <div class="field-label">user_input</div>
+                    <div class="field-value">A，先按计算分析工具理解</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">answering</div>
+                    <div class="field-value multi">上一轮问题：这个软件更偏向计算分析工具，还是协同规划平台？</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">normalized_input</div>
+                    <div class="field-value multi">input_type: quick_option_answer<br />matched_option: A<br />semantic: 系统初步定位为计算分析工具。</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">confirmed_facts_delta</div>
+                    <div class="field-value multi">系统初步定位为空域计算分析工具</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">Brainstorming Service 循环输出</div>
+                    <div class="panel-sub">展示可审计的服务步骤和结构化输出，不展示底层思维链。</div>
+                  </div>
+                  <span class="pill teal">completed</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="step-row"><div class="step-num">1</div><div class="step-title">接收用户输入</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">2</div><div class="step-title">读取会话状态</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">3</div><div class="step-title">读取模板与知识包</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">4</div><div class="step-title">组装模型上下文</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">5</div><div class="step-title">调用 Provider</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">6</div><div class="step-title">解析结构化输出</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">7</div><div class="step-title">校验并落状态</div><span class="pill teal">done</span></div>
+                  <div class="patch">
+                    <div class="patch-title">document_patch / 1.1 系统目标</div>
+                    <div class="patch-text">本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-log">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">Provider 调用列表</div>
+                    <div class="panel-sub">调用日志是独立 Tab，不进入正式需求规格文档。</div>
+                  </div>
+                  <span class="pill teal">2 条</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="log-row">
+                    <div>
+                      <div class="fact-title">brainstorm-provider-call-0001</div>
+                      <div class="fact-text">provider: mock / model: mock-brainstorm-v1 / status: mocked</div>
+                    </div>
+                    <span class="pill teal">selected</span>
+                  </div>
+                  <div class="log-row">
+                    <div>
+                      <div class="fact-title">brainstorm-provider-call-0002</div>
+                      <div class="fact-text">provider: mock / model: mock-brainstorm-v1 / status: mocked</div>
+                    </div>
+                    <span class="pill">ready</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">调用详情</div>
+                    <div class="panel-sub">用于 Lab 可观测性和调试，不作为专家正式文档内容。</div>
+                  </div>
+                  <span class="pill amber">raw response</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="detail-box">
+                    <div class="detail-title">调用上下文</div>
+                    <div class="detail-text">session: bs-8f31；turn: turn-0001；orchestrator: BrainstormingOrchestrator；write_policy: patch_suggestion_only。</div>
+                  </div>
+                  <div class="detail-box">
+                    <div class="detail-title">解析结果</div>
+                    <div class="detail-text">结构化输出通过校验，已更新 messages、confirmed_facts、open_questions、document_patch 和 provider_logs。</div>
+                  </div>
+                  <div class="code-box">{
+  "provider_id": "mock",
+  "model": "mock-brainstorm-v1",
+  "mock": true,
+  "user_input": "A，先按计算分析工具理解",
+  "output_protocol": [
+    "assistant_message",
+    "next_question",
+    "document_patch"
+  ]
+}</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </section>
+    </div>
+
+    <script>
+      const stage = document.getElementById("stage");
+      const title = document.getElementById("headTitle");
+      const sub = document.getElementById("headSub");
+      const state = location.hash.replace("#", "") || "config";
+      const map = {
+        config: ["state-config", "组织器配置", "先选组织器，再配置启动参数，再看稳定契约，最后启动验证。"],
+        session: ["state-session", "会话管理", "用户显式点击会话管理后，才进入 CLI 式问答区。"],
+        turn: ["state-turn", "当前 Turn 输入 / 输出对象", "用户显式点击当前 Turn 后，才查看最新单轮结构化输入输出。"],
+        log: ["state-log", "调用日志", "用户显式点击调用日志后，才查看 Provider 调用和原始结构化响应。"],
+      };
+      const current = map[state] || map.config;
+      stage.className = "stage " + current[0];
+      title.textContent = current[1];
+      sub.textContent = current[2];
+    </script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+{
+  "clauses": {
+    "REQ-1.1": {
+      "fact_template": "编写目的初步确认：{semantic}",
+      "patch_template": "本文档用于定义{semantic}相关的软件需求边界、功能行为和验收准则。",
+      "quick_options": [
+        { "key": "A", "label": "先定义软件名称和目标", "recommended": true },
+        { "key": "B", "label": "先说明业务背景", "recommended": false },
+        { "key": "C", "label": "先限定不做什么", "recommended": false }
+      ]
+    },
+    "REQ-2.1": {
+      "fact_template": "软件定位初步确认：{semantic}",
+      "patch_template": "软件定位为：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "计算分析工具", "recommended": true },
+        { "key": "B", "label": "协同规划平台", "recommended": false },
+        { "key": "C", "label": "二者兼有但先做分析", "recommended": false }
+      ]
+    },
+    "REQ-3.1": {
+      "fact_template": "用户与角色初步确认：{semantic}",
+      "patch_template": "本软件的主要使用对象和职责包括：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "领域专家直接使用", "recommended": true },
+        { "key": "B", "label": "管理员配置后专家使用", "recommended": false },
+        { "key": "C", "label": "多角色协同使用", "recommended": false }
+      ]
+    },
+    "REQ-3.2": {
+      "fact_template": "核心业务流程初步确认：{semantic}",
+      "patch_template": "核心业务流程为：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "导入数据后计算分析", "recommended": true },
+        { "key": "B", "label": "配置任务后批量处理", "recommended": false },
+        { "key": "C", "label": "人工确认后生成报告", "recommended": false }
+      ]
+    },
+    "REQ-3.3": {
+      "fact_template": "异常与补偿初步确认：{semantic}",
+      "patch_template": "异常与补偿要求为：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "缺数据时阻断并提示", "recommended": true },
+        { "key": "B", "label": "异常时进入人工复核", "recommended": false },
+        { "key": "C", "label": "允许保存为待处理", "recommended": false }
+      ]
+    },
+    "REQ-4.1": {
+      "fact_template": "性能与可靠性初步确认：{semantic}",
+      "patch_template": "性能与可靠性要求为：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "优先保证可靠性", "recommended": true },
+        { "key": "B", "label": "优先保证响应速度", "recommended": false },
+        { "key": "C", "label": "先按单机部署约束", "recommended": false }
+      ]
+    },
+    "REQ-5.1": {
+      "fact_template": "验收准则初步确认：{semantic}",
+      "patch_template": "验收准则为：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "按功能闭环验收", "recommended": true },
+        { "key": "B", "label": "按专家评审验收", "recommended": false },
+        { "key": "C", "label": "按演示样例验收", "recommended": false }
+      ]
+    }
+  },
+  "defaults": {
+    "fact_template": "需求规格信息初步确认：{semantic}",
+    "patch_template": "{semantic}",
+    "quick_options": []
+  }
+}

@@ -710,6 +710,237 @@ export type RequirementSpecWriteInput = {
   payload: RequirementSpecPayload;
 };
 
+export type RequirementAuthoringTemplateStatus = "draft" | "active" | "disabled" | "archived";
+export type RequirementAuthoringDocumentStatus =
+  | "draft"
+  | "checking"
+  | "ready_to_freeze"
+  | "frozen"
+  | "submitted_to_p3"
+  | "archived";
+export type RequirementAuthoringLayoutRatio = "2:3" | "1:1";
+
+export type RequirementAuthoringTemplateField = {
+  field_key: string;
+  label: string;
+  required: boolean;
+  clause_id: string;
+};
+
+export type RequirementAuthoringTemplateFormGroup = {
+  group_id: string;
+  title: string;
+  fields: RequirementAuthoringTemplateField[];
+};
+
+export type RequirementAuthoringTemplate = {
+  template_id: string;
+  template_code: string;
+  name: string;
+  status: RequirementAuthoringTemplateStatus;
+  description: string;
+  sections: Array<Record<string, unknown>>;
+  form_groups: RequirementAuthoringTemplateFormGroup[];
+  field_mappings: Array<Record<string, unknown>>;
+  questionnaire_policy: {
+    quick_inputs?: string[];
+    [key: string]: unknown;
+  };
+  gap_rules: Record<string, unknown>;
+  knowledge_bindings: Array<{ archive_id: string; label: string; enabled?: boolean }>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RequirementAuthoringClause = {
+  clause_id: string;
+  title: string;
+  content: string;
+  status: "missing" | "synced" | "pending_mapping" | string;
+};
+
+export type RequirementAuthoringSection = {
+  section_id: string;
+  title: string;
+  clauses: RequirementAuthoringClause[];
+};
+
+export type RequirementAuthoringStandardDocument = {
+  title: string;
+  sections: RequirementAuthoringSection[];
+};
+
+export type RequirementAuthoringConversationMessage = {
+  id: string;
+  role: "assistant" | "user" | string;
+  content: string;
+  created_at?: string;
+};
+
+export type RequirementAuthoringAnnotation = {
+  clause_id: string;
+  title: string;
+  interpretation: string;
+  source_refs: string[];
+  semantic_mapping: Array<Record<string, unknown>>;
+  p3_mapping: string[];
+  gaps: string[];
+  pending_confirmations: string[];
+};
+
+export type RequirementAuthoringCheckResult = {
+  blocking_count: number;
+  warning_count: number;
+  passed_count: number;
+  items: Array<Record<string, unknown>>;
+};
+
+export type RequirementAuthoringDocumentSummary = {
+  document_id: string;
+  title: string;
+  template_id: string;
+  status: RequirementAuthoringDocumentStatus;
+  layout_ratio: RequirementAuthoringLayoutRatio;
+  archive_ids: string[];
+  updated_at: string;
+};
+
+export type RequirementAuthoringDocumentDetail = RequirementAuthoringDocumentSummary & {
+  created_at: string;
+  semantic_state: {
+    fields: Record<string, string>;
+    knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
+    [key: string]: unknown;
+  };
+  document: RequirementAuthoringStandardDocument;
+  conversation: RequirementAuthoringConversationMessage[];
+  annotations: RequirementAuthoringAnnotation[];
+  check_result: RequirementAuthoringCheckResult;
+  frozen_package: { p3_consumable?: boolean; [key: string]: unknown } | null;
+};
+
+export type RequirementAuthoringTemplateWriteInput = {
+  template_code: string;
+  name: string;
+  description?: string;
+  status?: RequirementAuthoringTemplateStatus;
+  sections?: Array<Record<string, unknown>>;
+  form_groups?: RequirementAuthoringTemplateFormGroup[];
+  field_mappings?: Array<Record<string, unknown>>;
+  questionnaire_policy?: Record<string, unknown>;
+  gap_rules?: Record<string, unknown>;
+  knowledge_bindings?: Array<Record<string, unknown>>;
+};
+
+export type RequirementAuthoringDocumentCreateInput = {
+  title: string;
+  template_id: string;
+  archive_ids?: string[];
+  layout_ratio?: RequirementAuthoringLayoutRatio;
+};
+
+export type P1KnowledgeProviderRegistration = {
+  provider_id: string;
+  provider_name: string;
+  provider_kind: "p1_knowledge_provider";
+  status: "online" | "offline";
+  capabilities: string[];
+  version: string;
+  seed: string;
+};
+
+export type P1DomainKnowledgeCatalogItem = {
+  domain_id: string;
+  domain_name: string;
+  domain_summary: string;
+  archive_version: string;
+  concept_count: number;
+  rule_count: number;
+  process_count: number;
+  evidence_count: number;
+};
+
+export type P1DomainKnowledgeCatalog = {
+  provider: P1KnowledgeProviderRegistration;
+  items: P1DomainKnowledgeCatalogItem[];
+};
+
+export type P1KnowledgeConcept = {
+  concept_id: string;
+  name: string;
+  definition: string;
+};
+
+export type P1KnowledgeRule = {
+  rule_id: string;
+  name: string;
+  description: string;
+};
+
+export type P1KnowledgeProcess = {
+  process_id: string;
+  name: string;
+  steps: string[];
+};
+
+export type P1KnowledgeConstraint = {
+  constraint_id: string;
+  category: string;
+  description: string;
+};
+
+export type P1KnowledgeEvidenceRef = {
+  evidence_id: string;
+  source: string;
+  excerpt: string;
+};
+
+export type P1DomainKnowledgeArchive = {
+  provider_id: string;
+  domain_id: string;
+  archive_id: string;
+  archive_version: string;
+  published_at: string;
+  concepts: P1KnowledgeConcept[];
+  entities: P1KnowledgeConcept[];
+  rules: P1KnowledgeRule[];
+  processes: P1KnowledgeProcess[];
+  constraints: P1KnowledgeConstraint[];
+  evidence_refs: P1KnowledgeEvidenceRef[];
+};
+
+export type P1SimCallLog = {
+  call_id: string;
+  called_at: string;
+  method: string;
+  path: string;
+  domain_id?: string | null;
+  status_code: number;
+  archive_version: string;
+};
+
+export type P1SimCallLogEnvelope = {
+  items: P1SimCallLog[];
+};
+
+export type RequirementAuthoringKnowledgeProvider = P1KnowledgeProviderRegistration & {
+  domains: P1DomainKnowledgeCatalogItem[];
+};
+
+export type RequirementAuthoringKnowledgeProviderEnvelope = {
+  items: RequirementAuthoringKnowledgeProvider[];
+};
+
+export type RequirementAuthoringKnowledgeBinding = {
+  binding_id: string;
+  provider: P1KnowledgeProviderRegistration;
+  domain: P1DomainKnowledgeCatalogItem;
+  knowledge_archive: Partial<P1DomainKnowledgeArchive>;
+  editor_badge: string;
+  created_document: null;
+  frozen_package: null;
+};
+
 export type RequirementStep = "goal" | "audience" | "flow" | "object_event" | "structure";
 export type RequirementDraftStatus = "draft" | "completed";
 export type RequirementRecommendationSource = "recommended_common" | "recommended_domain" | "manual";
@@ -888,12 +1119,12 @@ export type ToolDefinition = {
   problem_statement: string;
   primary_domain_id: string;
   tool_form_id: string;
-  tool_granularity: ToolGranularity;
-  packaging_type: ToolPackagingType;
-  integration_mode: ToolIntegrationMode;
-  dependency_policy: ToolDependencyPolicy;
-  runtime_dependencies: string[];
-  host_constraints: Record<string, string | string[]>;
+  tool_granularity?: ToolGranularity;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
+  host_constraints?: Record<string, string | string[]>;
   runtime_platform_ids: string[];
   tags: string[];
   lifecycle_stage_ids: string[];
@@ -927,43 +1158,6 @@ export type ToolDefinitionWriteInput = Omit<
   runtime_dependencies?: string[];
   host_constraints?: Record<string, string | string[]>;
   supported_sources?: string[];
-};
-
-export type ToolBuildRun = {
-  build_run_id: string;
-  build_request_id: string;
-  tool_id: string;
-  status: ToolBuildRunStatus;
-  queue_name: string;
-  payload: Record<string, unknown>;
-  artifact_version_id?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ToolDeliveryManifest = {
-  tool_id: string;
-  tool_name: string;
-  tool_form_id: string;
-  packaging_type: ToolPackagingType;
-  integration_mode: ToolIntegrationMode;
-  dependency_policy: ToolDependencyPolicy;
-  runtime_dependencies: string[];
-  import_specifier: string;
-  example_host_path: string;
-  artifact_version_id?: string | null;
-  manifest_path: string;
-  contract_version: string;
-  updated_at: string;
-};
-
-export type FrontendComponentBuildRequestInput = {
-  requested_by: string;
-  component_name: string;
-  scenario_id: string;
-  tool_definition: ToolDefinitionWriteInput;
 };
 
 export type ToolListEnvelope = {
@@ -1277,16 +1471,53 @@ export type ToolFetchManifest = {
   tool_name: string;
   tool_version: string;
   tool_form_id: string;
-  packaging_type: ToolPackagingType;
-  integration_mode: ToolIntegrationMode;
-  dependency_policy: ToolDependencyPolicy;
-  runtime_dependencies: string[];
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
   runtime_platform_ids: string[];
   fetch_mode: "descriptor";
   entrypoint_type: "http" | "descriptor" | "artifact_ref" | "manual";
   entrypoint_locator: string;
   contract_version: string;
   updated_at: string;
+};
+
+export type ToolBuildRun = {
+  build_run_id: string;
+  build_request_id: string;
+  tool_id: string;
+  status: ToolBuildRunStatus;
+  queue_name: string;
+  payload: Record<string, unknown>;
+  artifact_version_id?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolDeliveryManifest = {
+  tool_id: string;
+  tool_name: string;
+  tool_form_id: string;
+  packaging_type: ToolPackagingType;
+  integration_mode: ToolIntegrationMode;
+  dependency_policy: ToolDependencyPolicy;
+  runtime_dependencies: string[];
+  import_specifier: string;
+  example_host_path: string;
+  artifact_version_id?: string | null;
+  manifest_path: string;
+  contract_version: string;
+  updated_at: string;
+};
+
+export type FrontendComponentBuildRequestInput = {
+  requested_by: string;
+  component_name: string;
+  scenario_id: string;
+  tool_definition: ToolDefinitionWriteInput;
 };
 
 export type ToolSupplyResult = {
@@ -1833,4 +2064,460 @@ export type P5DeliveryRuntimeClearResult = {
   cleared_order_count: number;
   cleared_attempt_count: number;
   cleared_export_directory_count: number;
+};
+
+export type P3DesignLabInputPackage = {
+  input_package_id: string;
+  source_document_id: string;
+  source_title: string;
+  standard_document: RequirementAuthoringStandardDocument;
+  structured_spec: Record<string, unknown>;
+  annotations: RequirementAuthoringAnnotation[];
+  knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
+  frozen_at?: string | null;
+  p3_consumable: boolean;
+};
+
+export type P3DesignLabDocumentSection = {
+  section_id: string;
+  title: string;
+  content: string;
+  status?: string;
+};
+
+export type P3DesignLabDesignDocument = {
+  title: string;
+  sections: P3DesignLabDocumentSection[];
+};
+
+export type P3DesignLabDesignBaseline = {
+  baseline_id: string;
+  application_name?: string;
+  architecture_mode: string;
+  modules: Array<{ module_id: string; name: string; source_refs?: string[] }>;
+  traceability?: Array<Record<string, string>>;
+  pending_confirmations?: string[];
+};
+
+export type P3DesignLabWorkorderProjection = {
+  package_overview?: Record<string, unknown>;
+  items: Array<{ item_id: string; title: string; module_id?: string }>;
+};
+
+export type P3DesignLabSession = {
+  session_id: string;
+  input_package: P3DesignLabInputPackage;
+  generation_policy: Record<string, string>;
+  status: string;
+  design_document: P3DesignLabDesignDocument | null;
+  design_baseline: P3DesignLabDesignBaseline | null;
+  workorder_projection: P3DesignLabWorkorderProjection | null;
+  turns: Array<Record<string, unknown>>;
+  check_result?: RequirementAuthoringCheckResult | null;
+};
+
+export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
+
+export type RequirementAnalysisOrchestrator = {
+  orchestrator_id: string;
+  name: string;
+  version?: string;
+  stage?: string;
+  document_type?: string;
+  contract?: string;
+  mode?: string;
+  status: RequirementAnalysisOrchestratorStatus;
+  description: string;
+  entry?: string | null;
+  capabilities?: readonly string[];
+  requires?: Record<string, unknown>;
+  package_path?: string;
+};
+
+export type RequirementAnalysisProvider = {
+  provider_id: string;
+  name: string;
+  status: "active" | "not_configured" | "disabled";
+};
+
+export type RequirementAnalysisStableContract = {
+  formal_document: boolean;
+  template_object: boolean;
+  knowledge_binding: boolean;
+  draft_persistence: boolean;
+  check_and_freeze: boolean;
+  p2_to_p3_output: boolean;
+};
+
+export type RequirementAnalysisOrchestratorEnvelope = {
+  items: RequirementAnalysisOrchestrator[];
+  stable_contract: RequirementAnalysisStableContract;
+  output_protocol: string[];
+};
+
+export type RequirementAnalysisProviderEnvelope = {
+  items: RequirementAnalysisProvider[];
+};
+
+export type RequirementAnalysisPageMeta = {
+  title: string;
+  subtitle: string;
+};
+
+export type RequirementAnalysisLabDefaults = {
+  topic: string;
+  orchestrator_id: string;
+  provider_id: string;
+  model: string;
+  template_id: string;
+  knowledge_package_id: string;
+  write_policy: string;
+};
+
+export type RequirementAnalysisStartupField = {
+  field: string;
+  label: string;
+  control: string;
+  required?: boolean;
+  placeholder?: string;
+};
+
+export type RequirementAnalysisWritePolicyOption = {
+  policy_id: string;
+  label: string;
+  description: string;
+};
+
+export type RequirementAnalysisFieldSchemaItem = {
+  path: string;
+  label: string;
+  description: string;
+  used_when?: string;
+};
+
+export type RequirementAnalysisFieldSchema = {
+  fields: RequirementAnalysisFieldSchemaItem[];
+};
+
+export type RequirementAnalysisTurnAuditSchema = {
+  protocol_version: string;
+  required_fields: string[];
+};
+
+export type RequirementAnalysisLabConfig = {
+  page: RequirementAnalysisPageMeta;
+  defaults: RequirementAnalysisLabDefaults;
+  startup_fields: RequirementAnalysisStartupField[];
+  write_policies: RequirementAnalysisWritePolicyOption[];
+  provider_log_schema: RequirementAnalysisFieldSchema;
+  turn_audit_schema: RequirementAnalysisTurnAuditSchema;
+};
+
+export type RequirementAnalysisMessage = {
+  id: string;
+  role: "assistant" | "user" | "system";
+  content: string;
+  turn_id?: string;
+  created_at?: string;
+};
+
+export type RequirementAnalysisDocumentPatch = {
+  section: string;
+  operation: string;
+  content: string;
+  write_policy?: string;
+};
+
+export type RequirementAnalysisQuestionStatus = "open" | "confirmed" | "cancelled" | "superseded" | "review";
+
+export type RequirementAnalysisQuestionItem = {
+  question_id: string;
+  content: string;
+  status: RequirementAnalysisQuestionStatus | string;
+  target_section?: string | null;
+  source_turn_id: string | null;
+  resolution_fact_ids: string[];
+};
+
+export type RequirementAnalysisConfirmedFactItem = {
+  fact_id: string;
+  content: string;
+  source_turn_id: string;
+  source_question_ids: string[];
+  target_section?: string | null;
+};
+
+export type RequirementAnalysisPatchProposal = {
+  patch_id: string;
+  target_section: string;
+  operation: string;
+  content: string;
+  write_policy?: string;
+  status: "proposed" | "accepted" | "rejected" | string;
+  source_fact_ids: string[];
+  source_question_ids: string[];
+};
+
+export type RequirementAnalysisSpecTreeNode = {
+  node_id: string;
+  title: string;
+  target_section: string;
+  node_type?: string;
+  question?: string;
+  status: "open" | "partial" | "closed" | "skipped" | string;
+  answer_summary: string;
+  completion_reason: string;
+  children: RequirementAnalysisSpecTreeNode[];
+};
+
+export type RequirementAnalysisTurnPathItem = {
+  turn_id: string;
+  node_id: string;
+  question_id?: string | null;
+  previous_interaction_id?: string | null;
+  input_relation?: string;
+  affected_node_ids?: string[];
+  next_interaction_id?: string | null;
+  closed_node_ids: string[];
+  answer_summary: string;
+};
+
+export type RequirementAnalysisQuickOption = {
+  key: string;
+  label: string;
+  recommended?: boolean;
+};
+
+export type RequirementAnalysisServiceStep = {
+  step: number;
+  title: string;
+  status: string;
+};
+
+export type RequirementAnalysisInteraction = {
+  interaction_id?: string | null;
+  type: "none" | "open_question" | "choice_question" | "suggestion" | "free_continue" | string;
+  prompt: string;
+  options: RequirementAnalysisQuickOption[];
+  target_spec_node_ids: string[];
+  reason?: string;
+};
+
+export type RequirementAnalysisInputRelation = {
+  relation: string;
+  reason: string;
+};
+
+export type RequirementAnalysisOrganizerInterpretation = {
+  summary: string;
+  intent?: string;
+  confidence?: string;
+};
+
+export type RequirementAnalysisAffectedSpecNode = {
+  node_id: string | null;
+  title?: string;
+  target_section?: string;
+  effect: string;
+  reason: string;
+};
+
+export type RequirementAnalysisClosureAssessment = {
+  status: string;
+  reason: string;
+  next_action: string;
+};
+
+export type RequirementAnalysisStateChanges = {
+  closed_question_ids: string[];
+  created_question_ids: string[];
+  closed_spec_node_ids: string[];
+  next_active_spec_node_id?: string | null;
+};
+
+export type RequirementAnalysisSpecExecution = {
+  interpretation: RequirementAnalysisOrganizerInterpretation;
+  assistant_message: string;
+  confirmed_facts: string[];
+  affected_spec_nodes: RequirementAnalysisAffectedSpecNode[];
+  document_patch: RequirementAnalysisDocumentPatch[];
+  working_document_update: {
+    applied_section_ids: string[];
+    sections: {
+      section_id: string;
+      target_section: string;
+      before: string;
+      after: string;
+      source_patch_ids: string[];
+      last_turn_id: string;
+    }[];
+    before: string;
+    after: string;
+  };
+  state_changes: RequirementAnalysisStateChanges;
+  annotations: string[];
+  risks: string[];
+};
+
+export type RequirementAnalysisPostUpdateReview = {
+  summary: string;
+  section_review: {
+    section_id: string;
+    target_section: string;
+    status: string;
+    reason: string;
+    missing_aspects: string[];
+  };
+  global_review: {
+    status: string;
+    summary: string;
+    remaining_gaps: string[];
+  };
+};
+
+export type RequirementAnalysisWorkingDocumentSection = {
+  section_id: string;
+  target_section: string;
+  content: string;
+  source_patch_ids: string[];
+  last_turn_id: string | null;
+  review_status: string;
+  review_reason: string;
+};
+
+export type RequirementAnalysisWorkingDocument = {
+  document_id: string;
+  title: string;
+  topic?: string;
+  sections: RequirementAnalysisWorkingDocumentSection[];
+};
+
+export type RequirementAnalysisTurn = {
+  turn_id: string;
+  session_id: string;
+  user_input: string;
+  previous_interaction: RequirementAnalysisInteraction;
+  normalized_input: {
+    input_type: string;
+    matched_option: string | null;
+    matched_option_label?: string | null;
+    semantic: string;
+  };
+  input_relation: RequirementAnalysisInputRelation;
+  spec_execution: RequirementAnalysisSpecExecution;
+  post_update_review: RequirementAnalysisPostUpdateReview;
+  closure_decision: RequirementAnalysisClosureAssessment;
+  next_interaction: RequirementAnalysisInteraction;
+  decision_trace: string[];
+  confidence: string;
+  service_steps: RequirementAnalysisServiceStep[];
+  raw_model_response: Record<string, unknown>;
+  created_at: string;
+};
+
+export type RequirementAnalysisProviderLog = {
+  call_id: string;
+  turn_id?: string | null;
+  provider_id: string;
+  orchestrator_id?: string;
+  orchestrator_mode?: string;
+  model: string;
+  status: string;
+  audit?: {
+    user_input?: string;
+    normalized_input?: Record<string, unknown>;
+    provider_request?: Record<string, unknown>;
+    provider_response?: Record<string, unknown>;
+    provider_normalized_output?: Record<string, unknown>;
+    service_output?: Record<string, unknown>;
+  };
+  created_at: string;
+};
+
+export type RequirementAnalysisSession = {
+  session_id: string;
+  topic: string;
+  status: "created" | "waiting_user" | "running" | "failed" | "completed";
+  orchestrator: RequirementAnalysisOrchestrator;
+  provider_id: string;
+  model: string;
+  template_id: string;
+  knowledge_package_id: string;
+  write_policy: string;
+  stable_contract: RequirementAnalysisStableContract;
+  messages: RequirementAnalysisMessage[];
+  turns: RequirementAnalysisTurn[];
+  confirmed_facts: string[];
+  open_questions: string[];
+  document_patch: RequirementAnalysisDocumentPatch[];
+  working_document: RequirementAnalysisWorkingDocument;
+  questions: RequirementAnalysisQuestionItem[];
+  facts: RequirementAnalysisConfirmedFactItem[];
+  patches: RequirementAnalysisPatchProposal[];
+  spec_tree: RequirementAnalysisSpecTreeNode[];
+  active_spec_node_id: string | null;
+  turn_path: RequirementAnalysisTurnPathItem[];
+  annotations: string[];
+  risks: string[];
+  provider_logs: RequirementAnalysisProviderLog[];
+  next_interaction: RequirementAnalysisInteraction | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RequirementAnalysisSessionCreateInput = {
+  topic: string;
+  orchestrator_id: string;
+  provider_id: string;
+  model?: string;
+  template_id?: string;
+  knowledge_package_id?: string;
+  write_policy?: string;
+};
+
+export type RequirementAnalysisTurnEnvelope = {
+  session: RequirementAnalysisSession;
+  turn: RequirementAnalysisTurn;
+};
+
+export type RequirementAuthoringWorkbenchDefaults = {
+  document_title: string;
+  layout_ratio: RequirementAuthoringLayoutRatio;
+  allow_empty_knowledge_binding: boolean;
+};
+
+export type RequirementAuthoringLayoutOption = {
+  ratio: RequirementAuthoringLayoutRatio;
+  label: string;
+};
+
+export type RequirementAuthoringStatusDefinition = {
+  status: RequirementAuthoringDocumentStatus | string;
+  label: string;
+  editable: boolean;
+};
+
+export type RequirementAuthoringActionDefinition = {
+  action_id: "create_document" | "open_document" | "save_draft" | "delete_document" | "run_check" | "freeze" | string;
+  label: string;
+  style?: "primary" | string;
+  requires_document?: boolean;
+  disabled_when_frozen?: boolean;
+  danger?: boolean;
+};
+
+export type RequirementAuthoringDocumentSurfaceConfig = {
+  title: string;
+  badges: string[];
+  ribbon: string[];
+};
+
+export type RequirementAuthoringWorkbenchConfig = {
+  page: RequirementAnalysisPageMeta;
+  defaults: RequirementAuthoringWorkbenchDefaults;
+  layout_options: RequirementAuthoringLayoutOption[];
+  document_statuses: RequirementAuthoringStatusDefinition[];
+  actions: RequirementAuthoringActionDefinition[];
+  document_surface: RequirementAuthoringDocumentSurfaceConfig;
+  empty_states: Record<string, string>;
 };

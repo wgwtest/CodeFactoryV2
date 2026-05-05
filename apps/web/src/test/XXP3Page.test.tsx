@@ -298,6 +298,8 @@ test("renders XX-P3 cockpit route and refreshes order status through the workflo
 
   expect(await screen.findByText("XX-P3")).toBeInTheDocument();
   expect(screen.getByText("软件设计编制与模块工单下发系统")).toBeInTheDocument();
+  expect(screen.queryByText("当前订单上下文")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "总览" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "审批通过" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "接收为P3订单" })).toBeDisabled();
 
@@ -331,6 +333,8 @@ test("renders template and standards workspace when there are no orders", async 
   );
 
   expect(await screen.findByRole("tab", { name: "模板与规范" })).toBeInTheDocument();
+  expect(screen.queryByText("当前订单上下文")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "总览" })).not.toBeInTheDocument();
   expect(screen.getByText("当前没有订单")).toBeInTheDocument();
   expect(screen.getByText("模板清单")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /细\s*节/ })).toBeInTheDocument();

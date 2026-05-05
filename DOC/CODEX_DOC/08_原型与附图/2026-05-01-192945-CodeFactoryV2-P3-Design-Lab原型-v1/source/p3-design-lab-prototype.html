@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P3 Design Lab Prototype v1</title>
+    <style>
+      :root {
+        --ink: #15202f;
+        --muted: #66758a;
+        --line: #d9e0ea;
+        --paper: #fffdf8;
+        --panel: #ffffff;
+        --field: #f6f8fb;
+        --blue: #235d8f;
+        --cyan: #2c8a9a;
+        --green: #4f8b62;
+        --amber: #ad7c26;
+        --red: #a94f4f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(21, 32, 47, 0.05) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(21, 32, 47, 0.045) 1px, transparent 1px),
+          #eef2f6;
+        background-size: 24px 24px;
+        color: var(--ink);
+        font-family: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+      }
+
+      .board {
+        width: 1920px;
+        height: 1080px;
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .topbar {
+        height: 78px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 14px 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 16px 28px rgba(21, 32, 47, 0.08);
+      }
+
+      .title {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .status-row,
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fbfcfe;
+        color: #334155;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .pill.strong {
+        border-color: #96b7c6;
+        background: #eef8fb;
+        color: #174d5f;
+        font-weight: 700;
+      }
+
+      .button {
+        min-height: 34px;
+        padding: 6px 12px;
+        border: 1px solid #b7c4d6;
+        border-radius: 6px;
+        background: #fff;
+        color: #1f2a3a;
+        font-size: 14px;
+      }
+
+      .button.primary {
+        border-color: #235d8f;
+        background: #235d8f;
+        color: #fff;
+      }
+
+      .shell {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 38fr 62fr;
+        gap: 16px;
+      }
+
+      .left {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: 70fr 30fr;
+        gap: 16px;
+      }
+
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 12px 24px rgba(21, 32, 47, 0.07);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f8fafc;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .panel-head small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .panel-body {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        padding: 14px;
+      }
+
+      .document-scroll,
+      .cli-scroll {
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .spec-paper,
+      .design-paper {
+        min-height: 100%;
+        padding: 28px 34px;
+        background: var(--paper);
+        border: 1px solid #e8decf;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+      }
+
+      .design-paper {
+        padding: 32px 46px;
+      }
+
+      .paper-title {
+        margin: 0 0 16px;
+        text-align: center;
+        font-size: 22px;
+      }
+
+      .section-block {
+        position: relative;
+        margin: 0 0 14px;
+        padding: 12px 14px;
+        border: 1px solid #eadfcd;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .section-block.active {
+        border-color: #8bb9c6;
+        background: #f1fbfd;
+      }
+
+      .section-block.generated {
+        border-color: #bdd2c0;
+        background: #f4fbf3;
+      }
+
+      .section-block h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+
+      .section-block p {
+        margin: 0;
+        color: #364256;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .clause-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 9px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: #eef2f7;
+        color: #475569;
+        font-size: 12px;
+      }
+
+      .tag.blue {
+        background: #e7f3fb;
+        color: #1f5d7a;
+      }
+
+      .tag.green {
+        background: #edf7ef;
+        color: #3d724f;
+      }
+
+      .tag.amber {
+        background: #fff4df;
+        color: #80601d;
+      }
+
+      .cli {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 10px;
+      }
+
+      .strategy-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .strategy {
+        padding: 8px;
+        border: 1px solid #d9e0ea;
+        border-radius: 6px;
+        background: #fbfcfe;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .strategy strong {
+        display: block;
+        margin-bottom: 3px;
+        color: #28374b;
+      }
+
+      .message-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: hidden;
+      }
+
+      .message {
+        max-width: 95%;
+        padding: 8px 10px;
+        border: 1px solid #d9e0ea;
+        border-radius: 6px;
+        background: #f8fafc;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        border-color: #b8d1be;
+        background: #f3faf4;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      .fake-input {
+        min-height: 34px;
+        padding: 7px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        color: #475569;
+        font-size: 13px;
+      }
+
+      .right-body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+        gap: 14px;
+        height: 100%;
+      }
+
+      .right-body.full {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .side-rail {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .rail-card {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfe;
+      }
+
+      .rail-card h4 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .rail-card p,
+      .rail-card li {
+        margin: 0;
+        color: #4b5b70;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .rail-card ul {
+        margin: 0;
+        padding-left: 16px;
+      }
+
+      .trace-line {
+        height: 28px;
+        display: grid;
+        grid-template-columns: 92px 1fr 92px;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0 14px;
+        color: #436172;
+        font-size: 12px;
+      }
+
+      .trace-line::before,
+      .trace-line::after {
+        content: "";
+        height: 1px;
+        background: #9ab9c5;
+      }
+
+      .workorder-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .workorder {
+        min-height: 92px;
+        padding: 10px;
+        border: 1px solid #cbd8cd;
+        border-radius: 7px;
+        background: #f6fbf5;
+      }
+
+      .workorder strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 13px;
+      }
+
+      .workorder span {
+        color: #53645b;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .state {
+        display: none;
+        height: 100%;
+      }
+
+      body[data-state="overview"] .state-overview,
+      body[data-state="trace"] .state-trace,
+      body[data-state="complete"] .state-complete {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .mapping-badge {
+        position: absolute;
+        right: 12px;
+        top: 10px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: #235d8f;
+        color: #fff;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body data-state="overview">
+    <main class="board">
+      <header class="topbar">
+        <div>
+          <div class="title">
+            <h1>P3 Design Lab</h1>
+            <span class="subtitle">只消费 P2 新版冻结包，不兼容旧规格池</span>
+          </div>
+          <div class="status-row" style="margin-top: 8px">
+            <span class="pill strong">输入：P2 authoring frozen_package</span>
+            <span class="pill">布局：左 38% / 右 62%</span>
+            <span class="pill">状态：Design Session p3dl-0001</span>
+            <span class="pill">Provider：Mock Design Provider</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="button">选择冻结包</button>
+          <button class="button">生成设计基线</button>
+          <button class="button primary">检查并预览冻结</button>
+        </div>
+      </header>
+
+      <section class="shell">
+        <aside class="left">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>需求规格说明（输入事实源）</h2>
+                <small>空域协同规划软件需求规格说明 / 已冻结 / p3_consumable=true</small>
+              </div>
+              <span class="tag blue">只读</span>
+            </div>
+            <div class="panel-body">
+              <div class="document-scroll">
+                <article class="spec-paper">
+                  <h2 class="paper-title">空域协同规划软件需求规格说明</h2>
+                  <section class="section-block active">
+                    <span class="mapping-badge">已映射</span>
+                    <h3>3.1 用户与角色</h3>
+                    <p>本软件面向运行协调员、体系架构师和空域规划专家，支持其开展协同规划、冲突识别、处置确认和记录追溯。</p>
+                    <div class="clause-tags">
+                      <span class="tag blue">REQ-3.1</span>
+                      <span class="tag">来源：P1 空域管理知识包</span>
+                      <span class="tag green">P3 映射：用户权限与任务流</span>
+                    </div>
+                  </section>
+                  <section class="section-block">
+                    <h3>3.2 核心业务流程</h3>
+                    <p>系统应支持创建规划任务、识别冲突、协同确认、形成处置记录，并保持关键状态变更可追溯。</p>
+                    <div class="clause-tags">
+                      <span class="tag blue">REQ-3.2</span>
+                      <span class="tag amber">映射候选：模块划分</span>
+                    </div>
+                  </section>
+                  <section class="section-block">
+                    <h3>3.3 异常与补偿</h3>
+                    <p>异常流程包含超时提醒和人工确认，不扩展复杂补偿链路。</p>
+                    <div class="clause-tags">
+                      <span class="tag blue">REQ-3.3</span>
+                      <span class="tag amber">待确认：告警策略</span>
+                    </div>
+                  </section>
+                  <section class="section-block">
+                    <h3>4.1 性能与可靠性</h3>
+                    <p>关键告警应在 2 分钟内反馈，关键流程操作和状态变化必须可追溯。</p>
+                  </section>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>自然语言配置 / CLI</h2>
+                <small>用于控制转换策略和校正输出，不替代虚规输入</small>
+              </div>
+              <span class="tag green">Design Turn</span>
+            </div>
+            <div class="panel-body">
+              <div class="cli">
+                <div class="strategy-grid">
+                  <div class="strategy"><strong>架构偏好</strong>统一服务优先，保留拆分点</div>
+                  <div class="strategy"><strong>模块粒度</strong>3-5 个业务模块，不拆太细</div>
+                  <div class="strategy"><strong>输出风格</strong>按标准软设正文写，不写聊天语气</div>
+                </div>
+                <div class="message-stack">
+                  <div class="message">已读取 P2 冻结包。建议先生成总体架构、模块划分、接口与状态设计。</div>
+                  <div class="message user">按保守方案，先不要拆成微服务；模块名要能直接下发给 P4。</div>
+                  <div class="message">已设置：统一服务架构、模块工单可落地、接口和数据状态需显式列出。</div>
+                </div>
+                <div class="input-row">
+                  <div class="fake-input">输入短指令：细化模块 / 重生成接口 / 增加状态机 / 保守一点</div>
+                  <button class="button primary">提交</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>软件设计说明（输出主产物）</h2>
+              <small>由同一份 SoftwareDesignBaseline v2 投影生成</small>
+            </div>
+            <div class="status-row">
+              <span class="tag green">正文已生成</span>
+              <span class="tag amber">2 项待确认</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="state state-overview">
+              <div class="right-body">
+                <article class="design-paper">
+                  <h2 class="paper-title">空域协同规划软件设计说明</h2>
+                  <section class="section-block generated">
+                    <h3>1. 设计目标与范围</h3>
+                    <p>本设计面向空域协同规划软件首版交付，覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。</p>
+                  </section>
+                  <section class="section-block generated">
+                    <h3>2. 总体架构</h3>
+                    <p>首版采用统一服务架构，前端以 B/S 工作台承载协同规划视图，后端以任务、冲突、确认和审计四类服务对象组织核心能力。</p>
+                  </section>
+                  <section class="section-block generated">
+                    <h3>3. 模块划分</h3>
+                    <p>系统划分为规划任务管理、冲突识别与告警、协同确认、审计追溯四个模块。各模块均保留面向 P4 的工具化工单投影。</p>
+                  </section>
+                  <section class="section-block">
+                    <h3>4. 接口与数据状态</h3>
+                    <p>接口设计正在根据 REQ-3.2 与 REQ-4.1 生成，需确认告警反馈时间和状态历史粒度。</p>
+                  </section>
+                </article>
+                <aside class="side-rail">
+                  <div class="rail-card">
+                    <h4>设计基线摘要</h4>
+                    <ul>
+                      <li>架构：统一服务</li>
+                      <li>模块：4 个</li>
+                      <li>追溯：7 条需求映射</li>
+                      <li>工单投影：待检查</li>
+                    </ul>
+                  </div>
+                  <div class="rail-card">
+                    <h4>待确认项</h4>
+                    <p>告警策略是否只保留人工确认；审计日志是否需要单独模块。</p>
+                  </div>
+                  <div class="rail-card">
+                    <h4>不兼容提示</h4>
+                    <p>本页不读取旧 requirements/specs，也不显示旧 P3 订单入口。</p>
+                  </div>
+                </aside>
+              </div>
+            </div>
+
+            <div class="state state-trace">
+              <div class="right-body">
+                <article class="design-paper">
+                  <h2 class="paper-title">条款映射与设计补丁</h2>
+                  <section class="section-block active">
+                    <h3>REQ-3.2 -> 3. 模块划分</h3>
+                    <p>“创建规划、识别冲突、协同确认、形成处置记录”被拆分为四个设计模块，并生成对应模块职责、输入输出和验收点。</p>
+                    <div class="trace-line"><span>虚规条款</span><span></span><span>软设章节</span></div>
+                    <div class="workorder-grid">
+                      <div class="workorder"><strong>规划任务管理</strong><span>输入规划请求，输出规划任务和状态历史。</span></div>
+                      <div class="workorder"><strong>冲突识别与告警</strong><span>接收任务和规则，输出冲突告警与处置建议。</span></div>
+                      <div class="workorder"><strong>协同确认</strong><span>组织人工确认，固化处置记录。</span></div>
+                    </div>
+                  </section>
+                  <section class="section-block generated">
+                    <h3>Design Patch p3dp-0007</h3>
+                    <p>新增接口说明、模块输入输出、需求到模块追溯表，并标记“超时提醒策略”为待确认项。</p>
+                    <div class="clause-tags">
+                      <span class="tag green">patch_valid</span>
+                      <span class="tag blue">targets: SDD-3, SDD-4</span>
+                      <span class="tag amber">needs_user_confirmation</span>
+                    </div>
+                  </section>
+                </article>
+                <aside class="side-rail">
+                  <div class="rail-card">
+                    <h4>来源条款</h4>
+                    <p>REQ-3.2 核心业务流程；REQ-3.3 异常与补偿；REQ-4.1 性能与可靠性。</p>
+                  </div>
+                  <div class="rail-card">
+                    <h4>设计校验</h4>
+                    <ul>
+                      <li>模块数量：通过</li>
+                      <li>输入输出：通过</li>
+                      <li>告警策略：待确认</li>
+                    </ul>
+                  </div>
+                </aside>
+              </div>
+            </div>
+
+            <div class="state state-complete">
+              <div class="right-body full">
+                <article class="design-paper">
+                  <h2 class="paper-title">设计基线与 P4 工单投影预览</h2>
+                  <section class="section-block generated">
+                    <h3>SoftwareDesignBaseline v2</h3>
+                    <p>基线已形成：统一服务架构、四个业务模块、两类接口族、三类核心状态和七条需求追溯映射。该基线同时投影软件设计说明和 P4 工单包。</p>
+                    <div class="clause-tags">
+                      <span class="tag green">baseline_ready</span>
+                      <span class="tag green">design_document_ready</span>
+                      <span class="tag green">workorder_projection_ready</span>
+                    </div>
+                  </section>
+                  <div class="workorder-grid">
+                    <div class="workorder"><strong>工单 01：规划任务管理</strong><span>表单、任务状态、任务历史、权限边界。</span></div>
+                    <div class="workorder"><strong>工单 02：冲突识别与告警</strong><span>规则匹配、冲突标记、告警反馈时间。</span></div>
+                    <div class="workorder"><strong>工单 03：协同确认</strong><span>人工确认流、处置意见、确认记录。</span></div>
+                    <div class="workorder"><strong>工单 04：审计追溯</strong><span>操作日志、状态轨迹、需求追溯查询。</span></div>
+                    <div class="workorder"><strong>包级说明</strong><span>统一服务优先，保留后续拆分条件。</span></div>
+                    <div class="workorder"><strong>检查结果</strong><span>阻断 0；提醒 2；通过 9。</span></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const allowed = new Set(["overview", "trace", "complete"]);
+      function applyState() {
+        const next = location.hash.replace("#", "") || "overview";
+        document.body.dataset.state = allowed.has(next) ? next : "overview";
+      }
+      window.addEventListener("hashchange", applyState);
+      applyState();
+    </script>
+  </body>
+</html>

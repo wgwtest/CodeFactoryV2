@@ -1,0 +1,234 @@
+.xx-p1-sim-page {
+  min-height: 100vh;
+  padding: 24px 30px;
+  background:
+    linear-gradient(90deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(0deg, rgba(33, 44, 39, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+    #e7eceb;
+  color: #16211d;
+}
+
+.xx-p1-sim-topbar,
+.xx-p1-sim-sidebar,
+.xx-p1-sim-workspace,
+.xx-p1-sim-panel {
+  border: 1px solid rgba(162, 174, 168, 0.78);
+  background: rgba(251, 252, 251, 0.96);
+  box-shadow: 0 20px 50px rgba(38, 50, 45, 0.12);
+}
+
+.xx-p1-sim-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 78px;
+  padding: 0 20px 0 24px;
+}
+
+.xx-p1-sim-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.xx-p1-sim-brand h2.ant-typography,
+.xx-p1-sim-panel h4.ant-typography,
+.xx-p1-sim-sidebar h4.ant-typography {
+  margin: 0 0 4px !important;
+}
+
+.xx-p1-sim-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #1f7449;
+  color: #1f7449;
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.xx-p1-sim-layout {
+  height: calc(100vh - 130px);
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.xx-p1-sim-sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 14px 16px;
+  overflow: hidden;
+}
+
+.xx-p1-sim-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid #c9d4ce;
+  background: #ffffff;
+}
+
+.xx-p1-sim-summary-row.is-active {
+  border-color: #91c3a6;
+  background: #f0faf4;
+}
+
+.xx-p1-sim-workspace {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.xx-p1-sim-workspace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 0 20px;
+  border-bottom: 1px solid #d8e0dc;
+  background: #ffffff;
+}
+
+.xx-p1-sim-grid {
+  height: calc(100% - 64px);
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-rows: 285px minmax(265px, 0.95fr) minmax(165px, 0.55fr);
+  gap: 18px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.xx-p1-sim-panel {
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.xx-p1-sim-wide {
+  grid-column: 1 / -1;
+}
+
+.xx-p1-sim-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.xx-p1-sim-interface-list,
+.xx-p1-sim-log-list,
+.xx-p1-sim-domain-list {
+  display: grid;
+  gap: 8px;
+}
+
+.xx-p1-sim-interface-row,
+.xx-p1-sim-log-row {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #c8d4ce;
+  background: #ffffff;
+}
+
+.xx-p1-sim-interface-row {
+  grid-template-columns: 56px minmax(0, 1fr) 96px;
+}
+
+.xx-p1-sim-log-row {
+  grid-template-columns: 78px minmax(0, 1fr) 44px;
+}
+
+.xx-p1-sim-interface-row code,
+.xx-p1-sim-log-row code {
+  color: #285f8f;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+}
+
+.xx-p1-sim-domain-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 1px solid #c8d4ce;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.xx-p1-sim-domain-card.is-active {
+  border-color: #91c3a6;
+  background: #f0faf4;
+}
+
+.xx-p1-sim-domain-card span {
+  display: grid;
+  gap: 4px;
+}
+
+.xx-p1-sim-domain-meta {
+  display: flex !important;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.xx-p1-sim-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.xx-p1-sim-preview-card {
+  min-height: 105px;
+  padding: 14px;
+  border: 1px solid #c8d4ce;
+  background: #ffffff;
+}
+
+.xx-p1-sim-preview-card > div {
+  margin-top: 9px;
+  line-height: 1.65;
+}
+
+@media (max-width: 1180px) {
+  .xx-p1-sim-page {
+    min-height: 100vh;
+  }
+
+  .xx-p1-sim-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .xx-p1-sim-grid {
+    height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .xx-p1-sim-wide {
+    grid-column: auto;
+  }
+
+  .xx-p1-sim-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}

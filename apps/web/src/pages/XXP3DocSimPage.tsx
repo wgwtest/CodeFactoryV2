@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Space, Tag, Typography } from "antd";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import type { P5DesignInputSource } from "../lib/api";
-import { createSoftwareBuildDesignInputSim, createSoftwareBuildOrder, getSoftwareBuildDesignInputs } from "../lib/softwareBuild";
+import { createSoftwareBuildDesignInputSim, getSoftwareBuildDesignInputs } from "../lib/softwareBuild";
 
 const presetPayload = {
   application_name: "基于地理信息系统的通视分析软件",
@@ -55,7 +55,6 @@ const cardStyle = {
 };
 
 export function XXP3DocSimPage() {
-  const navigate = useNavigate();
   const [items, setItems] = useState<P5DesignInputSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -84,14 +83,10 @@ export function XXP3DocSimPage() {
       setCreating(true);
       setError(null);
       const response = await createSoftwareBuildDesignInputSim({ ...presetPayload });
-      await createSoftwareBuildOrder({
-        design_input_id: response.data.design_input_id,
-        requested_by: "xx-p3-doc-sim",
-        notes: "由 xx-p3-doc-sim 创建，等待 P5 输入绑定确认。",
-      });
-      navigate("/build");
+      setNotice(`已生成设计模拟输出 ${response.data.design_input_id}`);
+      await loadItems();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "生成设计模拟输出并创建 P5 主单失败");
+      setError(createError instanceof Error ? createError.message : "生成设计模拟输出失败");
     } finally {
       setCreating(false);
     }
@@ -110,11 +105,11 @@ export function XXP3DocSimPage() {
               P3 文档模拟输出台
             </Typography.Title>
             <Typography.Paragraph style={{ margin: 0, color: "#5a6472", maxWidth: 840 }}>
-              这里不做 P3 全流程，只负责生成“基于地理信息系统的通视分析软件”的冻结设计样例，并立即把它送入 P5 创建交付主单。输出对象保持与正式设计输入同形，避免 P5 前后端在模拟模式下再走分叉逻辑。
+              这里不做 P3 全流程，只负责生成“基于地理信息系统的通视分析软件”的冻结设计样例。生成完成后停留在当前页面，供你检查输出结果，再决定是否切换到 P5 继续后续操作。
             </Typography.Paragraph>
             <Space wrap>
               <Button type="primary" onClick={() => void handleCreate()} loading={creating}>
-                生成设计输出并创建 P5 主单
+                生成设计模拟输出
               </Button>
               <Button onClick={() => void loadItems()} loading={loading}>
                 刷新列表

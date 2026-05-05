@@ -6,6 +6,13 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
 import App from "../App";
+import {
+  buildDisplayBaseline,
+  buildPlatformLegend,
+  buildPlatformRoutes,
+  buildPortalProjectionEnvelope,
+  buildScenarioCatalog,
+} from "./p6TestData";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
@@ -24,6 +31,46 @@ beforeEach(() => {
   postMock.mockReset();
   patchMock.mockReset();
 });
+
+function mockPortalApis() {
+  getMock.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
+    if (url === "/p6/mock-scenarios") {
+      return Promise.resolve({ data: buildScenarioCatalog() });
+    }
+
+    if (url === "/p6/portal-projection") {
+      return Promise.resolve({ data: buildPortalProjectionEnvelope(config?.params?.scenario ?? "baseline") });
+    }
+
+    if (url === "/platform-config/display-baseline") {
+      return Promise.resolve({ data: buildDisplayBaseline() });
+    }
+
+    if (url === "/platform-config/routes") {
+      return Promise.resolve({ data: buildPlatformRoutes() });
+    }
+
+    if (url === "/platform-config/legend") {
+      return Promise.resolve({ data: buildPlatformLegend() });
+    }
+
+    if (url === "/platform-display/workbench") {
+      return Promise.resolve({
+        data: {
+          version: "p6.4-v1",
+          templates: [],
+          bindings: [],
+          layouts: [],
+          presets: [],
+          experiments: [],
+          promotion_candidates: [],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
 
 function mockDocumentsApis() {
   getMock.mockImplementation((url: string) => {
@@ -471,6 +518,204 @@ function mockSoftwareBuildApis() {
   });
 }
 
+function mockXXP1SimApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/xx-p1-sim/domains") {
+      return Promise.resolve({
+        data: {
+          provider: {
+            provider_id: "xx-p1-sim",
+            provider_name: "XX-P1-Sim",
+            provider_kind: "p1_knowledge_provider",
+            status: "online",
+            capabilities: ["domain_catalog", "knowledge_archive"],
+            version: "v1.0",
+            seed: "xx-p1-sim-fixed-v1",
+          },
+          items: [
+            {
+              domain_id: "airspace-planning",
+              domain_name: "空域规划领域知识",
+              domain_summary: "包含空域对象、冲突窗口、协同规划流程、会签约束和证据片段。",
+              archive_version: "v1.0",
+              concept_count: 12,
+              rule_count: 8,
+              process_count: 3,
+              evidence_count: 18,
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/xx-p1-sim/domains/airspace-planning/knowledge") {
+      return Promise.resolve({
+        data: {
+          provider_id: "xx-p1-sim",
+          domain_id: "airspace-planning",
+          archive_id: "archive-airspace-planning-v1",
+          archive_version: "v1.0",
+          published_at: "2026-04-30T00:00:00+00:00",
+          concepts: [
+            { concept_id: "concept-airspace-cell", name: "空域单元", definition: "用于表达可规划的空域范围。" },
+          ],
+          entities: [],
+          rules: [
+            {
+              rule_id: "rule-confirm-conflict-window",
+              name: "冲突窗口确认规则",
+              description: "冲突窗口未确认时，不得直接发布规划结果。",
+            },
+          ],
+          processes: [
+            {
+              process_id: "process-airspace-coordination",
+              name: "空域规划协同流程",
+              steps: ["任务创建", "冲突识别", "协同会签", "结果发布"],
+            },
+          ],
+          constraints: [
+            {
+              constraint_id: "constraint-audit-trace",
+              category: "traceability",
+              description: "关键状态变化需要保留责任人、时间和依据。",
+            },
+          ],
+          evidence_refs: [
+            {
+              evidence_id: "evidence-airspace-term",
+              source: "P1 发布态领域知识",
+              excerpt: "空域规划过程应形成可追溯记录。",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/xx-p1-sim/logs") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              call_id: "p1-sim-call-0001",
+              called_at: "2026-04-30T21:45:08+00:00",
+              method: "GET",
+              path: "/api/xx-p1-sim/domains",
+              domain_id: null,
+              status_code: 200,
+              archive_version: "v1.0",
+            },
+          ],
+        },
+      });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
+function mockRequirementAnalysisLabApis() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({
+        data: {
+          page: {
+            title: "P2 XG 需求分析组织器 Lab",
+            subtitle: "配置接口下发的 Lab 副标题。",
+          },
+          defaults: {
+            topic: "空域运算软件需求规格探索",
+            orchestrator_id: "xg-heuristic-orchestrator",
+            provider_id: "mock",
+            model: "mock-requirement-analysis-v1",
+            template_id: "81433号",
+            knowledge_package_id: "airspace-domain-demo",
+            write_policy: "patch_suggestion_only",
+          },
+          startup_fields: [
+            {
+              field: "topic",
+              label: "课题输入",
+              control: "textarea",
+              required: true,
+              placeholder: "输入本次需求规格探索课题",
+            },
+          ],
+          write_policies: [
+            {
+              policy_id: "patch_suggestion_only",
+              label: "只生成 document_patch 建议",
+              description: "Lab 只生成 document_patch 建议，不直接写入正式需求规格草稿。",
+            },
+          ],
+          provider_log_schema: {
+            fields: [],
+          },
+          turn_audit_schema: {
+            protocol_version: "xg-turn-audit-v1",
+            required_fields: [
+              "previous_interaction",
+              "input_relation",
+              "spec_execution",
+              "post_update_review",
+              "closure_decision",
+              "next_interaction",
+              "decision_trace",
+            ],
+          },
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              orchestrator_id: "xg-heuristic-orchestrator",
+              name: "XG Heuristic Orchestrator",
+              version: "0.1.0",
+              stage: "P2",
+              document_type: "xg",
+              contract: "xg-orchestrator-contract@1",
+              mode: "policy_interpreted",
+              status: "active",
+              description: "面向需求规格说明的开放式 Requirement Analysis 组织器。",
+              entry: null,
+              capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+              requires: { template: true, knowledge_binding: true, model_provider: "optional" },
+              package_path: "orchestrators/xg/xg-heuristic-orchestrator",
+            },
+          ],
+          stable_contract: {
+            formal_document: true,
+            template_object: true,
+            knowledge_binding: true,
+            draft_persistence: true,
+            check_and_freeze: true,
+            p2_to_p3_output: true,
+          },
+          output_protocol: [
+            "previous_interaction",
+            "input_relation",
+            "spec_execution",
+            "post_update_review",
+            "closure_decision",
+            "next_interaction",
+            "decision_trace",
+          ],
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
+    }
+
+    throw new Error(`unexpected url: ${url}`);
+  });
+}
+
 function parseEnvFile(filePath: string) {
   if (!existsSync(filePath)) {
     return {} as Record<string, string>;
@@ -548,6 +793,8 @@ test("redirects / to the main default page", async () => {
       mockModelingApis();
       break;
     case "/portal":
+      mockPortalApis();
+      break;
     case "/build":
       mockSoftwareBuildApis();
       break;
@@ -558,6 +805,9 @@ test("redirects / to the main default page", async () => {
       mockP4WorkspaceApis();
       break;
     case "/xx-p2-sim":
+      break;
+    case "/xx-p1-sim":
+      mockXXP1SimApis();
       break;
     default:
       throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
@@ -610,6 +860,10 @@ test("redirects / to the main default page", async () => {
       break;
     case "/xx-p2-sim":
       expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+      break;
+    case "/xx-p1-sim":
+      expect(await screen.findByRole("heading", { name: "XX-P1-Sim" })).toBeInTheDocument();
       expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
       break;
     default:
@@ -681,5 +935,103 @@ test("renders xx-p2-sim route outside the main shell", async () => {
   );
 
   expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
+
+test("renders xx-p1-sim route outside the main shell", async () => {
+  mockXXP1SimApis();
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p1-sim"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "XX-P1-Sim" })).toBeInTheDocument();
+expect(screen.getByText("P1 服务接口")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
+
+test("renders requirement authoring route outside the main shell", async () => {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-authoring/workbench-config") {
+      return Promise.resolve({
+        data: {
+          page: {
+            title: "P2 专家需求规格编写工作台",
+            subtitle: "配置接口下发的专家工作台副标题。",
+          },
+          defaults: {
+            document_title: "未命名软件需求规格说明",
+            layout_ratio: "2:3",
+            allow_empty_knowledge_binding: true,
+          },
+          layout_options: [
+            { ratio: "2:3", label: "2:3" },
+            { ratio: "1:1", label: "1:1" },
+          ],
+          document_statuses: [
+            { status: "draft", label: "草稿", editable: true },
+            { status: "checking", label: "检查中", editable: false },
+            { status: "ready_to_freeze", label: "待冻结", editable: true },
+            { status: "frozen", label: "已冻结", editable: false },
+          ],
+          actions: [
+            { action_id: "create_document", label: "新建文档", style: "primary" },
+            { action_id: "open_document", label: "打开文档" },
+            { action_id: "save_draft", label: "保存草稿", requires_document: true, disabled_when_frozen: true },
+            { action_id: "delete_document", label: "删除文档", requires_document: true, danger: true },
+            { action_id: "run_check", label: "缺口检查", requires_document: true },
+            { action_id: "freeze", label: "冻结版本", requires_document: true },
+          ],
+          document_surface: {
+            title: "标准需求规格说明",
+            badges: ["可导出稿"],
+            ribbon: ["页面 A4", "样式 标准正文", "段落 1.5 倍行距", "导出 DOCX / PDF"],
+          },
+          empty_states: {
+            question_mode: "创建规格文档后开始问答协作",
+            form_mode: "创建规格文档后开始表单校对",
+            document: "创建文档后，右侧会持续生成标准正文。",
+          },
+        },
+      });
+    }
+    if (url === "/requirement-authoring/templates") {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === "/requirement-authoring/documents") {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === "/requirement-authoring/knowledge-providers") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/archives") {
+      return Promise.resolve({ data: [] });
+    }
+    throw new Error(`unexpected url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/requirement-authoring"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 专家需求规格编写工作台" })).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
+});
+
+test("renders P2 XG requirement analysis lab route outside the main shell", async () => {
+  mockRequirementAnalysisLabApis();
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

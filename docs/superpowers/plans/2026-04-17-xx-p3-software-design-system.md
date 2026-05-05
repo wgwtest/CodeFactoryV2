@@ -42,8 +42,6 @@
   - 顶部总览区
 - Create: `apps/web/src/components/p3/P3OrderQueue.tsx`
   - 订单列表、审批/驳回入口
-- Create: `apps/web/src/components/p3/P3OrderContextPanel.tsx`
-  - 当前订单上下文摘要
 - Create: `apps/web/src/components/p3/P3DesignWorkspace.tsx`
   - 软件设计说明草案工作区
 - Create: `apps/web/src/components/p3/P3ReviewWorkspace.tsx`
@@ -895,7 +893,6 @@ Expected: FAIL，但报错应集中在 `XXP3Page` 或 `P3` 子组件不存在，
 - Create: `apps/web/src/pages/XXP3Page.tsx`
 - Create: `apps/web/src/components/p3/P3Hero.tsx`
 - Create: `apps/web/src/components/p3/P3OrderQueue.tsx`
-- Create: `apps/web/src/components/p3/P3OrderContextPanel.tsx`
 - Create: `apps/web/src/components/p3/P3DesignWorkspace.tsx`
 - Create: `apps/web/src/components/p3/P3ReviewWorkspace.tsx`
 - Create: `apps/web/src/components/p3/P3WorkorderBatchWorkspace.tsx`
@@ -911,7 +908,6 @@ import { Alert, Card, Space, Spin } from "antd";
 
 import { P3Hero } from "../components/p3/P3Hero";
 import { P3OrderQueue } from "../components/p3/P3OrderQueue";
-import { P3OrderContextPanel } from "../components/p3/P3OrderContextPanel";
 import { P3WorkspaceTabs } from "../components/p3/P3WorkspaceTabs";
 import {
   approveSoftwareDesignOrder,
@@ -966,7 +962,7 @@ export function XXP3Page() {
   }, []);
 ```
 
-- [ ] **Step 2: 实现订单列表和上下文面板，让审批、草案生成动作在列表页即可触发**
+- [ ] **Step 2: 实现订单列表，让审批、草案生成动作在列表页即可触发**
 
 ```tsx
 <P3OrderQueue
@@ -986,8 +982,6 @@ export function XXP3Page() {
     await loadPage();
   }}
 />
-
-<P3OrderContextPanel order={selectedOrder} />
 ```
 
 - [ ] **Step 3: 实现“设计编制”和“评审协作”工作区，至少展示章节、评论线程和冻结入口**
@@ -995,11 +989,6 @@ export function XXP3Page() {
 ```tsx
 <P3WorkspaceTabs
   items={[
-    {
-      key: "overview",
-      label: "总览",
-      children: <P3OrderContextPanel order={selectedOrder} />,
-    },
     {
       key: "design",
       label: "设计编制",

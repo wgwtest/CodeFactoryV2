@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P2 场景发生器原型 v1</title>
+    <style>
+      :root {
+        --bg: #e9edf1;
+        --surface: #f8faf9;
+        --paper: #fffefd;
+        --ink: #17211d;
+        --muted: #64736d;
+        --line: #cdd7d2;
+        --field: #eef4f0;
+        --green: #1f7a4b;
+        --green-2: #d9efe4;
+        --blue: #2a5f92;
+        --blue-2: #dbeaf7;
+        --amber: #a96512;
+        --amber-2: #f3e4c8;
+        --red: #9d2d2d;
+        --shadow: 0 18px 54px rgba(36, 46, 42, 0.16);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(23, 33, 29, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          linear-gradient(0deg, rgba(23, 33, 29, 0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+          var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .board {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 78px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px 0 24px;
+        background: rgba(248, 250, 249, 0.92);
+        border: 1px solid rgba(151, 164, 157, 0.55);
+        box-shadow: 0 10px 34px rgba(55, 66, 62, 0.11);
+      }
+
+      .brandline {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .node-mark {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--green);
+        color: var(--green);
+        font-size: 19px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 25px;
+        line-height: 1.15;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .segmented,
+      .button,
+      .icon-button {
+        height: 38px;
+        border: 1px solid #b8c5bf;
+        background: #fff;
+        color: #25332e;
+        font-size: 14px;
+      }
+
+      .segmented {
+        display: flex;
+        align-items: center;
+        padding: 3px;
+        gap: 3px;
+      }
+
+      .segment {
+        min-width: 58px;
+        padding: 7px 13px;
+        text-align: center;
+        color: #53625c;
+      }
+
+      .segment.active {
+        background: #22332c;
+        color: #fff;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 15px;
+        font-weight: 650;
+      }
+
+      .button.primary {
+        border-color: #1f6f45;
+        background: #1f6f45;
+        color: #fff;
+      }
+
+      .button.disabled {
+        color: #8c9994;
+        background: #eef2f0;
+      }
+
+      .icon-button {
+        width: 38px;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+      }
+
+      .shell {
+        height: 958px;
+        display: grid;
+        grid-template-columns: 43fr 57fr;
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .panel {
+        min-height: 0;
+        background: rgba(248, 250, 249, 0.96);
+        border: 1px solid rgba(162, 174, 168, 0.78);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .left-panel {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .tabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 18px 0;
+      }
+
+      .tab-group {
+        display: flex;
+        gap: 7px;
+      }
+
+      .tab {
+        padding: 9px 15px;
+        border: 1px solid #bac7c1;
+        background: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        color: #4f5e58;
+      }
+
+      .tab.active {
+        color: #fff;
+        background: #22332c;
+        border-color: #22332c;
+      }
+
+      .left-tag {
+        padding: 7px 10px;
+        color: var(--blue);
+        background: var(--blue-2);
+        border: 1px solid #b8d2e8;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .messages {
+        padding: 20px 20px 14px;
+        overflow: hidden;
+      }
+
+      .message {
+        position: relative;
+        margin-bottom: 16px;
+        padding: 15px 16px;
+        border: 1px solid #cbd8d2;
+        background: #fff;
+        box-shadow: 0 7px 20px rgba(42, 54, 49, 0.08);
+      }
+
+      .message.system {
+        border-left: 5px solid var(--green);
+      }
+
+      .message.user {
+        width: 78%;
+        margin-left: auto;
+        border-left: 5px solid var(--blue);
+        background: #f7fbff;
+      }
+
+      .message-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .message p {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .quick-row {
+        display: flex;
+        gap: 9px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .quick {
+        padding: 7px 12px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #41504a;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .quick.highlight {
+        color: var(--green);
+        border-color: #8cc6a8;
+        background: #eff8f3;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 92px;
+        gap: 10px;
+        padding: 16px 18px 18px;
+        border-top: 1px solid #d9e0dc;
+        background: #f3f6f4;
+      }
+
+      .input {
+        height: 43px;
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        border: 1px solid #bdcac4;
+        background: #fff;
+        color: #4d5a55;
+        font-size: 15px;
+      }
+
+      .scenario-mini {
+        margin: 0 18px 16px;
+        padding: 14px;
+        background: #fdfdfb;
+        border: 1px solid #c8d4ce;
+      }
+
+      .scenario-mini-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 7px;
+        margin-top: 12px;
+      }
+
+      .pipe-step {
+        min-height: 54px;
+        padding: 8px;
+        border: 1px solid #c5d2cc;
+        background: #fff;
+        color: #53625c;
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .pipe-step.done {
+        color: #174f32;
+        border-color: #9acaae;
+        background: #eef8f2;
+      }
+
+      .right-panel {
+        position: relative;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        background: #f0f3f1;
+      }
+
+      .doc-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 57px;
+        padding: 13px 18px;
+        background: #fff;
+        border-bottom: 1px solid #d4ddd8;
+      }
+
+      .toolbar-left,
+      .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .toolbar-title {
+        font-size: 17px;
+        font-weight: 850;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 26px;
+        padding: 5px 9px;
+        border: 1px solid #c2cec8;
+        background: #fff;
+        color: #50615a;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .pill.green {
+        color: var(--green);
+        border-color: #9fcbb2;
+        background: var(--green-2);
+      }
+
+      .pill.blue {
+        color: var(--blue);
+        border-color: #afcde5;
+        background: var(--blue-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dbbd87;
+        background: var(--amber-2);
+      }
+
+      .ribbon {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-height: 39px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d4ddd8;
+        background: #f8faf9;
+        color: #687772;
+        font-size: 13px;
+      }
+
+      .paper-zone {
+        position: relative;
+        padding: 28px 32px 34px;
+        overflow: hidden;
+      }
+
+      .paper {
+        width: 720px;
+        min-height: 770px;
+        margin: 0 auto;
+        padding: 44px 54px 46px;
+        background: var(--paper);
+        border: 1px solid #d0d0c8;
+        box-shadow: 0 22px 50px rgba(49, 56, 53, 0.2);
+      }
+
+      .paper-head {
+        display: flex;
+        justify-content: space-between;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #d8d8d0;
+        color: #7b7d76;
+        font-size: 12px;
+      }
+
+      .paper h2 {
+        margin: 26px 0 24px;
+        text-align: center;
+        font-size: 24px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+        letter-spacing: 0;
+      }
+
+      .doc-section {
+        margin-top: 20px;
+        font-family: "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .doc-section h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      .clause {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #ecebe4;
+      }
+
+      .clause-id {
+        color: var(--green);
+        font-weight: 800;
+        font-family: "Noto Sans CJK SC", sans-serif;
+      }
+
+      .clause-title {
+        margin-bottom: 5px;
+        font-weight: 800;
+      }
+
+      .clause-content {
+        margin: 0;
+        color: #2e3733;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .placeholder {
+        color: #9b6f2b;
+      }
+
+      .source-banner {
+        position: absolute;
+        top: 24px;
+        left: 26px;
+        z-index: 4;
+        width: 270px;
+        padding: 13px 14px;
+        border: 1px solid #a8cfb7;
+        background: rgba(241, 249, 244, 0.96);
+        box-shadow: 0 12px 28px rgba(39, 65, 50, 0.13);
+      }
+
+      .source-banner strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--green);
+      }
+
+      .source-banner span {
+        font-size: 13px;
+        color: #4c6258;
+      }
+
+      .settings-popover {
+        position: absolute;
+        top: 106px;
+        right: 292px;
+        z-index: 10;
+        width: 390px;
+        padding: 18px;
+        background: #fff;
+        border: 1px solid #b8c6c0;
+        box-shadow: 0 22px 64px rgba(38, 48, 44, 0.22);
+      }
+
+      .popover-arrow {
+        position: absolute;
+        top: -8px;
+        right: 70px;
+        width: 16px;
+        height: 16px;
+        transform: rotate(45deg);
+        background: #fff;
+        border-left: 1px solid #b8c6c0;
+        border-top: 1px solid #b8c6c0;
+      }
+
+      .setting-block {
+        padding: 14px 0;
+        border-bottom: 1px solid #e3e9e5;
+      }
+
+      .setting-block:first-of-type {
+        padding-top: 2px;
+      }
+
+      .setting-block:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .setting-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 11px;
+        font-weight: 850;
+      }
+
+      .setting-note {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .scenario-card {
+        padding: 12px;
+        border: 1px solid #9ec9b2;
+        background: #f1faf5;
+      }
+
+      .scenario-card h3 {
+        margin: 0 0 7px;
+        font-size: 16px;
+      }
+
+      .scenario-card p {
+        margin: 0;
+        color: #52635c;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .scenario-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .meta {
+        padding: 8px;
+        border: 1px solid #c6d8cf;
+        background: #fff;
+        font-size: 12px;
+      }
+
+      .meta b {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        color: #64736d;
+      }
+
+      .generator-dock {
+        position: absolute;
+        right: 26px;
+        bottom: 76px;
+        z-index: 5;
+        width: 322px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #bac7c1;
+        box-shadow: 0 18px 42px rgba(42, 54, 49, 0.16);
+      }
+
+      .dock-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 9px;
+        font-weight: 850;
+      }
+
+      .dock-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .dock-item {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        gap: 9px;
+        padding: 7px;
+        border: 1px solid #d5dfda;
+        background: #fbfcfb;
+        font-size: 12px;
+      }
+
+      .status-dot {
+        width: 15px;
+        height: 15px;
+        border: 2px solid #9ab1a6;
+        border-radius: 50%;
+      }
+
+      .status-dot.done {
+        background: var(--green);
+        border-color: var(--green);
+      }
+
+      .status-dot.active {
+        background: #fff;
+        border-color: var(--amber);
+        box-shadow: inset 0 0 0 4px var(--amber-2);
+      }
+
+      .freeze-summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin: 0 18px 16px;
+      }
+
+      .metric {
+        padding: 13px;
+        border: 1px solid #c7d4ce;
+        background: #fff;
+      }
+
+      .metric b {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 22px;
+        color: var(--green);
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .package-card {
+        margin: 0 18px 16px;
+        padding: 15px;
+        border: 1px solid #b6c9c0;
+        background: #fff;
+      }
+
+      .tree-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 12px;
+        color: #45534e;
+      }
+
+      .tree-line strong {
+        color: var(--blue);
+      }
+
+      .flow-strip {
+        position: absolute;
+        left: 50%;
+        bottom: 22px;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transform: translateX(-50%);
+        padding: 10px 13px;
+        background: rgba(26, 37, 32, 0.9);
+        color: #fff;
+        box-shadow: 0 18px 34px rgba(21, 30, 26, 0.2);
+      }
+
+      .flow-chip {
+        padding: 6px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .flow-arrow {
+        color: #a6cbb6;
+        font-weight: 900;
+      }
+
+      .setup-only,
+      .materialized-only,
+      .freeze-only {
+        display: none;
+      }
+
+      body[data-state="setup"] .setup-only,
+      body[data-state="materialized"] .materialized-only,
+      body[data-state="freeze"] .freeze-only {
+        display: block;
+      }
+
+      body[data-state="setup"] .setup-flex,
+      body[data-state="materialized"] .materialized-flex,
+      body[data-state="freeze"] .freeze-flex {
+        display: flex;
+      }
+
+      body[data-state="freeze"] .shell {
+        grid-template-columns: 40fr 60fr;
+      }
+
+      body[data-state="materialized"] .button.materialized-only,
+      body[data-state="freeze"] .button.freeze-only {
+        display: inline-flex;
+      }
+
+      body[data-state="freeze"] .freeze-summary.freeze-only {
+        display: grid;
+      }
+
+      body[data-state="materialized"] .dock-item.materialized-only,
+      body[data-state="freeze"] .dock-item.freeze-only {
+        display: grid;
+      }
+
+      body[data-state="freeze"] .flow-strip.freeze-only {
+        display: flex;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="board">
+      <header class="topbar">
+        <div class="brandline">
+          <div class="node-mark">P2</div>
+          <div>
+            <h1>P2 专家需求规格编写工作台</h1>
+            <div class="subtitle">场景发生器接入态：模拟 P1 知识、规则问答、自动补齐、冻结输出</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div class="segmented" aria-label="分屏比例">
+            <div class="segment active">2:3</div>
+            <div class="segment">1:1</div>
+          </div>
+          <button class="button" aria-label="设置">设置</button>
+          <button class="button primary setup-only">创建规格文档</button>
+          <button class="button primary materialized-only">自动补齐</button>
+          <button class="button freeze-only">缺口检查</button>
+          <button class="button primary freeze-only">冻结版本</button>
+        </div>
+      </header>
+
+      <main class="shell">
+        <section class="panel left-panel">
+          <div class="tabs">
+            <div class="tab-group">
+              <div class="tab active">问答模式</div>
+              <div class="tab">表单模式</div>
+            </div>
+            <div class="left-tag setup-only">场景入口在设置中</div>
+            <div class="left-tag materialized-only">mock_rule 已启用</div>
+            <div class="left-tag freeze-only">冻结前检查通过</div>
+          </div>
+
+          <div class="messages">
+            <article class="message system setup-only">
+              <div class="message-label">系统</div>
+              <p>当前没有载入场景数据。打开右上角设置，选择一个确定性场景包，即可生成模拟 P1 知识源和 P2 初始规格文档。</p>
+              <div class="quick-row">
+                <span class="quick">空域协同规划软件</span>
+                <span class="quick">81433 模板</span>
+                <span class="quick">2:3 分屏</span>
+              </div>
+            </article>
+
+            <article class="message system materialized-only">
+              <div class="message-label">系统</div>
+              <p>我已装载模拟 P1 空域协同知识库，将按标准规格骨架持续补齐。你可以直接回：可以 / 加超时 / 更正式 / 补验收 / 自动补齐。</p>
+            </article>
+            <article class="message user materialized-only">
+              <div class="message-label">专家</div>
+              <p>加超时</p>
+            </article>
+            <article class="message system materialized-only">
+              <div class="message-label">系统</div>
+              <p>已补入会签超时和人工确认约束，右侧异常流程条款已经同步更新，来源绑定到 mock-airspace-p1。</p>
+              <div class="quick-row">
+                <span class="quick">补验收</span>
+                <span class="quick highlight">自动补齐</span>
+                <span class="quick">更正式</span>
+              </div>
+            </article>
+
+            <article class="message system freeze-only">
+              <div class="message-label">系统</div>
+              <p>剩余关键字段已经按场景包补齐。缺口检查阻断项为 0，可以冻结为 P3 可消费包。</p>
+            </article>
+
+            <div class="scenario-mini materialized-only freeze-only">
+              <div class="scenario-mini-title">
+                <span>场景发生器链路</span>
+                <span class="pill green">airspace-collaboration</span>
+              </div>
+              <div class="pipeline">
+                <div class="pipe-step done">P1 知识包<br />mock-airspace-p1</div>
+                <div class="pipe-step done">P2 文档<br />81433</div>
+                <div class="pipe-step done">问答补丁<br />mock_rule</div>
+                <div class="pipe-step materialized-only">缺口检查<br />待执行</div>
+                <div class="pipe-step materialized-only">冻结包<br />未生成</div>
+                <div class="pipe-step freeze-only done">缺口检查<br />阻断项 0</div>
+                <div class="pipe-step freeze-only done">冻结包<br />P3 可消费</div>
+              </div>
+            </div>
+
+            <div class="freeze-summary freeze-only">
+              <div class="metric"><b>0</b><span>阻断缺口</span></div>
+              <div class="metric"><b>8</b><span>已同步字段</span></div>
+              <div class="metric"><b>1</b><span>冻结版本</span></div>
+            </div>
+
+            <div class="package-card freeze-only">
+              <div class="dock-title">P3 可消费结构包</div>
+              <div class="tree-line">structured_spec.<strong>application</strong>.name = 空域协同规划软件</div>
+              <div class="tree-line">structured_spec.<strong>processes</strong>[0].name = 协同规划与冲突处置</div>
+              <div class="tree-line">structured_spec.<strong>rules</strong>[0].description 含 会签超时</div>
+              <div class="tree-line">structured_spec.<strong>metrics</strong>[0].description 含 验收准则</div>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input setup-only">输入短答或打开设置生成场景...</div>
+            <div class="input materialized-only">加超时</div>
+            <div class="input freeze-only">冻结后当前版本只读</div>
+            <button class="button primary">发送</button>
+          </div>
+        </section>
+
+        <section class="panel right-panel">
+          <div class="doc-toolbar">
+            <div class="toolbar-left">
+              <span class="toolbar-title">标准需求规格说明</span>
+              <span class="pill green">可导出稿</span>
+              <span class="pill setup-only">未生成</span>
+              <span class="pill blue materialized-only">draft</span>
+              <span class="pill green freeze-only">frozen</span>
+              <span class="pill amber setup-only materialized-only">阻断项 4</span>
+              <span class="pill green freeze-only">阻断项 0</span>
+            </div>
+            <div class="toolbar-right">
+              <span class="pill">软件级需求规格说明模板</span>
+              <span class="pill">DOCX / PDF</span>
+            </div>
+          </div>
+          <div class="ribbon">
+            <span>页面 A4</span>
+            <span>样式 标准正文</span>
+            <span>段落 1.5 倍行距</span>
+            <span>批注 点击条款打开</span>
+            <span>来源 P1 知识绑定</span>
+          </div>
+
+          <div class="paper-zone">
+            <div class="source-banner materialized-only freeze-only">
+              <strong>模拟 P1 知识源</strong>
+              <span>mock-airspace-p1 · 发布态知识包 · 2 个实体 / 1 个流程 / 1 个事件</span>
+            </div>
+
+            <article class="paper">
+              <div class="paper-head">
+                <span>需求规格说明</span>
+                <span class="setup-only">草稿准备态</span>
+                <span class="materialized-only">草稿版</span>
+                <span class="freeze-only">冻结版</span>
+              </div>
+              <h2 class="setup-only">标准需求规格说明</h2>
+              <h2 class="materialized-only freeze-only">空域协同规划软件需求规格说明</h2>
+
+              <section class="doc-section">
+                <h3>1 总则</h3>
+                <div class="clause">
+                  <div class="clause-id">REQ-1.1</div>
+                  <div>
+                    <div class="clause-title">编写目的</div>
+                    <p class="clause-content setup-only placeholder">待补齐：软件名称和领域范围。</p>
+                    <p class="clause-content materialized-only freeze-only">本文档用于定义空域协同规划软件在空域协同规划领域内的需求边界、功能行为和验收准则。</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="doc-section">
+                <h3>3 功能需求</h3>
+                <div class="clause">
+                  <div class="clause-id">REQ-3.1</div>
+                  <div>
+                    <div class="clause-title">用户与角色</div>
+                    <p class="clause-content setup-only placeholder">待补齐：目标用户、角色和职责。</p>
+                    <p class="clause-content materialized-only freeze-only">本软件的主要使用对象包括：运行协调员、规划审核员、体系架构师。</p>
+                  </div>
+                </div>
+                <div class="clause">
+                  <div class="clause-id">REQ-3.2</div>
+                  <div>
+                    <div class="clause-title">核心业务流程</div>
+                    <p class="clause-content setup-only placeholder">待补齐：核心业务流程和正常流程。</p>
+                    <p class="clause-content materialized-only">核心流程为协同规划与冲突处置；正常流程包括：待确认。</p>
+                    <p class="clause-content freeze-only">核心流程为协同规划与冲突处置；系统应支持协同任务创建、冲突窗口识别、方案会签、结果发布与过程留痕，并保证关键状态可追溯。</p>
+                  </div>
+                </div>
+                <div class="clause">
+                  <div class="clause-id">REQ-3.3</div>
+                  <div>
+                    <div class="clause-title">异常与补偿</div>
+                    <p class="clause-content setup-only placeholder">待补齐：异常流程、超时和补偿策略。</p>
+                    <p class="clause-content materialized-only freeze-only">系统应在方案会签超时后提醒责任人，并允许人工确认后继续处理；发现冲突窗口时不得直接发布规划方案。</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="doc-section">
+                <h3>4 非功能要求</h3>
+                <div class="clause">
+                  <div class="clause-id">REQ-4.1</div>
+                  <div>
+                    <div class="clause-title">性能与可追溯</div>
+                    <p class="clause-content setup-only materialized-only placeholder">待补齐：性能、可靠性和可追溯要求。</p>
+                    <p class="clause-content freeze-only">系统应保证关键告警 2 分钟内反馈，关键操作、会签结果和异常处置过程可审计追溯。</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="doc-section">
+                <h3>5 验收准则</h3>
+                <div class="clause">
+                  <div class="clause-id">REQ-5.1</div>
+                  <div>
+                    <div class="clause-title">验收准则</div>
+                    <p class="clause-content setup-only materialized-only placeholder">待补齐：验收准则。</p>
+                    <p class="clause-content freeze-only">验收时应验证协同任务可创建、冲突窗口可识别、会签超时可提醒、规划结果可发布且关键过程可追溯。</p>
+                  </div>
+                </div>
+              </section>
+            </article>
+
+            <aside class="generator-dock materialized-only freeze-only">
+              <div class="dock-title">
+                <span>发生器状态</span>
+                <span class="pill green">可复现</span>
+              </div>
+              <div class="dock-list">
+                <div class="dock-item"><span class="status-dot done"></span><span>场景包读取</span><b>1.0.0</b></div>
+                <div class="dock-item"><span class="status-dot done"></span><span>P1 知识物化</span><b>mock</b></div>
+                <div class="dock-item"><span class="status-dot done"></span><span>P2 文档生成</span><b>81433</b></div>
+                <div class="dock-item materialized-only"><span class="status-dot active"></span><span>问答补齐中</span><b>mock_rule</b></div>
+                <div class="dock-item freeze-only"><span class="status-dot done"></span><span>冻结包生成</span><b>P3</b></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+
+      <aside class="settings-popover setup-only">
+        <div class="popover-arrow"></div>
+        <div class="setting-block">
+          <div class="setting-title">
+            <span>当前规格模板</span>
+            <span class="setting-note">可替换</span>
+          </div>
+          <div class="segmented">
+            <div class="segment active">81433</div>
+            <div class="segment">82259</div>
+            <div class="segment">自定义</div>
+          </div>
+        </div>
+        <div class="setting-block">
+          <div class="setting-title">
+            <span>场景数据</span>
+            <span class="setting-note">发生器</span>
+          </div>
+          <div class="scenario-card">
+            <h3>空域协同规划软件</h3>
+            <p>生成模拟 P1 发布态知识、P2 初始文档、规则型问答脚本和预期冻结包。</p>
+            <div class="scenario-meta">
+              <div class="meta"><b>场景 ID</b>airspace-collaboration</div>
+              <div class="meta"><b>知识源</b>mock-airspace-p1</div>
+              <div class="meta"><b>模式</b>mock_rule</div>
+              <div class="meta"><b>输出</b>P3 consumable</div>
+            </div>
+          </div>
+          <button class="button primary" style="width: 100%; margin-top: 12px">生成模拟闭环</button>
+        </div>
+        <div class="setting-block">
+          <div class="setting-title">
+            <span>来源知识库</span>
+            <span class="setting-note">小按钮级配置</span>
+          </div>
+          <div class="pill blue">真实 P1 可接入后替换 mock-airspace-p1</div>
+        </div>
+      </aside>
+
+      <div class="flow-strip freeze-only">
+        <span class="flow-chip">Scenario Pack</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">P1 Mock Knowledge</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">P2 Spec Document</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">Brainstorming Patch</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">Frozen RequirementSpec</span>
+      </div>
+    </div>
+
+    <script>
+      const allowed = new Set(["setup", "materialized", "freeze"]);
+      const state = window.location.hash.replace("#", "") || "setup";
+      document.body.dataset.state = allowed.has(state) ? state : "setup";
+    </script>
+  </body>
+</html>

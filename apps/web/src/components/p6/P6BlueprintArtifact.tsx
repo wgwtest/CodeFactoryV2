@@ -1,7 +1,7 @@
-import type { P6PortalArtifact } from "./p6PortalData";
+import type { P6PortalViewArtifact } from "./p6PortalData";
 
 type P6BlueprintArtifactProps = {
-  artifact: P6PortalArtifact;
+  artifact: P6PortalViewArtifact;
   emphasized: boolean;
 };
 

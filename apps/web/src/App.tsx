@@ -4,14 +4,22 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useArchiveContext } from "./context/ArchiveContext";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
+import { RequirementAnalysisLabPage } from "./pages/RequirementAnalysisLabPage";
 import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { P6ObservationPage } from "./pages/P6ObservationPage";
+import { P6PortalDataPage } from "./pages/P6PortalDataPage";
 import { P6PortalPage } from "./pages/P6PortalPage";
+import { P6SimulatorPage } from "./pages/P6SimulatorPage";
+import { P3DesignLabPage } from "./pages/P3DesignLabPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
+import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
+import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { XXP1SimPage } from "./pages/XXP1SimPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
 import { XXP3Page } from "./pages/XXP3Page";
 import { XXP3DocSimPage } from "./pages/XXP3DocSimPage";
@@ -26,6 +34,7 @@ const items = [
   { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
+  { key: "/requirement-authoring/admin", label: <Link to="/requirement-authoring/admin">P2配置台</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
@@ -80,6 +89,7 @@ function MainShell() {
           <Route path="/documents/intake" element={<DocumentIntakePage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
+          <Route path="/requirement-authoring/admin" element={<RequirementAuthoringAdminPage />} />
           <Route path="/requirements" element={<RequirementsPage />} />
           <Route path="/modeling" element={<ApplicationModelerPage />} />
         </Routes>
@@ -90,11 +100,72 @@ function MainShell() {
 
 export default function App() {
   const location = useLocation();
+  const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
 
-  if (location.pathname.startsWith("/portal")) {
+  if (location.pathname === "/" && envDefaultRoute && !mainShellRoutes.has(envDefaultRoute)) {
+    return <Navigate to={envDefaultRoute} replace />;
+  }
+
+  if (location.pathname.startsWith("/portal-data")) {
+    return (
+      <Routes>
+        <Route path="/portal-data" element={<P6PortalDataPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname === "/portal") {
     return (
       <Routes>
         <Route path="/portal" element={<P6PortalPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/observation")) {
+    return (
+      <Routes>
+        <Route path="/observation" element={<P6ObservationPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p6-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p6-sim" element={<P6SimulatorPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/xx-p1-sim")) {
+    return (
+      <Routes>
+        <Route path="/xx-p1-sim" element={<XXP1SimPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname === "/requirement-authoring") {
+    return (
+      <Routes>
+        <Route path="/requirement-authoring" element={<RequirementAuthoringPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/p3-design-lab")) {
+    return (
+      <Routes>
+        <Route path="/p3-design-lab" element={<P3DesignLabPage />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/p2-requirement-analysis-lab")) {
+    return (
+      <Routes>
+        <Route path="/p2-requirement-analysis-lab" element={<RequirementAnalysisLabPage />} />
       </Routes>
     );
   }
