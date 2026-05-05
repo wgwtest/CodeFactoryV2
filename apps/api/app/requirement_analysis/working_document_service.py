@@ -22,6 +22,14 @@ class WorkingDocumentUpdateResult:
         }
 
 
+@dataclass(frozen=True)
+class PatchTextResult:
+    new_text: str
+    start_offset: int
+    end_offset: int
+    deleted_text: str = ""
+
+
 class WorkingDocumentService:
     def initialize(self, *, topic: str, template_id: str) -> dict:
         return {
@@ -56,7 +64,8 @@ class WorkingDocumentService:
             anchor_path = self._anchor_path(patch=patch, projection_spec_node=projection_spec_node)
             block = self._find_or_create_block(working_document=working_document, anchor_path=anchor_path)
             previous_text = str(block.get("text") or "")
-            new_text = self._apply_patch_text(previous_text=previous_text, patch=patch, content=content)
+            patch_result = self._apply_patch_text(previous_text=previous_text, patch=patch, content=content)
+            new_text = patch_result.new_text
             if new_text == previous_text:
                 continue
 
@@ -73,8 +82,8 @@ class WorkingDocumentService:
                 "color_token": self._turn_color_token(turn_id),
                 "target_block_id": block["block_id"],
                 "apply_mode": str(patch.get("operation") or "append_to_block"),
-                "start_offset": len(previous_text),
-                "end_offset": len(new_text),
+                "start_offset": patch_result.start_offset,
+                "end_offset": patch_result.end_offset,
                 "user_input_summary": user_input_summary,
                 "supplement_reason": str(patch.get("reason") or "根据本轮输入补入需求规格正文。"),
                 "hit_spec_nodes": self._hit_spec_nodes(patch=patch, projection_spec_node=projection_spec_node),
@@ -84,6 +93,8 @@ class WorkingDocumentService:
                     turn_id=turn_id,
                 ),
             }
+            if patch_result.deleted_text:
+                fragment["deleted_text"] = patch_result.deleted_text
             working_document["revision_fragments"].append(fragment)
             applied_block_ids.append(str(block["block_id"]))
             applied_fragment_ids.append(fragment_id)
@@ -180,15 +191,56 @@ class WorkingDocumentService:
         return block
 
     @staticmethod
-    def _apply_patch_text(*, previous_text: str, patch: dict, content: str) -> str:
+    def _apply_patch_text(*, previous_text: str, patch: dict, content: str) -> PatchTextResult:
         operation = str(patch.get("operation") or "append_to_block")
         normalized_previous = previous_text.strip()
         normalized_content = content.strip()
-        if not normalized_previous or operation in {"replace_range", "replace"}:
-            return normalized_content
+        if operation in {"replace_range", "replace"}:
+            return PatchTextResult(
+                new_text=normalized_content,
+                start_offset=0,
+                end_offset=len(normalized_content),
+                deleted_text=normalized_previous,
+            )
+        if operation in {"delete", "delete_range"}:
+            if not normalized_previous or not normalized_content:
+                return PatchTextResult(
+                    new_text=normalized_previous,
+                    start_offset=0,
+                    end_offset=0,
+                )
+            start_offset = normalized_previous.find(normalized_content)
+            if start_offset < 0:
+                return PatchTextResult(
+                    new_text=normalized_previous,
+                    start_offset=0,
+                    end_offset=0,
+                )
+            end_offset = start_offset + len(normalized_content)
+            return PatchTextResult(
+                new_text=f"{normalized_previous[:start_offset]}{normalized_previous[end_offset:]}",
+                start_offset=start_offset,
+                end_offset=start_offset,
+                deleted_text=normalized_content,
+            )
+        if not normalized_previous:
+            return PatchTextResult(
+                new_text=normalized_content,
+                start_offset=0,
+                end_offset=len(normalized_content),
+            )
         if normalized_content in normalized_previous:
-            return normalized_previous
-        return f"{normalized_previous}\n{normalized_content}"
+            return PatchTextResult(
+                new_text=normalized_previous,
+                start_offset=0,
+                end_offset=0,
+            )
+        appended = f"{normalized_previous}\n{normalized_content}"
+        return PatchTextResult(
+            new_text=appended,
+            start_offset=len(normalized_previous) + 1,
+            end_offset=len(appended),
+        )
 
     @staticmethod
     def _anchor_path(*, patch: dict, projection_spec_node: dict) -> str:

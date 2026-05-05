@@ -445,18 +445,25 @@ function SessionTab({
               </div>
               <div className="requirement-analysis-lab-message-list" ref={messageListRef}>
                 {session.messages.map((message) => (
-                  <div className={`requirement-analysis-lab-message is-${message.role}`} key={message.id}>
+                  <div
+                    className={`requirement-analysis-lab-message is-${message.role}`}
+                    data-testid={`requirement-analysis-message-${message.role}`}
+                    key={message.id}
+                  >
                     <span>{message.role}</span>
                     <p>{message.content}</p>
                   </div>
                 ))}
                 {pendingUserInput ? (
                   <>
-                    <div className="requirement-analysis-lab-message is-user is-pending">
+                    <div className="requirement-analysis-lab-message is-user is-pending" data-testid="requirement-analysis-message-user-pending">
                       <span>user</span>
                       <p>{pendingUserInput}</p>
                     </div>
-                    <div className="requirement-analysis-lab-message is-assistant is-pending">
+                    <div
+                      className="requirement-analysis-lab-message is-assistant is-pending"
+                      data-testid="requirement-analysis-message-assistant-pending"
+                    >
                       <span>assistant</span>
                       <p>正在生成回应...</p>
                     </div>
@@ -1017,6 +1024,7 @@ function WorkingDocumentView({ session }: { session: RequirementAnalysisSession 
                   <Text strong>{formatRequirementAnalysisTurnLabel(event.turnId)}</Text>
                   <Text type="secondary">{event.summary || event.reason || "本轮修订"}</Text>
                   {event.fragmentIds.length > 1 ? <Text type="secondary">影响 {event.fragmentIds.length} 处，定位到首次修订位置</Text> : null}
+                  {event.deletedTexts.length ? <Text type="secondary">删除：{event.deletedTexts.join("；")}</Text> : null}
                 </button>
               ))}
             </div>

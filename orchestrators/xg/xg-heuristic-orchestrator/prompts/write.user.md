@@ -7,6 +7,7 @@
 - organizer_interpretation：说明你如何理解用户输入。
 - confirmed_facts_delta：本轮新增确认事实。
 - document_patch：可写入临时正文的候选片段。
+- 如果是在修正已有段落，document_patch 要给出 replace 或 delete，而不是把新旧说法并列堆积。
 - next_suggestion：候选下一轮建议，允许为空。
 - quick_options：只有需要选择时才生成。
 
