@@ -30,8 +30,11 @@ export function resolveDefaultRequirementAnalysisProviderId(providers: Requireme
   if (!providers.length) {
     return "";
   }
+  const activeProviders = providers.filter((provider) => provider.status === "active");
   return (
-    providers.find((provider) => provider.provider_id === "deepseek")?.provider_id ??
+    activeProviders.find((provider) => provider.provider_id === "deepseek")?.provider_id ??
+    activeProviders.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ??
+    activeProviders[0]?.provider_id ??
     providers.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ??
     providers[0]?.provider_id ??
     defaultProviderId

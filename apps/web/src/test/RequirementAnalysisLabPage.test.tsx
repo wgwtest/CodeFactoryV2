@@ -503,6 +503,118 @@ test("switches to session tab immediately while startup request is still pending
   expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
 });
 
+test("falls back to active mock provider when DeepSeek is not configured during startup", async () => {
+  const session = {
+    ...buildSession("created"),
+    provider_id: "mock",
+    model: "provider-default",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { provider_id: "mock", name: "Mock Provider", status: "active" },
+            { provider_id: "deepseek", name: "DeepSeek", status: "not_configured" },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-default",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基于 81433 的默认实例模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "软件级需求规格说明模板",
+          description: "基于 81433 的默认实例模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-analysis/sessions") {
+      expect(body).toMatchObject({
+        topic: "配置下发的需求规格探索课题",
+        orchestrator_id: "xg-local-heuristic-orchestrator",
+        provider_id: "mock",
+        model: "deepseek-config-model",
+        template_id: "xg-template-81433-default",
+        knowledge_package_id: "configured-knowledge-package",
+        write_policy: "configured_patch_only",
+      });
+      return Promise.resolve({ data: session });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText(/当前 Provider：Mock Provider/)).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith(
+      "/requirement-analysis/sessions",
+      expect.objectContaining({
+        provider_id: "mock",
+      }),
+    ),
+  );
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
+});
+
 test("shows a protocol error instead of blanking when Current Turn misses required audit fields", async () => {
   const session = buildSession("created");
   const malformedEnvelope = buildMalformedTurnEnvelope();

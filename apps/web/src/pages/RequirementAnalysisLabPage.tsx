@@ -182,6 +182,17 @@ export function RequirementAnalysisLabPage() {
   );
   const providerOptions = useMemo(() => sortRequirementAnalysisProviders(providers), [providers]);
 
+  useEffect(() => {
+    if (!providers.length || !selectedProviderId) {
+      return;
+    }
+    const selectedProvider = providers.find((provider) => provider.provider_id === selectedProviderId);
+    if (selectedProvider?.status === "active") {
+      return;
+    }
+    setSelectedProviderId(resolveDefaultRequirementAnalysisProviderId(providers, labConfig?.defaults.provider_id ?? selectedProviderId));
+  }, [labConfig?.defaults.provider_id, providers, selectedProviderId]);
+
   const logCount = session?.provider_logs.length ?? 0;
   const defaultWritePolicyLabel = labConfig
     ? resolveRequirementAnalysisWritePolicyLabel(labConfig.defaults.write_policy, labConfig.write_policies)
@@ -190,12 +201,24 @@ export function RequirementAnalysisLabPage() {
 
   async function handleStart() {
     setActiveTab("session");
+    const resolvedProviderId =
+      activeProvider?.status === "active"
+        ? selectedProviderId
+        : resolveDefaultRequirementAnalysisProviderId(providers, labConfig?.defaults.provider_id ?? selectedProviderId);
+    const resolvedProvider = providers.find((provider) => provider.provider_id === resolvedProviderId);
+    if (!resolvedProvider || resolvedProvider.status !== "active") {
+      setError("当前没有已启用的模型 Provider，请先配置 DeepSeek/OpenAI 或启用 Mock Provider。");
+      return;
+    }
+    if (resolvedProviderId !== selectedProviderId) {
+      setSelectedProviderId(resolvedProviderId);
+    }
     try {
       setActing(true);
       const response = await createRequirementAnalysisSession({
         topic,
         orchestrator_id: selectedOrchestratorId,
-        provider_id: selectedProviderId,
+        provider_id: resolvedProviderId,
         model: labConfig?.defaults.model ?? "",
         template_id: selectedTemplateId || labConfig?.defaults.template_id,
         knowledge_package_id: labConfig?.defaults.knowledge_package_id,

@@ -22,6 +22,18 @@ describe("resolveDefaultRequirementAnalysisProviderId", () => {
 
     expect(providerId).toBe("deepseek");
   });
+
+  test("falls back to active mock provider when DeepSeek is not configured", () => {
+    const providerId = resolveDefaultRequirementAnalysisProviderId(
+      [
+        { provider_id: "mock", name: "Mock Provider", status: "active" },
+        { provider_id: "deepseek", name: "DeepSeek", status: "not_configured" },
+      ],
+      "deepseek",
+    );
+
+    expect(providerId).toBe("mock");
+  });
 });
 
 describe("buildRequirementAnalysisWorkingDocumentViewModel", () => {
