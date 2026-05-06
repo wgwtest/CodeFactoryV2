@@ -233,13 +233,17 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
   expect(screen.getByText("需求规格说明模板")).toBeInTheDocument();
-  expect(screen.getAllByText("基础依据").length).toBeGreaterThan(0);
+  expect(screen.queryByText("模板实例")).not.toBeInTheDocument();
+  expect(screen.queryByText("实例是会话实际使用和编辑的对象。")).not.toBeInTheDocument();
+  const startupTemplateSelect = screen.getByRole("combobox", { name: "启动模板实例" });
+  expect(startupTemplateSelect).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /选择基础模板/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "新建实例" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "删除实例" })).toBeInTheDocument();
   expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
-  expect(screen.getAllByText("软件级需求规格说明模板").length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: /选择模板实例 软件级需求规格说明模板/ })).toBeInTheDocument();
   await waitFor(() =>
     expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 81433 软件级需求规格模板"),
   );
@@ -251,6 +255,8 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   await waitFor(() =>
     expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 82259 平台级规格模板"),
   );
+  fireEvent.mouseDown(startupTemplateSelect);
+  fireEvent.click(await screen.findByTitle("平台级需求规格说明模板 (xg-template-82259-default)"));
   fireEvent.change(screen.getByLabelText("需求规格说明模板正文"), {
     target: { value: "# 82259 平台级规格模板\n\n## 1. 范围与边界\n" },
   });
@@ -262,11 +268,27 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
       description: "基于 82259 的默认实例模板。",
     }),
   );
+  fireEvent.click(screen.getByRole("button", { name: "新建实例" }));
+  expect(screen.getByText("新建需求规格说明模板实例")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /选择基础模板 软件级需求规格说明模板/ })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("新建模板实例名称"), {
     target: { value: "态势分析系统需求规格模板" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /选择基础模板 软件级需求规格说明模板/ }));
+  fireEvent.change(screen.getByLabelText("新建模板实例说明"), {
+    target: { value: "基于 81433 扩充的 Lab 模板实例。" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /取\s*消/ }));
   fireEvent.click(screen.getByRole("button", { name: "新建实例" }));
+  expect(screen.getByLabelText("新建模板实例名称")).toHaveValue("配置下发的需求规格探索课题模板实例");
+  expect(screen.getByLabelText("新建模板实例说明")).toHaveValue("基于 82259 扩充的 Lab 模板实例。");
+  fireEvent.change(screen.getByLabelText("新建模板实例名称"), {
+    target: { value: "态势分析系统需求规格模板" },
+  });
+  fireEvent.change(screen.getByLabelText("新建模板实例说明"), {
+    target: { value: "基于 81433 扩充的 Lab 模板实例。" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /选择基础模板 软件级需求规格说明模板/ }));
+  fireEvent.click(screen.getByRole("button", { name: "创建实例" }));
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/requirement-analysis/templates", {
       base_template_id: "81433号",
