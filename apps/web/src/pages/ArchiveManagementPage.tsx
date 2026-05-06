@@ -4261,11 +4261,80 @@ function DocumentObserverPanel({
   );
 }
 
+const p1StageOrder = [
+  "asset_intake",
+  "parser_router",
+  "parser_execution",
+  "unified_document_object",
+  "evidence_constructor",
+  "evidence_graph_chunk_layer",
+  "evidence_pack",
+  "concept_candidate_review",
+  "relation_review_family_normalization",
+  "definition_summary_conflict_consolidation",
+  "canonical_knowledge",
+  "quality_policy_evaluation_governance_gate",
+  "indexes_snapshots_apis",
+];
+
+function getOverviewStageState(archive: KnowledgeArchive | null, stageId: string, index: number) {
+  if (!archive) return "pending";
+  const buildState = archive.build_state;
+  const currentStageId = buildState?.current_stage_id ?? null;
+  const currentIndex = currentStageId ? p1StageOrder.indexOf(currentStageId) : -1;
+
+  if (archive.status === "ready") return "done";
+  if (currentStageId === stageId) {
+    return buildState?.current_stage_status === "warning" ? "warning" : "current";
+  }
+  if (currentIndex >= 0 && index < currentIndex) return "done";
+  if (archive.status === "error" && currentIndex === index) return "warning";
+  return "pending";
+}
+
+function P1OverviewStageRail({ archive }: { archive: KnowledgeArchive | null }) {
+  return (
+    <div className="p1-stage-rail">
+      <div className="p1-inline-between">
+        <Space size={8} wrap>
+          <Tag color="green">已完成</Tag>
+          <Tag color="blue">运行中</Tag>
+          <Tag color="orange">警告</Tag>
+          <Tag>待处理</Tag>
+        </Space>
+        <Text type="secondary">13 阶段抽取主链</Text>
+      </div>
+      <div className="p1-stage-track">
+        {p1StageOrder.map((stageId, index) => {
+          const stageState = getOverviewStageState(archive, stageId, index);
+          return (
+            <div key={stageId} className={`p1-stage-step is-${stageState}`}>
+              <span className="p1-stage-index">{index + 1}</span>
+              <span className="p1-stage-label">{getStageDisplayLabel(stageId)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function P1MetricTile({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="p1-metric-tile">
+      <div className="p1-metric-label">{label}</div>
+      <div className="p1-metric-value">{value}</div>
+      {hint ? <Text type="secondary">{hint}</Text> : null}
+    </div>
+  );
+}
+
 function OverviewView(props: {
   archives: KnowledgeArchive[];
   activeArchiveId: string | null;
   pendingItems: PendingItem[];
   onOpenArchive: (archiveId: string) => void;
+  onOpenDocument: (documentId: string) => void;
   onOpenGlobal: () => void;
   onOpenPolicy: () => void;
   onExtract: (archiveId: string) => void;
@@ -4352,13 +4421,19 @@ function OverviewView(props: {
     },
   ];
 
+  const runDocuments = activeArchive?.build_state?.documents ?? [];
+  const completedDocuments = activeArchive?.build_state?.completed_document_ids.length ?? 0;
+  const expectedDocuments = activeArchive?.build_state?.expected_document_count ?? runDocuments.length;
+  const runProgress = expectedDocuments > 0 ? Math.round((completedDocuments / expectedDocuments) * 100) : 0;
+  const policySnapshot = activeArchive?.build_state?.policy_snapshot ?? null;
+
   return (
     <ValidationWorkspace
       title="知识库运行总览"
-      description="这里统一查看知识库状态、待处理事项，并从总览进入全局并行、单知识库运行和策略/质量页面。"
+      description="P1 业务知识库：文档接入、策略选择、机器抽取、发布候选和治理确认集中在这一组页面中推进。"
       actions={
         <Space wrap>
-          <Button onClick={props.onOpenGlobal}>全局并行</Button>
+          <Button onClick={props.onOpenGlobal}>全局运行视图</Button>
           <Button onClick={props.onOpenPolicy}>策略与配置</Button>
           <Button type="primary" onClick={props.onShowCreate}>
             新建知识库
@@ -4367,34 +4442,182 @@ function OverviewView(props: {
       }
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
-        <WorkspaceOverviewStrip
-          badgeLabel="知识库管理"
-          title="知识库运行总览"
-          tags={
-            activeArchive
-              ? [
-                  { label: `当前知识库：${activeArchive.name}` },
-                  { label: `当前状态：${archiveStatusMeta[activeArchive.status].label}` },
-                  { label: `待处理：${props.pendingItems.length}` },
-                ]
-              : []
-          }
-          metrics={[
-            { title: "知识库数量", value: props.archives.length },
-            { title: "可用知识库", value: readyCount },
-            { title: "异常知识库", value: blockedCount },
-            { title: "待处理事项", value: props.pendingItems.length },
-          ]}
-        />
         {props.pendingItems.length > 0 ? (
           <Alert
+            className="p1-hero-alert"
             type="warning"
             showIcon
-            message={`当前有 ${props.pendingItems.length} 条待处理事项`}
+            message="规则已变化，部分知识需要重算"
             description={props.pendingItems.map((item) => item.title).join("；")}
           />
         ) : null}
-        <Table rowKey="archive_id" columns={columns} dataSource={props.archives} pagination={false} />
+        <Space className="p1-status-legend" wrap>
+          <Tag color="blue">知识库管理</Tag>
+          <Tag color="green">已完成</Tag>
+          <Tag color="processing">运行中</Tag>
+          <Tag color="warning">警告</Tag>
+          <Tag>待处理</Tag>
+        </Space>
+
+        <div className="p1-overview-grid">
+          <Card className="p1-soft-card" title="知识库列表">
+            <div className="p1-archive-stack">
+              {props.archives.map((archive) => (
+                <div
+                  key={archive.archive_id}
+                  className={`p1-archive-card ${archive.archive_id === activeArchive?.archive_id ? "is-active" : ""}`}
+                  onClick={() => props.onOpenArchive(archive.archive_id)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="p1-card-title-row">
+                    <span className="p1-card-title">{archive.name}</span>
+                    <Tag color={archiveStatusMeta[archive.status].color}>{archiveStatusMeta[archive.status].label}</Tag>
+                  </div>
+                  <div className="p1-card-meta-grid">
+                    <span>文档数：{archive.summary?.document_count ?? archive.build_state?.expected_document_count ?? 0}</span>
+                    <span>实体数：{archive.summary?.entity_count ?? 0}</span>
+                    <span>最近抽取：{formatDateTime(archive.last_built_at)}</span>
+                    <span>策略：{archive.build_state?.policy_snapshot?.version_label ?? "未绑定"}</span>
+                  </div>
+                  <div className="p1-card-action-row">
+                    <Button size="small" onClick={(event) => { event.stopPropagation(); props.onSetCurrent(archive.archive_id); }} disabled={archive.is_active}>
+                      {archive.is_active ? "当前知识库" : "设为当前"}
+                    </Button>
+                    <Button size="small" onClick={(event) => { event.stopPropagation(); props.onOpenArchive(archive.archive_id); }}>
+                      进入单知识库
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={props.extractingArchiveId === archive.archive_id || archive.status === "extracting"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        props.onExtract(archive.archive_id);
+                      }}
+                    >
+                      立即抽取
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p1-soft-card" title="当前知识库运行总览">
+            <Space direction="vertical" size={18} style={{ display: "flex" }}>
+              <P1OverviewStageRail archive={activeArchive} />
+              <div className="p1-metric-grid">
+                <P1MetricTile
+                  label="当前运行文档"
+                  value={activeArchive?.build_state?.current_document_title ?? "暂无运行"}
+                  hint={activeArchive?.build_state?.current_document_id ?? "等待启动抽取"}
+                />
+                <P1MetricTile
+                  label="已连接 Stream / 已回退轮询"
+                  value={activeArchive?.status === "extracting" ? "运行中" : "快照"}
+                  hint={activeArchive?.status === "extracting" ? "进入单文档页查看实时通道" : "未处于实时抽取"}
+                />
+                <P1MetricTile
+                  label="当前阶段"
+                  value={activeArchive?.build_state?.current_stage_label ?? (activeArchive ? getArchiveStageLabel(activeArchive) : "等待选择知识库")}
+                  hint={activeArchive?.build_state?.current_stage_message ?? "由后端运行态决定，不随点击改变"}
+                />
+                <P1MetricTile
+                  label="最近事件"
+                  value={activeArchive?.build_state?.warning_count ?? 0}
+                  hint="告警 / 待治理 / stale 对象"
+                />
+              </div>
+              <Progress percent={runProgress} status={activeArchive?.status === "error" ? "exception" : "active"} />
+            </Space>
+          </Card>
+
+          <Card className="p1-soft-card" title="策略与质量摘要">
+            <Space direction="vertical" size={14} style={{ display: "flex" }}>
+              <Descriptions size="small" column={1}>
+                <Descriptions.Item label="默认策略包">{policySnapshot?.scope_label ?? "合同通用抽取"}</Descriptions.Item>
+                <Descriptions.Item label="当前策略版本">{policySnapshot?.version_label ?? "未冻结快照"}</Descriptions.Item>
+                <Descriptions.Item label="运行快照 ID">{policySnapshot?.snapshot_id ?? "等待抽取启动"}</Descriptions.Item>
+                <Descriptions.Item label="启用阶段数">
+                  {policySnapshot?.stages.filter((stage) => stage.enabled).length ?? 0} / 13
+                </Descriptions.Item>
+                <Descriptions.Item label="规则总数">
+                  {policySnapshot?.stages.reduce((total, stage) => total + stage.rule_count, 0) ?? 0}
+                </Descriptions.Item>
+              </Descriptions>
+              <Button block onClick={props.onOpenPolicy}>进入阶段策略配置</Button>
+              <Button block onClick={props.onOpenGlobal}>查看规则变更影响面</Button>
+              <Button block onClick={() => activeArchive && props.onOpenArchive(activeArchive.archive_id)} disabled={!activeArchive}>
+                进入单知识库
+              </Button>
+            </Space>
+          </Card>
+        </div>
+
+        <Card className="p1-soft-card p1-document-queue" title="文档运行队列">
+          <Table
+            rowKey="document_id"
+            columns={[
+              {
+                title: "文件名",
+                dataIndex: "title",
+                render: (value: string, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Button type="link" style={{ padding: 0 }} onClick={() => props.onOpenDocument(record.document_id)}>
+                    {value}
+                  </Button>
+                ),
+              },
+              {
+                title: "抽取阶段",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) =>
+                  record.document_id === activeArchive?.build_state?.current_document_id
+                    ? activeArchive.build_state?.current_stage_label ?? "当前处理中"
+                    : record.state === "completed"
+                      ? "已完成"
+                      : "等待调度",
+              },
+              {
+                title: "进度",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Progress
+                    percent={
+                      record.state === "completed"
+                        ? 100
+                        : record.document_id === activeArchive?.build_state?.current_document_id
+                          ? Math.max(8, runProgress)
+                          : 0
+                    }
+                    showInfo={false}
+                  />
+                ),
+              },
+              {
+                title: "质量门禁结果",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Tag color={record.state === "completed" ? "success" : record.state === "failed" ? "error" : "default"}>
+                    {record.state === "completed" ? "通过" : record.state === "failed" ? "阻断" : "待检"}
+                  </Tag>
+                ),
+              },
+              {
+                title: "操作",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Button type="primary" ghost onClick={() => props.onOpenDocument(record.document_id)}>
+                    进入单文档实时工作台
+                  </Button>
+                ),
+              },
+            ]}
+            dataSource={runDocuments}
+            pagination={{ pageSize: 5 }}
+            locale={{ emptyText: "当前知识库暂无运行队列；请创建或启动抽取任务。" }}
+          />
+        </Card>
+
+        {runDocuments.length === 0 ? (
+          <Table rowKey="archive_id" columns={columns} dataSource={props.archives} pagination={false} />
+        ) : null}
       </Space>
     </ValidationWorkspace>
   );
@@ -4733,6 +4956,7 @@ function DocumentView(props: {
             }
           />
           <div
+            className="p1-graph-shell"
             style={{
               border: "2px solid rgba(59,130,246,0.72)",
               borderRadius: 22,
@@ -5509,6 +5733,7 @@ function PolicyWorkbenchRuntimeView({
           <Button onClick={() => void loadPolicyConfig(selectedStageId)} disabled={!archiveId} loading={policyLoading}>
             刷新后端合同
           </Button>
+          <Button disabled={!policyConfig}>比较策略版本</Button>
           <Button type="primary" onClick={() => void handleSave()} loading={policySaving} disabled={!policyConfig}>
             保存草稿
           </Button>
@@ -5545,6 +5770,63 @@ function PolicyWorkbenchRuntimeView({
                 value={policyConfig?.updated_at ? formatDateTime(policyConfig.updated_at) : "未保存"}
                 hint="后端返回的最新策略时间戳"
               />
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="策略库与策略模板">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>{policyConfig?.scope_label ?? "合同通用抽取"}</Text>
+                  <Text type="secondary">当前知识库可绑定已有策略包，也可以复制为新策略包后再调整。</Text>
+                  <Space wrap>
+                    <Tag color="blue">{policyConfig?.version_label ?? "未加载"}</Tag>
+                    <Tag color="green">阶段覆盖 {policyConfig?.stage_order.length ?? 0}/13</Tag>
+                    <Tag>规则 {policyConfig ? Object.values(policyConfig.stages).reduce((total, stage) => total + stage.rules.length, 0) : 0}</Tag>
+                  </Space>
+                  <Button block>从现有策略复制</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="规则输入输出合同">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>{selectedStageConfig?.label ?? "请选择阶段"}</Text>
+                  <Text type="secondary">每条规则都需要明确输入对象、输出对象、trace 字段和影响对象集合。</Text>
+                  <Space wrap>
+                    <Tag color="processing">输入 {selectedStageConfig?.inputs.length ?? 0}</Tag>
+                    <Tag color="success">输出 {selectedStageConfig?.outputs.length ?? 0}</Tag>
+                    <Tag color="warning">规则 {selectedStageConfig?.rules.length ?? 0}</Tag>
+                  </Space>
+                  <Button block>编辑 I/O 合同</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="策略版本与规则差异">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>当前版本：{policyConfig?.version_label ?? "未加载"}</Text>
+                  <Text type="secondary">保存新版本后先生成差异摘要，再决定是否触发影响面计算。</Text>
+                  <Space wrap>
+                    <Tag color={dirty ? "orange" : "green"}>{dirty ? "存在变更" : "无未保存变更"}</Tag>
+                    <Tag>结构性规则需重算</Tag>
+                  </Space>
+                  <Button block>生成差异预览</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="规则变更影响面">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>ImpactSet / 增量重算</Text>
+                  <Text type="secondary">规则调整后只重算受影响对象，不静默覆盖正式入库知识。</Text>
+                  <Space wrap>
+                    <Tag color="purple">minimum_rebuild_stage</Tag>
+                    <Tag color="orange">stale 标记</Tag>
+                  </Space>
+                  <Button block>计算影响面</Button>
+                </Space>
+              </Card>
             </Col>
           </Row>
 
@@ -6206,6 +6488,7 @@ export function ArchiveManagementPage() {
           activeArchiveId={activeArchiveId}
           pendingItems={pendingItems}
           onOpenArchive={openArchive}
+          onOpenDocument={openDocument}
           onOpenGlobal={() => setView("global")}
           onOpenPolicy={() => setView("policy")}
           onExtract={(archiveId) => void handleExtractArchive(archiveId)}

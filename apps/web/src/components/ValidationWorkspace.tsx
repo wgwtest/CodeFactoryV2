@@ -11,6 +11,7 @@ type ValidationWorkspaceProps = {
   description?: ReactNode;
   actions?: ReactNode;
   stats?: ValidationWorkspaceStat[];
+  className?: string;
   children: ReactNode;
 };
 
@@ -19,12 +20,14 @@ export function ValidationWorkspace({
   description,
   actions,
   stats = [],
+  className,
   children,
 }: ValidationWorkspaceProps) {
   return (
-    <Card>
+    <Card className={["p1-validation-workspace", className].filter(Boolean).join(" ")}>
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
         <div
+          className="p1-validation-header"
           style={{
             display: "flex",
             alignItems: "flex-start",

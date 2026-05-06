@@ -16,6 +16,15 @@ import { P6PortalPage } from "./pages/P6PortalPage";
 import { P6SimulatorPage } from "./pages/P6SimulatorPage";
 import { P3DesignLabPage } from "./pages/P3DesignLabPage";
 import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
+import {
+  PublicationCandidatePage,
+  QualityGateExplanationPage,
+  RuleContractEditorPage,
+  RuleImpactRecomputePage,
+  StagePolicyConfigPage,
+  StrategyDiffPage,
+  StrategyLibraryPage,
+} from "./pages/P1PrototypeWorkflowPages";
 import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
 import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
@@ -27,11 +36,31 @@ import { XXP3SimPage } from "./pages/XXP3SimPage";
 import { XXP4Page } from "./pages/XXP4Page";
 import { XXP4SupplySimPage } from "./pages/XXP4SupplySimPage";
 import { XXP5SimPage } from "./pages/XXP5SimPage";
+import "./pages/P1Workbench.css";
 
 const items = [
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
   { key: "/documents", label: <Link to="/documents">知识库文档</Link> },
   { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
+  {
+    key: "p1-policies",
+    label: "策略规则",
+    children: [
+      { key: "/policies", label: <Link to="/policies">策略库</Link> },
+      { key: "/policies/stages", label: <Link to="/policies/stages">阶段策略</Link> },
+      { key: "/policies/rule-contract", label: <Link to="/policies/rule-contract">规则合同</Link> },
+      { key: "/policies/diff", label: <Link to="/policies/diff">版本差异</Link> },
+      { key: "/policies/impact", label: <Link to="/policies/impact">影响重算</Link> },
+    ],
+  },
+  {
+    key: "p1-runtime-explain",
+    label: "运行解释",
+    children: [
+      { key: "/runtime/quality-gate", label: <Link to="/runtime/quality-gate">质量门禁</Link> },
+      { key: "/runtime/publication", label: <Link to="/runtime/publication">发布候选</Link> },
+    ],
+  },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
   { key: "/requirement-authoring/admin", label: <Link to="/requirement-authoring/admin">P2配置台</Link> },
@@ -39,7 +68,13 @@ const items = [
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
 
-const mainShellRoutes = new Set(items.map((item) => item.key));
+function collectMenuRouteKeys(menuItems: typeof items): string[] {
+  return menuItems.flatMap((item) =>
+    "children" in item && item.children ? collectMenuRouteKeys(item.children) : item.key.startsWith("/") ? [item.key] : [],
+  );
+}
+
+const mainShellRoutes = new Set(collectMenuRouteKeys(items));
 
 function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
@@ -54,20 +89,24 @@ function MainShell() {
         : location.pathname;
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Layout.Header style={{ display: "flex", alignItems: "center", gap: 24 }}>
-        <Typography.Title level={4} style={{ color: "#fff", margin: 0 }}>
-          知识仓库
-        </Typography.Title>
+    <Layout className="p1-app-shell">
+      <Layout.Header style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+        <div className="p1-brand-lockup">
+          <span className="p1-brand-kicker">知识仓库</span>
+          <Typography.Title level={3} className="p1-brand-title">
+            P1 业务知识库
+          </Typography.Title>
+          <span className="p1-brand-subtitle">文档接入 → 策略选择 → 机器抽取 → 发布候选 → 治理确认</span>
+        </div>
         <Menu
-          theme="dark"
+          theme="light"
           mode="horizontal"
           selectedKeys={[selectedMenuKey]}
           items={items}
           style={{ flex: 1, minWidth: 0 }}
         />
         <Space align="center">
-          <Typography.Text style={{ color: "#fff" }}>当前知识库</Typography.Text>
+          <Typography.Text className="p1-current-archive-label">当前知识库</Typography.Text>
           <Select
             value={activeArchiveId ?? undefined}
             placeholder="选择知识库"
@@ -87,6 +126,13 @@ function MainShell() {
           <Route path="/" element={<Navigate to={defaultRoute} replace />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/documents/intake" element={<DocumentIntakePage />} />
+          <Route path="/policies" element={<StrategyLibraryPage />} />
+          <Route path="/policies/stages" element={<StagePolicyConfigPage />} />
+          <Route path="/policies/rule-contract" element={<RuleContractEditorPage />} />
+          <Route path="/policies/diff" element={<StrategyDiffPage />} />
+          <Route path="/policies/impact" element={<RuleImpactRecomputePage />} />
+          <Route path="/runtime/quality-gate" element={<QualityGateExplanationPage />} />
+          <Route path="/runtime/publication" element={<PublicationCandidatePage />} />
           <Route path="/governance" element={<GovernancePage />} />
           <Route path="/graph" element={<KnowledgeGraphPage />} />
           <Route path="/requirement-authoring/admin" element={<RequirementAuthoringAdminPage />} />
