@@ -48,47 +48,88 @@ def assert_new_turn_contract(turn: dict) -> None:
         assert removed_field not in turn
 
 
-def test_requirement_analysis_lab_template_assets_can_be_listed_read_and_saved(tmp_path, monkeypatch) -> None:
+def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tmp_path, monkeypatch) -> None:
     template_root = tmp_path / "templates"
     template_root.mkdir()
-    (template_root / "81433.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
-    (template_root / "82259.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
+    instance_root = tmp_path / "instances"
+    (template_root / "01-81433-软件级需求规格模板.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
+    (template_root / "02-82259-平台级规格模板.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
     monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", template_root)
+    monkeypatch.setattr(RequirementAnalysisTemplateService, "INSTANCE_ROOT", instance_root)
 
     client = TestClient(create_app())
 
-    listed = client.get("/api/requirement-analysis/templates")
-    assert listed.status_code == 200
-    assert listed.json()["items"] == [
+    base_listed = client.get("/api/requirement-analysis/template-bases")
+    assert base_listed.status_code == 200
+    assert base_listed.json()["items"] == [
         {
             "template_id": "81433号",
             "template_code": "81433",
             "name": "软件级需求规格说明模板",
-            "description": "Lab 可编辑 Markdown 模板。",
+            "description": "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
             "status": "active",
         },
         {
             "template_id": "82259号",
             "template_code": "82259",
             "name": "平台级需求规格说明模板",
-            "description": "Lab 可编辑 Markdown 模板。",
+            "description": "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
             "status": "available",
         },
     ]
 
-    detail = client.get("/api/requirement-analysis/templates/81433号")
+    listed = client.get("/api/requirement-analysis/templates")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["template_id"] == "xg-template-81433-default"
+    assert listed.json()["items"][0]["base_template_id"] == "81433号"
+    assert listed.json()["items"][0]["template_code"] == "81433"
+    assert (instance_root / "manifest.json").exists()
+    assert (instance_root / "xg-template-81433-default.md").read_text(encoding="utf-8").startswith(
+        "# 81433 软件级需求规格模板"
+    )
+
+    created = client.post(
+        "/api/requirement-analysis/templates",
+        json={
+            "base_template_id": "81433号",
+            "name": "态势分析系统需求规格模板",
+            "description": "基于 81433 扩充的项目实例模板。",
+        },
+    )
+    assert created.status_code == 200
+    created_payload = created.json()
+    assert created_payload["base_template_id"] == "81433号"
+    assert created_payload["template_code"] == "81433"
+    assert created_payload["name"] == "态势分析系统需求规格模板"
+    assert created_payload["content"].startswith("# 81433 软件级需求规格模板")
+    created_template_id = created_payload["template_id"]
+    assert created_template_id != "81433号"
+
+    detail = client.get(f"/api/requirement-analysis/templates/{created_template_id}")
     assert detail.status_code == 200
-    assert detail.json()["template_id"] == "81433号"
+    assert detail.json()["template_id"] == created_template_id
+    assert detail.json()["base_template_id"] == "81433号"
     assert detail.json()["content"].startswith("# 81433 软件级需求规格模板")
     assert detail.json()["format"] == "markdown"
 
     saved = client.put(
-        "/api/requirement-analysis/templates/81433号",
-        json={"content": "# 81433 软件级需求规格模板\n\n## 1. 修改后的范围\n"},
+        f"/api/requirement-analysis/templates/{created_template_id}",
+        json={
+            "name": "态势分析系统需求规格模板 V2",
+            "description": "已补充项目约束。",
+            "content": "# 81433 软件级需求规格模板\n\n## 1. 修改后的范围\n",
+        },
     )
     assert saved.status_code == 200
+    assert saved.json()["name"] == "态势分析系统需求规格模板 V2"
     assert saved.json()["content"].endswith("## 1. 修改后的范围\n")
-    assert (template_root / "81433.md").read_text(encoding="utf-8").endswith("## 1. 修改后的范围\n")
+    assert (instance_root / f"{created_template_id}.md").read_text(encoding="utf-8").endswith("## 1. 修改后的范围\n")
+    assert (template_root / "01-81433-软件级需求规格模板.md").read_text(encoding="utf-8").endswith("## 1. 范围\n")
+
+    deleted = client.delete(f"/api/requirement-analysis/templates/{created_template_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "template_id": created_template_id}
+    assert not (instance_root / f"{created_template_id}.md").exists()
 
     missing = client.get("/api/requirement-analysis/templates/unknown")
     assert missing.status_code == 404
@@ -106,7 +147,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "orchestrator_id": "xg-heuristic-orchestrator",
         "provider_id": "deepseek",
         "model": "provider-default",
-        "template_id": "81433号",
+        "template_id": "xg-template-81433-default",
         "knowledge_package_id": "airspace-domain-demo",
         "write_policy": "patch_suggestion_only",
     }

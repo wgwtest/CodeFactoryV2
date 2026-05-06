@@ -7,6 +7,7 @@ import type {
   RequirementAnalysisTemplateSummary,
 } from "./api";
 import {
+  getRequirementAnalysisTemplateBases,
   getRequirementAnalysisLabConfig,
   getRequirementAnalysisOrchestrators,
   getRequirementAnalysisProviders,
@@ -18,6 +19,7 @@ export type RequirementAnalysisLabBootstrap = {
   orchestratorsEnvelope: RequirementAnalysisOrchestratorEnvelope | null;
   providers: RequirementAnalysisProvider[];
   templates: RequirementAnalysisTemplateSummary[];
+  templateBases: RequirementAnalysisTemplateSummary[];
   loading: boolean;
   error: string | null;
 };
@@ -27,6 +29,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
   const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [providers, setProviders] = useState<RequirementAnalysisProvider[]>([]);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
+  const [templateBases, setTemplateBases] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,11 +39,12 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     async function load() {
       try {
         setLoading(true);
-        const [configResponse, orchestratorsResponse, providersResponse, templatesResponse] = await Promise.all([
+        const [configResponse, orchestratorsResponse, providersResponse, templatesResponse, templateBasesResponse] = await Promise.all([
           getRequirementAnalysisLabConfig(),
           getRequirementAnalysisOrchestrators(),
           getRequirementAnalysisProviders(),
           getRequirementAnalysisTemplates(),
+          getRequirementAnalysisTemplateBases(),
         ]);
         if (cancelled) {
           return;
@@ -49,6 +53,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
         setOrchestratorsEnvelope(orchestratorsResponse.data);
         setProviders(providersResponse.data.items);
         setTemplates(templatesResponse.data.items);
+        setTemplateBases(templateBasesResponse.data.items);
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
@@ -67,5 +72,5 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     };
   }, []);
 
-  return { labConfig, orchestratorsEnvelope, providers, templates, loading, error };
+  return { labConfig, orchestratorsEnvelope, providers, templates, templateBases, loading, error };
 }

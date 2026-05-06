@@ -11,6 +11,7 @@ import type { RequirementAnalysisSession, RequirementAnalysisTurnEnvelope } from
 const getMock = vi.fn();
 const postMock = vi.fn();
 const putMock = vi.fn();
+const deleteMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
@@ -18,6 +19,7 @@ vi.mock("../lib/api", () => ({
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
     put: (...args: unknown[]) => putMock(...args),
+    delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
 
@@ -25,6 +27,7 @@ beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
   putMock.mockReset();
+  deleteMock.mockReset();
   scrollIntoViewMock.mockReset();
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 });
@@ -55,46 +58,91 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
         data: {
           items: [
             {
-              template_id: "81433号",
+              template_id: "xg-template-81433-default",
               template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
               name: "软件级需求规格说明模板",
-              description: "Lab 可编辑 Markdown 模板。",
+              description: "基于 81433 的默认实例模板。",
               status: "active",
             },
             {
-              template_id: "82259号",
+              template_id: "xg-template-82259-default",
               template_code: "82259",
+              base_template_id: "82259号",
+              base_template_name: "平台级需求规格说明模板",
               name: "平台级需求规格说明模板",
-              description: "Lab 可编辑 Markdown 模板。",
+              description: "基于 82259 的默认实例模板。",
               status: "available",
             },
           ],
         },
       });
     }
-    if (url === "/requirement-analysis/templates/81433号") {
+    if (url === "/requirement-analysis/template-bases") {
       return Promise.resolve({
         data: {
-          template_id: "81433号",
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+            {
+              template_id: "82259号",
+              template_code: "82259",
+              name: "平台级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "available",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
           template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
           name: "软件级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 81433 的默认实例模板。",
           status: "active",
           format: "markdown",
           content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
         },
       });
     }
-    if (url === "/requirement-analysis/templates/82259号") {
+    if (url === "/requirement-analysis/templates/xg-template-82259-default") {
       return Promise.resolve({
         data: {
-          template_id: "82259号",
+          template_id: "xg-template-82259-default",
           template_code: "82259",
+          base_template_id: "82259号",
+          base_template_name: "平台级需求规格说明模板",
           name: "平台级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 82259 的默认实例模板。",
           status: "available",
           format: "markdown",
           content: "# 82259 平台级规格模板\n\n## 1. 文档定位\n",
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-attitude-analysis",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "态势分析系统需求规格模板",
+          description: "基于 81433 扩充的 Lab 模板实例。",
+          status: "available",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
         },
       });
     }
@@ -108,11 +156,26 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
         orchestrator_id: "xg-heuristic-orchestrator",
         provider_id: "deepseek",
         model: "deepseek-config-model",
-        template_id: "82259号",
+        template_id: "xg-template-82259-default",
         knowledge_package_id: "configured-knowledge-package",
         write_policy: "configured_patch_only",
       });
       return Promise.resolve({ data: session });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-attitude-analysis",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: (body as { name: string }).name,
+          description: "基于 81433 扩充的 Lab 模板实例。",
+          status: "available",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
+        },
+      });
     }
     if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
       if ((body as { user_input?: string })?.user_input === "A，先按计算分析工具理解") {
@@ -127,13 +190,15 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   });
 
   putMock.mockImplementation((url: string, body?: unknown) => {
-    if (url === "/requirement-analysis/templates/82259号") {
+    if (url === "/requirement-analysis/templates/xg-template-82259-default") {
       return Promise.resolve({
         data: {
-          template_id: "82259号",
+          template_id: "xg-template-82259-default",
           template_code: "82259",
+          base_template_id: "82259号",
+          base_template_name: "平台级需求规格说明模板",
           name: "平台级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 82259 的默认实例模板。",
           status: "available",
           format: "markdown",
           content: (body as { content: string }).content,
@@ -141,6 +206,13 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
       });
     }
     throw new Error(`unexpected put url: ${url}`);
+  });
+
+  deleteMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({ data: { deleted: true, template_id: "xg-template-81433-attitude-analysis" } });
+    }
+    throw new Error(`unexpected delete url: ${url}`);
   });
 
   render(
@@ -161,10 +233,13 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
   expect(screen.getByText("需求规格说明模板")).toBeInTheDocument();
+  expect(screen.getAllByText("基础依据").length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "新建实例" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "删除实例" })).toBeInTheDocument();
   expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
-  expect(screen.getByText("软件级需求规格说明模板")).toBeInTheDocument();
+  expect(screen.getAllByText("软件级需求规格说明模板").length).toBeGreaterThan(0);
   await waitFor(() =>
     expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 81433 软件级需求规格模板"),
   );
@@ -172,7 +247,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByDisplayValue("配置下发的需求规格探索课题")).toBeInTheDocument());
 
-  fireEvent.click(screen.getByRole("button", { name: /平台级需求规格说明模板/ }));
+  fireEvent.click(screen.getByRole("button", { name: /选择模板实例 平台级需求规格说明模板/ }));
   await waitFor(() =>
     expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 82259 平台级规格模板"),
   );
@@ -181,9 +256,28 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   });
   fireEvent.click(screen.getByRole("button", { name: "保存模板" }));
   await waitFor(() =>
-    expect(putMock).toHaveBeenCalledWith("/requirement-analysis/templates/82259号", {
+    expect(putMock).toHaveBeenCalledWith("/requirement-analysis/templates/xg-template-82259-default", {
       content: "# 82259 平台级规格模板\n\n## 1. 范围与边界\n",
+      name: "平台级需求规格说明模板",
+      description: "基于 82259 的默认实例模板。",
     }),
+  );
+  fireEvent.change(screen.getByLabelText("新建模板实例名称"), {
+    target: { value: "态势分析系统需求规格模板" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /选择基础模板 软件级需求规格说明模板/ }));
+  fireEvent.click(screen.getByRole("button", { name: "新建实例" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/templates", {
+      base_template_id: "81433号",
+      name: "态势分析系统需求规格模板",
+      description: "基于 81433 扩充的 Lab 模板实例。",
+    }),
+  );
+  expect(await screen.findByText("xg-template-81433-attitude-analysis")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "删除实例" }));
+  await waitFor(() =>
+    expect(deleteMock).toHaveBeenCalledWith("/requirement-analysis/templates/xg-template-81433-attitude-analysis"),
   );
 
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
@@ -429,23 +523,42 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
         data: {
           items: [
             {
-              template_id: "81433号",
+              template_id: "xg-template-81433-default",
               template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
               name: "软件级需求规格说明模板",
-              description: "Lab 可编辑 Markdown 模板。",
+              description: "基于 81433 的默认实例模板。",
               status: "active",
             },
           ],
         },
       });
     }
-    if (url === "/requirement-analysis/templates/81433号") {
+    if (url === "/requirement-analysis/template-bases") {
       return Promise.resolve({
         data: {
-          template_id: "81433号",
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
           template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
           name: "软件级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 81433 的默认实例模板。",
           status: "active",
           format: "markdown",
           content: "# 81433 软件级需求规格模板\n",
@@ -518,23 +631,42 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
         data: {
           items: [
             {
-              template_id: "81433号",
+              template_id: "xg-template-81433-default",
               template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
               name: "软件级需求规格说明模板",
-              description: "Lab 可编辑 Markdown 模板。",
+              description: "基于 81433 的默认实例模板。",
               status: "active",
             },
           ],
         },
       });
     }
-    if (url === "/requirement-analysis/templates/81433号") {
+    if (url === "/requirement-analysis/template-bases") {
       return Promise.resolve({
         data: {
-          template_id: "81433号",
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
           template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
           name: "软件级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 81433 的默认实例模板。",
           status: "active",
           format: "markdown",
           content: "# 81433 软件级需求规格模板\n",
@@ -740,7 +872,7 @@ function buildLabConfig() {
       orchestrator_id: "xg-heuristic-orchestrator",
       provider_id: "deepseek",
       model: "deepseek-config-model",
-      template_id: "81433号",
+      template_id: "xg-template-81433-default",
       knowledge_package_id: "configured-knowledge-package",
       write_policy: "configured_patch_only",
     },
@@ -934,23 +1066,42 @@ function mockRequirementAnalysisBootstrap() {
         data: {
           items: [
             {
-              template_id: "81433号",
+              template_id: "xg-template-81433-default",
               template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
               name: "软件级需求规格说明模板",
-              description: "Lab 可编辑 Markdown 模板。",
+              description: "基于 81433 的默认实例模板。",
               status: "active",
             },
           ],
         },
       });
     }
-    if (url === "/requirement-analysis/templates/81433号") {
+    if (url === "/requirement-analysis/template-bases") {
       return Promise.resolve({
         data: {
-          template_id: "81433号",
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
           template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
           name: "软件级需求规格说明模板",
-          description: "Lab 可编辑 Markdown 模板。",
+          description: "基于 81433 的默认实例模板。",
           status: "active",
           format: "markdown",
           content: "# 81433 软件级需求规格模板\n",
@@ -969,7 +1120,7 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
     orchestrator: buildOrchestrators().items[0],
     provider_id: "deepseek",
     model: "deepseek-chat",
-    template_id: "81433号",
+    template_id: "xg-template-81433-default",
     knowledge_package_id: "airspace-domain-demo",
     write_policy: "patch_suggestion_only",
     stable_contract: buildStableContract(),

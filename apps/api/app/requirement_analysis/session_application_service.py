@@ -26,11 +26,36 @@ class RequirementAnalysisApplicationService:
     def list_templates(self) -> dict:
         return self.template_service.list_templates()
 
+    def list_base_templates(self) -> dict:
+        return self.template_service.list_base_templates()
+
     def get_template(self, template_id: str) -> dict | None:
         return self.template_service.get_template(template_id)
 
-    def save_template(self, template_id: str, content: str) -> dict | None:
-        return self.template_service.save_template(template_id, content)
+    def create_template(self, *, base_template_id: str, name: str, description: str = "") -> dict | None:
+        return self.template_service.create_template(
+            base_template_id=base_template_id,
+            name=name,
+            description=description,
+        )
+
+    def save_template(
+        self,
+        template_id: str,
+        content: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> dict | None:
+        return self.template_service.save_template(
+            template_id,
+            content,
+            name=name,
+            description=description,
+        )
+
+    def delete_template(self, template_id: str) -> dict | None:
+        return self.template_service.delete_template(template_id)
 
     def create_session(self, payload: RequirementAnalysisSessionCreate) -> dict:
         return self.session_service.create_session(payload)

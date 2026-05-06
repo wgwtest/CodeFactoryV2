@@ -15,7 +15,7 @@ class RequirementAnalysisLabConfigService:
                 "orchestrator_id": "xg-heuristic-orchestrator",
                 "provider_id": "deepseek",
                 "model": "provider-default",
-                "template_id": "81433号",
+                "template_id": "xg-template-81433-default",
                 "knowledge_package_id": "airspace-domain-demo",
                 "write_policy": "patch_suggestion_only",
             },

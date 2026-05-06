@@ -19,8 +19,10 @@ import type {
   RequirementAnalysisTurnStageAudit,
 } from "../lib/api";
 import {
+  createRequirementAnalysisTemplate,
   createRequirementAnalysisSession,
   createRequirementAnalysisTurn,
+  deleteRequirementAnalysisTemplate,
   getRequirementAnalysisTemplate,
   saveRequirementAnalysisTemplate,
 } from "../lib/requirementAnalysis";
@@ -60,11 +62,17 @@ function formatRequirementAnalysisMessageRole(role: string) {
 }
 
 export function RequirementAnalysisLabPage() {
-  const { labConfig, orchestratorsEnvelope, providers, templates, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
+  const { labConfig, orchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
+    useRequirementAnalysisLabBootstrap();
+  const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedBaseTemplateId, setSelectedBaseTemplateId] = useState("");
   const [templateDetail, setTemplateDetail] = useState<RequirementAnalysisTemplateDetail | null>(null);
+  const [templateNameDraft, setTemplateNameDraft] = useState("");
+  const [templateDescriptionDraft, setTemplateDescriptionDraft] = useState("");
+  const [newTemplateName, setNewTemplateName] = useState("");
   const [templateDraft, setTemplateDraft] = useState("");
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
@@ -76,6 +84,11 @@ export function RequirementAnalysisLabPage() {
   const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const previousTemplateSelectionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setTemplates(bootstrappedTemplates);
+  }, [bootstrappedTemplates]);
 
   useEffect(() => {
     if (!labConfig || !orchestratorsEnvelope) {
@@ -98,7 +111,9 @@ export function RequirementAnalysisLabPage() {
       }
       return templates[0]?.template_id ?? configuredTemplateId;
     });
-  }, [labConfig, orchestratorsEnvelope, providers, templates]);
+    setSelectedBaseTemplateId((current) => current || templateBases[0]?.template_id || "81433号");
+    setNewTemplateName((current) => current || `${topic || labConfig.defaults.topic}模板实例`);
+  }, [labConfig, orchestratorsEnvelope, providers, templates, templateBases, topic]);
 
   useEffect(() => {
     if (!selectedTemplateId) {
@@ -113,6 +128,9 @@ export function RequirementAnalysisLabPage() {
           return;
         }
         setTemplateDetail(response.data);
+        setTemplateNameDraft(response.data.name);
+        setTemplateDescriptionDraft(response.data.description);
+        setSelectedBaseTemplateId(response.data.base_template_id);
         setTemplateDraft(response.data.content);
       } catch (templateError) {
         if (!cancelled) {
@@ -180,12 +198,82 @@ export function RequirementAnalysisLabPage() {
     }
     try {
       setTemplateSaving(true);
-      const response = await saveRequirementAnalysisTemplate(selectedTemplateId, templateDraft);
+      const response = await saveRequirementAnalysisTemplate(selectedTemplateId, templateDraft, templateNameDraft, templateDescriptionDraft);
       setTemplateDetail(response.data);
+      setTemplateNameDraft(response.data.name);
+      setTemplateDescriptionDraft(response.data.description);
       setTemplateDraft(response.data.content);
+      setTemplates((current) => current.map((template) => (template.template_id === response.data.template_id ? response.data : template)));
       setError(null);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "保存需求规格说明模板失败");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  function handleTemplateSelect(templateId: string) {
+    if (selectedTemplateId && selectedTemplateId !== templateId) {
+      previousTemplateSelectionRef.current = selectedTemplateId;
+    }
+    setSelectedTemplateId(templateId);
+  }
+
+  async function handleCreateTemplate() {
+    const name = newTemplateName.trim() || `${topic || "未命名需求"}模板实例`;
+    try {
+      setTemplateSaving(true);
+      const response = await createRequirementAnalysisTemplate(
+        selectedBaseTemplateId || templateBases[0]?.template_id || "81433号",
+        name,
+        `基于 ${(selectedBaseTemplateId || templateBases[0]?.template_id || "81433号").replace("号", "")} 扩充的 Lab 模板实例。`,
+      );
+      setTemplates((current) => [...current.filter((template) => template.template_id !== response.data.template_id), response.data]);
+      if (selectedTemplateId && selectedTemplateId !== response.data.template_id) {
+        previousTemplateSelectionRef.current = selectedTemplateId;
+      }
+      setSelectedTemplateId(response.data.template_id);
+      setTemplateDetail(response.data);
+      setTemplateNameDraft(response.data.name);
+      setTemplateDescriptionDraft(response.data.description);
+      setTemplateDraft(response.data.content);
+      setNewTemplateName("");
+      setError(null);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "新建需求规格说明模板实例失败");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function handleDeleteTemplate() {
+    if (!selectedTemplateId) {
+      return;
+    }
+    try {
+      setTemplateSaving(true);
+      const deletingTemplateId = selectedTemplateId;
+      await deleteRequirementAnalysisTemplate(deletingTemplateId);
+      setTemplates((current) => {
+        const nextTemplates = current.filter((template) => template.template_id !== deletingTemplateId);
+        const fallbackTemplateId =
+          nextTemplates.find((template) => template.template_id === previousTemplateSelectionRef.current)?.template_id ??
+          nextTemplates[0]?.template_id ??
+          "";
+        previousTemplateSelectionRef.current = fallbackTemplateId || null;
+        const nextSelectedTemplateId = fallbackTemplateId;
+        setSelectedTemplateId(nextSelectedTemplateId);
+        if (!nextSelectedTemplateId) {
+          setTemplateDetail(null);
+          setTemplateNameDraft("");
+          setTemplateDescriptionDraft("");
+          setTemplateDraft("");
+        }
+        return nextTemplates;
+      });
+      setError(null);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "删除需求规格说明模板实例失败");
     } finally {
       setTemplateSaving(false);
     }
@@ -293,12 +381,23 @@ export function RequirementAnalysisLabPage() {
                 orchestratorsEnvelope={orchestratorsEnvelope}
                 providers={providerOptions}
                 templates={templates}
+                templateBases={templateBases}
                 selectedTemplateId={selectedTemplateId}
-                onTemplateSelect={setSelectedTemplateId}
+                selectedBaseTemplateId={selectedBaseTemplateId}
+                onBaseTemplateSelect={setSelectedBaseTemplateId}
+                onTemplateSelect={handleTemplateSelect}
                 templateDetail={templateDetail}
                 templateDraft={templateDraft}
+                templateNameDraft={templateNameDraft}
+                templateDescriptionDraft={templateDescriptionDraft}
+                newTemplateName={newTemplateName}
+                onTemplateNameDraftChange={setTemplateNameDraft}
+                onTemplateDescriptionDraftChange={setTemplateDescriptionDraft}
+                onNewTemplateNameChange={setNewTemplateName}
                 onTemplateDraftChange={setTemplateDraft}
                 onSaveTemplate={() => void handleSaveTemplate()}
+                onCreateTemplate={() => void handleCreateTemplate()}
+                onDeleteTemplate={() => void handleDeleteTemplate()}
                 templateLoading={templateLoading}
                 templateSaving={templateSaving}
                 selectedOrchestrator={selectedOrchestrator}
@@ -370,13 +469,24 @@ function ConfigTab({
   onOrchestratorSelect,
   onTopicChange,
   onTemplateDraftChange,
+  onTemplateNameDraftChange,
+  onTemplateDescriptionDraftChange,
+  onNewTemplateNameChange,
+  onBaseTemplateSelect,
   onTemplateSelect,
   onSaveTemplate,
+  onCreateTemplate,
+  onDeleteTemplate,
   orchestratorsEnvelope,
   providers,
   templates,
+  templateBases,
+  selectedBaseTemplateId,
   selectedTemplateId,
   templateDetail,
+  templateNameDraft,
+  templateDescriptionDraft,
+  newTemplateName,
   templateDraft,
   templateLoading,
   templateSaving,
@@ -395,13 +505,24 @@ function ConfigTab({
   onOrchestratorSelect: (orchestratorId: string) => void;
   onTopicChange: (topic: string) => void;
   onTemplateDraftChange: (content: string) => void;
+  onTemplateNameDraftChange: (value: string) => void;
+  onTemplateDescriptionDraftChange: (value: string) => void;
+  onNewTemplateNameChange: (value: string) => void;
+  onBaseTemplateSelect: (templateId: string) => void;
   onTemplateSelect: (templateId: string) => void;
   onSaveTemplate: () => void;
+  onCreateTemplate: () => void;
+  onDeleteTemplate: () => void;
   orchestratorsEnvelope: RequirementAnalysisOrchestratorEnvelope;
   providers: RequirementAnalysisProvider[];
   templates: RequirementAnalysisTemplateSummary[];
+  templateBases: RequirementAnalysisTemplateSummary[];
+  selectedBaseTemplateId: string;
   selectedTemplateId: string;
   templateDetail: RequirementAnalysisTemplateDetail | null;
+  templateNameDraft: string;
+  templateDescriptionDraft: string;
+  newTemplateName: string;
   templateDraft: string;
   templateLoading: boolean;
   templateSaving: boolean;
@@ -411,7 +532,12 @@ function ConfigTab({
   topic: string;
 }) {
   const topicField = labConfig.startup_fields.find((field) => field.field === "topic");
-  const templateDirty = Boolean(templateDetail && templateDraft !== templateDetail.content);
+  const templateDirty = Boolean(
+    templateDetail &&
+      (templateDraft !== templateDetail.content ||
+        templateNameDraft !== templateDetail.name ||
+        templateDescriptionDraft !== templateDetail.description),
+  );
   return (
     <>
       <div className="requirement-analysis-lab-tab-grid is-config">
@@ -496,9 +622,51 @@ function ConfigTab({
           <PanelHead title="需求规格说明模板" subtitle="选择并编辑本次组织器 Lab 使用的 Markdown 模板。" />
           <div className="requirement-analysis-lab-template-layout">
             <div className="requirement-analysis-lab-template-list">
+              <div className="requirement-analysis-lab-template-create">
+                <Text strong>基础依据</Text>
+                <div className="requirement-analysis-lab-template-base-list">
+                  {templateBases.map((templateBase) => (
+                    <button
+                      aria-label={`选择基础模板 ${templateBase.name} ${templateBase.template_id}`}
+                      className={
+                        templateBase.template_id === selectedBaseTemplateId
+                          ? "requirement-analysis-lab-template-option is-selected"
+                          : "requirement-analysis-lab-template-option"
+                      }
+                      key={templateBase.template_id}
+                      onClick={() => onBaseTemplateSelect(templateBase.template_id)}
+                      type="button"
+                    >
+                      <span>
+                        <Text strong>{templateBase.name}</Text>
+                        <Text type="secondary">{templateBase.template_id}</Text>
+                      </span>
+                      <Tag color={templateBase.status === "active" ? "green" : "default"}>{templateBase.status}</Tag>
+                    </button>
+                  ))}
+                </div>
+                <label className="requirement-analysis-lab-field">
+                  <Text strong>新建模板实例名称</Text>
+                  <Input
+                    aria-label="新建模板实例名称"
+                    onChange={(event) => onNewTemplateNameChange(event.target.value)}
+                    placeholder="输入基于基础依据创建的实例模板名称"
+                    value={newTemplateName}
+                  />
+                </label>
+                <Space className="requirement-analysis-lab-template-create-actions" wrap>
+                  <Button disabled={!selectedBaseTemplateId} loading={templateSaving} onClick={onCreateTemplate} type="primary">
+                    新建实例
+                  </Button>
+                  <Button danger disabled={!selectedTemplateId} loading={templateSaving} onClick={onDeleteTemplate}>
+                    删除实例
+                  </Button>
+                </Space>
+              </div>
               {templates.length ? (
                 templates.map((template) => (
                   <button
+                    aria-label={`选择模板实例 ${template.name} ${template.template_id}`}
                     className={
                       template.template_id === selectedTemplateId
                         ? "requirement-analysis-lab-template-option is-selected"
@@ -526,6 +694,30 @@ function ConfigTab({
                 <div className="requirement-analysis-lab-template-meta">
                   <Text strong>{templateDetail?.name ?? "未选择模板"}</Text>
                   <Text type="secondary">{templateDetail?.description ?? "选择左侧模板后可查看并编辑其 Markdown 正文。"}</Text>
+                </div>
+                <label className="requirement-analysis-lab-field">
+                  <Text strong>实例名称</Text>
+                  <Input
+                    aria-label="模板实例名称"
+                    disabled={!selectedTemplateId}
+                    onChange={(event) => onTemplateNameDraftChange(event.target.value)}
+                    value={templateNameDraft}
+                  />
+                </label>
+                <label className="requirement-analysis-lab-field">
+                  <Text strong>实例说明</Text>
+                  <Input
+                    aria-label="模板实例说明"
+                    disabled={!selectedTemplateId}
+                    onChange={(event) => onTemplateDescriptionDraftChange(event.target.value)}
+                    value={templateDescriptionDraft}
+                  />
+                </label>
+                <div className="requirement-analysis-lab-template-base-note">
+                  <Text strong>基础依据</Text>
+                  <Text type="secondary">
+                    {templateDetail ? `${templateDetail.base_template_name}（${templateDetail.base_template_id}）` : "未选择模板实例"}
+                  </Text>
                 </div>
                 <Space className="requirement-analysis-lab-template-actions" wrap>
                   <Tag color={templateDirty ? "orange" : "green"}>{templateDirty ? "未保存" : "已同步"}</Tag>

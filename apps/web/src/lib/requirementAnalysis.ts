@@ -26,12 +26,32 @@ export function getRequirementAnalysisTemplates() {
   return api.get<RequirementAnalysisTemplateEnvelope>("/requirement-analysis/templates");
 }
 
+export function getRequirementAnalysisTemplateBases() {
+  return api.get<RequirementAnalysisTemplateEnvelope>("/requirement-analysis/template-bases");
+}
+
 export function getRequirementAnalysisTemplate(templateId: string) {
   return api.get<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`);
 }
 
-export function saveRequirementAnalysisTemplate(templateId: string, content: string) {
-  return api.put<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`, { content });
+export function createRequirementAnalysisTemplate(baseTemplateId: string, name: string, description: string) {
+  return api.post<RequirementAnalysisTemplateDetail>("/requirement-analysis/templates", {
+    base_template_id: baseTemplateId,
+    name,
+    description,
+  });
+}
+
+export function saveRequirementAnalysisTemplate(templateId: string, content: string, name?: string, description?: string) {
+  return api.put<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`, {
+    content,
+    name,
+    description,
+  });
+}
+
+export function deleteRequirementAnalysisTemplate(templateId: string) {
+  return api.delete<{ deleted: boolean; template_id: string }>(`/requirement-analysis/templates/${templateId}`);
 }
 
 export function createRequirementAnalysisSession(payload: RequirementAnalysisSessionCreateInput) {
