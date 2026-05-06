@@ -1,13 +1,8 @@
 from __future__ import annotations
 
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest, OrchestratorRunResult
 from app.orchestrators.runner_host import OrchestratorRunnerHost
-
-
-LOCAL_PLUGIN_TO_PACKAGE_ID = {
-    "xg-local-heuristic-orchestrator": "xg-heuristic-orchestrator",
-    "xg-local-strong-rule-orchestrator": "xg-strong-rule-orchestrator",
-}
 
 
 class LocalXGOrchestratorPluginAdapter:
@@ -16,7 +11,7 @@ class LocalXGOrchestratorPluginAdapter:
         self.runner_host = runner_host or OrchestratorRunnerHost()
 
     def run(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
-        package_id = LOCAL_PLUGIN_TO_PACKAGE_ID.get(self.manifest.plugin_id, self.manifest.plugin_id)
+        package_id = local_package_id_for_orchestrator(self.manifest.plugin_id)
         output = self.runner_host.execute_local_runner(
             package_id,
             context={

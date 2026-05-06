@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.models.requirements import RequirementAnalysisSession
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
 
@@ -37,7 +38,7 @@ class NextInteractionService:
             next_question = str(focus_node.get("question") or focus_node.get("title"))
             if model_output.get("raw_model_response", {}).get("mock") or not model_output.get("quick_options"):
                 quick_options = self.process_artifact_service.quick_options_for_node(
-                    session.orchestrator_id,
+                    local_package_id_for_orchestrator(session.orchestrator_id),
                     focus_node,
                 )
             else:

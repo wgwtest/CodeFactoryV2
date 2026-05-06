@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from app.config import settings
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.runner_host import OrchestratorRunnerHost
 from app.orchestrators.package_loader import OrchestratorPackage
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
@@ -554,7 +555,7 @@ class RequirementAnalysisProviderCallService:
     ) -> dict:
         stage_payload = dict(stage)
         prompt_bundle = self.runner_host.build_stage_prompt_bundle(
-            session.orchestrator_id,
+            local_package_id_for_orchestrator(session.orchestrator_id),
             stage=stage_payload,
             context=stage_input,
         )

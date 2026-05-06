@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from app.orchestrators.orchestrator_id_mapper import normalize_orchestrator_plugin_id
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest
 
 
@@ -78,11 +79,7 @@ class OrchestratorPluginRegistry:
 
     @staticmethod
     def _normalize(plugin_id: str) -> str:
-        mapping = {
-            "xg-heuristic-orchestrator": "xg-local-heuristic-orchestrator",
-            "xg-strong-rule-orchestrator": "xg-local-strong-rule-orchestrator",
-        }
-        return mapping.get(plugin_id, plugin_id)
+        return normalize_orchestrator_plugin_id(plugin_id)
 
 
 @lru_cache(maxsize=1)

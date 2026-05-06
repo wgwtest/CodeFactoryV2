@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.package_loader import get_orchestrator_registry
 from app.db.models.requirements import RequirementAuthoringTemplate
 from app.requirement_authoring.models import default_template_payload
@@ -98,7 +99,7 @@ class RequirementSpecTreeService:
 
     @staticmethod
     def spec_strategy(orchestrator_id: str) -> dict:
-        loaded = get_orchestrator_registry().require_loaded(orchestrator_id)
+        loaded = get_orchestrator_registry().require_loaded(local_package_id_for_orchestrator(orchestrator_id))
         return dict(loaded.spec_strategy or {})
 
     @staticmethod

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.package_loader import get_orchestrator_registry
 
 
@@ -38,7 +39,7 @@ class ProcessArtifactService:
         return template.replace("{semantic}", semantic)
 
     def _rule_for_node(self, orchestrator_id: str, node: dict | None) -> dict:
-        loaded = get_orchestrator_registry().require_loaded(orchestrator_id)
+        loaded = get_orchestrator_registry().require_loaded(local_package_id_for_orchestrator(orchestrator_id))
         rules = dict(loaded.artifact_rules or {})
         clauses = rules.get("clauses") if isinstance(rules.get("clauses"), dict) else {}
         defaults = rules.get("defaults") if isinstance(rules.get("defaults"), dict) else {}

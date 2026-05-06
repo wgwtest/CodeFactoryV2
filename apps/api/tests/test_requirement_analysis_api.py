@@ -196,7 +196,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert created.status_code == 200
     session = created.json()
     assert session["status"] == "created"
-    assert session["orchestrator"]["orchestrator_id"] == "xg-heuristic-orchestrator"
+    assert session["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+    assert session["orchestrator"]["plugin_id"] == "xg-local-heuristic-orchestrator"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
     assert session["orchestrator"]["name"] == "XG Heuristic Orchestrator"
     assert session["orchestrator"]["document_type"] == "xg"
     assert session["orchestrator"]["mode"] == "policy_interpreted"
@@ -486,10 +489,13 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
 
     assert created.status_code == 200
     session = created.json()
-    assert session["orchestrator"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
+    assert session["orchestrator"]["orchestrator_id"] == "xg-local-strong-rule-orchestrator"
+    assert session["orchestrator"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
     assert session["orchestrator"]["document_type"] == "xg"
     assert session["orchestrator"]["mode"] == "local_runner"
-    assert "strict_turn_closure" in session["orchestrator"]["capabilities"]
+    assert session["orchestrator"]["capabilities"]["stage_audits"] is True
 
     turn = client.post(
         f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
@@ -499,6 +505,9 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert turn.status_code == 200
     payload = turn.json()
     assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
+    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "full"
+    assert payload["turn"]["raw_plugin_response"]["plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
     assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "supplement_requirement"
     assert "强规则组织器" in payload["turn"]["spec_execution"]["assistant_message"]
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
@@ -513,6 +522,39 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert len(payload["session"]["provider_logs"]) == 1
     assert payload["session"]["provider_logs"][0]["stage_id"] == "run"
     assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+
+
+def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["plugin_type"] == "dify_workflow"
+    assert session["orchestrator"]["observability_level"] == "limited"
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-dify-workflow-orchestrator"
+    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "limited"
+    assert payload["turn"]["stage_audits"] == []
+    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["fake"] is True
+    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
 
 
 def test_requirement_analysis_lab_rejects_unknown_orchestrator() -> None:

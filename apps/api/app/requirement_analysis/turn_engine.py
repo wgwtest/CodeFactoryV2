@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.orchestrators.adapters.dify_workflow_plugin import DifyWorkflowOrchestratorPluginAdapter
+from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.package_loader import OrchestratorPackage
+from app.orchestrators.plugin_contracts import OrchestratorRunRequest
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
 from app.requirement_analysis.models import RequirementAnalysisTurnCreate
 from app.requirement_analysis.next_interaction_service import NextInteractionService
 from app.requirement_analysis.provider_call_log_service import ProviderCallLogService
@@ -72,17 +76,29 @@ class RequirementAnalysisTurnEngine:
         turn_id = f"turn-{len(turns) + 1:04d}"
         user_input = payload.user_input.strip()
         now = self._now()
-        orchestrator = self._orchestrator(session.orchestrator_id)
         context = self.turn_context_builder.build(session=session, turn_id=turn_id, user_input=user_input)
-
-        strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
-        stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
-        stage_results: list[TurnStageResult] = []
-
         working_document = dict(
             context.working_document
             or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
         )
+        plugin = get_orchestrator_plugin_registry().require(session.orchestrator_id)
+        if plugin.plugin_type == "dify_workflow":
+            return self._run_dify_plugin_turn(
+                session=session,
+                context=context,
+                payload=payload,
+                turn_id=turn_id,
+                user_input=user_input,
+                now=now,
+                turns=turns,
+                working_document=working_document,
+            )
+
+        orchestrator = self._orchestrator(session.orchestrator_id)
+
+        strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
+        stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
+        stage_results: list[TurnStageResult] = []
         intent_output = {
             "intent_understanding_result": {},
             "target_document_structure": {},
@@ -393,6 +409,7 @@ class RequirementAnalysisTurnEngine:
             "turn_id": turn_id,
             "session_id": session.session_id,
             "user_input": user_input,
+            "orchestrator_plugin": self._plugin_payload(session.orchestrator_id),
             "previous_interaction": context.previous_interaction,
             "normalized_input": context.normalized_input,
             "input_relation": context.input_relation,
@@ -411,6 +428,13 @@ class RequirementAnalysisTurnEngine:
             "confidence": model_output["confidence"],
             "service_steps": self._service_steps(),
             "raw_model_response": model_output["raw_model_response"],
+            "raw_plugin_response": {
+                "contract_version": "xg-observable-orchestrator-contract@1",
+                "plugin": self._plugin_payload(session.orchestrator_id),
+                "raw_output": {
+                    "raw_model_response": model_output["raw_model_response"],
+                },
+            },
             "created_at": now,
         }
 
@@ -766,7 +790,199 @@ class RequirementAnalysisTurnEngine:
     def _orchestrator(orchestrator_id: str) -> OrchestratorPackage:
         from app.orchestrators.package_loader import get_orchestrator_registry
 
-        return get_orchestrator_registry().require(orchestrator_id)
+        return get_orchestrator_registry().require(local_package_id_for_orchestrator(orchestrator_id))
+
+    @staticmethod
+    def _plugin_payload(orchestrator_id: str) -> dict:
+        plugin = get_orchestrator_plugin_registry().require(orchestrator_id)
+        return {
+            "plugin_id": plugin.plugin_id,
+            "plugin_type": plugin.plugin_type,
+            "observability_level": plugin.observability_level,
+        }
+
+    def _build_plugin_request(
+        self,
+        *,
+        session: SessionSnapshot,
+        context,
+        turn_id: str,
+        user_input: str,
+        working_document: dict,
+    ) -> OrchestratorRunRequest:
+        return OrchestratorRunRequest(
+            contract_version="xg-observable-orchestrator-contract@1",
+            session={
+                "session_id": session.session_id,
+                "topic": session.topic,
+                "template_id": session.template_id,
+                "knowledge_package_id": session.knowledge_package_id,
+                "orchestrator_id": session.orchestrator_id,
+                "provider_id": session.provider_id,
+                "model": session.model,
+                "write_policy": session.write_policy,
+            },
+            turn={
+                "turn_id": turn_id,
+                "turn_index": context.turn_index,
+                "user_input": user_input,
+                "normalized_input": context.normalized_input,
+                "previous_interaction": context.previous_interaction,
+                "input_relation": context.input_relation,
+            },
+            template={
+                "template_id": session.template_id,
+                "format": "structured",
+                "content": "",
+                "parsed_structure": {"spec_tree": context.spec_tree},
+            },
+            document_context={
+                "working_document": working_document,
+                "active_spec_node": context.active_spec_node,
+                "spec_tree": context.spec_tree,
+                "confirmed_facts": context.facts,
+                "open_questions": context.questions,
+                "patches": context.patches,
+                "history_summary": "",
+            },
+            execution_options={
+                "expected_output": "both",
+                "observability_required": "full",
+                "streaming_enabled": False,
+            },
+        )
+
+    def _run_dify_plugin_turn(
+        self,
+        *,
+        session: SessionSnapshot,
+        context,
+        payload: RequirementAnalysisTurnCreate,
+        turn_id: str,
+        user_input: str,
+        now: str,
+        turns: list[dict],
+        working_document: dict,
+    ) -> TurnExecutionResult:
+        plugin = get_orchestrator_plugin_registry().require(session.orchestrator_id)
+        request = self._build_plugin_request(
+            session=session,
+            context=context,
+            turn_id=turn_id,
+            user_input=user_input,
+            working_document=working_document,
+        )
+        adapter = DifyWorkflowOrchestratorPluginAdapter(manifest=plugin)
+        result = adapter.run(request)
+
+        active_spec_node = dict(context.active_spec_node or {})
+        anchor_path = str(active_spec_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
+        display_heading = str(active_spec_node.get("target_section") or "需求规格说明")
+        document_patch = [
+            {
+                "plan_ref": "AP-DIFY-001",
+                "operation": "append_or_update",
+                "content": str(result.final_output.get("filled_document_text") or ""),
+                "write_policy": session.write_policy,
+            }
+        ]
+        target_anchor_plan = [
+            {
+                "plan_id": "AP-DIFY-001",
+                "template_clause_id": anchor_path,
+                "display_heading": display_heading,
+                "canonical_clause_heading": display_heading,
+                "anchor_path": anchor_path,
+            }
+        ]
+        projection_spec_node = {
+            **active_spec_node,
+            "target_section": display_heading,
+        }
+        working_document_update_result = self.working_document_service.apply_patches(
+            working_document=working_document,
+            document_patch=document_patch,
+            patch_proposals=[],
+            projection_spec_node=projection_spec_node,
+            turn_id=turn_id,
+            user_input_summary=context.normalized_input.get("semantic") or user_input,
+            target_anchor_plan=target_anchor_plan,
+        )
+        working_document_update = working_document_update_result.to_dict()
+        next_question = str(result.interaction_output.get("next_question") or "请继续补充下一项需求规格信息。")
+        assistant_message = str(result.interaction_output.get("assistant_message") or "Dify workflow 预留插件已生成整篇正文草稿。")
+        turn = {
+            "turn_id": turn_id,
+            "session_id": session.session_id,
+            "user_input": user_input,
+            "orchestrator_plugin": self._plugin_payload(session.orchestrator_id),
+            "previous_interaction": context.previous_interaction,
+            "normalized_input": context.normalized_input,
+            "input_relation": context.input_relation,
+            "intent_understanding_result": {},
+            "target_document_structure": {},
+            "stage_task_definition": {},
+            "stage_quality_constraints": {},
+            "spec_execution": {
+                "assistant_message": assistant_message,
+                "affected_spec_nodes": [projection_spec_node],
+                "confirmed_facts": list(result.state_output.get("confirmed_facts_delta") or []),
+                "document_patch": document_patch,
+                "target_anchor_plan": target_anchor_plan,
+                "working_document_update": working_document_update,
+                "interpretation": {"intent": "supplement_requirement"},
+            },
+            "post_update_review": {
+                "target_review": {"status": "acceptable"},
+                "global_review": {"status": "continue"},
+            },
+            "review_after_apply_result": {},
+            "next_interaction_plan": {},
+            "closure_decision": {"status": "open"},
+            "next_interaction": {
+                "interaction_id": f"interaction-{context.turn_index:04d}",
+                "type": "open_question",
+                "prompt": next_question,
+                "options": list(result.interaction_output.get("quick_options") or []),
+                "target_spec_node_ids": [str(active_spec_node.get("node_id") or "")] if active_spec_node.get("node_id") else [],
+                "reason": "",
+            },
+            "stage_audits": [],
+            "decision_trace": list(result.process_output.get("decision_trace") or []),
+            "confidence": str(result.final_output.get("confidence") or "medium"),
+            "service_steps": self._service_steps(),
+            "raw_model_response": {},
+            "raw_plugin_response": result.model_dump(mode="json"),
+            "created_at": now,
+        }
+        updated_turns = [*turns, turn]
+        messages = [
+            *list(session.payload.get("messages", [])),
+            {"id": f"msg-{len(updated_turns) * 2:04d}", "role": "user", "content": user_input, "turn_id": turn_id, "created_at": now},
+            {"id": f"msg-{len(updated_turns) * 2 + 1:04d}", "role": "assistant", "content": assistant_message, "turn_id": turn_id, "created_at": now},
+        ]
+        return TurnExecutionResult(
+            turn=turn,
+            state_patch={
+                "turns": updated_turns,
+                "messages": messages,
+                "confirmed_facts": list(result.state_output.get("confirmed_facts_delta") or []),
+                "open_questions": list(result.state_output.get("open_questions_delta") or []),
+                "document_patch": document_patch,
+                "working_document": working_document,
+                "questions": list(session.payload.get("questions", [])),
+                "facts": list(session.payload.get("facts", [])),
+                "patches": list(session.payload.get("patches", [])),
+                "spec_tree": context.spec_tree,
+                "active_spec_node_id": context.active_spec_node_id,
+                "turn_path": list(session.payload.get("turn_path", [])),
+                "next_interaction": turn["next_interaction"],
+                "last_quick_options": turn["next_interaction"]["options"],
+                "annotations": list(result.process_output.get("annotations") or []),
+                "risks": list(result.process_output.get("risks") or []),
+            },
+            provider_logs=[],
+        )
 
     @staticmethod
     def _adopt_stage_model_output(adoption_policy: str, stage_results: list) -> dict:
