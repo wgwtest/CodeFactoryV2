@@ -13,8 +13,8 @@ class RequirementAnalysisLabConfigService:
             "defaults": {
                 "topic": "默认运算软件需求规格说明",
                 "orchestrator_id": "xg-heuristic-orchestrator",
-                "provider_id": "mock",
-                "model": "mock-requirement-analysis-v1",
+                "provider_id": "deepseek",
+                "model": "provider-default",
                 "template_id": "81433号",
                 "knowledge_package_id": "airspace-domain-demo",
                 "write_policy": "patch_suggestion_only",

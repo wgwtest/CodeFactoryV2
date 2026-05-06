@@ -36,7 +36,15 @@ class RequirementAnalysisSummaryArtifactService:
         turn_id: str,
         session: RequirementAnalysisSession,
     ) -> dict:
-        current_target_section = model_output["document_patch"][0].get("section") if model_output["document_patch"] else None
+        plan_by_id = {
+            str(plan.get("plan_id") or "").strip(): dict(plan)
+            for plan in list(model_output.get("target_anchor_plan") or [])
+            if isinstance(plan, dict) and str(plan.get("plan_id") or "").strip()
+        }
+        current_target_section = self.target_section_from_plan(
+            model_output["document_patch"][0],
+            plan_by_id=plan_by_id,
+        ) if model_output["document_patch"] else None
         source_question = self.resolve_answering_question(
             questions,
             target_section=current_target_section,
@@ -51,13 +59,18 @@ class RequirementAnalysisSummaryArtifactService:
                 new_fact_ids.append(existing["fact_id"])
                 continue
             fact_id = f"F-{len(facts) + 1:03d}"
+            fact_target_section = (
+                str(source_question.get("target_section") or "")
+                if source_question
+                else (current_target_section or (target_spec_node.get("target_section") if target_spec_node else None))
+            )
             facts.append(
                 {
                     "fact_id": fact_id,
                     "content": fact_content,
                     "source_turn_id": turn_id,
                     "source_question_ids": [source_question_id] if source_question_id else [],
-                    "target_section": current_target_section or (source_question.get("target_section") if source_question else None),
+                    "target_section": fact_target_section,
                 }
             )
             new_fact_ids.append(fact_id)
@@ -75,7 +88,7 @@ class RequirementAnalysisSummaryArtifactService:
             }
 
         for open_question in model_output["open_questions_delta"]:
-            target_section = self.infer_target_section_from_model_output(model_output, open_question)
+            target_section = current_target_section or target_spec_node.get("target_section") or "未绑定模板章节"
             if any(question.get("content") == open_question for question in questions):
                 continue
             if source_question and self.is_same_question_content(open_question, str(source_question.get("content") or "")):
@@ -93,10 +106,12 @@ class RequirementAnalysisSummaryArtifactService:
 
         for patch in model_output["document_patch"]:
             patch_id = f"P-{len(patches) + 1:03d}"
+            target_section = self.target_section_from_plan(patch, plan_by_id=plan_by_id)
             patches.append(
                 {
                     "patch_id": patch_id,
-                    "target_section": patch.get("section") or "未绑定模板章节",
+                    "target_section": target_section,
+                    "plan_ref": patch.get("plan_ref") or "",
                     "operation": patch.get("operation") or "append_or_update",
                     "content": patch.get("content") or "",
                     "write_policy": patch.get("write_policy") or session.write_policy,
@@ -128,6 +143,11 @@ class RequirementAnalysisSummaryArtifactService:
             for question in questions:
                 if question.get("status") == "open" and question.get("target_section") == target_section:
                     return question
+            target_spec_section = str(target_spec_node.get("target_section") or "").strip()
+            if target_spec_section:
+                for question in questions:
+                    if question.get("status") == "open" and str(question.get("target_section") or "").strip() == target_spec_section:
+                        return question
             if target_spec_node.get("node_id"):
                 question = {
                     "question_id": f"Q-{len(questions) + 1:03d}",
@@ -144,26 +164,17 @@ class RequirementAnalysisSummaryArtifactService:
                 return question
         return questions[-1] if questions else None
 
-    def infer_target_section_from_model_output(self, model_output: dict, open_question: str) -> str:
-        if model_output.get("document_patch"):
-            section = str(model_output["document_patch"][0].get("section") or "").strip()
-            if section:
-                return section
-        return self.infer_target_section(open_question)
-
     @staticmethod
-    def infer_target_section(content: str) -> str:
-        if "输入" in content or "数据来源" in content:
-            return "2.1 输入数据"
-        if "输出" in content or "结果形式" in content:
-            return "2.2 输出结果"
-        if "用户" in content or "角色" in content or "协同" in content or "编辑" in content:
-            return "1.2 用户角色"
-        if "功能" in content:
-            return "3. 功能需求"
-        if "目标" in content or "定位" in content or "系统更偏向" in content:
-            return "1.1 系统目标"
-        return "未归类澄清项"
+    def target_section_from_plan(patch: dict, *, plan_by_id: dict[str, dict]) -> str:
+        plan = plan_by_id.get(str(patch.get("plan_ref") or "").strip())
+        if not plan:
+            return "未绑定模板章节"
+        return str(
+            plan.get("display_heading")
+            or plan.get("canonical_clause_heading")
+            or plan.get("template_clause_id")
+            or "未绑定模板章节"
+        )
 
     @staticmethod
     def suggestion_content_for_node(node: dict | None) -> str:

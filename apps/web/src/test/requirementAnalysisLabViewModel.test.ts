@@ -1,7 +1,28 @@
 import { describe, expect, test } from "vitest";
 
 import type { RequirementAnalysisSession } from "../lib/api";
-import { buildRequirementAnalysisWorkingDocumentViewModel } from "../lib/requirementAnalysisLabViewModel";
+import {
+  buildRequirementAnalysisWorkingDocumentViewModel,
+  resolveDefaultRequirementAnalysisProviderId,
+} from "../lib/requirementAnalysisLabViewModel";
+
+describe("resolveDefaultRequirementAnalysisProviderId", () => {
+  test("does not lock the lab startup Provider before provider options are loaded", () => {
+    expect(resolveDefaultRequirementAnalysisProviderId([], "mock")).toBe("");
+  });
+
+  test("prefers DeepSeek for the lab startup Provider when it is available", () => {
+    const providerId = resolveDefaultRequirementAnalysisProviderId(
+      [
+        { provider_id: "mock", name: "Mock Provider", status: "active" },
+        { provider_id: "deepseek", name: "DeepSeek", status: "active" },
+      ],
+      "mock",
+    );
+
+    expect(providerId).toBe("deepseek");
+  });
+});
 
 describe("buildRequirementAnalysisWorkingDocumentViewModel", () => {
   test("groups right-side revision markers by turn and sorts them by first affected document position", () => {

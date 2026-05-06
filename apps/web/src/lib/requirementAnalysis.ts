@@ -5,6 +5,8 @@ import type {
   RequirementAnalysisProviderEnvelope,
   RequirementAnalysisSession,
   RequirementAnalysisSessionCreateInput,
+  RequirementAnalysisTemplateDetail,
+  RequirementAnalysisTemplateEnvelope,
   RequirementAnalysisTurnEnvelope,
 } from "./api";
 
@@ -18,6 +20,18 @@ export function getRequirementAnalysisOrchestrators() {
 
 export function getRequirementAnalysisProviders() {
   return api.get<RequirementAnalysisProviderEnvelope>("/requirement-analysis/providers");
+}
+
+export function getRequirementAnalysisTemplates() {
+  return api.get<RequirementAnalysisTemplateEnvelope>("/requirement-analysis/templates");
+}
+
+export function getRequirementAnalysisTemplate(templateId: string) {
+  return api.get<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`);
+}
+
+export function saveRequirementAnalysisTemplate(templateId: string, content: string) {
+  return api.put<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`, { content });
 }
 
 export function createRequirementAnalysisSession(payload: RequirementAnalysisSessionCreateInput) {

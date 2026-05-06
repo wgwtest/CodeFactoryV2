@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
 
 from app.db.session import get_session
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
@@ -8,6 +9,12 @@ from app.requirement_analysis.session_application_service import RequirementAnal
 
 
 router = APIRouter(prefix="/requirement-analysis", tags=["requirement-analysis"])
+
+
+class RequirementAnalysisTemplateSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str
 
 
 def get_requirement_analysis_service(session=Depends(get_session)) -> RequirementAnalysisApplicationService:
@@ -41,6 +48,36 @@ def list_requirement_analysis_providers(
     service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
 ):
     return service.list_providers()
+
+
+@router.get("/templates")
+def list_requirement_analysis_templates(
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    return service.list_templates()
+
+
+@router.get("/templates/{template_id}")
+def get_requirement_analysis_template(
+    template_id: str,
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    template = service.get_template(template_id)
+    if template is None:
+        raise _not_found("Requirement Analysis template not found")
+    return template
+
+
+@router.put("/templates/{template_id}")
+def save_requirement_analysis_template(
+    template_id: str,
+    payload: RequirementAnalysisTemplateSave,
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    template = service.save_template(template_id, payload.content)
+    if template is None:
+        raise _not_found("Requirement Analysis template not found")
+    return template
 
 
 @router.post("/sessions")

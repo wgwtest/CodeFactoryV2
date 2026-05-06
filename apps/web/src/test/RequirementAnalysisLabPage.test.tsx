@@ -10,18 +10,21 @@ import type { RequirementAnalysisSession, RequirementAnalysisTurnEnvelope } from
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const putMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
+    put: (...args: unknown[]) => putMock(...args),
   },
 }));
 
 beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
+  putMock.mockReset();
   scrollIntoViewMock.mockReset();
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 });
@@ -47,6 +50,54 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
         },
       });
     }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "Lab 可编辑 Markdown 模板。",
+              status: "active",
+            },
+            {
+              template_id: "82259号",
+              template_code: "82259",
+              name: "平台级需求规格说明模板",
+              description: "Lab 可编辑 Markdown 模板。",
+              status: "available",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/81433号") {
+      return Promise.resolve({
+        data: {
+          template_id: "81433号",
+          template_code: "81433",
+          name: "软件级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/82259号") {
+      return Promise.resolve({
+        data: {
+          template_id: "82259号",
+          template_code: "82259",
+          name: "平台级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "available",
+          format: "markdown",
+          content: "# 82259 平台级规格模板\n\n## 1. 文档定位\n",
+        },
+      });
+    }
     throw new Error(`unexpected get url: ${url}`);
   });
 
@@ -57,7 +108,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
         orchestrator_id: "xg-heuristic-orchestrator",
         provider_id: "deepseek",
         model: "deepseek-config-model",
-        template_id: "配置模板号",
+        template_id: "82259号",
         knowledge_package_id: "configured-knowledge-package",
         write_policy: "configured_patch_only",
       });
@@ -73,6 +124,23 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
       throw new Error(`unexpected turn body: ${JSON.stringify(body)}`);
     }
     throw new Error(`unexpected post url: ${url}`);
+  });
+
+  putMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-analysis/templates/82259号") {
+      return Promise.resolve({
+        data: {
+          template_id: "82259号",
+          template_code: "82259",
+          name: "平台级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "available",
+          format: "markdown",
+          content: (body as { content: string }).content,
+        },
+      });
+    }
+    throw new Error(`unexpected put url: ${url}`);
   });
 
   render(
@@ -92,23 +160,34 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("RequirementAnalysisOrchestrator 插槽")).toBeInTheDocument();
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
-  expect(screen.getByText("稳定契约 / 输出协议")).toBeInTheDocument();
+  expect(screen.getByText("需求规格说明模板")).toBeInTheDocument();
   expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
-  expect(screen.getByText("替换组织器不能影响 P2 正式文档能力")).toBeInTheDocument();
+  expect(screen.getByText("软件级需求规格说明模板")).toBeInTheDocument();
+  await waitFor(() =>
+    expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 81433 软件级需求规格模板"),
+  );
+  expect(screen.getByText(/当前 Provider：/)).toBeInTheDocument();
   expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByDisplayValue("配置下发的需求规格探索课题")).toBeInTheDocument());
 
+  fireEvent.click(screen.getByRole("button", { name: /平台级需求规格说明模板/ }));
+  await waitFor(() =>
+    expect((screen.getByLabelText("需求规格说明模板正文") as HTMLTextAreaElement).value).toContain("# 82259 平台级规格模板"),
+  );
+  fireEvent.change(screen.getByLabelText("需求规格说明模板正文"), {
+    target: { value: "# 82259 平台级规格模板\n\n## 1. 范围与边界\n" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "保存模板" }));
+  await waitFor(() =>
+    expect(putMock).toHaveBeenCalledWith("/requirement-analysis/templates/82259号", {
+      content: "# 82259 平台级规格模板\n\n## 1. 范围与边界\n",
+    }),
+  );
+
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
-
-  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByRole("tab", { name: /会话管理.*已创建/ })).toHaveAttribute("aria-selected", "false");
-  expect(screen.getByText("会话已创建：ra-airspace-001")).toBeInTheDocument();
-  expect(screen.queryByText("CLI 式问答区")).not.toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
 
   expect(screen.getByRole("tab", { name: /会话管理/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByRole("heading", { name: "会话管理" })).not.toBeInTheDocument();
@@ -296,10 +375,35 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("（Turn 服务最终采纳的输出，用于生成聊天回应、规格补丁和状态更新。）")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
+  expect(screen.getByText("需求规格说明模板")).toBeInTheDocument();
+});
 
-  const stableContract = screen.getByTestId("requirement-analysis-stable-contract");
-  expect(within(stableContract).getByText("正式需求规格文档")).toBeInTheDocument();
-  expect(within(stableContract).getByText("P2 -> P3 输出")).toBeInTheDocument();
+test("switches to session tab immediately while startup request is still pending", async () => {
+  const deferredSession = createDeferred<{ data: RequirementAnalysisSession }>();
+  mockRequirementAnalysisBootstrap();
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return deferredSession.promise;
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
+
+  expect(screen.getByRole("tab", { name: /会话管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("尚未创建 Requirement Analysis 会话。请先回到“组织器配置”点击“启动验证”。")).toBeInTheDocument();
+
+  deferredSession.resolve({ data: buildSession("created") });
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
 });
 
 test("shows a protocol error instead of blanking when Current Turn misses required audit fields", async () => {
@@ -317,6 +421,34 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
       return Promise.resolve({
         data: {
           items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "Lab 可编辑 Markdown 模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/81433号") {
+      return Promise.resolve({
+        data: {
+          template_id: "81433号",
+          template_code: "81433",
+          name: "软件级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
         },
       });
     }
@@ -378,6 +510,34 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
       return Promise.resolve({
         data: {
           items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "Lab 可编辑 Markdown 模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/81433号") {
+      return Promise.resolve({
+        data: {
+          template_id: "81433号",
+          template_code: "81433",
+          name: "软件级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
         },
       });
     }
@@ -484,8 +644,7 @@ test("renders one right-side revision marker per turn even when the turn edits m
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
-  await screen.findByText("会话已创建：ra-airspace-001");
-  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+  await screen.findByText("会话 ra-airspace-001");
 
   await screen.findByTestId("requirement-analysis-marker-frag-0001");
   const markers = Array.from(document.querySelectorAll('[data-marker-group="requirement-analysis-revision-marker"]'));
@@ -581,7 +740,7 @@ function buildLabConfig() {
       orchestrator_id: "xg-heuristic-orchestrator",
       provider_id: "deepseek",
       model: "deepseek-config-model",
-      template_id: "配置模板号",
+      template_id: "81433号",
       knowledge_package_id: "configured-knowledge-package",
       write_policy: "configured_patch_only",
     },
@@ -767,6 +926,34 @@ function mockRequirementAnalysisBootstrap() {
             { provider_id: "mock", name: "Mock Provider", status: "active" },
             { provider_id: "deepseek", name: "DeepSeek", status: "active" },
           ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "Lab 可编辑 Markdown 模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/81433号") {
+      return Promise.resolve({
+        data: {
+          template_id: "81433号",
+          template_code: "81433",
+          name: "软件级需求规格说明模板",
+          description: "Lab 可编辑 Markdown 模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
         },
       });
     }

@@ -193,6 +193,35 @@ class RequirementAnalysisProviderCallService:
             str(state.get("active_spec_node_id") or ""),
         )
         active_section = active_node.get("target_section") if active_node else "未绑定模板章节"
+        template_clause_id = str(active_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
+        display_heading = self._display_heading_from_stage_input(
+            stage_input=stage_input or {},
+            template_clause_id=template_clause_id,
+            fallback=str(active_section),
+        )
+        target_anchor_plan = [
+            {
+                "plan_id": "AP-001",
+                "decision_type": "append_existing_clause",
+                "template_clause_id": template_clause_id,
+                "canonical_clause_heading": display_heading,
+                "subtopic_action": "none",
+                "subtopic_key": "",
+                "subtopic_title": "",
+                "display_heading": display_heading,
+                "template_shape_ref": "coarse_grained_extensible",
+                "reason": "Mock Provider 使用当前活动节点作为结构化锚点。",
+                "confidence": "medium",
+                "anchor_path": template_clause_id,
+            }
+        ]
+        template_shape_assessment = {
+            "shape_type": "coarse_grained_extensible",
+            "reason": "Mock Provider 不做业务语义判断，仅生成符合协议的结构化输出。",
+            "allowed_write_modes": ["append_existing_clause", "revise_existing_anchor", "create_subtopic_under_clause"],
+            "forbidden_write_modes": ["invent_new_template_clause", "invent_new_section_number"],
+            "template_revision_recommendations": [],
+        }
         fact = self.process_artifact_service.fact_for_node(orchestrator.orchestrator_id, active_node, semantic)
         patch_content = self.process_artifact_service.patch_for_node(orchestrator.orchestrator_id, active_node, semantic)
         next_question = str(active_node.get("question") if active_node else "请继续补充需求规格说明。")
@@ -225,11 +254,13 @@ class RequirementAnalysisProviderCallService:
             },
             "next_question": next_question,
             "quick_options": quick_options,
+            "template_shape_assessment": template_shape_assessment,
+            "target_anchor_plan": target_anchor_plan,
             "confirmed_facts_delta": [fact],
             "open_questions_delta": [next_question],
             "document_patch": [
                 {
-                    "section": active_section,
+                    "plan_ref": "AP-001",
                     "operation": "append_or_update",
                     "content": patch_content,
                     "write_policy": session.write_policy,
@@ -256,11 +287,13 @@ class RequirementAnalysisProviderCallService:
             },
             "next_question": next_question,
             "quick_options": quick_options,
+            "template_shape_assessment": template_shape_assessment,
+            "target_anchor_plan": target_anchor_plan,
             "confirmed_facts_delta": [fact],
             "open_questions_delta": [next_question],
             "document_patch": [
                 {
-                    "section": active_section,
+                    "plan_ref": "AP-001",
                     "operation": "append_or_update",
                     "content": patch_content,
                     "write_policy": session.write_policy,
@@ -363,6 +396,13 @@ class RequirementAnalysisProviderCallService:
                 raw_content="mock_intent_understanding_output",
             ),
         })
+
+    @staticmethod
+    def _display_heading_from_stage_input(*, stage_input: dict, template_clause_id: str, fallback: str) -> str:
+        chapter_context = dict(stage_input.get("chapter_configuration_context") or {})
+        canonical_clause_map = dict(chapter_context.get("canonical_clause_map") or {})
+        clause = dict(canonical_clause_map.get(template_clause_id) or {})
+        return str(clause.get("display_heading") or clause.get("heading") or fallback)
 
     def mock_review_output(
         self,

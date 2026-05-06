@@ -2,11 +2,13 @@ from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
 from app.requirement_analysis.session_repository import RequirementAnalysisSessionRepository
+from app.orchestrators.contract_validator import OrchestratorContractValidator
 from app.orchestrators.package_loader import OrchestratorPackageLoader, get_orchestrator_registry
 from app.orchestrators.runner_host import OrchestratorRunnerHost
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService, SpecTreeUpdateResult
 from app.db.models.requirements import RequirementAnalysisSession
 from app.requirement_analysis.provider_call_service import ProviderRunResult
+from app.requirement_analysis.stage_runtime_context_builder import StageRuntimeContextBuilder
 from app.requirement_analysis.summary_artifact_service import ArtifactUpdateResult, RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_context_builder import TurnContext
 from app.requirement_analysis.turn_decision_service import TurnDecisionService, TurnDecisionResult
@@ -16,6 +18,188 @@ from app.requirement_analysis.turn_stage_executor import TurnStageExecutor, Turn
 from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
+
+
+def test_chapter_configuration_context_is_available_to_write_prompt(db_session) -> None:
+    spec_tree_service = RequirementSpecTreeService(db_session)
+    spec_tree = spec_tree_service.new_spec_tree(
+        "81433号",
+        orchestrator_id="xg-heuristic-orchestrator",
+    )
+    context = TurnContext(
+        turn_id="turn-0001",
+        turn_index=1,
+        session_id="session-1",
+        topic="默认运算软件需求规格说明",
+        template_id="81433号",
+        knowledge_package_id="airspace-domain-demo",
+        orchestrator_id="xg-heuristic-orchestrator",
+        provider_id="mock",
+        model="mock-requirement-analysis-v1",
+        write_policy="patch_suggestion_only",
+        user_input="我希望创建一个态势分析系统。",
+        normalized_input={"semantic": "我希望创建一个态势分析系统。"},
+        previous_interaction={"type": "none"},
+        input_relation={"relation": "none"},
+        spec_tree=spec_tree,
+        active_spec_node_id="SPEC-REQ-1.1",
+        active_spec_node=spec_tree_service.active_spec_node_context(spec_tree, "SPEC-REQ-1.1"),
+        working_document={"blocks": []},
+        questions=[],
+        facts=[],
+        patches=[],
+        last_quick_options=[],
+    )
+    session = type(
+        "Session",
+        (),
+        {
+            "session_id": "session-1",
+            "topic": "默认运算软件需求规格说明",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "write_policy": "patch_suggestion_only",
+            "payload": {"spec_tree": spec_tree, "working_document": {"blocks": []}},
+        },
+    )()
+
+    runtime_context = StageRuntimeContextBuilder().build(
+        session=session,
+        context=context,
+        stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+        target_document_structure={"target_anchor_paths": ["REQ-1.1"]},
+    ).to_prompt_context()
+    prompt_bundle = OrchestratorRunnerHost().build_stage_prompt_bundle(
+        "xg-heuristic-orchestrator",
+        stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+        context=runtime_context,
+    )
+
+    chapter_context = runtime_context["chapter_configuration_context"]
+    assert chapter_context["template_id"] == "81433号"
+    assert chapter_context["canonical_clause_map"]["REQ-1.1"]["heading"] == "1.1 编写目的"
+    assert chapter_context["template_clauses"][0]["template_clause_id"] == "REQ-1.1"
+    assert "chapter_configuration_context_json" in prompt_bundle
+    assert "ChapterConfigurationContext" in prompt_bundle["assembled_prompt"]
+    assert "REQ-1.1" in prompt_bundle["chapter_configuration_context_json"]
+
+
+def test_write_contract_normalizes_anchor_plan_and_plan_ref() -> None:
+    validator = OrchestratorContractValidator()
+
+    normalized = validator.normalize_turn_output(
+        {
+            "organizer_interpretation": {"summary": "识别到用户在补充编写目的。"},
+            "template_shape_assessment": {
+                "shape_type": "coarse_extensible",
+                "reason": "模板允许在规范条款下细化子主题。",
+                "allowed_write_modes": ["revise_existing_clause", "add_subtopic"],
+                "forbidden_write_modes": ["modify_template"],
+                "template_revision_recommendations": [],
+            },
+            "target_anchor_plan": [
+                {
+                    "plan_id": "AP-001",
+                    "decision_type": "revise_existing_clause",
+                    "template_clause_id": "REQ-1.1",
+                    "canonical_clause_heading": "1.1 编写目的",
+                    "subtopic_action": "none",
+                    "subtopic_key": "",
+                    "subtopic_title": "",
+                    "display_heading": "1.1 编写目的",
+                    "template_shape_ref": "coarse_extensible",
+                    "reason": "用户说明了系统建设目标。",
+                    "confidence": "high",
+                }
+            ],
+            "confirmed_facts_delta": ["系统拟建设态势分析系统。"],
+            "document_patch": [
+                {
+                    "plan_ref": "AP-001",
+                    "operation": "replace",
+                    "content": "本需求规格说明用于定义态势分析系统的建设目标。",
+                }
+            ],
+            "confidence": "high",
+        },
+        provider_id="mock",
+        model="mock-requirement-analysis-v1",
+        write_policy="patch_suggestion_only",
+        raw_response={"mock": True},
+    )
+
+    assert normalized["template_shape_assessment"]["shape_type"] == "coarse_extensible"
+    assert normalized["target_anchor_plan"][0]["plan_id"] == "AP-001"
+    assert normalized["document_patch"][0]["plan_ref"] == "AP-001"
+    assert "section" not in normalized["document_patch"][0]
+
+
+def test_write_contract_rejects_patch_without_existing_plan_ref() -> None:
+    validator = OrchestratorContractValidator()
+
+    try:
+        validator.normalize_turn_output(
+            {
+                "target_anchor_plan": [
+                    {
+                        "plan_id": "AP-001",
+                        "decision_type": "revise_existing_clause",
+                        "template_clause_id": "REQ-1.1",
+                        "display_heading": "1.1 编写目的",
+                    }
+                ],
+                "document_patch": [
+                    {
+                        "plan_ref": "AP-999",
+                        "content": "这段正文引用了不存在的锚点规划。",
+                    }
+                ],
+            },
+            provider_id="mock",
+            model="mock-requirement-analysis-v1",
+            write_policy="patch_suggestion_only",
+        )
+    except ValueError as exc:
+        assert "plan_ref" in str(exc)
+    else:
+        raise AssertionError("expected invalid plan_ref to be rejected")
+
+
+def test_working_document_applies_patch_by_target_anchor_plan() -> None:
+    service = WorkingDocumentService()
+    working_document = service.initialize(topic="默认运算软件需求规格说明", template_id="81433号")
+
+    update = service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "plan_ref": "AP-001",
+                "operation": "append_or_update",
+                "content": "本需求规格说明用于定义态势分析系统第一阶段的建设范围。",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
+        turn_id="turn-0001",
+        user_input_summary="用户希望建设态势分析系统",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-1.1",
+                "display_heading": "1.1 编写目的",
+                "anchor_path": "REQ-1.1",
+                "decision_type": "revise_existing_clause",
+            }
+        ],
+    )
+
+    assert update.applied_block_ids == ["blk-0001"]
+    assert working_document["blocks"][0]["anchor_path"] == "REQ-1.1"
+    assert working_document["blocks"][0]["display_heading"] == "1.1 编写目的"
+    assert working_document["revision_fragments"][0]["hit_spec_nodes"] == ["SPEC-REQ-1.1"]
 
 
 def test_requirement_analysis_modules_cover_turn_core_contract(db_session) -> None:
@@ -158,6 +342,8 @@ def test_orchestrator_package_loads_stage_prompt_schema_and_adoption_assets() ->
     ]
     assert loaded.stage_adoption_policies["write"]["adopt_fields"] == [
         "organizer_interpretation",
+        "template_shape_assessment",
+        "target_anchor_plan",
         "confirmed_facts_delta",
         "document_patch",
         "annotations",
@@ -211,8 +397,9 @@ def test_orchestrator_runner_host_builds_stage_specific_prompt_bundle() -> None:
     assert write_bundle["stage_id"] == "write"
     assert write_bundle["prompt_id"] == "write"
     assert "只返回 JSON" in write_bundle["base_contract_text"]
-    assert "理解用户本轮输入" in write_bundle["stage_prompt_text"]
+    assert "章节配置上下文" in write_bundle["stage_prompt_text"]
     assert "document_patch" in write_bundle["schema_json"]
+    assert "target_anchor_plan" in write_bundle["schema_json"]
     assert "adoption_policy_json" in write_bundle
     assert review_bundle["stage_id"] == "review_after_apply"
     assert review_bundle["prompt_id"] == "review_after_apply"
@@ -482,9 +669,17 @@ def test_requirement_analysis_update_services_return_typed_contracts(db_session)
         model_output={
             "confirmed_facts_delta": ["系统名称为空域运算软件。"],
             "open_questions_delta": [],
+            "target_anchor_plan": [
+                {
+                    "plan_id": "AP-001",
+                    "template_clause_id": "REQ-1.1",
+                    "display_heading": "1.1 编写目的",
+                    "canonical_clause_heading": "1.1 编写目的",
+                }
+            ],
             "document_patch": [
                 {
-                    "section": "1 总则 / 编写目的",
+                    "plan_ref": "AP-001",
                     "operation": "append_or_update",
                     "content": "系统名称为空域运算软件。",
                     "write_policy": "patch_suggestion_only",
@@ -575,7 +770,7 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
         working_document=working_document,
         document_patch=[
             {
-                "section": "2 项目概述 / 软件定位",
+                "plan_ref": "AP-001",
                 "operation": "append_or_update",
                 "content": "本软件定位为通用运算分析工具。",
             }
@@ -584,13 +779,21 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
         projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
         turn_id="turn-0001",
         user_input_summary="初始定位",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-2.1",
+                "display_heading": "2.1 软件定位",
+                "anchor_path": "REQ-2.1",
+            }
+        ],
     )
 
     replace_update = service.apply_patches(
         working_document=working_document,
         document_patch=[
             {
-                "section": "2 项目概述 / 软件定位",
+                "plan_ref": "AP-001",
                 "operation": "replace",
                 "content": "本软件定位为空域运算分析工具，第一阶段不做协同规划。",
             }
@@ -599,6 +802,14 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
         projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
         turn_id="turn-0002",
         user_input_summary="修正定位",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-2.1",
+                "display_heading": "2.1 软件定位",
+                "anchor_path": "REQ-2.1",
+            }
+        ],
     )
 
     assert working_document["blocks"][0]["text"] == "本软件定位为空域运算分析工具，第一阶段不做协同规划。"
@@ -610,7 +821,7 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
         working_document=working_document,
         document_patch=[
             {
-                "section": "2 项目概述 / 软件定位",
+                "plan_ref": "AP-001",
                 "operation": "delete",
                 "content": "第一阶段不做协同规划",
             }
@@ -619,6 +830,14 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
         projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 项目概述 / 软件定位"},
         turn_id="turn-0003",
         user_input_summary="删除阶段边界",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-2.1",
+                "display_heading": "2.1 软件定位",
+                "anchor_path": "REQ-2.1",
+            }
+        ],
     )
 
     assert working_document["blocks"][0]["text"] == "本软件定位为空域运算分析工具，。"
@@ -635,12 +854,12 @@ def test_working_document_inserts_late_general_clause_by_template_order() -> Non
         working_document=working_document,
         document_patch=[
             {
-                "section": "2 总体描述 / 产品范围",
+                "plan_ref": "AP-001",
                 "operation": "append_or_update",
                 "content": "系统第一阶段覆盖态势展示和地理信息分析。",
             },
             {
-                "section": "2 总体描述 / 产品功能",
+                "plan_ref": "AP-002",
                 "operation": "append_or_update",
                 "content": "系统提供量算、坡度分析和部署分析工具。",
             },
@@ -649,13 +868,27 @@ def test_working_document_inserts_late_general_clause_by_template_order() -> Non
         projection_spec_node={"node_id": "SPEC-REQ-2.1", "target_section": "2 总体描述 / 产品范围"},
         turn_id="turn-0001",
         user_input_summary="先补总体描述",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-2.1",
+                "display_heading": "2.1 产品范围",
+                "anchor_path": "2 总体描述 / 产品范围",
+            },
+            {
+                "plan_id": "AP-002",
+                "template_clause_id": "REQ-2.2",
+                "display_heading": "2.2 产品功能",
+                "anchor_path": "2 总体描述 / 产品功能",
+            },
+        ],
     )
 
     service.apply_patches(
         working_document=working_document,
         document_patch=[
             {
-                "section": "1 总则 / 适用范围",
+                "plan_ref": "AP-003",
                 "operation": "append_or_update",
                 "content": "本需求规格说明适用于态势分析系统第一阶段建设。",
             }
@@ -664,6 +897,14 @@ def test_working_document_inserts_late_general_clause_by_template_order() -> Non
         projection_spec_node={"node_id": "SPEC-REQ-1.2", "target_section": "1 总则 / 适用范围"},
         turn_id="turn-0002",
         user_input_summary="回补总则",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-003",
+                "template_clause_id": "REQ-1.2",
+                "display_heading": "1.2 适用范围",
+                "anchor_path": "1 总则 / 适用范围",
+            }
+        ],
     )
 
     assert [block["anchor_path"] for block in working_document["blocks"]] == [

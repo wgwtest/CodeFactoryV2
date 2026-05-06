@@ -148,7 +148,7 @@
 }
 
 .requirement-analysis-lab-tab-grid.is-config {
-  grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(320px, 0.8fr) minmax(560px, 1.2fr);
 }
 
 .requirement-analysis-lab-tab-grid.is-log {
@@ -167,6 +167,98 @@
   min-height: 0;
   padding: 16px;
   overflow: auto;
+}
+
+.requirement-analysis-lab-config-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+
+.requirement-analysis-lab-template-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.requirement-analysis-lab-template-layout {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.32fr) minmax(0, 0.68fr);
+  gap: 14px;
+}
+
+.requirement-analysis-lab-template-list {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+}
+
+.requirement-analysis-lab-template-option {
+  min-height: 70px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #c8d3ce;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.requirement-analysis-lab-template-option span:first-child,
+.requirement-analysis-lab-template-meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.requirement-analysis-lab-template-option .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requirement-analysis-lab-template-option .ant-tag {
+  margin-inline-end: 0;
+}
+
+.requirement-analysis-lab-template-option.is-selected {
+  border-color: #2f7b7d;
+  background: #eef9f7;
+}
+
+.requirement-analysis-lab-template-editor {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.requirement-analysis-lab-template-actions {
+  justify-content: space-between;
+}
+
+.requirement-analysis-lab-template-actions.ant-space {
+  width: 100%;
+}
+
+.requirement-analysis-lab-template-textarea.ant-input {
+  height: 100% !important;
+  min-height: 420px;
+  resize: none;
+  overflow: auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
 }
 
 .requirement-analysis-lab-panel-head {
