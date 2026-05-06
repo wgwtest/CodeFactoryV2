@@ -15,6 +15,16 @@ class RequirementAnalysisTemplateSave(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str
+    name: str | None = None
+    description: str | None = None
+
+
+class RequirementAnalysisTemplateCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_template_id: str
+    name: str
+    description: str = ""
 
 
 def get_requirement_analysis_service(session=Depends(get_session)) -> RequirementAnalysisApplicationService:
@@ -57,6 +67,28 @@ def list_requirement_analysis_templates(
     return service.list_templates()
 
 
+@router.get("/template-bases")
+def list_requirement_analysis_template_bases(
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    return service.list_base_templates()
+
+
+@router.post("/templates")
+def create_requirement_analysis_template(
+    payload: RequirementAnalysisTemplateCreate,
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    template = service.create_template(
+        base_template_id=payload.base_template_id,
+        name=payload.name,
+        description=payload.description,
+    )
+    if template is None:
+        raise _not_found("Requirement Analysis base template not found")
+    return template
+
+
 @router.get("/templates/{template_id}")
 def get_requirement_analysis_template(
     template_id: str,
@@ -74,10 +106,26 @@ def save_requirement_analysis_template(
     payload: RequirementAnalysisTemplateSave,
     service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
 ):
-    template = service.save_template(template_id, payload.content)
+    template = service.save_template(
+        template_id,
+        payload.content,
+        name=payload.name,
+        description=payload.description,
+    )
     if template is None:
         raise _not_found("Requirement Analysis template not found")
     return template
+
+
+@router.delete("/templates/{template_id}")
+def delete_requirement_analysis_template(
+    template_id: str,
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    result = service.delete_template(template_id)
+    if result is None:
+        raise _not_found("Requirement Analysis template not found")
+    return result
 
 
 @router.post("/sessions")

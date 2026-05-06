@@ -2119,6 +2119,8 @@ export type RequirementAnalysisProviderEnvelope = {
 export type RequirementAnalysisTemplateSummary = {
   template_id: string;
   template_code: string;
+  base_template_id: string;
+  base_template_name: string;
   name: string;
   description: string;
   status: "active" | "available" | "disabled" | string;
