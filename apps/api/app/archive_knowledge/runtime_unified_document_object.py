@@ -17,6 +17,12 @@ from app.archive_knowledge.runtime_contract import (
     RuntimeSummarySection,
     STAGE_DEFINITION_MAP,
 )
+from app.archive_knowledge.runtime_trace_utils import (
+    build_runtime_events,
+    build_runtime_sections,
+    merge_runtime_events,
+    merge_runtime_sections,
+)
 from app.parsing.models import ParsedDocument, ParsedSegment
 
 
@@ -27,6 +33,8 @@ def build_unified_document_object_snapshot(
     document_title: str,
     file_type: str | None,
     parsed_document: ParsedDocument,
+    runtime_trace: dict | None = None,
+    status_override: RuntimeStatus | None = None,
 ) -> RuntimeStageSnapshot:
     del archive_id
     definition = STAGE_DEFINITION_MAP["unified_document_object"]
@@ -34,15 +42,58 @@ def build_unified_document_object_snapshot(
     segment_count = len(segments)
     section_groups = _group_segments_by_section(segments)
     section_labels = list(section_groups.keys())
-    stage_status = RuntimeStatus.COMPLETED if segment_count else RuntimeStatus.WARNING
+    stage_status = status_override or (RuntimeStatus.COMPLETED if segment_count else RuntimeStatus.WARNING)
+    trace_events = build_runtime_events(runtime_trace)
+    trace_sections = build_runtime_sections(runtime_trace)
 
     unified_document_id = f"{document_id}:unified-document"
+    parsed_segment_group_id = f"{document_id}:parsed-segments"
     normalization_decision_id = f"{document_id}:normalization-decision"
+    normalization_policy_id = f"{document_id}:normalization-policy"
     section_group_id = f"{document_id}:unified-sections"
     paragraph_group_id = f"{document_id}:unified-paragraphs"
     warning_id = f"{document_id}:unified-warning"
 
     nodes: list[RuntimeGraphNode] = [
+        RuntimeGraphNode(
+            node_id=parsed_segment_group_id,
+            label="Parsed Segment Input",
+            node_type="parsed_segment_group",
+            stage_id=definition.stage_id,
+            status=stage_status,
+            origin=RuntimeOrigin.SOURCE,
+            is_primary=True,
+            metrics={"segment_count": segment_count},
+            attributes={
+                "input_object": "parser_segments",
+                "segment_count": segment_count,
+                "parser_name": parsed_document.parser_name,
+                "coverage": "full_parser_output" if segment_count else "empty_parser_output",
+            },
+        ),
+        RuntimeGraphNode(
+            node_id=normalization_policy_id,
+            label="Normalization Policy",
+            node_type="normalization_policy",
+            stage_id=definition.stage_id,
+            status=stage_status,
+            origin=RuntimeOrigin.DERIVED,
+            metrics={
+                "input_count": (runtime_trace or {}).get("input_count", segment_count),
+                "output_count": (runtime_trace or {}).get("output_count", segment_count),
+            },
+            attributes={
+                "decision_summary": (runtime_trace or {}).get(
+                    "decision_summary",
+                    "normalize parser segments into stable document objects",
+                ),
+                "ai_summary": (runtime_trace or {}).get(
+                    "ai_summary",
+                    "field alignment and heading normalization",
+                ),
+                "rule_key": "unified-document-normalization",
+            },
+        ),
         RuntimeGraphNode(
             node_id=unified_document_id,
             label="Unified Document",
@@ -106,6 +157,30 @@ def build_unified_document_object_snapshot(
     ]
 
     edges: list[RuntimeGraphEdge] = [
+        RuntimeGraphEdge(
+            edge_id=f"{parsed_segment_group_id}:normalized_by",
+            source=parsed_segment_group_id,
+            target=normalization_decision_id,
+            relation="normalized_by",
+            stage_id=definition.stage_id,
+            status=stage_status,
+            origin=RuntimeOrigin.SOURCE,
+            is_primary=True,
+            attributes={
+                "rule_key": "unified-document-normalization",
+                "reason": "all parser segments enter normalization before downstream evidence stages",
+            },
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{normalization_policy_id}:governs",
+            source=normalization_policy_id,
+            target=normalization_decision_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=stage_status,
+            origin=RuntimeOrigin.DERIVED,
+            attributes={"rule_key": "unified-document-normalization"},
+        ),
         RuntimeGraphEdge(
             edge_id=f"{normalization_decision_id}:normalized_to",
             source=normalization_decision_id,
@@ -240,7 +315,7 @@ def build_unified_document_object_snapshot(
         title="Unified Document Object",
         subtitle=document_title,
         status=stage_status,
-        stream=[
+        stream=merge_runtime_events([
             RuntimeEvent(
                 event_id=f"{document_id}:unified:start",
                 kind="progress",
@@ -261,8 +336,8 @@ def build_unified_document_object_snapshot(
                 object_id=unified_document_id,
                 object_kind="node",
             ),
-        ],
-        sections=[
+        ], trace_events),
+        sections=merge_runtime_sections([
             RuntimeSummarySection(
                 section_id="unified-summary",
                 title="Unified Summary",
@@ -295,7 +370,7 @@ def build_unified_document_object_snapshot(
                     RuntimeSummaryField(key="file_type", label="file_type", value=file_type or "unknown"),
                 ],
             ),
-        ],
+        ], trace_sections),
         actions=[
             RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
             RuntimeAction(
@@ -308,6 +383,73 @@ def build_unified_document_object_snapshot(
     )
 
     node_observers = {
+        parsed_segment_group_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Parsed Segment Input",
+            subtitle=document_title,
+            status=stage_status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:unified:parsed-segments",
+                    kind="progress",
+                    level="info",
+                    message=f"{segment_count} parsed segments entered the unified document stage.",
+                    object_id=parsed_segment_group_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="parsed-segment-input",
+                    title="Input Objects",
+                    fields=[
+                        RuntimeSummaryField(key="input_object", label="input_object", value="parser_segments"),
+                        RuntimeSummaryField(key="segment_count", label="segment_count", value=str(segment_count)),
+                        RuntimeSummaryField(
+                            key="parser_name",
+                            label="parser_name",
+                            value=parsed_document.parser_name or "unknown",
+                        ),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-normalization", label="View Normalization", target_kind="node", target_id=normalization_decision_id)],
+        ),
+        normalization_policy_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="Normalization Policy",
+            subtitle=document_title,
+            status=stage_status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:unified:policy",
+                    kind="rule",
+                    level="info",
+                    message=str((runtime_trace or {}).get("decision_summary") or "Parser segments are normalized with heading and field alignment."),
+                    object_id=normalization_policy_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="normalization-policy",
+                    title="Policy Basis",
+                    fields=[
+                        RuntimeSummaryField(
+                            key="decision_summary",
+                            label="decision_summary",
+                            value=str((runtime_trace or {}).get("decision_summary") or "normalize parser segments"),
+                        ),
+                        RuntimeSummaryField(
+                            key="ai_summary",
+                            label="ai_summary",
+                            value=str((runtime_trace or {}).get("ai_summary") or "field alignment and heading normalization"),
+                        ),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-normalization", label="View Normalization", target_kind="node", target_id=normalization_decision_id)],
+        ),
         unified_document_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Unified Document",
@@ -541,6 +683,61 @@ def build_unified_document_object_snapshot(
         )
 
     edge_observers = {
+        f"{parsed_segment_group_id}:normalized_by": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="normalized_by",
+            subtitle=document_title,
+            status=stage_status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:unified:input-to-decision",
+                    kind="progress",
+                    level="info",
+                    message="Parser segment input is routed into the normalization decision.",
+                    object_id=f"{parsed_segment_group_id}:normalized_by",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="input-to-decision",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="normalized_by"),
+                        RuntimeSummaryField(key="input_count", label="input_count", value=str(segment_count)),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="unified-document-normalization"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
+        f"{normalization_policy_id}:governs": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=stage_status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:unified:policy-governs",
+                    kind="rule",
+                    level="info",
+                    message="Normalization policy governs how parser output becomes stable document objects.",
+                    object_id=f"{normalization_policy_id}:governs",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-governs",
+                    title="Relation Summary",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="unified-document-normalization"),
+                    ],
+                )
+            ],
+            actions=[RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph")],
+        ),
         f"{normalization_decision_id}:normalized_to": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="normalized_to",
@@ -619,8 +816,10 @@ def build_unified_document_object_snapshot(
         )
 
     primary_node_ids = [
-        unified_document_id,
+        parsed_segment_group_id,
+        normalization_policy_id,
         normalization_decision_id,
+        unified_document_id,
         section_group_id,
         paragraph_group_id,
         *section_node_ids[:3],

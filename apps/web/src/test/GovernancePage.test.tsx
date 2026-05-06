@@ -24,6 +24,19 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
           archive_id: "20161116-nas",
           current_version: null,
           versions: [],
+          candidate_source: "publication_candidate_snapshot",
+          candidate_scope: "post_quality_gate_publication_candidate",
+          machine_publication_status: "candidate_available",
+          machine_publication_label: "机器已发布候选",
+          governance_confirmation_status: "waiting_confirmation",
+          governance_confirmation_label: "等待治理确认",
+          formal_entry_status: "not_admitted",
+          formal_entry_label: "尚未正式入库",
+          review_summary: {
+            pending_count: 2,
+            approved_count: 1,
+            rejected_count: 0
+          },
           working_summary: {
             document_count: 2,
             entity_count: 2,
@@ -46,7 +59,10 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
             confidence: 0.85,
             review_status: "pending",
             evidence_excerpt: "OV-1",
-            evidence_document_title: "NAS AV-1"
+            evidence_document_title: "NAS AV-1",
+            candidate_source: "publication_candidate_snapshot",
+            source_scope: "post_quality_gate_publication_candidate",
+            governance_boundary: "post_publication_confirmation"
           },
           {
             id: "entity-ov1-duplicate",
@@ -57,7 +73,10 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
             confidence: 0.8,
             review_status: "pending",
             evidence_excerpt: "Duplicate OV-1",
-            evidence_document_title: "NAS Roadmap"
+            evidence_document_title: "NAS Roadmap",
+            candidate_source: "publication_candidate_snapshot",
+            source_scope: "post_quality_gate_publication_candidate",
+            governance_boundary: "post_publication_confirmation"
           },
           {
             id: "event-far-term",
@@ -68,7 +87,10 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
             confidence: 0.75,
             review_status: "approved",
             evidence_excerpt: "Far Term",
-            evidence_document_title: "NAS AV-1"
+            evidence_document_title: "NAS AV-1",
+            candidate_source: "publication_candidate_snapshot",
+            source_scope: "post_quality_gate_publication_candidate",
+            governance_boundary: "post_publication_confirmation"
           }
         ]
       });
@@ -206,9 +228,11 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
   render(<GovernancePage />);
 
   expect(await screen.findByTestId("workspace-overview-strip")).toBeInTheDocument();
-  expect(screen.getByText("审核发布总览")).toBeInTheDocument();
-  expect(await screen.findByText("知识审核发布")).toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: "发布当前已通过知识" })).toBeInTheDocument();
+  expect(screen.getByText("发布候选治理总览")).toBeInTheDocument();
+  expect(await screen.findByText("发布候选治理确认")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "确认并生成正式入库版本" })).toBeInTheDocument();
+  expect(screen.getByText("机器发布：机器已发布候选")).toBeInTheDocument();
+  expect(screen.getByText("正式入库：尚未正式入库")).toBeInTheDocument();
   expect(screen.getByPlaceholderText("搜索名称或别名")).toBeInTheDocument();
   expect(await screen.findByText("OV-1")).toBeInTheDocument();
   expect(screen.queryByText("远期目标（Far Term）")).not.toBeInTheDocument();
@@ -272,7 +296,7 @@ test("renders knowledge review workspace, supports filtering, editing, batch app
 
   fireEvent.change(screen.getByPlaceholderText("版本标签，例如 v1"), { target: { value: "v1" } });
   fireEvent.change(screen.getByPlaceholderText("发布人"), { target: { value: "architect" } });
-  fireEvent.click(screen.getByRole("button", { name: "发布当前已通过知识" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认并生成正式入库版本" }));
 
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/knowledge/archive/20161116-nas/publish", {

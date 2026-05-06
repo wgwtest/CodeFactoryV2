@@ -125,6 +125,10 @@ export type KnowledgeArchiveBuildState = {
   current_document_title: string | null;
   current_document_path: string | null;
   current_chunk: KnowledgeArchiveBuildStateChunk | null;
+  current_stage_id?: string | null;
+  current_stage_label?: string | null;
+  current_stage_status?: string | null;
+  current_stage_message?: string | null;
   policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
   warning_count?: number;
   warnings?: KnowledgeArchiveBuildWarning[];
@@ -218,6 +222,7 @@ export type ArchivePolicyRuntimeSnapshotStage = {
   ai_mode: string;
   default_action: ArchivePolicyAction;
   rule_count: number;
+  rules?: ArchiveStagePolicyRule[];
 };
 
 export type ArchivePolicyRuntimeSnapshot = {
@@ -436,6 +441,9 @@ export type ArchiveReviewCandidate = {
   review_status: ArchiveReviewStatus;
   evidence_excerpt: string;
   evidence_document_title: string | null;
+  candidate_source?: string;
+  source_scope?: string;
+  governance_boundary?: string;
 };
 
 export type ArchiveKnowledgeItemUpdateInput = {
@@ -478,6 +486,19 @@ export type ArchivePublicationOverview = {
     entity_count: number;
     event_count: number;
     process_count: number;
+  };
+  candidate_source?: string;
+  candidate_scope?: string;
+  machine_publication_status?: string;
+  machine_publication_label?: string;
+  governance_confirmation_status?: string;
+  governance_confirmation_label?: string;
+  formal_entry_status?: string;
+  formal_entry_label?: string;
+  review_summary?: {
+    pending_count: number;
+    approved_count: number;
+    rejected_count: number;
   };
 };
 
@@ -1063,6 +1084,7 @@ export type ApplicationRequirementDraftExport = {
 
 export type ToolStatus = "draft" | "active" | "archived";
 export type ToolVerificationStatus = "unverified" | "verified" | "warning" | "failed";
+export type SupportedSource = "p1_readonly_api" | "frozen_snapshot" | "manual_input" | "tool_hub_snapshot";
 export type ToolGranularity = "atomic" | "composite" | "page_level";
 export type ToolPackagingType = "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
 export type ToolIntegrationMode =
@@ -1073,6 +1095,7 @@ export type ToolIntegrationMode =
   | "mount_page"
   | "manual";
 export type ToolDependencyPolicy = "peer" | "bundled" | "external";
+export type ToolBuildRunStatus = "queued" | "running" | "completed" | "failed";
 
 export type ToolHubCatalogItem = {
   id: string;
@@ -1107,7 +1130,7 @@ export type ToolDefinition = {
   lifecycle_stage_ids: string[];
   input_types: string[];
   output_types: string[];
-  supported_sources: string[];
+  supported_sources: SupportedSource[];
   usage_notes: string;
   keywords: string[];
   verification: ToolVerification;
@@ -1115,7 +1138,27 @@ export type ToolDefinition = {
   updated_at: string;
 };
 
-export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
+export type ToolDefinitionWriteInput = Omit<
+  ToolDefinition,
+  | "tool_id"
+  | "created_at"
+  | "updated_at"
+  | "tool_granularity"
+  | "packaging_type"
+  | "integration_mode"
+  | "dependency_policy"
+  | "runtime_dependencies"
+  | "host_constraints"
+  | "supported_sources"
+> & {
+  tool_granularity?: ToolGranularity;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
+  host_constraints?: Record<string, string | string[]>;
+  supported_sources?: string[];
+};
 
 export type ToolListEnvelope = {
   items: ToolDefinition[];
@@ -1444,7 +1487,7 @@ export type ToolBuildRun = {
   build_run_id: string;
   build_request_id: string;
   tool_id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: ToolBuildRunStatus;
   queue_name: string;
   payload: Record<string, unknown>;
   artifact_version_id?: string | null;

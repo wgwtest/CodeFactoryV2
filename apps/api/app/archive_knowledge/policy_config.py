@@ -29,6 +29,8 @@ DEFAULT_STAGE_ORDER = [
     "indexes_snapshots_apis",
 ]
 
+QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate"
+
 
 def _rule(key: str, name: str, meaning: str, threshold: str, action: str) -> dict[str, str]:
     return {
@@ -275,18 +277,18 @@ STAGE_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
         stage_id="quality_policy_evaluation_governance_gate",
         label="质量门禁",
         group="规范化与发布",
-        objective="集中执行质量门禁，决定当前对象是进入发布、告警继续还是阻断。",
-        ai_mode="质量门禁决策辅助",
+        objective="集中执行质量门禁，决定当前对象是进入发布、告警继续还是阻断；本阶段不交由人工参与。",
+        ai_mode="质量门禁规则执行",
         default_action="block_return",
         inputs=["规范知识对象", "质量策略集", "阶段级风险信号"],
-        ai_adaptation="AI 根据前序阶段风险信号给出门禁建议，但最终由策略阈值决定通过、告警或阻断。",
+        ai_adaptation="AI 只负责整理前序风险信号和指标，最终由策略阈值确定通过、告警继续、延迟发布或阻断。",
         rules=[
             _rule("gate-1", "支撑文档下限", "支撑证据不足时直接阻断", "supporting_documents >= 2", "block_return"),
-            _rule("gate-2", "风险信号汇总", "风险过高时转人工复核", "risk_score < 0.65", "manual_review"),
+            _rule("gate-2", "风险信号汇总", "风险过高时记录告警并继续发布链", "risk_score < 0.65", "warn_continue"),
             _rule("gate-3", "发布前冲突清零", "存在硬冲突时禁止进入发布链", "hard_conflict = 0", "block_return"),
         ],
-        branches=["门禁通过 -> 发布/API", "风险中等 -> 人工复核", "硬冲突或支撑不足 -> 阻断回退规范知识"],
-        outputs=["Gate 决策", "阻断/告警原因", "人工复核转交建议"],
+        branches=["门禁通过 -> 发布/API", "风险中等 -> 带告警继续发布链", "硬冲突或支撑不足 -> 阻断回退规范知识"],
+        outputs=["Gate 决策", "阻断/告警原因", "发布链策略标记"],
         observability=["supporting_documents", "risk_score", "hard_conflict", "gate_decision"],
     ),
     "indexes_snapshots_apis": _stage(
@@ -328,6 +330,13 @@ def _normalize_action(value: Any, *, fallback: str) -> str:
     return fallback
 
 
+def _normalize_stage_action(stage_id: str, value: Any, *, fallback: str) -> str:
+    action = _normalize_action(value, fallback=fallback)
+    if stage_id == QUALITY_GATE_STAGE_ID and action == "manual_review":
+        return "warn_continue"
+    return action
+
+
 def _normalize_text_list(values: Any, fallback: list[str]) -> list[str]:
     if not isinstance(values, list):
         return fallback
@@ -335,7 +344,7 @@ def _normalize_text_list(values: Any, fallback: list[str]) -> list[str]:
     return normalized or fallback
 
 
-def _normalize_rules(raw_rules: Any, fallback: list[dict[str, str]]) -> list[dict[str, str]]:
+def _normalize_rules(stage_id: str, raw_rules: Any, fallback: list[dict[str, str]]) -> list[dict[str, str]]:
     if not isinstance(raw_rules, list):
         return fallback
 
@@ -350,11 +359,41 @@ def _normalize_rules(raw_rules: Any, fallback: list[dict[str, str]]) -> list[dic
                 "name": str(raw_rule.get("name") or "未命名规则"),
                 "meaning": str(raw_rule.get("meaning") or ""),
                 "threshold": str(raw_rule.get("threshold") or ""),
-                "action": _normalize_action(raw_rule.get("action"), fallback=fallback[min(index, len(fallback) - 1)]["action"]),
+                "action": _normalize_stage_action(
+                    stage_id,
+                    raw_rule.get("action"),
+                    fallback=fallback[min(index, len(fallback) - 1)]["action"],
+                ),
             }
         )
 
     return normalized or fallback
+
+
+def _normalize_quality_gate_stage(stage: dict[str, Any]) -> dict[str, Any]:
+    default_stage = STAGE_POLICY_DEFAULTS[QUALITY_GATE_STAGE_ID]
+    stage["ai_mode"] = default_stage["ai_mode"]
+
+    if "人工" in str(stage.get("objective", "")) or "复核" in str(stage.get("objective", "")):
+        stage["objective"] = default_stage["objective"]
+    if "人工" in str(stage.get("ai_adaptation", "")) or "复核" in str(stage.get("ai_adaptation", "")):
+        stage["ai_adaptation"] = default_stage["ai_adaptation"]
+    if any("人工" in str(item) or "复核" in str(item) for item in stage.get("branches", [])):
+        stage["branches"] = default_stage["branches"]
+    if any("人工" in str(item) or "复核" in str(item) for item in stage.get("outputs", [])):
+        stage["outputs"] = default_stage["outputs"]
+
+    default_rules_by_key = {rule["key"]: rule for rule in default_stage["rules"]}
+    for rule in stage.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+
+        rule["action"] = _normalize_stage_action(QUALITY_GATE_STAGE_ID, rule.get("action"), fallback="warn_continue")
+        default_rule = default_rules_by_key.get(str(rule.get("key")))
+        if default_rule and ("人工" in str(rule.get("meaning", "")) or "复核" in str(rule.get("meaning", ""))):
+            rule["meaning"] = default_rule["meaning"]
+
+    return stage
 
 
 def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
@@ -387,14 +426,20 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
         stage_default["label"] = str(raw_stage.get("label") or stage_default["label"])
         stage_default["group"] = str(raw_stage.get("group") or stage_default["group"])
         stage_default["ai_mode"] = str(raw_stage.get("ai_mode") or stage_default["ai_mode"])
-        stage_default["default_action"] = _normalize_action(raw_stage.get("default_action"), fallback=stage_default["default_action"])
+        stage_default["default_action"] = _normalize_stage_action(
+            stage_id,
+            raw_stage.get("default_action"),
+            fallback=stage_default["default_action"],
+        )
         stage_default["objective"] = str(raw_stage.get("objective") or stage_default["objective"])
         stage_default["inputs"] = _normalize_text_list(raw_stage.get("inputs"), stage_default["inputs"])
         stage_default["ai_adaptation"] = str(raw_stage.get("ai_adaptation") or stage_default["ai_adaptation"])
-        stage_default["rules"] = _normalize_rules(raw_stage.get("rules"), stage_default["rules"])
+        stage_default["rules"] = _normalize_rules(stage_id, raw_stage.get("rules"), stage_default["rules"])
         stage_default["branches"] = _normalize_text_list(raw_stage.get("branches"), stage_default["branches"])
         stage_default["outputs"] = _normalize_text_list(raw_stage.get("outputs"), stage_default["outputs"])
         stage_default["observability"] = _normalize_text_list(raw_stage.get("observability"), stage_default["observability"])
+        if stage_id == QUALITY_GATE_STAGE_ID:
+            stage_default = _normalize_quality_gate_stage(stage_default)
         config["stages"][stage_id] = stage_default
 
     return config
@@ -422,6 +467,7 @@ def build_policy_run_snapshot(
                 "ai_mode": normalized["stages"][stage_id]["ai_mode"],
                 "default_action": normalized["stages"][stage_id]["default_action"],
                 "rule_count": len(normalized["stages"][stage_id]["rules"]),
+                "rules": deepcopy(normalized["stages"][stage_id]["rules"]),
             }
             for stage_id in normalized["stage_order"]
             if stage_id in normalized["stages"]

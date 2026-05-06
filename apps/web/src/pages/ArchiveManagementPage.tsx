@@ -98,6 +98,21 @@ type StageRoleLayoutBuckets = {
   outputs: ArchiveDocumentRuntimeGraphNode[];
 };
 
+const QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate";
+const PUBLICATION_STAGE_ID = "indexes_snapshots_apis";
+
+type QualityGateRuleInsight = {
+  nodeId: string;
+  label: string;
+  status: ArchiveDocumentRuntimeStatus;
+  ruleKey: string;
+  threshold: string;
+  action: string;
+  outcome: string;
+  actual: string;
+  detail: string;
+};
+
 const archiveStatusMeta: Record<KnowledgeArchive["status"], { color: string; label: string }> = {
   empty: { color: "default", label: "未抽取" },
   extracting: { color: "processing", label: "运行中" },
@@ -170,6 +185,11 @@ const runtimeRelationLabelMap: Record<string, string> = {
   results_in: "形成",
   classified_as: "识别为",
   evaluated_by: "由此评估",
+  feeds_candidate_set: "汇入候选集",
+  feeds_policy: "送入策略",
+  governs: "策略约束",
+  consumed_by: "作为输入",
+  feeds_planning: "送入规划",
   selects: "选择",
   considered: "候选考虑",
   warned_by: "产生告警",
@@ -193,6 +213,9 @@ const runtimeRelationLabelMap: Record<string, string> = {
   reviewed_by: "转人工复核",
   blocked_by: "阻断为",
   publishes_to: "进入发布",
+  authorizes_candidate_snapshot: "生成候选快照",
+  exposes_scope: "暴露范围",
+  awaits_governance_confirmation: "等待治理确认",
 };
 
 const stageGroupMeta: Record<string, { tone: string; background: string; border: string }> = {
@@ -391,6 +414,67 @@ function formatPolicyActionLabel(action?: ArchivePolicyAction | null) {
   return policyActionMeta[action]?.label ?? action;
 }
 
+function formatRuntimeValue(value: unknown, fallback = "未记录") {
+  if (value === null || value === undefined || String(value).trim() === "") return fallback;
+  return String(value);
+}
+
+function isQualityGateStage(stage: ArchiveDocumentRuntimeStageSnapshot | null | undefined) {
+  return stage?.stage_id === QUALITY_GATE_STAGE_ID;
+}
+
+function isPublicationStage(stage: ArchiveDocumentRuntimeStageSnapshot | null | undefined) {
+  return stage?.stage_id === PUBLICATION_STAGE_ID;
+}
+
+function findObserverField(
+  observer: ArchiveDocumentRuntimeObserverPayload | null | undefined,
+  keys: string[],
+) {
+  if (!observer) return null;
+  const keySet = new Set(keys);
+  for (const section of observer.sections) {
+    const field = section.fields.find((entry) => keySet.has(entry.key));
+    if (field) return field;
+  }
+  return null;
+}
+
+function buildQualityGateRuleInsights(stage: ArchiveDocumentRuntimeStageSnapshot): QualityGateRuleInsight[] {
+  return stage.graph.nodes
+    .filter((node) => node.node_type === "rule_hit")
+    .map((node) => {
+      const attributes = node.attributes ?? {};
+      return {
+        nodeId: node.node_id,
+        label: node.label,
+        status: node.status,
+        ruleKey: formatRuntimeValue(attributes.rule_key, "rule"),
+        threshold: formatRuntimeValue(attributes.threshold),
+        action: formatRuntimeValue(attributes.action),
+        outcome: formatRuntimeValue(attributes.outcome, node.status),
+        actual: formatRuntimeValue(node.metrics?.actual),
+        detail: formatRuntimeValue(attributes.detail, ""),
+      };
+    });
+}
+
+function qualityGateOutcomeMeta(outcome: string, status?: ArchiveDocumentRuntimeStatus) {
+  const normalized = outcome.toLowerCase();
+  if (normalized === "passed" || status === "completed") return { color: "success", label: "通过" };
+  if (normalized === "failed" && status === "blocked") return { color: "error", label: "阻断" };
+  if (normalized === "failed") return { color: "warning", label: "未通过" };
+  if (normalized === "not_evaluated") return { color: "default", label: "未执行" };
+  return { color: runtimeStatusMeta[status ?? "unavailable"].color, label: outcome || runtimeStatusMeta[status ?? "unavailable"].label };
+}
+
+function getQualityGateDecisionTone(decision: string) {
+  if (decision === "blocked") return "error";
+  if (decision === "manual_review" || decision === "warning" || decision === "deferred") return "warning";
+  if (decision === "passed") return "success";
+  return "default";
+}
+
 function formatRuntimeRelationLabel(relation: string) {
   return runtimeRelationLabelMap[relation] ?? relation.split("_").join(" ");
 }
@@ -516,16 +600,18 @@ function buildRuntimeNodeLayouts(stage: ArchiveDocumentRuntimeStageSnapshot) {
   return new Map(
     stage.graph.nodes.map((node) => {
       const primary = primaryNodeIds.has(node.node_id) || node.is_primary;
-      const summary = summarizeRecord(node.metrics) ?? summarizeRecord(node.attributes);
+      const summary = summarizeRuntimeNode(node);
       const labelLines = estimateWrappedLineCount(node.label, primary ? 11 : 10);
       const summaryLines = summary ? Math.min(primary ? 3 : 2, estimateWrappedLineCount(summary, primary ? 18 : 14)) : 0;
+      const isRuleNode = node.node_type === "rule_hit";
       const width = clampNumber(
-        (primary ? 188 : 146) + Math.max(0, Array.from(node.label).length - (primary ? 10 : 8)) * (primary ? 4 : 3),
-        primary ? 188 : 146,
-        primary ? 268 : 214,
+        (isRuleNode ? 230 : primary ? 188 : 146) +
+          Math.max(0, Array.from(node.label).length - (primary ? 10 : 8)) * (primary ? 4 : 3),
+        isRuleNode ? 230 : primary ? 188 : 146,
+        isRuleNode ? 310 : primary ? 268 : 214,
       );
       const height =
-        (primary ? 76 : 54) +
+        (isRuleNode ? 112 : primary ? 76 : 54) +
         Math.max(0, labelLines - 1) * (primary ? 18 : 16) +
         summaryLines * (primary ? 15 : 13);
 
@@ -839,7 +925,11 @@ function buildStageAnchorDistanceMap(
 function isPolicySupportNode(node: ArchiveDocumentRuntimeGraphNode) {
   const nodeType = node.node_type.toLowerCase();
   if (
+    nodeType.includes("policy") ||
+    nodeType.includes("strategy") ||
+    nodeType.includes("decision") ||
     nodeType.includes("warning") ||
+    nodeType.includes("rule") ||
     nodeType.includes("rule_hit") ||
     nodeType.includes("manual_review") ||
     nodeType.includes("boundary_adjustment") ||
@@ -1366,6 +1456,8 @@ function buildUnifiedDocumentStagePositions(
 ) {
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
+  const parsedSegmentGroupNode = typeMap.get("parsed_segment_group")?.[0] ?? null;
+  const policyNode = typeMap.get("normalization_policy")?.[0] ?? null;
   const decisionNode = typeMap.get("normalization_decision")?.[0] ?? null;
   const documentNode = typeMap.get("unified_document")?.[0] ?? null;
   const sectionGroupNode = typeMap.get("unified_section_group")?.[0] ?? null;
@@ -1374,16 +1466,18 @@ function buildUnifiedDocumentStagePositions(
   const sectionNodes = sortStageNodesForLayout(typeMap.get("unified_section") ?? []);
   const paragraphNodes = sortStageNodesForLayout(typeMap.get("unified_paragraph") ?? []);
 
-  if (decisionNode) positions.set(decisionNode.node_id, { x: 260, y: 420 });
-  if (documentNode) positions.set(documentNode.node_id, { x: 620, y: 420 });
-  if (sectionGroupNode) positions.set(sectionGroupNode.node_id, { x: 980, y: 220 });
-  if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 980, y: 560 });
+  if (parsedSegmentGroupNode) positions.set(parsedSegmentGroupNode.node_id, { x: 150, y: 420 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 450, y: 190 });
+  if (decisionNode) positions.set(decisionNode.node_id, { x: 450, y: 420 });
+  if (documentNode) positions.set(documentNode.node_id, { x: 790, y: 420 });
+  if (sectionGroupNode) positions.set(sectionGroupNode.node_id, { x: 1130, y: 220 });
+  if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 1130, y: 560 });
 
   if (warningNodes.length) {
     const totalWidth =
       warningNodes.reduce((sum, node) => sum + getRuntimeNodeLayout(nodeLayouts, node.node_id).width, 0) +
       Math.max(0, warningNodes.length - 1) * 24;
-    let cursorX = 620 - totalWidth / 2;
+    let cursorX = 790 - totalWidth / 2;
     warningNodes.forEach((node) => {
       const layout = getRuntimeNodeLayout(nodeLayouts, node.node_id);
       positions.set(node.node_id, { x: cursorX + layout.width / 2, y: 110 });
@@ -1409,7 +1503,7 @@ function buildUnifiedDocumentStagePositions(
   chunkItems(sectionNodes, sectionsPerRow).forEach((sectionRow) => {
     let rowBottom = rowTopY;
     sectionRow.forEach((sectionNode, index) => {
-      const laneLeftX = 1220 + index * (laneWidth + laneGap);
+      const laneLeftX = 1370 + index * (laneWidth + laneGap);
       const laneCenterX = laneLeftX + laneWidth / 2;
       const sectionLayout = getRuntimeNodeLayout(nodeLayouts, sectionNode.node_id);
       positions.set(sectionNode.node_id, {
@@ -1449,6 +1543,7 @@ function buildEvidenceConstructorStagePositions(
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
   const taskNode = typeMap.get("evidence_constructor_task")?.[0] ?? null;
+  const policyNode = typeMap.get("evidence_selection_policy")?.[0] ?? null;
   const paragraphGroupNode = typeMap.get("source_paragraph_group")?.[0] ?? null;
   const unitGroupNode = typeMap.get("evidence_unit_group")?.[0] ?? null;
   const anchorGroupNode = typeMap.get("evidence_anchor_group")?.[0] ?? null;
@@ -1460,6 +1555,7 @@ function buildEvidenceConstructorStagePositions(
   const warningNodes = sortStageNodesForLayout(typeMap.get("evidence_warning") ?? []);
 
   if (paragraphGroupNode) positions.set(paragraphGroupNode.node_id, { x: 220, y: 520 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 620, y: 250 });
   if (taskNode) positions.set(taskNode.node_id, { x: 620, y: 520 });
   if (unitGroupNode) positions.set(unitGroupNode.node_id, { x: 980, y: 520 });
   if (anchorGroupNode) positions.set(anchorGroupNode.node_id, { x: 1200, y: 170 });
@@ -1486,6 +1582,7 @@ function buildEvidenceGraphChunkLayerStagePositions(
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
   const evidenceGroupNode = typeMap.get("evidence_unit_group")?.[0] ?? null;
+  const policyNode = typeMap.get("chunking_policy")?.[0] ?? null;
   const planningNode = typeMap.get("chunk_planning_task")?.[0] ?? null;
   const chunkGroupNode = typeMap.get("chunk_group")?.[0] ?? null;
   const graphLayerNode = typeMap.get("evidence_graph_layer")?.[0] ?? null;
@@ -1496,6 +1593,7 @@ function buildEvidenceGraphChunkLayerStagePositions(
   const warningNodes = sortStageNodesForLayout(typeMap.get("chunk_warning") ?? []);
 
   if (evidenceGroupNode) positions.set(evidenceGroupNode.node_id, { x: 220, y: 520 });
+  if (policyNode) positions.set(policyNode.node_id, { x: 620, y: 250 });
   if (planningNode) positions.set(planningNode.node_id, { x: 620, y: 520 });
   if (chunkGroupNode) positions.set(chunkGroupNode.node_id, { x: 980, y: 520 });
   if (graphLayerNode) positions.set(graphLayerNode.node_id, { x: 1600, y: 520 });
@@ -1519,13 +1617,17 @@ function buildQualityGateStagePositions(
 ) {
   const positions = new Map<string, NodePosition>();
   const typeMap = buildStageNodeTypeMap(stage);
-  const ruleHitNode = typeMap.get("rule_hit")?.[0] ?? null;
+  const candidateSetNode =
+    typeMap.get("quality_candidate_set")?.[0] ?? typeMap.get("canonical_candidate_set")?.[0] ?? null;
+  const ruleHitNodes = sortStageNodesForLayout(typeMap.get("rule_hit") ?? []);
   const gateNode = typeMap.get("gate_decision")?.[0] ?? null;
   const manualReviewNode = typeMap.get("manual_review")?.[0] ?? null;
   const blockedNode = typeMap.get("blocked_result")?.[0] ?? null;
   const publishTargetNode = typeMap.get("publish_target")?.[0] ?? null;
   const candidateNodes = sortStageNodesForLayout(
-    stage.graph.nodes.filter((node) => node.node_type.startsWith("canonical_")),
+    stage.graph.nodes.filter(
+      (node) => node.node_type.startsWith("canonical_") && node.node_type !== "canonical_candidate_set",
+    ),
   );
   const approvedNodes = candidateNodes.filter((node) => node.attributes.review_status === "approved");
   const pendingNodes = candidateNodes.filter((node) => node.attributes.review_status === "pending");
@@ -1537,17 +1639,29 @@ function buildQualityGateStagePositions(
       node.attributes.review_status !== "rejected",
   );
 
-  if (ruleHitNode) positions.set(ruleHitNode.node_id, { x: 700, y: 520 });
-  if (gateNode) positions.set(gateNode.node_id, { x: 1040, y: 520 });
-  if (manualReviewNode) positions.set(manualReviewNode.node_id, { x: 1420, y: 280 });
-  if (blockedNode) positions.set(blockedNode.node_id, { x: 1420, y: 620 });
-  if (publishTargetNode) positions.set(publishTargetNode.node_id, { x: 1420, y: 620 });
+  if (candidateSetNode) positions.set(candidateSetNode.node_id, { x: 430, y: 520 });
+  if (ruleHitNodes.length) {
+    const ruleGap = 28;
+    const rulesHeight =
+      ruleHitNodes.reduce((sum, node) => sum + getRuntimeNodeLayout(nodeLayouts, node.node_id).height, 0) +
+      Math.max(0, ruleHitNodes.length - 1) * ruleGap;
+    let cursorY = 520 - rulesHeight / 2;
+    ruleHitNodes.forEach((node) => {
+      const layout = getRuntimeNodeLayout(nodeLayouts, node.node_id);
+      positions.set(node.node_id, { x: 760, y: cursorY + layout.height / 2 });
+      cursorY += layout.height + ruleGap;
+    });
+  }
+  if (gateNode) positions.set(gateNode.node_id, { x: 1120, y: 520 });
+  if (manualReviewNode) positions.set(manualReviewNode.node_id, { x: 1500, y: 280 });
+  if (blockedNode) positions.set(blockedNode.node_id, { x: 1500, y: 620 });
+  if (publishTargetNode) positions.set(publishTargetNode.node_id, { x: 1500, y: 620 });
 
   placeNodeColumns(positions, chunkItems(approvedNodes, 5), 20, 120, nodeLayouts, 26, 18);
   placeNodeColumns(positions, chunkItems(pendingNodes, 5), 20, 400, nodeLayouts, 26, 18);
   placeNodeColumns(positions, chunkItems(rejectedNodes, 5), 20, 720, nodeLayouts, 26, 18);
   if (remainingNodes.length) {
-    placeNodeColumns(positions, chunkItems(remainingNodes, 5), 360, 400, nodeLayouts, 24, 18);
+    placeNodeColumns(positions, chunkItems(remainingNodes, 5), 20, 980, nodeLayouts, 24, 18);
   }
 
   placeUnassignedStageNodes(stage, positions, nodeLayouts);
@@ -1778,6 +1892,33 @@ function summarizeRecord(record: Record<string, unknown> | undefined, limit = 2)
     .join(" / ");
 }
 
+function summarizeRuntimeNode(node: ArchiveDocumentRuntimeGraphNode) {
+  const nodeType = node.node_type.toLowerCase();
+  if (node.node_type === "rule_hit") {
+    const threshold = formatRuntimeValue(node.attributes?.threshold, "");
+    const actual = formatRuntimeValue(node.metrics?.actual, "");
+    const outcome = formatRuntimeValue(node.attributes?.outcome, "");
+    const parts = [
+      actual ? `actual ${actual}` : "",
+      threshold ? `threshold ${threshold}` : "",
+      outcome ? `outcome ${outcome}` : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" / ") : summarizeRecord(node.attributes);
+  }
+  if (node.node_type === "gate_decision") {
+    const decision = formatRuntimeValue(node.attributes?.decision, "");
+    const reason = formatRuntimeValue(node.attributes?.reason, "");
+    return [decision, reason].filter(Boolean).join(" / ") || summarizeRecord(node.attributes);
+  }
+  if (nodeType.includes("policy")) {
+    const ruleKey = formatRuntimeValue(node.attributes?.rule_key, "");
+    const decisionSummary = formatRuntimeValue(node.attributes?.decision_summary, "");
+    const aiSummary = formatRuntimeValue(node.attributes?.ai_summary, "");
+    return [ruleKey, decisionSummary, aiSummary].filter(Boolean).slice(0, 2).join(" / ") || summarizeRecord(node.attributes);
+  }
+  return summarizeRecord(node.metrics) ?? summarizeRecord(node.attributes);
+}
+
 function getPrimaryGraphNodes(stage: ArchiveDocumentRuntimeStageSnapshot) {
   const primaryNodeIds = stage.graph.primary_node_ids.length
     ? stage.graph.primary_node_ids
@@ -1911,6 +2052,66 @@ function buildGraphSelectionState(
   };
 }
 
+function getPrimaryNodeIdSet(stage: ArchiveDocumentRuntimeStageSnapshot) {
+  return new Set(
+    stage.graph.primary_node_ids.length
+      ? stage.graph.primary_node_ids
+      : stage.graph.nodes.filter((node) => node.is_primary).map((node) => node.node_id),
+  );
+}
+
+function getPrimaryEdgeIdSet(stage: ArchiveDocumentRuntimeStageSnapshot) {
+  return new Set(
+    stage.graph.primary_edge_ids.length
+      ? stage.graph.primary_edge_ids
+      : stage.graph.edges.filter((edge) => edge.is_primary).map((edge) => edge.edge_id),
+  );
+}
+
+function buildSemanticVisibleNodeIds(
+  stage: ArchiveDocumentRuntimeStageSnapshot,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
+) {
+  if (graphLens === "all") {
+    return new Set(stage.graph.nodes.map((node) => node.node_id));
+  }
+
+  const visibleNodeIds = getPrimaryNodeIdSet(stage);
+  const primaryEdgeIds = getPrimaryEdgeIdSet(stage);
+
+  stage.graph.edges.forEach((edge) => {
+    if (!primaryEdgeIds.has(edge.edge_id) && !edge.is_primary) return;
+    visibleNodeIds.add(edge.source);
+    visibleNodeIds.add(edge.target);
+  });
+
+  selectionState.activeNodeIds.forEach((nodeId) => visibleNodeIds.add(nodeId));
+  if (selectionState.hasExplicitSelection) {
+    selectionState.relatedNodeIds.forEach((nodeId) => visibleNodeIds.add(nodeId));
+  }
+
+  return visibleNodeIds;
+}
+
+function buildSemanticVisibleEdgeIds(
+  stage: ArchiveDocumentRuntimeStageSnapshot,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
+) {
+  if (graphLens === "all") {
+    return new Set(stage.graph.edges.map((edge) => edge.edge_id));
+  }
+
+  const visibleEdgeIds = getPrimaryEdgeIdSet(stage);
+  if (selectionState.hasExplicitSelection) {
+    selectionState.activeEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
+    selectionState.relatedEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
+  }
+
+  return visibleEdgeIds;
+}
+
 function getHandlePosition(side: GraphHandleSide) {
   if (side === "left") return Position.Left;
   if (side === "right") return Position.Right;
@@ -1940,12 +2141,15 @@ function getDirectionalHandlePair(source: NodePosition, target: NodePosition) {
 
 type RuntimeFlowNodeData = {
   label: string;
+  nodeType: string;
   status: ArchiveDocumentRuntimeStatus;
   primary: boolean;
   highlightLevel: "selected" | "related" | "default" | "muted";
   selectionBadge?: string | null;
   animationKind?: "enter" | "status-change" | "reflow" | null;
   summary?: string | null;
+  attributes?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
 };
 
 type RuntimeClusterNodeData = {
@@ -1976,6 +2180,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
   const isRelated = data.highlightLevel === "related";
   const backgroundTone = isSelected ? "#8a4327" : data.primary ? "#8a4327" : "#475569";
   const summaryTone = isSelected ? "#7c5a4a" : data.primary ? "#7c5a4a" : "#94a3b8";
+  const isRuleNode = data.nodeType === "rule_hit";
+  const ruleOutcome = formatRuntimeValue(data.attributes?.outcome, "");
+  const ruleOutcomeMeta = qualityGateOutcomeMeta(ruleOutcome, data.status);
+  const ruleActual = formatRuntimeValue(data.metrics?.actual, "");
+  const ruleThreshold = formatRuntimeValue(data.attributes?.threshold, "");
+  const ruleAction = formatRuntimeValue(data.attributes?.action, "");
 
   return (
     <div className={shellClassName}>
@@ -1996,7 +2206,7 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
           borderRadius: data.primary ? 24 : 18,
           border: `${data.primary ? 3 : 2}px solid ${borderColor}`,
           background,
-          padding: data.primary ? "14px 16px" : "10px 12px",
+          padding: isRuleNode ? "12px 14px" : data.primary ? "14px 16px" : "10px 12px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -2013,6 +2223,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
         }}
       >
         {data.selectionBadge ? <div className="runtime-graph-selection-badge">{data.selectionBadge}</div> : null}
+        {isRuleNode ? (
+          <div className="runtime-graph-rule-execution-ribbon">
+            <span>{ruleOutcomeMeta.label}</span>
+            {ruleAction ? <span>{formatPolicyActionLabel(ruleAction as ArchivePolicyAction)}</span> : null}
+          </div>
+        ) : null}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%" }}>
           <div
             className="runtime-graph-node-status-dot"
@@ -2048,6 +2264,12 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
                 }}
               >
                 {data.summary}
+              </div>
+            ) : null}
+            {isRuleNode && (ruleActual || ruleThreshold) ? (
+              <div className="runtime-graph-rule-threshold">
+                {ruleActual ? <span>actual {ruleActual}</span> : null}
+                {ruleThreshold ? <span>{ruleThreshold}</span> : null}
               </div>
             ) : null}
           </div>
@@ -2122,8 +2344,9 @@ function buildStageFlowNodes(
       ? stage.graph.primary_node_ids
       : stage.graph.nodes.filter((node) => node.is_primary).map((node) => node.node_id),
   );
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
 
-  const graphNodes: FlowNode[] = stage.graph.nodes.map((node) => {
+  const graphNodes: FlowNode[] = stage.graph.nodes.filter((node) => visibleNodeIds.has(node.node_id)).map((node) => {
     const pos = positions.get(node.node_id) ?? { x: 320, y: 280 };
     const primary = primaryNodeSet.has(node.node_id) || node.is_primary;
     const layout = nodeLayouts.get(node.node_id) ?? {
@@ -2154,12 +2377,15 @@ function buildStageFlowNodes(
       selectable: true,
       data: {
         label: node.label,
+        nodeType: node.node_type,
         status: node.status,
         primary,
         highlightLevel,
         selectionBadge: selectionState.nodeBadges.get(node.node_id) ?? null,
         animationKind: nodeAnimationFlags[node.node_id] ?? null,
         summary: layout.summary,
+        attributes: node.attributes,
+        metrics: node.metrics,
       },
       style: {
         width: layout.width,
@@ -2179,8 +2405,15 @@ function buildStageClusterFlowNodes(
   stage: ArchiveDocumentRuntimeStageSnapshot,
   positions: Map<string, NodePosition>,
   nodeLayouts: Map<string, RuntimeNodeLayout>,
+  graphLens: GraphLens,
+  selectionState: GraphSelectionState,
 ): FlowNode[] {
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
   return buildStageGraphClusters(stage, positions)
+    .map((cluster) => ({
+      ...cluster,
+      nodes: cluster.nodes.filter((node) => visibleNodeIds.has(node.node_id)),
+    }))
     .filter((cluster) => cluster.nodes.length >= 3)
     .map((cluster) => {
       let minX = Number.POSITIVE_INFINITY;
@@ -2250,8 +2483,12 @@ function buildStageFlowEdges(
       : stage.graph.edges.filter((edge) => edge.is_primary).map((edge) => edge.edge_id),
   );
   const nodeById = new Map(stage.graph.nodes.map((node) => [node.node_id, node] as const));
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
+  const visibleEdgeIds = buildSemanticVisibleEdgeIds(stage, graphLens, selectionState);
 
-  return stage.graph.edges.map((edge) => {
+  return stage.graph.edges.filter((edge) => {
+    return visibleEdgeIds.has(edge.edge_id) && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+  }).map((edge) => {
     const primary = primaryEdgeSet.has(edge.edge_id) || edge.is_primary;
     const isSelected = selectionState.activeEdgeIds.has(edge.edge_id);
     const isRelated = selectionState.relatedEdgeIds.has(edge.edge_id);
@@ -2392,6 +2629,183 @@ function RuntimeContractCard({ runtime }: { runtime: ArchiveDocumentRuntimeContr
         </Col>
       </Row>
     </Card>
+  );
+}
+
+function QualityGateRuntimeInsight({
+  stage,
+  observer,
+  selectedNodeId,
+  onSelectRule,
+  compact = false,
+}: {
+  stage: ArchiveDocumentRuntimeStageSnapshot;
+  observer: ArchiveDocumentRuntimeObserverPayload | null;
+  selectedNodeId?: string | null;
+  onSelectRule?: (nodeId: string) => void;
+  compact?: boolean;
+}) {
+  const decision = findObserverField(observer, ["decision", "gate_status"])?.value ?? stage.status;
+  const reason = findObserverField(observer, ["reason"])?.value ?? "当前没有记录阻断原因";
+  const failedRuleCount = findObserverField(observer, ["failed_rule_count"])?.value ?? "0";
+  const supportingDocuments = findObserverField(observer, ["supporting_documents"])?.value ?? "未记录";
+  const riskScore = findObserverField(observer, ["risk_score"])?.value ?? "未记录";
+  const hardConflict = findObserverField(observer, ["hard_conflict"])?.value ?? "未记录";
+  const decisionTone = getQualityGateDecisionTone(String(decision));
+  const rules = buildQualityGateRuleInsights(stage);
+
+  return (
+    <div
+      style={{
+        borderRadius: compact ? 14 : 16,
+        border: "1px solid rgba(217, 93, 57, 0.24)",
+        background:
+          decisionTone === "error"
+            ? "linear-gradient(180deg, rgba(255,247,237,0.98) 0%, rgba(255,255,255,0.98) 100%)"
+            : "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(255,255,255,0.98) 100%)",
+        padding: compact ? 14 : 16,
+      }}
+    >
+      <Space direction="vertical" size={compact ? 10 : 14} style={{ display: "flex" }}>
+        <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+          <Space wrap size={[8, 8]}>
+            <Text strong>{compact ? "门禁策略命中" : "质量门禁判定链"}</Text>
+            <Tag color={decisionTone}>决策：{formatRuntimeValue(decision)}</Tag>
+            <Tag color={Number(failedRuleCount) > 0 ? "error" : "success"}>未通过规则 {failedRuleCount}</Tag>
+          </Space>
+          {!compact ? <Text type="secondary">policy / metrics / rule_hits / decision</Text> : null}
+        </Space>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: compact ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+          }}
+        >
+          <SummaryMetricTile label="支撑文档" value={supportingDocuments} hint="supporting_documents" />
+          <SummaryMetricTile label="风险分数" value={riskScore} hint="risk_score" />
+          <SummaryMetricTile label="硬冲突" value={hardConflict} hint="hard_conflict" />
+        </div>
+
+        <div
+          style={{
+            borderRadius: 12,
+            border: "1px solid rgba(217, 93, 57, 0.16)",
+            background: "rgba(255,255,255,0.78)",
+            padding: "10px 12px",
+          }}
+        >
+          <Text type={decisionTone === "error" ? "danger" : decisionTone === "warning" ? "warning" : "secondary"}>
+            {reason}
+          </Text>
+        </div>
+
+        <Space direction="vertical" size={8} style={{ display: "flex" }}>
+          {rules.map((rule) => {
+            const outcomeMeta = qualityGateOutcomeMeta(rule.outcome, rule.status);
+            const isSelected = selectedNodeId === rule.nodeId;
+            return (
+              <button
+                key={rule.nodeId}
+                type="button"
+                disabled={!onSelectRule}
+                onClick={() => onSelectRule?.(rule.nodeId)}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  borderRadius: 12,
+                  border: `1px solid ${isSelected ? "#d95d39" : "rgba(148,163,184,0.22)"}`,
+                  background: isSelected ? "rgba(255,247,237,0.98)" : "#fff",
+                  padding: "10px 12px",
+                  cursor: onSelectRule ? "pointer" : "default",
+                  boxShadow: isSelected ? "0 10px 24px rgba(217,93,57,0.12)" : "none",
+                }}
+              >
+                <Space direction="vertical" size={6} style={{ display: "flex" }}>
+                  <Space wrap size={[8, 8]}>
+                    <Tag color={outcomeMeta.color}>{outcomeMeta.label}</Tag>
+                    <Text strong>{rule.label}</Text>
+                    <Tag color="default">{formatPolicyActionLabel(rule.action as ArchivePolicyAction)}</Tag>
+                  </Space>
+                  <Text type="secondary">
+                    实际值 {rule.actual}；阈值 {rule.threshold}
+                  </Text>
+                  {rule.detail ? <Text style={{ color: "#8a4b2d" }}>{rule.detail}</Text> : null}
+                </Space>
+              </button>
+            );
+          })}
+        </Space>
+      </Space>
+    </div>
+  );
+}
+
+function PublicationRuntimeInsight({
+  observer,
+  compact = false,
+}: {
+  observer: ArchiveDocumentRuntimeObserverPayload | null;
+  compact?: boolean;
+}) {
+  const gateDecision = findObserverField(observer, ["gate_decision"])?.value ?? "未记录";
+  const machineCandidateStatus =
+    findObserverField(observer, ["machine_candidate_status"])?.value ?? "机器尚未发布候选";
+  const governanceStatus =
+    findObserverField(observer, ["governance_confirmation_status"])?.value ?? "未进入治理确认";
+  const formalEntryStatus = findObserverField(observer, ["formal_entry_status"])?.value ?? "尚未正式入库";
+  const candidateCount = findObserverField(observer, ["candidate_count"])?.value ?? "0";
+  const pendingReviewCount = findObserverField(observer, ["pending_review_count"])?.value ?? "0";
+  const versionLabel = findObserverField(observer, ["version_label"])?.value ?? "未发布";
+  const exposureScope = findObserverField(observer, ["exposure_scope"])?.value ?? "索引/API 暴露范围等待发布候选快照";
+  const formallyAdmitted = String(formalEntryStatus).includes("已正式入库");
+
+  return (
+    <div
+      style={{
+        borderRadius: compact ? 14 : 16,
+        border: "1px solid rgba(14, 116, 144, 0.22)",
+        background: "linear-gradient(180deg, rgba(236,254,255,0.72) 0%, rgba(255,255,255,0.98) 100%)",
+        padding: compact ? 14 : 16,
+      }}
+    >
+      <Space direction="vertical" size={compact ? 10 : 14} style={{ display: "flex" }}>
+        <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+          <Space wrap size={[8, 8]}>
+            <Text strong>{compact ? "发布候选边界" : "发布候选快照链"}</Text>
+            <Tag color="cyan">{gateDecision}</Tag>
+            <Tag color={formallyAdmitted ? "success" : "warning"}>{formalEntryStatus}</Tag>
+          </Space>
+          {!compact ? <Text type="secondary">门禁决策 → 发布快照 → 索引/API → 治理确认</Text> : null}
+        </Space>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: compact ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+          }}
+        >
+          <SummaryMetricTile label="机器发布候选" value={machineCandidateStatus} hint={`候选对象 ${candidateCount}`} />
+          <SummaryMetricTile label="治理确认" value={governanceStatus} hint={`待确认 ${pendingReviewCount}`} />
+          <SummaryMetricTile label="正式入库" value={formalEntryStatus} hint={`正式版本 ${versionLabel}`} />
+        </div>
+
+        {!compact ? (
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(14, 116, 144, 0.16)",
+              background: "rgba(255,255,255,0.82)",
+              padding: "10px 12px",
+            }}
+          >
+            <Text type="secondary">{exposureScope}</Text>
+          </div>
+        ) : null}
+      </Space>
+    </div>
   );
 }
 
@@ -2785,7 +3199,7 @@ function GraphCanvas({
             </Space>
           </Col>
           <Col xs={24} md={4}>
-              <Text type="secondary">默认展开全部节点，可切回主路径聚焦主干</Text>
+            <Text type="secondary">默认语义聚合，明细通过点击或“全部”展开</Text>
           </Col>
         </Row>
       </div>
@@ -3140,6 +3554,8 @@ function DocumentGraphControlPanel({
   focusHint,
   focusSummary,
   selectionInsight,
+  selectedNodeId,
+  onSelectRuleNode,
   onResetFocus,
 }: {
   stage: ArchiveDocumentRuntimeStageSnapshot;
@@ -3151,6 +3567,8 @@ function DocumentGraphControlPanel({
   focusHint?: string;
   focusSummary?: string | null;
   selectionInsight: { headline: string; detail: string; tags: string[] };
+  selectedNodeId: string | null;
+  onSelectRuleNode: (nodeId: string) => void;
   onResetFocus: () => void;
 }) {
   const primaryNodeCount =
@@ -3202,6 +3620,17 @@ function DocumentGraphControlPanel({
             <Text strong>阶段导览</Text>
             <Text>{primaryTrail || "当前阶段主路径将在这里串联显示。"}</Text>
           </div>
+
+          {isQualityGateStage(stage) ? (
+            <QualityGateRuntimeInsight
+              stage={stage}
+              observer={stage.stage_observer}
+              selectedNodeId={selectedNodeId}
+              onSelectRule={onSelectRuleNode}
+            />
+          ) : null}
+
+          {isPublicationStage(stage) ? <PublicationRuntimeInsight observer={stage.stage_observer} /> : null}
 
           <div
             style={{
@@ -3359,7 +3788,10 @@ function DocumentStageGraphCanvas({
   const [nodeAnimationFlags, setNodeAnimationFlags] = useState<Record<string, "enter" | "status-change" | "reflow">>({});
   const animationTimerIdsRef = useRef<number[]>([]);
   const previousNodeStatusRef = useRef<Map<string, ArchiveDocumentRuntimeStatus>>(new Map());
-  const clusterFlowNodes = useMemo(() => buildStageClusterFlowNodes(stage, positions, nodeLayouts), [nodeLayouts, positions, stage]);
+  const clusterFlowNodes = useMemo(
+    () => buildStageClusterFlowNodes(stage, positions, nodeLayouts, graphLens, selectionState),
+    [graphLens, nodeLayouts, positions, selectionState, stage],
+  );
   const flowNodeBlueprint = useMemo(
     () => [
       ...clusterFlowNodes,
@@ -3375,13 +3807,16 @@ function DocumentStageGraphCanvas({
     () =>
       JSON.stringify({
         stageId: stage.stage_id,
+        lens: graphLens,
+        selectedNodeId,
+        selectedEdgeId,
         nodes: stage.graph.nodes.map((node) => {
           const layout = nodeLayouts.get(node.node_id);
           return [node.node_id, node.label, node.status, layout?.width ?? 0, layout?.height ?? 0, layout?.summary ?? ""];
         }),
         edges: stage.graph.edges.map((edge) => [edge.edge_id, edge.source, edge.target, edge.status]),
       }),
-    [nodeLayouts, stage],
+    [graphLens, nodeLayouts, selectedEdgeId, selectedNodeId, stage],
   );
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(flowNodeBlueprint);
   const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState(initialFlowEdges);
@@ -3481,7 +3916,8 @@ function DocumentStageGraphCanvas({
               display: "flex",
               flexDirection: "column",
               gap: 10,
-              zIndex: 3,
+              zIndex: 20,
+              pointerEvents: "auto",
             }}
           >
             <Button
@@ -3574,7 +4010,7 @@ function DocumentStageGraphCanvas({
               fontSize: 12,
             }}
           >
-            滚轮可缩放，拖动画布可平移；默认展示当前阶段的全部节点与关系。
+            滚轮可缩放，拖动画布可平移；默认展示语义聚合主路径，点击聚合节点可局部展开明细，切到“全部”查看全量关系。
           </div>
         </div>
       </div>
@@ -3590,6 +4026,9 @@ function DocumentObserverPanel({
   focusHint,
   focusSummary,
   scopeLabel,
+  stage,
+  selectedNodeId,
+  onSelectNode,
 }: {
   observer: ArchiveDocumentRuntimeObserverPayload | null;
   mode: ObserverMode;
@@ -3598,6 +4037,9 @@ function DocumentObserverPanel({
   focusHint?: string;
   focusSummary?: string | null;
   scopeLabel: string;
+  stage?: ArchiveDocumentRuntimeStageSnapshot | null;
+  selectedNodeId?: string | null;
+  onSelectNode?: (nodeId: string) => void;
 }) {
   if (!observer) {
     return (
@@ -3667,6 +4109,18 @@ function DocumentObserverPanel({
             {focusHint ? <Tag>{focusHint}</Tag> : null}
           </Space>
         </div>
+
+        {stage && isQualityGateStage(stage) ? (
+          <QualityGateRuntimeInsight
+            stage={stage}
+            observer={observer}
+            selectedNodeId={selectedNodeId}
+            onSelectRule={onSelectNode}
+            compact
+          />
+        ) : null}
+
+        {stage && isPublicationStage(stage) ? <PublicationRuntimeInsight observer={observer} compact /> : null}
 
         <div
           style={{
@@ -3807,11 +4261,80 @@ function DocumentObserverPanel({
   );
 }
 
+const p1StageOrder = [
+  "asset_intake",
+  "parser_router",
+  "parser_execution",
+  "unified_document_object",
+  "evidence_constructor",
+  "evidence_graph_chunk_layer",
+  "evidence_pack",
+  "concept_candidate_review",
+  "relation_review_family_normalization",
+  "definition_summary_conflict_consolidation",
+  "canonical_knowledge",
+  "quality_policy_evaluation_governance_gate",
+  "indexes_snapshots_apis",
+];
+
+function getOverviewStageState(archive: KnowledgeArchive | null, stageId: string, index: number) {
+  if (!archive) return "pending";
+  const buildState = archive.build_state;
+  const currentStageId = buildState?.current_stage_id ?? null;
+  const currentIndex = currentStageId ? p1StageOrder.indexOf(currentStageId) : -1;
+
+  if (archive.status === "ready") return "done";
+  if (currentStageId === stageId) {
+    return buildState?.current_stage_status === "warning" ? "warning" : "current";
+  }
+  if (currentIndex >= 0 && index < currentIndex) return "done";
+  if (archive.status === "error" && currentIndex === index) return "warning";
+  return "pending";
+}
+
+function P1OverviewStageRail({ archive }: { archive: KnowledgeArchive | null }) {
+  return (
+    <div className="p1-stage-rail">
+      <div className="p1-inline-between">
+        <Space size={8} wrap>
+          <Tag color="green">已完成</Tag>
+          <Tag color="blue">运行中</Tag>
+          <Tag color="orange">警告</Tag>
+          <Tag>待处理</Tag>
+        </Space>
+        <Text type="secondary">13 阶段抽取主链</Text>
+      </div>
+      <div className="p1-stage-track">
+        {p1StageOrder.map((stageId, index) => {
+          const stageState = getOverviewStageState(archive, stageId, index);
+          return (
+            <div key={stageId} className={`p1-stage-step is-${stageState}`}>
+              <span className="p1-stage-index">{index + 1}</span>
+              <span className="p1-stage-label">{getStageDisplayLabel(stageId)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function P1MetricTile({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="p1-metric-tile">
+      <div className="p1-metric-label">{label}</div>
+      <div className="p1-metric-value">{value}</div>
+      {hint ? <Text type="secondary">{hint}</Text> : null}
+    </div>
+  );
+}
+
 function OverviewView(props: {
   archives: KnowledgeArchive[];
   activeArchiveId: string | null;
   pendingItems: PendingItem[];
   onOpenArchive: (archiveId: string) => void;
+  onOpenDocument: (documentId: string) => void;
   onOpenGlobal: () => void;
   onOpenPolicy: () => void;
   onExtract: (archiveId: string) => void;
@@ -3898,13 +4421,19 @@ function OverviewView(props: {
     },
   ];
 
+  const runDocuments = activeArchive?.build_state?.documents ?? [];
+  const completedDocuments = activeArchive?.build_state?.completed_document_ids.length ?? 0;
+  const expectedDocuments = activeArchive?.build_state?.expected_document_count ?? runDocuments.length;
+  const runProgress = expectedDocuments > 0 ? Math.round((completedDocuments / expectedDocuments) * 100) : 0;
+  const policySnapshot = activeArchive?.build_state?.policy_snapshot ?? null;
+
   return (
     <ValidationWorkspace
       title="知识库运行总览"
-      description="这里统一查看知识库状态、待处理事项，并从总览进入全局并行、单知识库运行和策略/质量页面。"
+      description="P1 业务知识库：文档接入、策略选择、机器抽取、发布候选和治理确认集中在这一组页面中推进。"
       actions={
         <Space wrap>
-          <Button onClick={props.onOpenGlobal}>全局并行</Button>
+          <Button onClick={props.onOpenGlobal}>全局运行视图</Button>
           <Button onClick={props.onOpenPolicy}>策略与配置</Button>
           <Button type="primary" onClick={props.onShowCreate}>
             新建知识库
@@ -3913,34 +4442,182 @@ function OverviewView(props: {
       }
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
-        <WorkspaceOverviewStrip
-          badgeLabel="知识库管理"
-          title="知识库运行总览"
-          tags={
-            activeArchive
-              ? [
-                  { label: `当前知识库：${activeArchive.name}` },
-                  { label: `当前状态：${archiveStatusMeta[activeArchive.status].label}` },
-                  { label: `待处理：${props.pendingItems.length}` },
-                ]
-              : []
-          }
-          metrics={[
-            { title: "知识库数量", value: props.archives.length },
-            { title: "可用知识库", value: readyCount },
-            { title: "异常知识库", value: blockedCount },
-            { title: "待处理事项", value: props.pendingItems.length },
-          ]}
-        />
         {props.pendingItems.length > 0 ? (
           <Alert
+            className="p1-hero-alert"
             type="warning"
             showIcon
-            message={`当前有 ${props.pendingItems.length} 条待处理事项`}
+            message="规则已变化，部分知识需要重算"
             description={props.pendingItems.map((item) => item.title).join("；")}
           />
         ) : null}
-        <Table rowKey="archive_id" columns={columns} dataSource={props.archives} pagination={false} />
+        <Space className="p1-status-legend" wrap>
+          <Tag color="blue">知识库管理</Tag>
+          <Tag color="green">已完成</Tag>
+          <Tag color="processing">运行中</Tag>
+          <Tag color="warning">警告</Tag>
+          <Tag>待处理</Tag>
+        </Space>
+
+        <div className="p1-overview-grid">
+          <Card className="p1-soft-card" title="知识库列表">
+            <div className="p1-archive-stack">
+              {props.archives.map((archive) => (
+                <div
+                  key={archive.archive_id}
+                  className={`p1-archive-card ${archive.archive_id === activeArchive?.archive_id ? "is-active" : ""}`}
+                  onClick={() => props.onOpenArchive(archive.archive_id)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="p1-card-title-row">
+                    <span className="p1-card-title">{archive.name}</span>
+                    <Tag color={archiveStatusMeta[archive.status].color}>{archiveStatusMeta[archive.status].label}</Tag>
+                  </div>
+                  <div className="p1-card-meta-grid">
+                    <span>文档数：{archive.summary?.document_count ?? archive.build_state?.expected_document_count ?? 0}</span>
+                    <span>实体数：{archive.summary?.entity_count ?? 0}</span>
+                    <span>最近抽取：{formatDateTime(archive.last_built_at)}</span>
+                    <span>策略：{archive.build_state?.policy_snapshot?.version_label ?? "未绑定"}</span>
+                  </div>
+                  <div className="p1-card-action-row">
+                    <Button size="small" onClick={(event) => { event.stopPropagation(); props.onSetCurrent(archive.archive_id); }} disabled={archive.is_active}>
+                      {archive.is_active ? "当前知识库" : "设为当前"}
+                    </Button>
+                    <Button size="small" onClick={(event) => { event.stopPropagation(); props.onOpenArchive(archive.archive_id); }}>
+                      进入单知识库
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={props.extractingArchiveId === archive.archive_id || archive.status === "extracting"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        props.onExtract(archive.archive_id);
+                      }}
+                    >
+                      立即抽取
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p1-soft-card" title="当前知识库运行总览">
+            <Space direction="vertical" size={18} style={{ display: "flex" }}>
+              <P1OverviewStageRail archive={activeArchive} />
+              <div className="p1-metric-grid">
+                <P1MetricTile
+                  label="当前运行文档"
+                  value={activeArchive?.build_state?.current_document_title ?? "暂无运行"}
+                  hint={activeArchive?.build_state?.current_document_id ?? "等待启动抽取"}
+                />
+                <P1MetricTile
+                  label="已连接 Stream / 已回退轮询"
+                  value={activeArchive?.status === "extracting" ? "运行中" : "快照"}
+                  hint={activeArchive?.status === "extracting" ? "进入单文档页查看实时通道" : "未处于实时抽取"}
+                />
+                <P1MetricTile
+                  label="当前阶段"
+                  value={activeArchive?.build_state?.current_stage_label ?? (activeArchive ? getArchiveStageLabel(activeArchive) : "等待选择知识库")}
+                  hint={activeArchive?.build_state?.current_stage_message ?? "由后端运行态决定，不随点击改变"}
+                />
+                <P1MetricTile
+                  label="最近事件"
+                  value={activeArchive?.build_state?.warning_count ?? 0}
+                  hint="告警 / 待治理 / stale 对象"
+                />
+              </div>
+              <Progress percent={runProgress} status={activeArchive?.status === "error" ? "exception" : "active"} />
+            </Space>
+          </Card>
+
+          <Card className="p1-soft-card" title="策略与质量摘要">
+            <Space direction="vertical" size={14} style={{ display: "flex" }}>
+              <Descriptions size="small" column={1}>
+                <Descriptions.Item label="默认策略包">{policySnapshot?.scope_label ?? "合同通用抽取"}</Descriptions.Item>
+                <Descriptions.Item label="当前策略版本">{policySnapshot?.version_label ?? "未冻结快照"}</Descriptions.Item>
+                <Descriptions.Item label="运行快照 ID">{policySnapshot?.snapshot_id ?? "等待抽取启动"}</Descriptions.Item>
+                <Descriptions.Item label="启用阶段数">
+                  {policySnapshot?.stages.filter((stage) => stage.enabled).length ?? 0} / 13
+                </Descriptions.Item>
+                <Descriptions.Item label="规则总数">
+                  {policySnapshot?.stages.reduce((total, stage) => total + stage.rule_count, 0) ?? 0}
+                </Descriptions.Item>
+              </Descriptions>
+              <Button block onClick={props.onOpenPolicy}>进入阶段策略配置</Button>
+              <Button block onClick={props.onOpenGlobal}>查看规则变更影响面</Button>
+              <Button block onClick={() => activeArchive && props.onOpenArchive(activeArchive.archive_id)} disabled={!activeArchive}>
+                进入单知识库
+              </Button>
+            </Space>
+          </Card>
+        </div>
+
+        <Card className="p1-soft-card p1-document-queue" title="文档运行队列">
+          <Table
+            rowKey="document_id"
+            columns={[
+              {
+                title: "文件名",
+                dataIndex: "title",
+                render: (value: string, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Button type="link" style={{ padding: 0 }} onClick={() => props.onOpenDocument(record.document_id)}>
+                    {value}
+                  </Button>
+                ),
+              },
+              {
+                title: "抽取阶段",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) =>
+                  record.document_id === activeArchive?.build_state?.current_document_id
+                    ? activeArchive.build_state?.current_stage_label ?? "当前处理中"
+                    : record.state === "completed"
+                      ? "已完成"
+                      : "等待调度",
+              },
+              {
+                title: "进度",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Progress
+                    percent={
+                      record.state === "completed"
+                        ? 100
+                        : record.document_id === activeArchive?.build_state?.current_document_id
+                          ? Math.max(8, runProgress)
+                          : 0
+                    }
+                    showInfo={false}
+                  />
+                ),
+              },
+              {
+                title: "质量门禁结果",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Tag color={record.state === "completed" ? "success" : record.state === "failed" ? "error" : "default"}>
+                    {record.state === "completed" ? "通过" : record.state === "failed" ? "阻断" : "待检"}
+                  </Tag>
+                ),
+              },
+              {
+                title: "操作",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) => (
+                  <Button type="primary" ghost onClick={() => props.onOpenDocument(record.document_id)}>
+                    进入单文档实时工作台
+                  </Button>
+                ),
+              },
+            ]}
+            dataSource={runDocuments}
+            pagination={{ pageSize: 5 }}
+            locale={{ emptyText: "当前知识库暂无运行队列；请创建或启动抽取任务。" }}
+          />
+        </Card>
+
+        {runDocuments.length === 0 ? (
+          <Table rowKey="archive_id" columns={columns} dataSource={props.archives} pagination={false} />
+        ) : null}
       </Space>
     </ValidationWorkspace>
   );
@@ -4104,7 +4781,7 @@ function DocumentView(props: {
   onBackGlobal: () => void;
   onOpenPolicy: () => void;
 }) {
-  const [graphLens, setGraphLens] = useState<GraphLens>("all");
+  const [graphLens, setGraphLens] = useState<GraphLens>("primary");
   const liveCurrentStage = props.runtime ? getLiveCurrentStage(props.runtime) : null;
   const inspectedStage = props.runtime ? getInspectedStage(props.runtime, props.inspectedStageId) : null;
   const inspectedStagePolicyConfig = inspectedStage ? getStagePolicyConfig(props.policyConfig, inspectedStage.stage_id) : null;
@@ -4120,6 +4797,10 @@ function DocumentView(props: {
     () => (inspectedStage ? buildGraphSelectionState(inspectedStage, props.selectedNodeId, props.selectedEdgeId) : null),
     [inspectedStage, props.selectedEdgeId, props.selectedNodeId],
   );
+
+  useEffect(() => {
+    setGraphLens("primary");
+  }, [inspectedStage?.stage_id]);
 
   const observer = useMemo(() => {
     if (!inspectedStage) return null;
@@ -4275,6 +4956,7 @@ function DocumentView(props: {
             }
           />
           <div
+            className="p1-graph-shell"
             style={{
               border: "2px solid rgba(59,130,246,0.72)",
               borderRadius: 22,
@@ -4295,6 +4977,12 @@ function DocumentView(props: {
                   focusHint={focusHint}
                   focusSummary={focusSummary}
                   selectionInsight={selectionInsight}
+                  selectedNodeId={props.selectedNodeId}
+                  onSelectRuleNode={(id) => {
+                    props.setSelectedNodeId(id);
+                    props.setSelectedEdgeId(null);
+                    props.setObserverMode("node");
+                  }}
                   onResetFocus={() => {
                     props.setSelectedNodeId(null);
                     props.setSelectedEdgeId(null);
@@ -4334,6 +5022,13 @@ function DocumentView(props: {
                   focusHint={focusHint}
                   focusSummary={focusSummary}
                   scopeLabel={`单文档 · ${props.document.title}`}
+                  stage={inspectedStage}
+                  selectedNodeId={props.selectedNodeId}
+                  onSelectNode={(id) => {
+                    props.setSelectedNodeId(id);
+                    props.setSelectedEdgeId(null);
+                    props.setObserverMode("node");
+                  }}
                 />
               </Col>
             </Row>
@@ -4546,18 +5241,18 @@ function PolicyWorkbenchView({
       observability: ["canonical_name", "citation_index", "merge_similarity", "canonical_object_score"],
     },
     quality_policy_evaluation_governance_gate: {
-      objective: "集中执行质量门禁，决定当前对象是直接进入发布、告警继续还是阻断。",
-      aiMode: "质量门禁决策辅助",
+      objective: "集中执行质量门禁，决定当前对象是直接进入发布、告警继续还是阻断；本阶段不交由人工参与。",
+      aiMode: "质量门禁规则执行",
       defaultAction: "阻断并回退",
       inputs: ["规范知识对象", "质量策略集", "阶段级风险信号"],
-      aiAdaptation: "AI 根据前序阶段风险信号给出门禁建议，但最终仍由策略阈值决定阻断、告警或延迟发布。",
+      aiAdaptation: "AI 只负责整理前序风险信号和指标，最终由策略阈值确定通过、告警继续、延迟发布或阻断。",
       rules: [
         { key: "gate-1", name: "支撑文档下限", meaning: "支撑证据不足时直接阻断", threshold: "supporting_documents >= 2", action: "阻断并回退" },
-        { key: "gate-2", name: "风险信号汇总", meaning: "风险分过高则转人工复核或延迟发布", threshold: "risk_score < 0.65", action: "转人工复核" },
+        { key: "gate-2", name: "风险信号汇总", meaning: "风险分过高则记录告警并继续发布链", threshold: "risk_score < 0.65", action: "告警继续" },
         { key: "gate-3", name: "发布前冲突清零", meaning: "存在未解决硬冲突则禁止进入发布链", threshold: "hard_conflict = 0", action: "阻断并回退" },
       ],
-      branches: ["门禁通过 -> 发布/API", "风险中等 -> 人工复核", "硬冲突或支撑不足 -> 阻断并回退规范知识"],
-      outputs: ["Gate 决策", "阻断/告警原因", "人工复核转交建议"],
+      branches: ["门禁通过 -> 发布/API", "风险中等 -> 带告警继续发布链", "硬冲突或支撑不足 -> 阻断并回退规范知识"],
+      outputs: ["Gate 决策", "阻断/告警原因", "发布链策略标记"],
       observability: ["supporting_documents", "risk_score", "hard_conflict", "gate_decision"],
     },
     indexes_snapshots_apis: {
@@ -5017,6 +5712,10 @@ function PolicyWorkbenchRuntimeView({
   };
 
   const selectedStageConfig = selectedStageId ? policyConfig?.stages[selectedStageId] ?? null : null;
+  const selectedPolicyActionOptions =
+    selectedStageId === QUALITY_GATE_STAGE_ID
+      ? policyActionOptions.filter((item) => item.value !== "manual_review")
+      : policyActionOptions;
   const stageGroups = (Object.keys(flowLaneStageIds) as FlowLaneId[]).map((laneId) => ({
     laneId,
     title: flowLaneMeta[laneId].title,
@@ -5034,6 +5733,7 @@ function PolicyWorkbenchRuntimeView({
           <Button onClick={() => void loadPolicyConfig(selectedStageId)} disabled={!archiveId} loading={policyLoading}>
             刷新后端合同
           </Button>
+          <Button disabled={!policyConfig}>比较策略版本</Button>
           <Button type="primary" onClick={() => void handleSave()} loading={policySaving} disabled={!policyConfig}>
             保存草稿
           </Button>
@@ -5070,6 +5770,63 @@ function PolicyWorkbenchRuntimeView({
                 value={policyConfig?.updated_at ? formatDateTime(policyConfig.updated_at) : "未保存"}
                 hint="后端返回的最新策略时间戳"
               />
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]}>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="策略库与策略模板">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>{policyConfig?.scope_label ?? "合同通用抽取"}</Text>
+                  <Text type="secondary">当前知识库可绑定已有策略包，也可以复制为新策略包后再调整。</Text>
+                  <Space wrap>
+                    <Tag color="blue">{policyConfig?.version_label ?? "未加载"}</Tag>
+                    <Tag color="green">阶段覆盖 {policyConfig?.stage_order.length ?? 0}/13</Tag>
+                    <Tag>规则 {policyConfig ? Object.values(policyConfig.stages).reduce((total, stage) => total + stage.rules.length, 0) : 0}</Tag>
+                  </Space>
+                  <Button block>从现有策略复制</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="规则输入输出合同">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>{selectedStageConfig?.label ?? "请选择阶段"}</Text>
+                  <Text type="secondary">每条规则都需要明确输入对象、输出对象、trace 字段和影响对象集合。</Text>
+                  <Space wrap>
+                    <Tag color="processing">输入 {selectedStageConfig?.inputs.length ?? 0}</Tag>
+                    <Tag color="success">输出 {selectedStageConfig?.outputs.length ?? 0}</Tag>
+                    <Tag color="warning">规则 {selectedStageConfig?.rules.length ?? 0}</Tag>
+                  </Space>
+                  <Button block>编辑 I/O 合同</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="策略版本与规则差异">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>当前版本：{policyConfig?.version_label ?? "未加载"}</Text>
+                  <Text type="secondary">保存新版本后先生成差异摘要，再决定是否触发影响面计算。</Text>
+                  <Space wrap>
+                    <Tag color={dirty ? "orange" : "green"}>{dirty ? "存在变更" : "无未保存变更"}</Tag>
+                    <Tag>结构性规则需重算</Tag>
+                  </Space>
+                  <Button block>生成差异预览</Button>
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} xl={6}>
+              <Card className="p1-soft-card" title="规则变更影响面">
+                <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                  <Text strong>ImpactSet / 增量重算</Text>
+                  <Text type="secondary">规则调整后只重算受影响对象，不静默覆盖正式入库知识。</Text>
+                  <Space wrap>
+                    <Tag color="purple">minimum_rebuild_stage</Tag>
+                    <Tag color="orange">stale 标记</Tag>
+                  </Space>
+                  <Button block>计算影响面</Button>
+                </Space>
+              </Card>
             </Col>
           </Row>
 
@@ -5177,7 +5934,7 @@ function PolicyWorkbenchRuntimeView({
                           <Col xs={24} md={8}>
                             <Form.Item name="default_action" label="默认动作" rules={[{ required: true, message: "请选择默认动作" }]}>
                               <Select
-                                options={policyActionOptions.map((item) => ({
+                                options={selectedPolicyActionOptions.map((item) => ({
                                   value: item.value,
                                   label: item.label,
                                 }))}
@@ -5259,7 +6016,7 @@ function PolicyWorkbenchRuntimeView({
                                         rules={[{ required: true, message: "请选择命中动作" }]}
                                       >
                                         <Select
-                                          options={policyActionOptions.map((item) => ({
+                                          options={selectedPolicyActionOptions.map((item) => ({
                                             value: item.value,
                                             label: item.label,
                                           }))}
@@ -5315,7 +6072,7 @@ function PolicyWorkbenchRuntimeView({
 function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => void; onOpenGlobal: () => void }) {
   const data = [
     { key: "1", group: "知识项级", name: "canonical_name_present", meaning: "规范名称必须存在", threshold: "true", action: "阻断" },
-    { key: "2", group: "知识项级", name: "definition_present", meaning: "定义字段不能为空", threshold: "true", action: "人工复核" },
+    { key: "2", group: "知识项级", name: "definition_present", meaning: "定义字段不能为空", threshold: "true", action: "告警继续" },
     { key: "3", group: "关系级", name: "relation_evidence_required", meaning: "关系必须带证据", threshold: "true", action: "阻断" },
     { key: "4", group: "发布批次级", name: "approved_only", meaning: "发布态只允许已批准项", threshold: "true", action: "阻断" },
   ];
@@ -5336,7 +6093,7 @@ function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => vo
           <Col span={6}><Card><Statistic title="抽取蓝图" value="知识抽取蓝图 v1" /></Card></Col>
           <Col span={6}><Card><Statistic title="质量策略" value="内容质量策略 v1" /></Card></Col>
           <Col span={6}><Card><Statistic title="规则覆盖层级" value="知识项 / 关系 / 发布" /></Card></Col>
-          <Col span={6}><Card><Statistic title="模式" value="严格 · 默认动作：人工复核" /></Card></Col>
+          <Col span={6}><Card><Statistic title="模式" value="严格 · 默认动作：规则执行" /></Card></Col>
         </Row>
         <Row gutter={16}>
           <Col xs={24} xl={6}>
@@ -5362,7 +6119,7 @@ function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => vo
                     title: "动作",
                     dataIndex: "action",
                     key: "action",
-                    render: (value: string) => <Tag color={value === "阻断" ? "error" : value === "人工复核" ? "warning" : "default"}>{value}</Tag>,
+                    render: (value: string) => <Tag color={value === "阻断" ? "error" : value === "告警继续" ? "warning" : "default"}>{value}</Tag>,
                   },
                 ]}
               />
@@ -5410,6 +6167,19 @@ export function ArchiveManagementPage() {
   const pendingItems = useMemo(() => buildPendingItems(archives), [archives]);
   const selectedArchive = archives.find((archive) => archive.archive_id === selectedArchiveId) ?? activeArchive ?? archives[0] ?? null;
   const selectedDocument = selectedArchive?.build_state?.documents.find((item) => item.document_id === selectedDocumentId) ?? null;
+  const selectedDocumentIsCurrentRunning =
+    selectedArchive?.build_state?.status === "running" &&
+    Boolean(selectedDocumentId) &&
+    selectedArchive.build_state.current_document_id === selectedDocumentId;
+
+  useEffect(() => {
+    if (!activeArchiveId) return;
+    setSelectedArchiveId((currentArchiveId) => (currentArchiveId === activeArchiveId ? currentArchiveId : activeArchiveId));
+    setSelectedDocumentId(null);
+    setRuntime(null);
+    setRuntimeError(null);
+    setRuntimeTransportState("snapshot");
+  }, [activeArchiveId]);
 
   useEffect(() => {
     if (view !== "document" || !selectedArchiveId) {
@@ -5511,7 +6281,7 @@ export function ArchiveManagementPage() {
         return;
       }
 
-      if (runtimeNeedsLiveUpdates(selectedDocument?.state, latestRuntime)) {
+      if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, latestRuntime)) {
         schedulePoll(0);
       }
     };
@@ -5541,7 +6311,7 @@ export function ArchiveManagementPage() {
               setRuntimeTransportState("stream_connected");
               applyRuntime(nextRuntime);
 
-              if (!runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
+              if (!selectedDocumentIsCurrentRunning && !runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
                 setRuntimeTransportState("snapshot");
                 closeRuntimeStream();
                 clearPollTimer();
@@ -5585,7 +6355,10 @@ export function ArchiveManagementPage() {
 
         applyRuntime(response.data);
 
-        if (allowStreamUpgrade && runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
+        if (
+          allowStreamUpgrade &&
+          (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data))
+        ) {
           startRuntimeStream();
           return;
         }
@@ -5593,7 +6366,7 @@ export function ArchiveManagementPage() {
         closeRuntimeStream();
         clearStreamBootstrapTimer();
 
-        if (runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
+        if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
           schedulePoll(4000);
         } else {
           setRuntimeTransportState("snapshot");
@@ -5613,7 +6386,7 @@ export function ArchiveManagementPage() {
       }
     };
 
-    if (selectedDocument?.state === "running") {
+    if (selectedDocument?.state === "running" || selectedDocumentIsCurrentRunning) {
       startRuntimeStream();
     } else {
       setRuntimeTransportState("snapshot");
@@ -5626,7 +6399,7 @@ export function ArchiveManagementPage() {
       clearStreamBootstrapTimer();
       closeRuntimeStream();
     };
-  }, [selectedArchiveId, selectedDocumentId, selectedDocument?.state, view]);
+  }, [selectedArchiveId, selectedDocumentId, selectedDocument?.state, selectedDocumentIsCurrentRunning, view]);
 
   async function handleCreateArchive() {
     const values = await createForm.validateFields();
@@ -5715,6 +6488,7 @@ export function ArchiveManagementPage() {
           activeArchiveId={activeArchiveId}
           pendingItems={pendingItems}
           onOpenArchive={openArchive}
+          onOpenDocument={openDocument}
           onOpenGlobal={() => setView("global")}
           onOpenPolicy={() => setView("policy")}
           onExtract={(archiveId) => void handleExtractArchive(archiveId)}

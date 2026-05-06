@@ -1,10 +1,9 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Empty, Input, List, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Col, Descriptions, Empty, Input, List, Progress, Row, Space, Table, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 
 import { ArchiveDocumentImportForm } from "../components/ArchiveDocumentImportForm";
 import { EvidenceList } from "../components/EvidenceList";
-import { ValidationDrawer } from "../components/ValidationDrawer";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
@@ -246,26 +245,41 @@ export function DocumentsPage() {
           ]}
         />
 
-        <Alert
-          type="info"
-          showIcon
-          message="知识库文档页只保留 archive 主链"
-          description="上传、解析验证和旧的 DB intake 逻辑已迁移到“接入解析验证”页面；这里仅处理当前知识库的正式文档查看、并入和移出。"
-        />
-
-        <ArchiveDocumentImportForm
-          archiveId={activeArchiveId}
-          disabled={!activeArchiveId || activeArchive?.status === "extracting" || documentMutation !== null}
-          onImported={(result) => void handleImportedArchiveDocument(result)}
-          onImportFailed={(message) => setDocumentFeedback({ type: "error", message })}
-        />
-
-        <div>
-          <Typography.Title level={4}>当前知识库文档</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            这里只展示当前 archive 已经建立正式产物仓的文档视图，并支持按文档执行正式并入或正式移出。
-          </Typography.Paragraph>
+        <div className="p1-stat-strip">
+          <div className="p1-stat-card">
+            <span>当前知识库</span>
+            <strong>{activeArchive?.name ?? "未选择"}</strong>
+          </div>
+          <div className="p1-stat-card">
+            <span>默认策略包</span>
+            <strong>{activeArchive?.build_state?.policy_snapshot?.scope_label ?? "合同通用抽取"}</strong>
+          </div>
+          <div className="p1-stat-card">
+            <span>文档总数</span>
+            <strong>{summary?.document_count ?? documents.length}</strong>
+          </div>
+          <div className="p1-stat-card">
+            <span>已完成抽取</span>
+            <strong>{documents.filter((item) => item.included_in_archive !== false).length}</strong>
+          </div>
+          <div className="p1-stat-card">
+            <span>需要重算</span>
+            <strong>{activeArchive?.build_state?.warning_count ?? 0}</strong>
+          </div>
+          <div className="p1-stat-card">
+            <span>正式入库知识</span>
+            <strong>{(summary?.entity_count ?? 0) + (summary?.event_count ?? 0) + (summary?.process_count ?? 0)}</strong>
+          </div>
         </div>
+
+        <Space className="p1-status-legend" wrap>
+          <Tag color="green">已纳入知识库</Tag>
+          <Tag color="orange">待纳入</Tag>
+          <Tag>已移出</Tag>
+          <Tag color="blue">抽取中</Tag>
+          <Tag color="red">需要重算</Tag>
+          <Tag color="purple">发布候选</Tag>
+        </Space>
 
         {error ? <Alert type="error" message="档案文档暂不可用" description={error} showIcon /> : null}
         {documentFeedback ? (
@@ -276,129 +290,225 @@ export function DocumentsPage() {
             showIcon
           />
         ) : null}
-
-        <Space direction="vertical" size={12} style={{ display: "flex" }}>
-          <Input.Search
-            allowClear
-            placeholder="搜索文档标题、来源或类型"
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
+        {documentMutation ? (
+          <Alert
+            type="info"
+            showIcon
+            message={documentMutationStatus}
+            description={
+              currentMutationDocument
+                ? `正在处理“${currentMutationDocument.title}”，期间会临时锁定并入/移出操作。`
+                : "正在处理当前文档，期间会临时锁定并入/移出操作。"
+            }
           />
+        ) : null}
 
-          <Table
-            rowKey="id"
-            loading={loading}
-            dataSource={filteredDocuments}
-            locale={{ emptyText: "暂无档案文档" }}
-            pagination={{ pageSize: 10 }}
-            columns={[
-              {
-                title: "文档标题",
-                dataIndex: "title",
-                render: (value: string, record: ArchiveKnowledgeDocument) => (
-                  <Button type="link" style={{ padding: 0 }} onClick={() => setSelectedDocumentId(record.id)}>
-                    {value}
-                  </Button>
-                ),
-              },
-              { title: "文件类型", dataIndex: "file_type" },
-              { title: "来源档案", dataIndex: "source_archive" },
-              {
-                title: "字符数",
-                dataIndex: "character_count",
-                render: (value: number) => value.toLocaleString("zh-CN"),
-              },
-              {
-                title: "关联知识",
-                dataIndex: "knowledge_item_count",
-                render: (value: number) => `${value} 项知识`,
-              },
-              {
-                title: "操作",
-                render: (_: unknown, record: ArchiveKnowledgeDocument) => {
-                  const isIncluded = record.included_in_archive !== false;
-                  const isMutating = documentMutation?.documentId === record.id;
-                  const mutationLabel =
-                    isMutating && documentMutation
-                      ? documentMutation.action === "include"
-                        ? "正在并入"
-                        : "正在移出"
-                      : isIncluded
-                        ? "已并入"
-                        : "未并入";
-                  const mutationColor = isMutating ? "processing" : isIncluded ? "green" : "default";
-
-                  return (
-                    <Space size={4} wrap>
-                      <Tag color={mutationColor}>{mutationLabel}</Tag>
-                      <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
-                        查看
-                      </Button>
-                      <Button
-                        type="link"
-                        onClick={() => void runArchiveDocumentMutation(record, isIncluded ? "remove" : "include")}
-                        loading={isMutating}
-                        disabled={documentMutation !== null}
-                      >
-                        {isIncluded ? "从当前知识库移出" : "纳入当前知识库"}
-                      </Button>
+        <Row gutter={[16, 16]} align="stretch">
+          <Col xs={24} xl={4}>
+            <div className="p1-stack">
+              <Card className="p1-soft-card" title="筛选栏">
+                <div className="p1-side-filter">
+                  <div className="p1-filter-group">
+                    <span className="p1-filter-title">文档状态</span>
+                    <div className="p1-filter-pill-row">
+                      <span className="p1-filter-pill is-active">全部</span>
+                      <span className="p1-filter-pill">已纳入知识库</span>
+                      <span className="p1-filter-pill">待纳入</span>
+                      <span className="p1-filter-pill">已移出</span>
+                    </div>
+                  </div>
+                  <div className="p1-filter-group">
+                    <span className="p1-filter-title">抽取状态</span>
+                    <div className="p1-filter-pill-row">
+                      <span className="p1-filter-pill is-active">全部</span>
+                      <span className="p1-filter-pill">抽取中</span>
+                      <span className="p1-filter-pill">抽取完成</span>
+                      <span className="p1-filter-pill">需要重算</span>
+                    </div>
+                  </div>
+                  <div className="p1-filter-group">
+                    <span className="p1-filter-title">文件类型</span>
+                    <Space wrap>
+                      <Tag>PDF</Tag>
+                      <Tag>DOCX</Tag>
+                      <Tag>XLSX</Tag>
+                      <Tag>PPTX</Tag>
                     </Space>
-                  );
-                },
-              },
-            ]}
-          />
-        </Space>
-
-        <ValidationDrawer
-          title="文档详情"
-          open={selectedDocumentId !== null}
-          onClose={() => setSelectedDocumentId(null)}
-          width={720}
-          loading={detailLoading}
-          loadingText="正在加载文档详情..."
-          error={detailError}
-          errorMessage="文档详情暂不可用"
-        >
-          {documentDetail ? (
-            <Space direction="vertical" size={16} style={{ display: "flex" }}>
-              <div>
-                <Typography.Title level={4} style={{ marginTop: 0 }}>
-                  {documentDetail.document.title}
-                </Typography.Title>
-                <Space wrap>
-                  <Tag>{documentDetail.document.file_type}</Tag>
-                  <Typography.Text type="secondary">{documentDetail.document.source_archive}</Typography.Text>
-                </Space>
-              </div>
-
-              <div>
-                <Typography.Title level={5}>文档概览</Typography.Title>
-                <Descriptions column={2} bordered size="small">
-                  <Descriptions.Item label="纳入当前知识库状态">
-                    <Tag color={documentDetail.document.included_in_archive !== false ? "green" : "default"}>
-                      {documentDetail.document.included_in_archive !== false ? "已并入" : "未并入"}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="字符数">{documentDetail.document.character_count.toLocaleString("zh-CN")}</Descriptions.Item>
-                  <Descriptions.Item label="知识总数">{documentDetail.document.knowledge_item_count}</Descriptions.Item>
-                  <Descriptions.Item label="实体数">{documentDetail.document.entity_count}</Descriptions.Item>
-                  <Descriptions.Item label="事件数">{documentDetail.document.event_count}</Descriptions.Item>
-                  <Descriptions.Item label="流程数">{documentDetail.document.process_count}</Descriptions.Item>
-                  <Descriptions.Item label="文件类型">{documentDetail.document.file_type}</Descriptions.Item>
-                </Descriptions>
-              </div>
-
-              {knowledgeSections.map((section) => (
-                <DocumentKnowledgeSection
-                  key={section.key}
-                  title={section.title}
-                  items={groupedKnowledge[section.key]}
+                  </div>
+                </div>
+              </Card>
+              <Card className="p1-soft-card" title="上传文档">
+                <ArchiveDocumentImportForm
+                  archiveId={activeArchiveId}
+                  disabled={!activeArchiveId || activeArchive?.status === "extracting" || documentMutation !== null}
+                  onImported={(result) => void handleImportedArchiveDocument(result)}
+                  onImportFailed={(message) => setDocumentFeedback({ type: "error", message })}
                 />
-              ))}
-            </Space>
-          ) : null}
-        </ValidationDrawer>
+              </Card>
+              <Alert
+                type="info"
+                showIcon
+                message="知识库文档页只保留 archive 主链"
+                description="接入解析在独立页面完成，这里只处理正式文档查看、并入和移出。"
+              />
+            </div>
+          </Col>
+
+          <Col xs={24} xl={14}>
+            <Card
+              className="p1-soft-card p1-document-queue"
+              title={
+                <div className="p1-card-heading">
+                  <div>
+                    <Typography.Text strong>当前知识库文档</Typography.Text>
+                    <Typography.Title level={4}>文档状态板</Typography.Title>
+                    <Typography.Text type="secondary">素材进入知识工厂前后的状态追踪</Typography.Text>
+                  </div>
+                  <Tag color="blue">已选 {selectedDocumentId ? 1 : 0} 份文档</Tag>
+                </div>
+              }
+            >
+              <Space direction="vertical" size={12} style={{ display: "flex" }}>
+                <Input.Search
+                  allowClear
+                  placeholder="搜索文档标题、来源或类型"
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                />
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={filteredDocuments}
+                  locale={{ emptyText: "暂无档案文档" }}
+                  pagination={{ pageSize: 8 }}
+                  rowClassName={(record) => (record.id === selectedDocumentId ? "ant-table-row-selected" : "")}
+                  columns={[
+                    {
+                      title: "文档标题",
+                      dataIndex: "title",
+                      render: (value: string, record: ArchiveKnowledgeDocument) => (
+                        <Button type="link" style={{ padding: 0 }} onClick={() => setSelectedDocumentId(record.id)}>
+                          {value}
+                        </Button>
+                      ),
+                    },
+                    { title: "来源", dataIndex: "source_archive", width: 110 },
+                    { title: "文件类型", dataIndex: "file_type", width: 90 },
+                    {
+                      title: "当前抽取阶段",
+                      width: 150,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) =>
+                        record.included_in_archive !== false ? (
+                          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                            <Typography.Text>已完成</Typography.Text>
+                            <Progress percent={100} size="small" showInfo={false} />
+                          </Space>
+                        ) : (
+                          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                            <Typography.Text type="secondary">未启动</Typography.Text>
+                            <Progress percent={0} size="small" showInfo={false} />
+                          </Space>
+                        ),
+                    },
+                    {
+                      title: "输入状态",
+                      width: 120,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => (
+                        <Tag color={record.included_in_archive !== false ? "green" : "default"}>
+                          {record.included_in_archive !== false ? "已纳入知识库" : "未纳入"}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: "候选知识数",
+                      dataIndex: "knowledge_item_count",
+                      width: 110,
+                      render: (value: number) => value,
+                    },
+                    {
+                      title: "质量门禁",
+                      width: 100,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => (
+                        <Tag color={record.included_in_archive !== false ? "success" : "default"}>
+                          {record.included_in_archive !== false ? "通过" : "待检"}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: "操作",
+                      width: 180,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => {
+                        const isIncluded = record.included_in_archive !== false;
+                        const isMutating = documentMutation?.documentId === record.id;
+                        return (
+                          <Space size={4} wrap>
+                            <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
+                              查看
+                            </Button>
+                            <Button
+                              type="link"
+                              onClick={() => void runArchiveDocumentMutation(record, isIncluded ? "remove" : "include")}
+                              loading={isMutating}
+                              disabled={documentMutation !== null}
+                            >
+                              {isIncluded ? "从当前知识库移出" : "纳入当前知识库"}
+                            </Button>
+                          </Space>
+                        );
+                      },
+                    },
+                  ]}
+                />
+              </Space>
+            </Card>
+          </Col>
+
+          <Col xs={24} xl={6}>
+            <Card className="p1-soft-card p1-detail-panel" title="选中文档详情" loading={detailLoading}>
+              {detailError ? <Alert type="error" showIcon message="文档详情暂不可用" description={detailError} /> : null}
+              {documentDetail ? (
+                <Space direction="vertical" size={14} style={{ display: "flex" }}>
+                  <div>
+                    <Typography.Title level={5} style={{ marginTop: 0 }}>
+                      {documentDetail.document.title}
+                    </Typography.Title>
+                    <Space wrap>
+                      <Tag>{documentDetail.document.file_type}</Tag>
+                      <Tag color={documentDetail.document.included_in_archive !== false ? "green" : "default"}>
+                        {documentDetail.document.included_in_archive !== false ? "已纳入知识库" : "未纳入"}
+                      </Tag>
+                    </Space>
+                  </div>
+                  <Typography.Title level={5}>文档概览</Typography.Title>
+                  <Typography.Text strong>文档详情</Typography.Text>
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="来源">{documentDetail.document.source_archive}</Descriptions.Item>
+                    <Descriptions.Item label="字符数">{documentDetail.document.character_count.toLocaleString("zh-CN")}</Descriptions.Item>
+                    <Descriptions.Item label="候选知识">{documentDetail.document.knowledge_item_count}</Descriptions.Item>
+                    <Descriptions.Item label="实体 / 事件 / 流程">
+                      {documentDetail.document.entity_count} / {documentDetail.document.event_count} / {documentDetail.document.process_count}
+                    </Descriptions.Item>
+                  </Descriptions>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="规则版本落后于当前策略"
+                    description="若策略已升级，可从策略差异页生成影响面并启动增量重算。"
+                  />
+                  {knowledgeSections.map((section) => (
+                    <DocumentKnowledgeSection
+                      key={section.key}
+                      title={section.title}
+                      items={groupedKnowledge[section.key].slice(0, 3)}
+                    />
+                  ))}
+                </Space>
+              ) : (
+                <Empty description="请选择左侧文档查看抽取状态、策略绑定和发布候选情况" />
+              )}
+            </Card>
+          </Col>
+        </Row>
       </Space>
     </ValidationWorkspace>
   );

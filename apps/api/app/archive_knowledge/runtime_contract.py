@@ -112,6 +112,14 @@ class RuntimeStageSnapshot(BaseModel):
     edge_observers: dict[str, RuntimeObserverPayload] = Field(default_factory=dict)
 
 
+class RuntimePolicySnapshotRule(BaseModel):
+    key: str
+    name: str
+    meaning: str = ""
+    threshold: str = ""
+    action: str
+
+
 class RuntimePolicySnapshotStage(BaseModel):
     stage_id: str
     label: str
@@ -119,6 +127,7 @@ class RuntimePolicySnapshotStage(BaseModel):
     ai_mode: str
     default_action: str
     rule_count: int = 0
+    rules: list[RuntimePolicySnapshotRule] = Field(default_factory=list)
 
 
 class RuntimePolicySnapshot(BaseModel):

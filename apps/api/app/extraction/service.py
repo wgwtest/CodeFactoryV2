@@ -48,21 +48,47 @@ class ExtractionService:
             file_path=file_path,
             segments=segments,
         )
-        if self._should_use_chunked_formal_extraction(segments):
-            return self._extract_with_chunks(
-                document_id=document_id,
-                title=title,
-                file_path=file_path,
-                segments=segments,
-                source_document=source_document,
-            )
-        return self._extract_standard_document(
+        unified_trace = self._build_unified_document_stage_trace(
             document_id=document_id,
             title=title,
             file_path=file_path,
             segments=segments,
             source_document=source_document,
         )
+        self._emit_stage_event(
+            stage_id="unified_document_object",
+            stage_label="Unified Document Object",
+            status="completed" if segments else "warning",
+            message=(
+                f"Unified document object normalized {len(segments)} parsed segments."
+                if segments
+                else "Unified document object could not be materialized because no parsed segments were available."
+            ),
+            runtime_trace=unified_trace,
+        )
+        if self._should_use_chunked_formal_extraction(segments):
+            batch = self._extract_with_chunks(
+                document_id=document_id,
+                title=title,
+                file_path=file_path,
+                segments=segments,
+                source_document=source_document,
+                unified_trace=unified_trace,
+            )
+        else:
+            batch = self._extract_standard_document(
+                document_id=document_id,
+                title=title,
+                file_path=file_path,
+                segments=segments,
+                source_document=source_document,
+                unified_trace=unified_trace,
+            )
+        batch.metadata["runtime_trace"] = {
+            **dict(batch.metadata.get("runtime_trace") or {}),
+            "unified_document_object": unified_trace,
+        }
+        return batch
 
     @staticmethod
     def _build_source_document(
@@ -77,6 +103,8 @@ class ExtractionService:
             file_type=Path(file_path).suffix.lstrip(".") or "txt",
             source_archive="runtime",
             text="\n".join(segment.content for segment in segments),
+            segment_count=len(segments),
+            segments=segments,
         )
 
     def _extract_standard_document(
@@ -87,7 +115,20 @@ class ExtractionService:
         file_path: str,
         segments: list[ParsedSegment],
         source_document: SourceDocument,
+        unified_trace: dict[str, Any],
     ) -> ExtractionBatch:
+        self._emit_stage_event(
+            stage_id="evidence_constructor",
+            stage_label="Evidence Constructor",
+            status="running",
+            message="Unified document content is being converted into traceable evidence units.",
+            runtime_trace=self._build_evidence_constructor_stage_trace(
+                document_id=document_id,
+                title=title,
+                source_document=source_document,
+                batches=[],
+            ),
+        )
         base_batch = extract_document_batch(document_id=document_id, document=source_document, segments=segments)
         structured_llm_bundle = self._build_structured_llm_bundle()
         llm_batch = self._try_llm_enrichment(
@@ -98,12 +139,44 @@ class ExtractionService:
             base_batch=base_batch,
             structured_llm_bundle=structured_llm_bundle,
         )
-        return self._merge_standard_batches(
+        merged_batch = self._merge_standard_batches(
             document_id=document_id,
             title=title,
             base_batch=base_batch,
             llm_batch=llm_batch,
         )
+        evidence_trace = self._build_evidence_constructor_stage_trace(
+            document_id=document_id,
+            title=title,
+            source_document=source_document,
+            batches=[merged_batch],
+        )
+        chunk_trace = self._build_chunk_layer_stage_trace(
+            document_id=document_id,
+            title=title,
+            source_document=source_document,
+            chunk_batches=[merged_batch],
+        )
+        merged_batch.metadata["runtime_trace"] = {
+            "unified_document_object": unified_trace,
+            "evidence_constructor": evidence_trace,
+            "evidence_graph_chunk_layer": chunk_trace,
+        }
+        self._emit_stage_event(
+            stage_id="evidence_constructor",
+            stage_label="Evidence Constructor",
+            status="completed" if merged_batch.candidates else "warning",
+            message=f"Evidence constructor produced {len(evidence_trace.get('evidence_units', []))} evidence units.",
+            runtime_trace=evidence_trace,
+        )
+        self._emit_stage_event(
+            stage_id="evidence_graph_chunk_layer",
+            stage_label="Evidence Graph / Chunk Layer",
+            status="completed" if chunk_trace.get("chunks") else "warning",
+            message=f"Chunk layer assembled {len(chunk_trace.get('chunks', []))} chunk windows.",
+            runtime_trace=chunk_trace,
+        )
+        return merged_batch
 
     def _extract_with_chunks(
         self,
@@ -113,11 +186,37 @@ class ExtractionService:
         file_path: str,
         segments: list[ParsedSegment],
         source_document: SourceDocument,
+        unified_trace: dict[str, Any],
     ) -> ExtractionBatch:
         chunks = build_document_chunks(segments, max_chars=settings.formal_chunk_char_limit)
         structured_llm_bundle = self._build_structured_llm_bundle()
         resolved_chunk_batches: list[tuple[DocumentChunk, ExtractionBatch]] = []
         chunk_total = len(chunks)
+        self._emit_stage_event(
+            stage_id="evidence_constructor",
+            stage_label="Evidence Constructor",
+            status="running",
+            message="Unified document content is being converted into traceable evidence units.",
+            runtime_trace=self._build_evidence_constructor_stage_trace(
+                document_id=document_id,
+                title=title,
+                source_document=source_document,
+                batches=[],
+            ),
+        )
+        self._emit_stage_event(
+            stage_id="evidence_graph_chunk_layer",
+            stage_label="Evidence Graph / Chunk Layer",
+            status="running",
+            message=f"Chunk planner prepared {chunk_total} chunk windows for staged evidence processing.",
+            runtime_trace=self._build_chunk_layer_stage_trace(
+                document_id=document_id,
+                title=title,
+                source_document=source_document,
+                chunk_batches=[],
+                planned_chunks=chunks,
+            ),
+        )
         for chunk_position, chunk in enumerate(chunks, start=1):
             resolved_chunk_batches.extend(
                 self._extract_chunk_batch_with_retry(
@@ -131,12 +230,74 @@ class ExtractionService:
                     chunk_total=chunk_total,
                 )
             )
-        return self._merge_chunk_batches(
+            processed_batches = [batch for _chunk, batch in resolved_chunk_batches]
+            self._emit_stage_event(
+                stage_id="evidence_constructor",
+                stage_label="Evidence Constructor",
+                status="running",
+                message=(
+                    f"Evidence constructor has processed {len(processed_batches)} chunk outputs and "
+                    f"assembled {sum(len(batch.candidates) for batch in processed_batches)} evidence candidates."
+                ),
+                runtime_trace=self._build_evidence_constructor_stage_trace(
+                    document_id=document_id,
+                    title=title,
+                    source_document=source_document,
+                    batches=processed_batches,
+                ),
+            )
+            self._emit_stage_event(
+                stage_id="evidence_graph_chunk_layer",
+                stage_label="Evidence Graph / Chunk Layer",
+                status="running",
+                message=f"Chunk graph has materialized {len(processed_batches)} resolved chunk windows so far.",
+                runtime_trace=self._build_chunk_layer_stage_trace(
+                    document_id=document_id,
+                    title=title,
+                    source_document=source_document,
+                    chunk_batches=processed_batches,
+                    planned_chunks=chunks,
+                ),
+            )
+        merged_batch = self._merge_chunk_batches(
             document_id=document_id,
             title=title,
             chunks=[chunk for chunk, _batch in resolved_chunk_batches],
             chunk_batches=[batch for _chunk, batch in resolved_chunk_batches],
         )
+        evidence_trace = self._build_evidence_constructor_stage_trace(
+            document_id=document_id,
+            title=title,
+            source_document=source_document,
+            batches=[batch for _chunk, batch in resolved_chunk_batches],
+        )
+        chunk_trace = self._build_chunk_layer_stage_trace(
+            document_id=document_id,
+            title=title,
+            source_document=source_document,
+            chunk_batches=[batch for _chunk, batch in resolved_chunk_batches],
+            planned_chunks=[chunk for chunk, _batch in resolved_chunk_batches],
+        )
+        merged_batch.metadata["runtime_trace"] = {
+            "unified_document_object": unified_trace,
+            "evidence_constructor": evidence_trace,
+            "evidence_graph_chunk_layer": chunk_trace,
+        }
+        self._emit_stage_event(
+            stage_id="evidence_constructor",
+            stage_label="Evidence Constructor",
+            status="completed" if evidence_trace.get("evidence_units") else "warning",
+            message=f"Evidence constructor produced {len(evidence_trace.get('evidence_units', []))} evidence units.",
+            runtime_trace=evidence_trace,
+        )
+        self._emit_stage_event(
+            stage_id="evidence_graph_chunk_layer",
+            stage_label="Evidence Graph / Chunk Layer",
+            status="completed" if chunk_trace.get("chunks") else "warning",
+            message=f"Chunk layer assembled {len(chunk_trace.get('chunks', []))} chunk windows.",
+            runtime_trace=chunk_trace,
+        )
+        return merged_batch
 
     def _extract_chunk_batch_with_retry(
         self,
@@ -201,6 +362,7 @@ class ExtractionService:
             return
         self.progress_callback(
             {
+                "event": "chunk_progress",
                 "chunk_id": chunk.chunk_id,
                 "chunk_position": chunk_position,
                 "chunk_total": chunk_total,
@@ -692,6 +854,301 @@ class ExtractionService:
             if value not in (None, "", []):
                 return value
         return None
+
+    def _emit_stage_event(
+        self,
+        *,
+        stage_id: str,
+        stage_label: str,
+        status: str,
+        message: str,
+        runtime_trace: dict[str, Any] | None = None,
+    ) -> None:
+        if self.progress_callback is None:
+            return
+        self.progress_callback(
+            {
+                "event": "stage_transition",
+                "stage_id": stage_id,
+                "stage_label": stage_label,
+                "status": status,
+                "message": message,
+                "runtime_trace": runtime_trace,
+            }
+        )
+
+    def _build_unified_document_stage_trace(
+        self,
+        *,
+        document_id: str,
+        title: str,
+        file_path: str,
+        segments: list[ParsedSegment],
+        source_document: SourceDocument,
+    ) -> dict[str, Any]:
+        section_labels = [segment.heading.strip() for segment in segments if segment.heading.strip()]
+        normalized_sections = list(dict.fromkeys(section_labels))
+        return {
+            "input_count": len(segments),
+            "output_count": len(segments),
+            "decision_summary": "normalize parser segments into a stable unified document object",
+            "ai_summary": "field alignment and heading normalization are applied before downstream evidence stages",
+            "events": [
+                self._trace_event(
+                    event_id=f"{document_id}:unified:normalized",
+                    kind="result",
+                    level="success" if segments else "warning",
+                    message=(
+                        f"Unified document object normalized {len(segments)} parsed segments from {file_path}."
+                        if segments
+                        else f"Unified document object could not normalize any parsed segments from {file_path}."
+                    ),
+                    object_id=f"{document_id}:unified-document",
+                    object_kind="node",
+                )
+            ],
+            "sections": [
+                self._trace_section(
+                    section_id="trace-unified-summary",
+                    title="Runtime Trace",
+                    fields=[
+                        self._trace_field("document_title", "document_title", title),
+                        self._trace_field("input_count", "input_count", str(len(segments))),
+                        self._trace_field("output_count", "output_count", str(len(segments))),
+                        self._trace_field("section_count", "section_count", str(len(normalized_sections))),
+                        self._trace_field("parser_name", "parser_name", source_document.parser_name or "unknown"),
+                    ],
+                )
+            ],
+        }
+
+    def _build_evidence_constructor_stage_trace(
+        self,
+        *,
+        document_id: str,
+        title: str,
+        source_document: SourceDocument,
+        batches: list[ExtractionBatch],
+    ) -> dict[str, Any]:
+        evidence_units: list[dict[str, Any]] = []
+        anchor_labels: set[str] = set()
+        for batch in batches:
+            for candidate in batch.candidates:
+                payload = dict(candidate.payload or {})
+                source_refs = list(payload.get("source_refs") or [])
+                anchor_label = self._extract_anchor_label(source_refs)
+                if anchor_label:
+                    anchor_labels.add(anchor_label)
+                evidence_units.append(
+                    {
+                        "unit_id": f"{candidate.item_type}:{candidate.canonical_name}:{len(evidence_units) + 1}",
+                        "source_item_id": payload.get("id") or f"{candidate.item_type}:{candidate.canonical_name}",
+                        "source_item_name": candidate.canonical_name,
+                        "source_kind": candidate.item_type,
+                        "excerpt": payload.get("evidence") or "",
+                        "anchor_label": anchor_label or "unanchored",
+                        "source_refs": source_refs,
+                    }
+                )
+        llm_notes = [batch.metadata.get("llm_notes") for batch in batches if batch.metadata.get("llm_notes")]
+        rule_hits = [
+            {
+                "key": "anchor_present",
+                "label": "anchor_present",
+                "detail": f"{sum(1 for unit in evidence_units if unit['anchor_label'] != 'unanchored')} of {len(evidence_units)} evidence units retained source anchors",
+            },
+            {
+                "key": "context_window",
+                "label": "context_window",
+                "detail": f"constructor used {len(source_document.segments or [])} unified segments as upstream context",
+            },
+        ]
+        return {
+            "input_count": len(source_document.segments or []),
+            "output_count": len(evidence_units),
+            "decision_summary": "convert unified document paragraphs into traceable evidence units",
+            "ai_summary": llm_notes[0] if llm_notes else "no llm refinement note recorded",
+            "rule_hits": rule_hits,
+            "evidence_units": evidence_units,
+            "events": [
+                self._trace_event(
+                    event_id=f"{document_id}:evidence-constructor:trace",
+                    kind="result",
+                    level="success" if evidence_units else "warning",
+                    message=(
+                        f"Evidence constructor produced {len(evidence_units)} evidence units for {title}."
+                        if evidence_units
+                        else f"Evidence constructor has not emitted any evidence units for {title} yet."
+                    ),
+                    object_id=f"{document_id}:evidence-constructor:units",
+                    object_kind="node",
+                )
+            ],
+            "sections": [
+                self._trace_section(
+                    section_id="trace-evidence-constructor",
+                    title="Runtime Trace",
+                    fields=[
+                        self._trace_field("input_count", "input_count", str(len(source_document.segments or []))),
+                        self._trace_field("output_count", "output_count", str(len(evidence_units))),
+                        self._trace_field("anchor_count", "anchor_count", str(len(anchor_labels))),
+                        self._trace_field("rule_hit_count", "rule_hit_count", str(len(rule_hits))),
+                        self._trace_field("ai_summary", "ai_summary", llm_notes[0] if llm_notes else "none"),
+                    ],
+                )
+            ],
+        }
+
+    def _build_chunk_layer_stage_trace(
+        self,
+        *,
+        document_id: str,
+        title: str,
+        source_document: SourceDocument,
+        chunk_batches: list[ExtractionBatch],
+        planned_chunks: list[DocumentChunk] | None = None,
+    ) -> dict[str, Any]:
+        chunks: list[dict[str, Any]] = []
+        for batch in chunk_batches:
+            chunk_id = str(batch.metadata.get("chunk_id") or f"chunk-{len(chunks) + 1}")
+            chunks.append(
+                {
+                    "chunk_id": chunk_id,
+                    "chunk_label": str(batch.metadata.get("chunk_heading") or chunk_id),
+                    "chunk_index": int(batch.metadata.get("chunk_index") or len(chunks)),
+                    "chunk_position": len(chunks) + 1,
+                    "chunk_total": len(chunk_batches),
+                    "chunk_heading": batch.metadata.get("chunk_heading"),
+                    "chunk_char_count": int(batch.metadata.get("chunk_char_count") or 0),
+                    "chunk_segment_count": int(batch.metadata.get("chunk_segment_count") or 0),
+                    "retry_depth": int(batch.metadata.get("retry_depth") or 0),
+                    "boundary_adjusted": int(batch.metadata.get("retry_depth") or 0) > 0,
+                    "source_refs": self._collect_batch_source_refs(batch),
+                    "evidence_unit_count": len(batch.candidates),
+                }
+            )
+        if not chunks and planned_chunks:
+            for index, chunk in enumerate(planned_chunks, start=1):
+                chunks.append(
+                    {
+                        "chunk_id": chunk.chunk_id,
+                        "chunk_label": chunk.heading or f"Chunk {index}",
+                        "chunk_index": chunk.chunk_index,
+                        "chunk_position": index,
+                        "chunk_total": len(planned_chunks),
+                        "chunk_heading": chunk.heading,
+                        "chunk_char_count": chunk.char_count,
+                        "chunk_segment_count": len(chunk.segments),
+                        "retry_depth": 0,
+                        "boundary_adjusted": False,
+                        "source_refs": [
+                            {
+                                "chunk_id": chunk.chunk_id,
+                                "chunk_heading": chunk.heading,
+                                "segment_ids": chunk.segment_ids,
+                                "anchors": chunk.anchors,
+                            }
+                        ],
+                        "evidence_unit_count": 0,
+                    }
+                )
+        adjusted_count = sum(1 for chunk in chunks if chunk.get("boundary_adjusted"))
+        planned_count = len(planned_chunks or chunks)
+        return {
+            "input_count": len(source_document.segments or []),
+            "output_count": len(chunks),
+            "decision_summary": "group evidence units into chunk windows and connect them as a stage-local graph layer",
+            "ai_summary": f"planned {planned_count} chunk windows with {adjusted_count} boundary adjustments",
+            "chunks": chunks,
+            "events": [
+                self._trace_event(
+                    event_id=f"{document_id}:chunk-layer:trace",
+                    kind="progress" if chunk_batches else "info",
+                    level="info" if chunks else "warning",
+                    message=(
+                        f"Chunk layer currently tracks {len(chunks)} chunk windows for {title}."
+                        if chunks
+                        else f"Chunk layer has not materialized any chunk windows for {title} yet."
+                    ),
+                    object_id=f"{document_id}:chunk-group",
+                    object_kind="node",
+                )
+            ],
+            "sections": [
+                self._trace_section(
+                    section_id="trace-chunk-layer",
+                    title="Runtime Trace",
+                    fields=[
+                        self._trace_field("input_count", "input_count", str(len(source_document.segments or []))),
+                        self._trace_field("output_count", "output_count", str(len(chunks))),
+                        self._trace_field("planned_chunk_count", "planned_chunk_count", str(planned_count)),
+                        self._trace_field("boundary_adjusted_count", "boundary_adjusted_count", str(adjusted_count)),
+                    ],
+                )
+            ],
+        }
+
+    @staticmethod
+    def _collect_batch_source_refs(batch: ExtractionBatch) -> list[dict[str, Any]]:
+        source_refs: list[dict[str, Any]] = []
+        for candidate in batch.candidates:
+            for source_ref in candidate.payload.get("source_refs", []) or []:
+                if source_ref not in source_refs:
+                    source_refs.append(source_ref)
+        return source_refs
+
+    @staticmethod
+    def _extract_anchor_label(source_refs: list[dict[str, Any]]) -> str | None:
+        for source_ref in source_refs:
+            for anchor in source_ref.get("anchors", []) or []:
+                page = anchor.get("page")
+                paragraph = anchor.get("paragraph")
+                block = anchor.get("block")
+                parts = []
+                if page is not None:
+                    parts.append(f"p.{page}")
+                if paragraph is not None:
+                    parts.append(f"para.{paragraph}")
+                if block is not None:
+                    parts.append(f"block.{block}")
+                if parts:
+                    return " / ".join(parts)
+        return None
+
+    @staticmethod
+    def _trace_event(
+        event_id: str,
+        kind: str,
+        level: str,
+        message: str,
+        object_id: str | None = None,
+        object_kind: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "event_id": event_id,
+            "kind": kind,
+            "level": level,
+            "message": message,
+            "object_id": object_id,
+            "object_kind": object_kind,
+        }
+
+    @staticmethod
+    def _trace_field(key: str, label: str, value: str, tone: str = "neutral") -> dict[str, str]:
+        return {
+            "key": key,
+            "label": label,
+            "value": value,
+            "tone": tone,
+        }
+
+    @staticmethod
+    def _trace_section(section_id: str, title: str, fields: list[dict[str, str]]) -> dict[str, Any]:
+        return {
+            "section_id": section_id,
+            "title": title,
+            "fields": fields,
+        }
 
     @staticmethod
     def _select_llm_segments(segments: list[ParsedSegment]) -> list[ParsedSegment]:
