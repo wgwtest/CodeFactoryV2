@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.config import settings
 from app.db.models.requirements import RequirementAnalysisSession
 from app.orchestrators.package_loader import OrchestratorPackage, get_orchestrator_registry
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
@@ -90,9 +91,9 @@ class RequirementAnalysisSessionService:
         )
 
     def list_orchestrators(self) -> dict:
-        registry = get_orchestrator_registry()
+        registry = get_orchestrator_plugin_registry()
         return {
-            "items": [package.to_api() for package in registry.list_packages()],
+            "items": [plugin.to_api() for plugin in registry.list_plugins()],
             "stable_contract": self._stable_contract(),
             "output_protocol": [
                 "previous_interaction",

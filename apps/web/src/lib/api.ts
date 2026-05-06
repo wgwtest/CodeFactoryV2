@@ -2076,8 +2076,11 @@ export type P3DesignLabSession = {
 export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
 
 export type RequirementAnalysisOrchestrator = {
+  plugin_id?: string;
   orchestrator_id: string;
   name: string;
+  plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+  observability_level?: "full" | "limited" | "none";
   version?: string;
   stage?: string;
   document_type?: string;
@@ -2086,7 +2089,7 @@ export type RequirementAnalysisOrchestrator = {
   status: RequirementAnalysisOrchestratorStatus;
   description: string;
   entry?: string | null;
-  capabilities?: readonly string[];
+  capabilities?: readonly string[] | Record<string, boolean>;
   requires?: Record<string, unknown>;
   package_path?: string;
 };

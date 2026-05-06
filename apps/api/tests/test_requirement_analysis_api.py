@@ -159,18 +159,27 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     orchestrators = client.get("/api/requirement-analysis/orchestrators")
     assert orchestrators.status_code == 200
     items = orchestrators.json()["items"]
-    assert items[0]["orchestrator_id"] == "xg-heuristic-orchestrator"
-    assert items[0]["status"] == "active"
-    assert items[0]["document_type"] == "xg"
-    assert items[0]["contract"] == "xg-orchestrator-contract@1"
-    assert items[0]["mode"] == "policy_interpreted"
-    assert {item["orchestrator_id"] for item in items} >= {
-        "xg-heuristic-orchestrator",
-        "xg-strong-rule-orchestrator",
-    }
-    strong_rule = next(item for item in items if item["orchestrator_id"] == "xg-strong-rule-orchestrator")
-    assert strong_rule["mode"] == "local_runner"
-    assert "rule_based_flow" in strong_rule["capabilities"]
+    plugin_ids = {item["plugin_id"] for item in items}
+    assert {
+        "xg-local-heuristic-orchestrator",
+        "xg-local-strong-rule-orchestrator",
+        "xg-dify-workflow-orchestrator",
+    }.issubset(plugin_ids)
+
+    heuristic = next(item for item in items if item["plugin_id"] == "xg-local-heuristic-orchestrator")
+    assert heuristic["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+    assert heuristic["plugin_type"] == "local_package"
+    assert heuristic["document_type"] == "xg"
+    assert heuristic["contract"] == "xg-observable-orchestrator-contract@1"
+    assert heuristic["observability_level"] == "full"
+    assert heuristic["capabilities"]["document_patch"] is True
+    assert heuristic["capabilities"]["stage_audits"] is True
+
+    dify = next(item for item in items if item["plugin_id"] == "xg-dify-workflow-orchestrator")
+    assert dify["plugin_type"] == "dify_workflow"
+    assert dify["observability_level"] == "limited"
+    assert dify["capabilities"]["filled_document_text"] is True
+    assert dify["capabilities"]["stage_audits"] is False
 
     created = client.post(
         "/api/requirement-analysis/sessions",
