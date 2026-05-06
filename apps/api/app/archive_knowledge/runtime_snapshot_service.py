@@ -41,7 +41,7 @@ from app.archive_knowledge.runtime_unified_document_object import (
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.parsing.service import ParsingService
 
-RUNTIME_SNAPSHOT_CONTRACT_VERSION = 4
+RUNTIME_SNAPSHOT_CONTRACT_VERSION = 5
 
 
 class DocumentRuntimeSnapshotService:

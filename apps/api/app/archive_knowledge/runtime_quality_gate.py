@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+import json
 from typing import Any
 
 from app.archive_knowledge.runtime_contract import (
@@ -37,7 +39,6 @@ def build_quality_gate_snapshot(
     runtime_trace: dict[str, Any] | None = None,
     status_override: RuntimeStatus | None = None,
 ) -> RuntimeStageSnapshot:
-    del archive_id
     definition = STAGE_DEFINITION_MAP["quality_policy_evaluation_governance_gate"]
     knowledge_items = list(knowledge_items or _derive_items_from_contribution(contribution))
     pending_items = [item for item in knowledge_items if item.get("review_status", "pending") == "pending"]
@@ -51,6 +52,16 @@ def build_quality_gate_snapshot(
     decision = _normalize_decision(trace, contribution, pending_items, rejected_items)
     metrics = _normalize_metrics(trace, contribution, knowledge_items)
     gate_status = status_override or _decision_runtime_status(decision.get("status"), document_published=document_published)
+    rule_execution_records = _build_rule_execution_records(
+        archive_id=archive_id,
+        document_id=document_id,
+        stage_id=definition.stage_id,
+        rule_hits=rule_hits,
+        knowledge_items=knowledge_items,
+        decision=decision,
+        trace=trace,
+    )
+    records_by_rule = {record["rule_id"]: record for record in rule_execution_records}
 
     gate_id = f"{document_id}:quality-gate:gate"
     candidate_set_id = f"{document_id}:quality-gate:candidate-set"
@@ -175,6 +186,7 @@ def build_quality_gate_snapshot(
     for rule_hit in rule_hits:
         rule_node_id = _rule_node_id(document_id, rule_hit)
         rule_status = _rule_hit_runtime_status(rule_hit)
+        record = records_by_rule.get(str(rule_hit.get("rule_id") or rule_hit.get("key") or "rule"), {})
         nodes.append(
             RuntimeGraphNode(
                 node_id=rule_node_id,
@@ -194,6 +206,13 @@ def build_quality_gate_snapshot(
                     "action": rule_hit.get("action"),
                     "outcome": rule_hit.get("outcome"),
                     "detail": rule_hit.get("detail"),
+                    "rule_id": record.get("rule_id"),
+                    "rule_version": record.get("rule_version"),
+                    "rule_hash": record.get("rule_hash"),
+                    "snapshot_id": record.get("snapshot_id"),
+                    "input_hash": record.get("input_hash"),
+                    "output_hash": record.get("output_hash"),
+                    "affected_object_ids": record.get("affected_object_ids", []),
                 },
             )
         )
@@ -407,6 +426,7 @@ def build_quality_gate_snapshot(
         stage_observer=stage_observer,
         node_observers=node_observers,
         edge_observers=edge_observers,
+        rule_execution_records=rule_execution_records,
     )
 
 
@@ -893,6 +913,97 @@ def _build_rule_edge_observer(
             RuntimeAction(action_id="view-target-node", label="View Target Node", target_kind="node", target_id=gate_id),
         ],
     )
+
+
+def _stable_runtime_hash(payload: Any) -> str:
+    normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return "sha256:" + sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None and str(item) != ""]
+
+
+def _build_rule_execution_records(
+    *,
+    archive_id: str,
+    document_id: str,
+    stage_id: str,
+    rule_hits: list[dict[str, Any]],
+    knowledge_items: list[dict[str, Any]],
+    decision: dict[str, Any],
+    trace: dict[str, Any],
+) -> list[dict[str, Any]]:
+    policy = trace.get("policy") if isinstance(trace.get("policy"), dict) else {}
+    snapshot_id = str(policy.get("snapshot_id") or trace.get("snapshot_id") or "")
+    default_affected_ids = [
+        str(item.get("id"))
+        for item in knowledge_items[:8]
+        if item.get("id") is not None and str(item.get("id")) != ""
+    ]
+    records: list[dict[str, Any]] = []
+
+    for index, rule_hit in enumerate(rule_hits, start=1):
+        rule_id = str(rule_hit.get("rule_id") or rule_hit.get("key") or f"rule-{index}")
+        rule_version = str(rule_hit.get("rule_version") or "r1.0")
+        affected_object_ids = _as_string_list(rule_hit.get("affected_object_ids")) or default_affected_ids
+        affected_relation_ids = _as_string_list(rule_hit.get("affected_relation_ids"))
+        input_artifact_refs = _as_string_list(rule_hit.get("input_artifact_refs")) or [
+            "canonical_knowledge_items",
+            "quality_metrics",
+            "policy_snapshot",
+        ]
+        output_artifact_refs = _as_string_list(rule_hit.get("output_artifact_refs")) or [
+            "rule_hit_set",
+            "quality_gate_decision",
+        ]
+        input_payload = {
+            "archive_id": archive_id,
+            "document_id": document_id,
+            "stage_id": stage_id,
+            "rule_id": rule_id,
+            "actual": rule_hit.get("actual"),
+            "threshold": rule_hit.get("threshold"),
+            "input_artifact_refs": input_artifact_refs,
+        }
+        output_payload = {
+            "rule_id": rule_id,
+            "outcome": rule_hit.get("outcome"),
+            "action": rule_hit.get("action"),
+            "affected_object_ids": affected_object_ids,
+            "decision": decision.get("status"),
+        }
+        records.append(
+            {
+                "execution_id": str(rule_hit.get("execution_id") or f"rex-{document_id}-{stage_id}-{rule_id}"),
+                "archive_id": archive_id,
+                "document_id": document_id,
+                "stage_id": stage_id,
+                "rule_id": rule_id,
+                "rule_version": rule_version,
+                "rule_hash": str(rule_hit.get("rule_hash") or _stable_runtime_hash({"rule_id": rule_id, "rule_version": rule_version, "threshold": rule_hit.get("threshold")})),
+                "snapshot_id": snapshot_id or None,
+                "input_artifact_refs": input_artifact_refs,
+                "input_hash": str(rule_hit.get("input_hash") or _stable_runtime_hash(input_payload)),
+                "output_artifact_refs": output_artifact_refs,
+                "output_hash": str(rule_hit.get("output_hash") or _stable_runtime_hash(output_payload)),
+                "affected_object_ids": affected_object_ids,
+                "affected_relation_ids": affected_relation_ids,
+                "decision": str(rule_hit.get("action") or decision.get("status") or "not_evaluated"),
+                "metrics": {
+                    "actual": rule_hit.get("actual"),
+                    "threshold": rule_hit.get("threshold"),
+                    "outcome": rule_hit.get("outcome"),
+                    "passed": bool(rule_hit.get("passed")),
+                },
+                "executed_at": rule_hit.get("executed_at") or trace.get("executed_at"),
+                "source": "runtime_trace" if trace.get("rule_hits") else "derived",
+            }
+        )
+
+    return records
 
 
 def _normalize_rule_hits(runtime_trace: dict[str, Any], contribution: dict[str, Any]) -> list[dict[str, Any]]:

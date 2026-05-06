@@ -1,8 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, test, vi } from "vitest";
 
 import { ArchiveManagementPage } from "../pages/ArchiveManagementPage";
+import { RuleContractEditorPage } from "../pages/P1PrototypeWorkflowPages";
 import type { ArchivePolicyConfig, KnowledgeArchive } from "../lib/api";
 
 const refreshArchivesMock = vi.fn();
@@ -347,6 +349,41 @@ test("saves edited policy config back to backend contract", async () => {
         stages: expect.objectContaining({
           asset_intake: expect.objectContaining({
             objective: "先完成接入质量判断，再决定是否进入正式抽取链路。",
+          }),
+        }),
+      }),
+    );
+  });
+});
+
+test("saves rule field contract as a new policy package version", async () => {
+  render(
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <RuleContractEditorPage />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "规则字段配置与合同编辑" })).toBeInTheDocument();
+  expect(screen.getByText("input_schema JSON 草稿")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "保存为新版本" }));
+
+  await waitFor(() => {
+    expect(updateArchivePolicyConfigMock).toHaveBeenCalledWith(
+      "kb-1",
+      expect.objectContaining({
+        policy_package_version_status: "draft",
+        stages: expect.objectContaining({
+          asset_intake: expect.objectContaining({
+            rules: expect.arrayContaining([
+              expect.objectContaining({
+                key: "asset-1",
+                rule_version: "r1.1",
+                input_schema: expect.arrayContaining([expect.objectContaining({ field_name: "input_hash" })]),
+                output_schema: expect.arrayContaining([expect.objectContaining({ field_name: "affected_object_ids" })]),
+                trace_fields: expect.arrayContaining(["rule_id", "rule_version", "input_hash", "output_hash"]),
+              }),
+            ]),
           }),
         }),
       }),
