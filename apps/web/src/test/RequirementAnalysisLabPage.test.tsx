@@ -238,6 +238,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByRole("button", { name: "删除实例" })).toBeInTheDocument();
   expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
+  expect(await screen.findAllByText("完整观测")).toHaveLength(2);
+  expect(screen.getByText("有限观测")).toBeInTheDocument();
+  expect(screen.getByText("Dify Workflow")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getAllByText("软件级需求规格说明模板").length).toBeGreaterThan(0);
   await waitFor(() =>
@@ -708,6 +711,46 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
   expect(screen.getByText("目标范围回看")).toBeInTheDocument();
   expect(screen.getByText("模型确认目标范围已覆盖。")).toBeInTheDocument();
   expect(screen.queryByText("当前 Turn 协议错误")).not.toBeInTheDocument();
+});
+
+test("shows limited-observability plugin fallback when Dify turn has no stage audits", async () => {
+  const session = buildSession("created");
+  const envelope = buildDifyTurnEnvelope();
+
+  mockRequirementAnalysisBootstrap();
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
+      return Promise.resolve({ data: envelope });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
+
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+  fireEvent.change(screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求..."), {
+    target: { value: "这个系统叫空域运算软件" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await screen.findByText("Dify workflow 预留插件已生成整篇正文草稿。");
+
+  fireEvent.click(screen.getByRole("tab", { name: /当前 Turn/ }));
+
+  expect(screen.getByText("有限观测")).toBeInTheDocument();
+  expect(screen.getByText("Dify Workflow")).toBeInTheDocument();
+  expect(screen.getByText("该插件未提供阶段审计输出")).toBeInTheDocument();
+  expect(screen.getByText(/fake-xg-dify-workflow/)).toBeInTheDocument();
 });
 
 test("lets provider log audit outputs expand until near one screen before internal scrolling", () => {
@@ -1694,6 +1737,87 @@ function buildTurnEnvelopeWithSparseReviewArrays(): RequirementAnalysisTurnEnvel
       turns: [sparseTurn],
     },
     turn: sparseTurn,
+  };
+}
+
+function buildDifyTurnEnvelope(): RequirementAnalysisTurnEnvelope {
+  const envelope = buildTurnEnvelope();
+  const difyTurn = {
+    ...envelope.turn,
+    user_input: "这个系统叫空域运算软件",
+    orchestrator_plugin: {
+      plugin_id: "xg-dify-workflow-orchestrator",
+      plugin_type: "dify_workflow",
+      observability_level: "limited",
+    },
+    spec_execution: {
+      ...envelope.turn.spec_execution,
+      assistant_message: "Dify workflow 预留插件已生成整篇正文草稿。",
+      confirmed_facts: ["这个系统叫空域运算软件"],
+      document_patch: [
+        {
+          plan_ref: "AP-DIFY-001",
+          operation: "append_or_update",
+          content: "# 需求规格说明\n\n## 本轮补充\n\n这个系统叫空域运算软件\n",
+        },
+      ],
+    },
+    stage_audits: [],
+    decision_trace: [],
+    raw_plugin_response: {
+      raw_output: {
+        raw_workflow_trace: {
+          fake: true,
+          workflow_id: "fake-xg-dify-workflow",
+        },
+      },
+    },
+  } as unknown as RequirementAnalysisTurnEnvelope["turn"];
+  return {
+    session: {
+      ...envelope.session,
+      turns: [difyTurn],
+      messages: [
+        ...buildSession("waiting_user").messages,
+        { id: "msg-0002", role: "user", content: "这个系统叫空域运算软件", turn_id: "turn-0001" },
+        {
+          id: "msg-0003",
+          role: "assistant",
+          content: "Dify workflow 预留插件已生成整篇正文草稿。",
+          turn_id: "turn-0001",
+        },
+      ],
+      working_document: {
+        ...envelope.session.working_document,
+        blocks: [
+          {
+            block_id: "blk-dify-0001",
+            anchor_path: "REQ-1.1",
+            block_type: "paragraph",
+            order_index: 10,
+            text: "# 需求规格说明\n\n## 本轮补充\n\n这个系统叫空域运算软件\n",
+            last_turn_id: "turn-0001",
+            source_fragment_ids: ["frag-dify-0001"],
+          },
+        ],
+        revision_fragments: [
+          {
+            fragment_id: "frag-dify-0001",
+            turn_id: "turn-0001",
+            color_token: "turn-color-01",
+            target_block_id: "blk-dify-0001",
+            apply_mode: "append_to_block",
+            start_offset: 0,
+            end_offset: 14,
+            user_input_summary: "这个系统叫空域运算软件",
+            supplement_reason: "fake Dify workflow 整篇正文草稿",
+            hit_spec_nodes: ["SPEC-REQ-1.1"],
+          },
+        ],
+      },
+      provider_logs: [],
+    },
+    turn: difyTurn,
   };
 }
 

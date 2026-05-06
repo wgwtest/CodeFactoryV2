@@ -61,6 +61,29 @@ function formatRequirementAnalysisMessageRole(role: string) {
   return role;
 }
 
+function formatObservabilityLevel(level?: string) {
+  if (level === "full") {
+    return "完整观测";
+  }
+  if (level === "limited") {
+    return "有限观测";
+  }
+  return "无过程观测";
+}
+
+function formatPluginType(type?: string) {
+  if (type === "dify_workflow") {
+    return "Dify Workflow";
+  }
+  if (type === "local_package") {
+    return "本地组织器";
+  }
+  if (type === "remote_service") {
+    return "远端服务";
+  }
+  return "组织器";
+}
+
 export function RequirementAnalysisLabPage() {
   const { labConfig, orchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
     useRequirementAnalysisLabBootstrap();
@@ -560,7 +583,13 @@ function ConfigTab({
                     <Text strong>{orchestrator.name}</Text>
                     <Text type="secondary">{orchestrator.description}</Text>
                   </span>
-                  <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
+                  <Space wrap>
+                    <Tag>{formatPluginType(orchestrator.plugin_type)}</Tag>
+                    <Tag color={orchestrator.observability_level === "full" ? "green" : orchestrator.observability_level === "limited" ? "orange" : "default"}>
+                      {formatObservabilityLevel(orchestrator.observability_level)}
+                    </Tag>
+                    <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
+                  </Space>
                 </button>
               ))}
             </div>
@@ -1212,6 +1241,12 @@ function getString(value: unknown, key: string): string {
   return typeof nested === "string" ? nested : "";
 }
 
+function getWorkflowTraceId(rawPluginResponse: unknown): string {
+  const rawOutput = getRecord(rawPluginResponse, "raw_output");
+  const workflowTrace = getRecord(rawOutput, "raw_workflow_trace");
+  return getString(workflowTrace, "workflow_id");
+}
+
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -1572,8 +1607,26 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
   const nextTargetSpecNodeIds = asStringArray(turn.next_interaction.target_spec_node_ids);
   const nextOptions = Array.isArray(turn.next_interaction.options) ? turn.next_interaction.options : [];
   const decisionTrace = asStringArray(turn.decision_trace);
+  const plugin = turn.orchestrator_plugin;
+  const workflowId = getWorkflowTraceId(turn.raw_plugin_response);
   return (
     <div className="requirement-analysis-lab-turn-view">
+      {plugin ? (
+        <div className="requirement-analysis-lab-turn-card is-audit">
+          <Text type="secondary">组织器插件</Text>
+          <div className="requirement-analysis-lab-turn-inline">
+            <Tag>{formatPluginType(plugin.plugin_type)}</Tag>
+            <Tag color={plugin.observability_level === "full" ? "green" : plugin.observability_level === "limited" ? "orange" : "default"}>
+              {formatObservabilityLevel(plugin.observability_level)}
+            </Tag>
+            <Tag>{plugin.plugin_id}</Tag>
+          </div>
+          {workflowId ? <Text type="secondary">Workflow ID：{workflowId}</Text> : null}
+        </div>
+      ) : null}
+      {!turn.stage_audits?.length && plugin?.observability_level === "limited" ? (
+        <Alert type="info" showIcon message="该插件未提供阶段审计输出" />
+      ) : null}
       <div className="requirement-analysis-lab-turn-card is-audit">
         <Text type="secondary">上轮系统留题</Text>
         <div className="requirement-analysis-lab-turn-inline">

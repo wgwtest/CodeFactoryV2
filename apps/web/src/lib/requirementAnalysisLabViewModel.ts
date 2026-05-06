@@ -13,10 +13,18 @@ export function resolveDefaultRequirementAnalysisOrchestratorId(
 ) {
   return (
     orchestrators.find((orchestrator) => orchestrator.orchestrator_id === defaultOrchestratorId)?.orchestrator_id ??
+    orchestrators.find((orchestrator) => orchestrator.plugin_id === defaultOrchestratorId)?.orchestrator_id ??
+    orchestrators.find((orchestrator) => legacyRequirementAnalysisOrchestratorIds[defaultOrchestratorId] === orchestrator.orchestrator_id)
+      ?.orchestrator_id ??
     orchestrators[0]?.orchestrator_id ??
     defaultOrchestratorId
   );
 }
+
+const legacyRequirementAnalysisOrchestratorIds: Record<string, string> = {
+  "xg-heuristic-orchestrator": "xg-local-heuristic-orchestrator",
+  "xg-strong-rule-orchestrator": "xg-local-strong-rule-orchestrator",
+};
 
 export function resolveDefaultRequirementAnalysisProviderId(providers: RequirementAnalysisProvider[], defaultProviderId: string) {
   if (!providers.length) {

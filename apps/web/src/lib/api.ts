@@ -2421,6 +2421,11 @@ export type RequirementAnalysisTurn = {
   turn_id: string;
   session_id: string;
   user_input: string;
+  orchestrator_plugin?: {
+    plugin_id: string;
+    plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+    observability_level?: "full" | "limited" | "none";
+  };
   previous_interaction: RequirementAnalysisInteraction;
   normalized_input: {
     input_type: string;
@@ -2438,6 +2443,7 @@ export type RequirementAnalysisTurn = {
   confidence: string;
   service_steps: RequirementAnalysisServiceStep[];
   raw_model_response: Record<string, unknown>;
+  raw_plugin_response?: Record<string, unknown>;
   created_at: string;
 };
 
