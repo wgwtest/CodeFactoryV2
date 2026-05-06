@@ -507,6 +507,8 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert_new_turn_contract(payload["turn"])
     assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
     assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "full"
+    assert payload["turn"]["orchestrator_plugin"]["plugin_type"] == "local_package"
+    assert payload["turn"]["raw_plugin_response"]["contract_version"] == "xg-observable-orchestrator-contract@1"
     assert payload["turn"]["raw_plugin_response"]["plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
     assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "supplement_requirement"
     assert "强规则组织器" in payload["turn"]["spec_execution"]["assistant_message"]

@@ -6,6 +6,7 @@ from app.orchestrators.plugin_contracts import (
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.adapters.local_xg_plugin import LocalXGOrchestratorPluginAdapter
 from app.orchestrators.adapters.dify_workflow_plugin import DifyWorkflowOrchestratorPluginAdapter
+from app.orchestrators.plugin_result_normalizer import OrchestratorPluginResultNormalizer
 
 
 def test_observable_orchestrator_plugin_manifest_contract() -> None:
@@ -196,6 +197,7 @@ def test_local_xg_plugin_wraps_existing_runner_output() -> None:
     assert result.plugin["observability_level"] == "full"
     assert result.final_output["document_patch"][0]["plan_ref"] == "AP-001"
     assert result.interaction_output["assistant_message"].startswith("强规则组织器")
+    assert result.process_output["stage_audits"]
     assert result.state_output["confirmed_facts_delta"]
     assert result.raw_output["raw_model_response"]["runner_invoked"] is True
 
@@ -245,3 +247,58 @@ def test_dify_workflow_plugin_returns_limited_observability_result() -> None:
     assert result.final_output["document_patch"] == []
     assert result.process_output["stage_audits"] == []
     assert result.raw_output["raw_workflow_trace"]["fake"] is True
+
+
+def test_plugin_result_normalizer_projects_observable_result_to_turn_payload() -> None:
+    result = OrchestratorRunResult(
+        contract_version="xg-observable-orchestrator-contract@1",
+        plugin={
+            "plugin_id": "xg-dify-workflow-orchestrator",
+            "plugin_type": "dify_workflow",
+            "observability_level": "limited",
+        },
+        final_output={
+            "filled_document_text": "# 需求规格说明\n\n空域运算软件",
+            "document_patch": [],
+            "changed_sections": [],
+            "completion_status": "partial",
+            "confidence": "medium",
+        },
+        interaction_output={
+            "assistant_message": "Dify workflow 预留插件已生成整篇正文草稿。",
+            "next_question": "请继续补充下一项需求规格信息。",
+            "quick_options": [],
+            "suggested_focus": {},
+        },
+        process_output={
+            "stage_results": [],
+            "stage_audits": [],
+            "decision_trace": ["fake Dify workflow 已返回有限观测结果。"],
+            "provider_logs": [],
+            "review_after_apply_result": {},
+            "annotations": [],
+            "risks": [],
+        },
+        state_output={
+            "confirmed_facts_delta": ["这个系统叫空域运算软件"],
+            "open_questions_delta": ["请继续补充下一项需求规格信息。"],
+            "spec_tree_update": {},
+            "working_document_update": {},
+            "turn_path_update": {},
+        },
+        raw_output={
+            "raw_plugin_response": {},
+            "raw_model_response": {},
+            "raw_workflow_trace": {"fake": True, "workflow_id": "fake-xg-dify-workflow"},
+        },
+    )
+
+    normalized = OrchestratorPluginResultNormalizer().normalize(result)
+
+    assert normalized["model_output"]["assistant_message"] == "Dify workflow 预留插件已生成整篇正文草稿。"
+    assert normalized["model_output"]["next_question"] == "请继续补充下一项需求规格信息。"
+    assert normalized["model_output"]["filled_document_text"].endswith("空域运算软件")
+    assert normalized["process_output"]["stage_audits"] == []
+    assert normalized["process_output"]["decision_trace"] == ["fake Dify workflow 已返回有限观测结果。"]
+    assert normalized["raw_plugin_response"]["contract_version"] == "xg-observable-orchestrator-contract@1"
+    assert normalized["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["workflow_id"] == "fake-xg-dify-workflow"

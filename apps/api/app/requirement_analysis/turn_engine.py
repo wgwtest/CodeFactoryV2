@@ -6,6 +6,7 @@ from app.orchestrators.adapters.dify_workflow_plugin import DifyWorkflowOrchestr
 from app.orchestrators.orchestrator_id_mapper import local_package_id_for_orchestrator
 from app.orchestrators.package_loader import OrchestratorPackage
 from app.orchestrators.plugin_contracts import OrchestratorRunRequest
+from app.orchestrators.plugin_result_normalizer import OrchestratorPluginResultNormalizer
 from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
 from app.requirement_analysis.models import RequirementAnalysisTurnCreate
 from app.requirement_analysis.next_interaction_service import NextInteractionService
@@ -874,6 +875,10 @@ class RequirementAnalysisTurnEngine:
         )
         adapter = DifyWorkflowOrchestratorPluginAdapter(manifest=plugin)
         result = adapter.run(request)
+        normalized_result = OrchestratorPluginResultNormalizer().normalize(result)
+        plugin_model_output = normalized_result["model_output"]
+        plugin_process_output = normalized_result["process_output"]
+        plugin_state_output = normalized_result["state_output"]
 
         active_spec_node = dict(context.active_spec_node or {})
         anchor_path = str(active_spec_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
@@ -882,7 +887,7 @@ class RequirementAnalysisTurnEngine:
             {
                 "plan_ref": "AP-DIFY-001",
                 "operation": "append_or_update",
-                "content": str(result.final_output.get("filled_document_text") or ""),
+                "content": str(plugin_model_output.get("filled_document_text") or ""),
                 "write_policy": session.write_policy,
             }
         ]
@@ -909,8 +914,8 @@ class RequirementAnalysisTurnEngine:
             target_anchor_plan=target_anchor_plan,
         )
         working_document_update = working_document_update_result.to_dict()
-        next_question = str(result.interaction_output.get("next_question") or "请继续补充下一项需求规格信息。")
-        assistant_message = str(result.interaction_output.get("assistant_message") or "Dify workflow 预留插件已生成整篇正文草稿。")
+        next_question = str(plugin_model_output.get("next_question") or "请继续补充下一项需求规格信息。")
+        assistant_message = str(plugin_model_output.get("assistant_message") or "Dify workflow 预留插件已生成整篇正文草稿。")
         turn = {
             "turn_id": turn_id,
             "session_id": session.session_id,
@@ -926,7 +931,7 @@ class RequirementAnalysisTurnEngine:
             "spec_execution": {
                 "assistant_message": assistant_message,
                 "affected_spec_nodes": [projection_spec_node],
-                "confirmed_facts": list(result.state_output.get("confirmed_facts_delta") or []),
+                "confirmed_facts": list(plugin_state_output.get("confirmed_facts_delta") or []),
                 "document_patch": document_patch,
                 "target_anchor_plan": target_anchor_plan,
                 "working_document_update": working_document_update,
@@ -943,16 +948,16 @@ class RequirementAnalysisTurnEngine:
                 "interaction_id": f"interaction-{context.turn_index:04d}",
                 "type": "open_question",
                 "prompt": next_question,
-                "options": list(result.interaction_output.get("quick_options") or []),
+                "options": list(plugin_model_output.get("quick_options") or []),
                 "target_spec_node_ids": [str(active_spec_node.get("node_id") or "")] if active_spec_node.get("node_id") else [],
                 "reason": "",
             },
             "stage_audits": [],
-            "decision_trace": list(result.process_output.get("decision_trace") or []),
-            "confidence": str(result.final_output.get("confidence") or "medium"),
+            "decision_trace": list(plugin_process_output.get("decision_trace") or []),
+            "confidence": str(plugin_model_output.get("confidence") or "medium"),
             "service_steps": self._service_steps(),
             "raw_model_response": {},
-            "raw_plugin_response": result.model_dump(mode="json"),
+            "raw_plugin_response": normalized_result["raw_plugin_response"],
             "created_at": now,
         }
         updated_turns = [*turns, turn]
@@ -966,8 +971,8 @@ class RequirementAnalysisTurnEngine:
             state_patch={
                 "turns": updated_turns,
                 "messages": messages,
-                "confirmed_facts": list(result.state_output.get("confirmed_facts_delta") or []),
-                "open_questions": list(result.state_output.get("open_questions_delta") or []),
+                "confirmed_facts": list(plugin_state_output.get("confirmed_facts_delta") or []),
+                "open_questions": list(plugin_state_output.get("open_questions_delta") or []),
                 "document_patch": document_patch,
                 "working_document": working_document,
                 "questions": list(session.payload.get("questions", [])),
@@ -978,8 +983,8 @@ class RequirementAnalysisTurnEngine:
                 "turn_path": list(session.payload.get("turn_path", [])),
                 "next_interaction": turn["next_interaction"],
                 "last_quick_options": turn["next_interaction"]["options"],
-                "annotations": list(result.process_output.get("annotations") or []),
-                "risks": list(result.process_output.get("risks") or []),
+                "annotations": list(plugin_process_output.get("annotations") or []),
+                "risks": list(plugin_process_output.get("risks") or []),
             },
             provider_logs=[],
         )
