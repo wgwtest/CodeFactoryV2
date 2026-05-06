@@ -5,6 +5,7 @@ from app.orchestrators.plugin_contracts import (
 )
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.adapters.local_xg_plugin import LocalXGOrchestratorPluginAdapter
+from app.orchestrators.adapters.dify_workflow_plugin import DifyWorkflowOrchestratorPluginAdapter
 
 
 def test_observable_orchestrator_plugin_manifest_contract() -> None:
@@ -197,3 +198,50 @@ def test_local_xg_plugin_wraps_existing_runner_output() -> None:
     assert result.interaction_output["assistant_message"].startswith("强规则组织器")
     assert result.state_output["confirmed_facts_delta"]
     assert result.raw_output["raw_model_response"]["runner_invoked"] is True
+
+
+def test_dify_workflow_plugin_returns_limited_observability_result() -> None:
+    registry = OrchestratorPluginRegistry()
+    manifest = registry.require("xg-dify-workflow-orchestrator")
+    adapter = DifyWorkflowOrchestratorPluginAdapter(manifest=manifest)
+    request = OrchestratorRunRequest(
+        contract_version="xg-observable-orchestrator-contract@1",
+        session={
+            "session_id": "ra-001",
+            "topic": "空域运算软件需求规格探索",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "write_policy": "patch_suggestion_only",
+        },
+        turn={
+            "turn_id": "turn-0001",
+            "turn_index": 1,
+            "user_input": "这个系统叫空域运算软件",
+            "normalized_input": {"input_type": "free_text", "semantic": "这个系统叫空域运算软件"},
+            "previous_interaction": {"type": "none"},
+            "input_relation": {"relation": "none"},
+        },
+        template={"template_id": "81433号", "format": "markdown", "content": "# 需求规格说明\n", "parsed_structure": {}},
+        document_context={
+            "working_document": {"document_id": "lab-working-document", "blocks": []},
+            "active_spec_node": {"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
+            "spec_tree": [],
+            "confirmed_facts": [],
+            "open_questions": [],
+            "patches": [],
+            "history_summary": "",
+        },
+        execution_options={"expected_output": "full_document", "observability_required": "limited", "streaming_enabled": False},
+    )
+
+    result = adapter.run(request)
+
+    assert result.plugin["plugin_id"] == "xg-dify-workflow-orchestrator"
+    assert result.plugin["observability_level"] == "limited"
+    assert "空域运算软件" in result.final_output["filled_document_text"]
+    assert result.final_output["document_patch"] == []
+    assert result.process_output["stage_audits"] == []
+    assert result.raw_output["raw_workflow_trace"]["fake"] is True
