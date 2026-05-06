@@ -197,6 +197,37 @@
   overflow: auto;
 }
 
+.requirement-analysis-lab-template-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d6ded9;
+  background: #f8fbfa;
+}
+
+.requirement-analysis-lab-template-list-head .ant-space {
+  justify-content: space-between;
+}
+
+.requirement-analysis-lab-template-list-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.requirement-analysis-lab-template-list-actions .ant-btn {
+  width: 100%;
+}
+
+.requirement-analysis-lab-template-list-head > div:first-child,
+.requirement-analysis-lab-template-modal-body > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
 .requirement-analysis-lab-template-option {
   min-height: 70px;
   width: 100%;
@@ -238,21 +269,51 @@
 .requirement-analysis-lab-template-editor {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 10px;
 }
 
-.requirement-analysis-lab-template-create {
+.requirement-analysis-lab-template-editor-head {
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #d6ded9;
-  background: #f8fbfa;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.requirement-analysis-lab-template-modal-body {
+  display: grid;
+  gap: 14px;
 }
 
 .requirement-analysis-lab-template-base-list {
   display: grid;
   gap: 8px;
+}
+
+.requirement-analysis-lab-template-base-card {
+  min-height: 68px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #c8d3ce;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.requirement-analysis-lab-template-base-card span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.requirement-analysis-lab-template-base-card.is-selected {
+  border-color: #2f7b7d;
+  background: #eef9f7;
 }
 
 .requirement-analysis-lab-template-base-note {
@@ -265,20 +326,13 @@
   background: #f8fbfa;
 }
 
-.requirement-analysis-lab-template-create-actions {
-  justify-content: space-between;
-}
-
-.requirement-analysis-lab-template-create-actions.ant-space {
-  width: 100%;
-}
-
 .requirement-analysis-lab-template-actions {
+  flex-shrink: 0;
   justify-content: space-between;
 }
 
 .requirement-analysis-lab-template-actions.ant-space {
-  width: 100%;
+  min-width: 0;
 }
 
 .requirement-analysis-lab-template-textarea.ant-input {
