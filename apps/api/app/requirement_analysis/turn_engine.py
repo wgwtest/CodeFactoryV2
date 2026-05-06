@@ -134,15 +134,19 @@ class RequirementAnalysisTurnEngine:
             )
         model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
         model_output = self.turn_output_service.normalize_turn_model_output(model_output, session=session)
+        model_output = self.turn_output_service.validate_anchor_plan_refs(
+            model_output=model_output,
+            chapter_configuration_context=self.stage_runtime_context_builder.build(
+                session=session,
+                context=context,
+                stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+                working_document=working_document,
+            ).chapter_configuration_context,
+        )
         projection = self.spec_projection_service.project(
             spec_tree=context.spec_tree,
             model_output=model_output,
             fallback_node_id=context.active_spec_node_id,
-        )
-        model_output = self.turn_output_service.ensure_patch_target_section(
-            model_output=model_output,
-            current_spec_node=projection.projection_spec_node,
-            session=session,
         )
         write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
@@ -171,6 +175,7 @@ class RequirementAnalysisTurnEngine:
             projection_spec_node=projection.projection_spec_node,
             turn_id=turn_id,
             user_input_summary=context.normalized_input.get("semantic") or user_input,
+            target_anchor_plan=model_output["target_anchor_plan"],
         )
         working_document_update = working_document_update_result.to_dict()
         server_review_evidence = self.working_document_review_service.review(
@@ -201,6 +206,8 @@ class RequirementAnalysisTurnEngine:
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
                 stage_quality_constraints=stage_quality_constraints,
+                template_shape_assessment=model_output["template_shape_assessment"],
+                target_anchor_plan=model_output["target_anchor_plan"],
                 working_document=working_document,
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
@@ -267,6 +274,8 @@ class RequirementAnalysisTurnEngine:
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
                 stage_quality_constraints=stage_quality_constraints,
+                template_shape_assessment=model_output["template_shape_assessment"],
+                target_anchor_plan=model_output["target_anchor_plan"],
                 working_document=working_document,
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
@@ -590,9 +599,20 @@ class RequirementAnalysisTurnEngine:
         planning_user_message: str,
         next_question: str,
     ) -> str:
+        plan_by_id = {
+            str(plan.get("plan_id") or "").strip(): dict(plan)
+            for plan in list(model_output.get("target_anchor_plan") or [])
+            if isinstance(plan, dict) and str(plan.get("plan_id") or "").strip()
+        }
         sections = []
         for patch in list(model_output.get("document_patch") or []):
-            section = str(patch.get("section") or "").strip()
+            plan = plan_by_id.get(str(patch.get("plan_ref") or "").strip(), {})
+            section = str(
+                plan.get("display_heading")
+                or plan.get("canonical_clause_heading")
+                or plan.get("template_clause_id")
+                or ""
+            ).strip()
             if section and section not in sections:
                 sections.append(section)
         if sections:

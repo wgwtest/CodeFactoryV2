@@ -10,6 +10,8 @@ import type {
   RequirementAnalysisLabConfig,
   RequirementAnalysisProviderLog,
   RequirementAnalysisProvider,
+  RequirementAnalysisTemplateDetail,
+  RequirementAnalysisTemplateSummary,
   RequirementAnalysisQuickOption,
   RequirementAnalysisSession,
   RequirementAnalysisSpecTreeNode,
@@ -19,6 +21,8 @@ import type {
 import {
   createRequirementAnalysisSession,
   createRequirementAnalysisTurn,
+  getRequirementAnalysisTemplate,
+  saveRequirementAnalysisTemplate,
 } from "../lib/requirementAnalysis";
 import {
   getRequirementAnalysisProviderLogFieldNote,
@@ -56,9 +60,14 @@ function formatRequirementAnalysisMessageRole(role: string) {
 }
 
 export function RequirementAnalysisLabPage() {
-  const { labConfig, orchestratorsEnvelope, providers, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
+  const { labConfig, orchestratorsEnvelope, providers, templates, loading, error: bootstrapError } = useRequirementAnalysisLabBootstrap();
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateDetail, setTemplateDetail] = useState<RequirementAnalysisTemplateDetail | null>(null);
+  const [templateDraft, setTemplateDraft] = useState("");
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [topic, setTopic] = useState("");
   const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("config");
   const [session, setSession] = useState<RequirementAnalysisSession | null>(null);
@@ -79,7 +88,47 @@ export function RequirementAnalysisLabPage() {
     setSelectedProviderId((current) =>
       current || resolveDefaultRequirementAnalysisProviderId(providers, labConfig.defaults.provider_id),
     );
-  }, [labConfig, orchestratorsEnvelope, providers]);
+    setSelectedTemplateId((current) => {
+      if (current) {
+        return current;
+      }
+      const configuredTemplateId = labConfig.defaults.template_id;
+      if (templates.some((template) => template.template_id === configuredTemplateId)) {
+        return configuredTemplateId;
+      }
+      return templates[0]?.template_id ?? configuredTemplateId;
+    });
+  }, [labConfig, orchestratorsEnvelope, providers, templates]);
+
+  useEffect(() => {
+    if (!selectedTemplateId) {
+      return;
+    }
+    let cancelled = false;
+    async function loadTemplate() {
+      try {
+        setTemplateLoading(true);
+        const response = await getRequirementAnalysisTemplate(selectedTemplateId);
+        if (cancelled) {
+          return;
+        }
+        setTemplateDetail(response.data);
+        setTemplateDraft(response.data.content);
+      } catch (templateError) {
+        if (!cancelled) {
+          setError(templateError instanceof Error ? templateError.message : "加载需求规格说明模板失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setTemplateLoading(false);
+        }
+      }
+    }
+    void loadTemplate();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTemplateId]);
 
   const selectedOrchestrator = useMemo(
     () => orchestratorsEnvelope?.items.find((item) => item.orchestrator_id === selectedOrchestratorId) ?? null,
@@ -90,6 +139,7 @@ export function RequirementAnalysisLabPage() {
     () => providers.find((provider) => provider.provider_id === selectedProviderId) ?? null,
     [providers, selectedProviderId],
   );
+  const providerOptions = useMemo(() => sortRequirementAnalysisProviders(providers), [providers]);
 
   const logCount = session?.provider_logs.length ?? 0;
   const defaultWritePolicyLabel = labConfig
@@ -98,6 +148,7 @@ export function RequirementAnalysisLabPage() {
   const effectiveError = error ?? bootstrapError;
 
   async function handleStart() {
+    setActiveTab("session");
     try {
       setActing(true);
       const response = await createRequirementAnalysisSession({
@@ -105,7 +156,7 @@ export function RequirementAnalysisLabPage() {
         orchestrator_id: selectedOrchestratorId,
         provider_id: selectedProviderId,
         model: labConfig?.defaults.model ?? "",
-        template_id: labConfig?.defaults.template_id,
+        template_id: selectedTemplateId || labConfig?.defaults.template_id,
         knowledge_package_id: labConfig?.defaults.knowledge_package_id,
         write_policy: labConfig?.defaults.write_policy,
       });
@@ -121,6 +172,23 @@ export function RequirementAnalysisLabPage() {
 
   async function handleSend() {
     await submitUserInput(userInput);
+  }
+
+  async function handleSaveTemplate() {
+    if (!selectedTemplateId) {
+      return;
+    }
+    try {
+      setTemplateSaving(true);
+      const response = await saveRequirementAnalysisTemplate(selectedTemplateId, templateDraft);
+      setTemplateDetail(response.data);
+      setTemplateDraft(response.data.content);
+      setError(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存需求规格说明模板失败");
+    } finally {
+      setTemplateSaving(false);
+    }
   }
 
   function handleResetSession() {
@@ -223,7 +291,16 @@ export function RequirementAnalysisLabPage() {
                 onOrchestratorSelect={setSelectedOrchestratorId}
                 onTopicChange={setTopic}
                 orchestratorsEnvelope={orchestratorsEnvelope}
-                providers={providers}
+                providers={providerOptions}
+                templates={templates}
+                selectedTemplateId={selectedTemplateId}
+                onTemplateSelect={setSelectedTemplateId}
+                templateDetail={templateDetail}
+                templateDraft={templateDraft}
+                onTemplateDraftChange={setTemplateDraft}
+                onSaveTemplate={() => void handleSaveTemplate()}
+                templateLoading={templateLoading}
+                templateSaving={templateSaving}
                 selectedOrchestrator={selectedOrchestrator}
                 selectedOrchestratorId={selectedOrchestratorId}
                 selectedProviderId={selectedProviderId}
@@ -292,8 +369,17 @@ function ConfigTab({
   onStart,
   onOrchestratorSelect,
   onTopicChange,
+  onTemplateDraftChange,
+  onTemplateSelect,
+  onSaveTemplate,
   orchestratorsEnvelope,
   providers,
+  templates,
+  selectedTemplateId,
+  templateDetail,
+  templateDraft,
+  templateLoading,
+  templateSaving,
   selectedOrchestrator,
   selectedOrchestratorId,
   selectedProviderId,
@@ -308,100 +394,163 @@ function ConfigTab({
   onStart: () => void;
   onOrchestratorSelect: (orchestratorId: string) => void;
   onTopicChange: (topic: string) => void;
+  onTemplateDraftChange: (content: string) => void;
+  onTemplateSelect: (templateId: string) => void;
+  onSaveTemplate: () => void;
   orchestratorsEnvelope: RequirementAnalysisOrchestratorEnvelope;
   providers: RequirementAnalysisProvider[];
+  templates: RequirementAnalysisTemplateSummary[];
+  selectedTemplateId: string;
+  templateDetail: RequirementAnalysisTemplateDetail | null;
+  templateDraft: string;
+  templateLoading: boolean;
+  templateSaving: boolean;
   selectedOrchestrator: RequirementAnalysisOrchestrator | null;
   selectedOrchestratorId: string;
   selectedProviderId: string;
   topic: string;
 }) {
   const topicField = labConfig.startup_fields.find((field) => field.field === "topic");
+  const templateDirty = Boolean(templateDetail && templateDraft !== templateDetail.content);
   return (
     <>
       <div className="requirement-analysis-lab-tab-grid is-config">
-        <section className="requirement-analysis-lab-panel requirement-analysis-lab-orchestrators">
-          <PanelHead title="可替换组织器" subtitle="当前只验证组织器输出协议，正式需求规格文档仍由稳定契约承接。" />
-          <div className="requirement-analysis-lab-option-list">
-            {orchestratorsEnvelope.items.map((orchestrator) => (
-              <button
-                className={
-                  orchestrator.orchestrator_id === selectedOrchestratorId
-                    ? "requirement-analysis-lab-option is-selected"
-                    : "requirement-analysis-lab-option"
-                }
-                key={orchestrator.orchestrator_id}
-                onClick={() => onOrchestratorSelect(orchestrator.orchestrator_id)}
-                type="button"
-              >
-                <span>
-                  <Text strong>{orchestrator.name}</Text>
-                  <Text type="secondary">{orchestrator.description}</Text>
-                </span>
-                <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
-              </button>
-            ))}
-          </div>
-        </section>
+        <div className="requirement-analysis-lab-config-stack">
+          <section className="requirement-analysis-lab-panel requirement-analysis-lab-orchestrators">
+            <PanelHead title="可替换组织器" subtitle="选择本轮需求规格探索使用的组织器策略。" />
+            <div className="requirement-analysis-lab-option-list">
+              {orchestratorsEnvelope.items.map((orchestrator) => (
+                <button
+                  className={
+                    orchestrator.orchestrator_id === selectedOrchestratorId
+                      ? "requirement-analysis-lab-option is-selected"
+                      : "requirement-analysis-lab-option"
+                  }
+                  key={orchestrator.orchestrator_id}
+                  onClick={() => onOrchestratorSelect(orchestrator.orchestrator_id)}
+                  type="button"
+                >
+                  <span>
+                    <Text strong>{orchestrator.name}</Text>
+                    <Text type="secondary">{orchestrator.description}</Text>
+                  </span>
+                  <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
+                </button>
+              ))}
+            </div>
+          </section>
 
-        <section className="requirement-analysis-lab-panel">
-          <PanelHead title="启动参数" subtitle="用于验证 XG 需求分析会话生命周期，不进入正式编辑器状态。" />
-          <label className="requirement-analysis-lab-field">
-            <Text strong>课题输入</Text>
-            <Input
-              placeholder={topicField?.placeholder}
-              value={topic}
-              onChange={(event) => onTopicChange(event.target.value)}
-            />
-          </label>
-          <div className="requirement-analysis-lab-provider-row">
-            {providers.map((provider) => (
-              <button
-                className={
-                  provider.provider_id === selectedProviderId ? "requirement-analysis-lab-provider is-selected" : "requirement-analysis-lab-provider"
+          <section className="requirement-analysis-lab-panel">
+            <PanelHead title="启动参数" subtitle="用于验证 XG 需求分析会话生命周期，不进入正式编辑器状态。" />
+            <label className="requirement-analysis-lab-field">
+              <Text strong>课题输入</Text>
+              <Input
+                placeholder={topicField?.placeholder}
+                value={topic}
+                onChange={(event) => onTopicChange(event.target.value)}
+              />
+            </label>
+            <div className="requirement-analysis-lab-provider-row">
+              {providers.map((provider) => (
+                <button
+                  className={
+                    provider.provider_id === selectedProviderId
+                      ? "requirement-analysis-lab-provider is-selected"
+                      : "requirement-analysis-lab-provider"
+                  }
+                  key={provider.provider_id}
+                  onClick={() => onProviderSelect(provider.provider_id)}
+                  type="button"
+                >
+                  <span>{provider.name}</span>
+                  <Tag color={provider.status === "active" ? "green" : "gold"} title={provider.status}>
+                    {formatProviderStatus(provider.status)}
+                  </Tag>
+                </button>
+              ))}
+            </div>
+            <Button block loading={acting} onClick={onStart} type="primary">
+              启动验证
+            </Button>
+            <Text className="requirement-analysis-lab-current-config" type="secondary">
+              当前 Provider：{activeProvider?.name ?? selectedProviderId}；当前组织器：
+              {selectedOrchestrator?.name ?? selectedOrchestratorId}；当前模板：{templateDetail?.name ?? selectedTemplateId}
+            </Text>
+            {currentSession ? (
+              <Alert
+                action={
+                  <Button onClick={onEnterSession} size="small" type="link">
+                    进入会话管理
+                  </Button>
                 }
-                key={provider.provider_id}
-                onClick={() => onProviderSelect(provider.provider_id)}
-                type="button"
-              >
-                <span>{provider.name}</span>
-                <Tag color={provider.status === "active" ? "green" : "gold"} title={provider.status}>
-                  {formatProviderStatus(provider.status)}
-                </Tag>
-              </button>
-            ))}
-          </div>
-          <Button block loading={acting} onClick={onStart} type="primary">
-            启动验证
-          </Button>
-          <Text className="requirement-analysis-lab-current-config" type="secondary">
-            当前 Provider：{activeProvider?.name ?? selectedProviderId}；当前组织器：
-            {selectedOrchestrator?.name ?? selectedOrchestratorId}
-          </Text>
-          {currentSession ? (
-            <Alert
-              action={
-                <Button onClick={onEnterSession} size="small" type="link">
-                  进入会话管理
-                </Button>
-              }
-              className="requirement-analysis-lab-session-created"
-              message={`会话已创建：${currentSession.session_id}`}
-              showIcon
-              type="success"
-            />
-          ) : null}
-        </section>
+                className="requirement-analysis-lab-session-created"
+                message={`会话已创建：${currentSession.session_id}`}
+                showIcon
+                type="success"
+              />
+            ) : null}
+          </section>
+        </div>
 
-        <section className="requirement-analysis-lab-panel requirement-analysis-lab-contract" data-testid="requirement-analysis-stable-contract">
-          <PanelHead title="稳定契约 / 输出协议" subtitle="组织器可替换，但这些 P2 能力对象和输出字段不能被替换策略破坏。" />
-          <ContractGrid stableContract={orchestratorsEnvelope.stable_contract} />
-          <div className="requirement-analysis-lab-protocol-list">
-            <Text strong>输出协议</Text>
-            {orchestratorsEnvelope.output_protocol.map((item) => (
-              <Tag key={item}>{item}</Tag>
-            ))}
+        <section className="requirement-analysis-lab-panel requirement-analysis-lab-template-panel">
+          <PanelHead title="需求规格说明模板" subtitle="选择并编辑本次组织器 Lab 使用的 Markdown 模板。" />
+          <div className="requirement-analysis-lab-template-layout">
+            <div className="requirement-analysis-lab-template-list">
+              {templates.length ? (
+                templates.map((template) => (
+                  <button
+                    className={
+                      template.template_id === selectedTemplateId
+                        ? "requirement-analysis-lab-template-option is-selected"
+                        : "requirement-analysis-lab-template-option"
+                    }
+                    key={template.template_id}
+                    onClick={() => onTemplateSelect(template.template_id)}
+                    type="button"
+                  >
+                    <span>
+                      <Text strong>{template.name}</Text>
+                      <Text type="secondary">{template.template_id}</Text>
+                    </span>
+                    <Tag color={template.status === "active" ? "green" : "default"}>{template.status}</Tag>
+                  </button>
+                ))
+              ) : (
+                <div className="requirement-analysis-lab-empty">
+                  <Text type="secondary">暂无可编辑模板。</Text>
+                </div>
+              )}
+            </div>
+            <Spin spinning={templateLoading}>
+              <div className="requirement-analysis-lab-template-editor">
+                <div className="requirement-analysis-lab-template-meta">
+                  <Text strong>{templateDetail?.name ?? "未选择模板"}</Text>
+                  <Text type="secondary">{templateDetail?.description ?? "选择左侧模板后可查看并编辑其 Markdown 正文。"}</Text>
+                </div>
+                <Space className="requirement-analysis-lab-template-actions" wrap>
+                  <Tag color={templateDirty ? "orange" : "green"}>{templateDirty ? "未保存" : "已同步"}</Tag>
+                  {templateDetail?.format ? <Tag>{templateDetail.format}</Tag> : null}
+                  <Button
+                    disabled={!selectedTemplateId || templateLoading}
+                    loading={templateSaving}
+                    onClick={onSaveTemplate}
+                    type="primary"
+                  >
+                    保存模板
+                  </Button>
+                </Space>
+                <TextArea
+                  aria-label="需求规格说明模板正文"
+                  autoSize={false}
+                  className="requirement-analysis-lab-template-textarea"
+                  disabled={!selectedTemplateId}
+                  onChange={(event) => onTemplateDraftChange(event.target.value)}
+                  placeholder="选择模板后，这里会显示对应的 Markdown 正文。"
+                  value={templateDraft}
+                />
+              </div>
+            </Spin>
           </div>
-          <Text className="requirement-analysis-lab-guardrail">替换组织器不能影响 P2 正式文档能力</Text>
         </section>
       </div>
     </>
@@ -1192,6 +1341,17 @@ function formatClosureStatus(status: string) {
   return labels[status] ?? status;
 }
 
+function formatDocumentPatchAnchorLabel(
+  planRef: string,
+  anchorPlanById: Map<string, { display_heading?: string; canonical_clause_heading?: string; template_clause_id: string }>,
+) {
+  const plan = anchorPlanById.get(planRef);
+  if (!plan) {
+    return planRef || "未绑定锚点";
+  }
+  return plan.display_heading || plan.canonical_clause_heading || plan.template_clause_id || planRef;
+}
+
 function PanelHead({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="requirement-analysis-lab-panel-head">
@@ -1207,6 +1367,12 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
   const confirmedFacts = asStringArray(turn.spec_execution.confirmed_facts);
   const affectedSpecNodes = Array.isArray(turn.spec_execution.affected_spec_nodes) ? turn.spec_execution.affected_spec_nodes : [];
   const documentPatch = Array.isArray(turn.spec_execution.document_patch) ? turn.spec_execution.document_patch : [];
+  const anchorPlanById = new Map(
+    (Array.isArray(turn.spec_execution.target_anchor_plan) ? turn.spec_execution.target_anchor_plan : []).map((plan) => [
+      plan.plan_id,
+      plan,
+    ]),
+  );
   const appliedBlockIds = asStringArray(turn.spec_execution.working_document_update.applied_block_ids);
   const targetReviewPaths = asStringArray(turn.post_update_review.target_review.review_target);
   const missingAspects = asStringArray(turn.post_update_review.target_review.missing_aspects);
@@ -1265,8 +1431,9 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         ))}
         <Text strong>正文建议</Text>
         {documentPatch.map((patch) => (
-          <div className="requirement-analysis-lab-patch" key={`${patch.section}-${patch.operation}`}>
-            <Text strong>{patch.section}</Text>
+          <div className="requirement-analysis-lab-patch" key={`${patch.plan_ref}-${patch.operation}`}>
+            <Text strong>{formatDocumentPatchAnchorLabel(patch.plan_ref, anchorPlanById)}</Text>
+            <Text type="secondary">计划引用：{patch.plan_ref}</Text>
             <Text>{patch.content}</Text>
           </div>
         ))}
@@ -1424,6 +1591,20 @@ function formatProviderStatus(status: string) {
     return "未配置";
   }
   return status;
+}
+
+function sortRequirementAnalysisProviders(providers: RequirementAnalysisProvider[]) {
+  return [...providers].sort((left, right) => providerPriority(left.provider_id) - providerPriority(right.provider_id));
+}
+
+function providerPriority(providerId: string) {
+  if (providerId === "deepseek") {
+    return 0;
+  }
+  if (providerId === "mock") {
+    return 1;
+  }
+  return 2;
 }
 
 function formatQuickOptionInput(option: RequirementAnalysisQuickOption) {

@@ -5,6 +5,8 @@
     "assistant_message",
     "confirmed_facts_delta",
     "open_questions_delta",
+    "template_shape_assessment",
+    "target_anchor_plan",
     "document_patch",
     "confidence"
   ],
@@ -38,6 +40,49 @@
         }
       }
     },
+    "template_shape_assessment": {
+      "type": "object",
+      "properties": {
+        "shape_type": {
+          "type": "string",
+          "enum": [
+            "fine_grained_fixed",
+            "fine_grained_extensible",
+            "coarse_grained_extensible",
+            "coarse_grained_fixed",
+            "editable_template"
+          ]
+        },
+        "reason": {"type": "string"},
+        "allowed_write_modes": {"type": "array", "items": {"type": "string"}},
+        "forbidden_write_modes": {"type": "array", "items": {"type": "string"}},
+        "template_revision_recommendations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "target_anchor_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plan_id", "decision_type", "template_clause_id", "display_heading"],
+        "properties": {
+          "plan_id": {"type": "string"},
+          "decision_type": {
+            "type": "string",
+            "enum": ["append_existing_clause", "revise_existing_anchor", "create_subtopic_under_clause"]
+          },
+          "template_clause_id": {"type": "string"},
+          "canonical_clause_heading": {"type": "string"},
+          "subtopic_action": {"type": "string"},
+          "subtopic_key": {"type": "string"},
+          "subtopic_title": {"type": "string"},
+          "display_heading": {"type": "string"},
+          "template_shape_ref": {"type": "string"},
+          "reason": {"type": "string"},
+          "confidence": {"type": "string"},
+          "anchor_path": {"type": "string"}
+        }
+      }
+    },
     "confirmed_facts_delta": {"type": "array", "items": {"type": "string"}},
     "open_questions_delta": {"type": "array", "items": {"type": "string"}},
     "document_patch": {
@@ -45,7 +90,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "section": {"type": "string"},
+          "plan_ref": {"type": "string"},
           "operation": {
             "type": "string",
             "enum": ["append_or_update", "append_to_block", "replace", "replace_range", "delete", "delete_range"]

@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
 from app.requirement_analysis import deepseek_client as requirement_analysis_client_module
 from app.main import create_app
@@ -47,6 +48,52 @@ def assert_new_turn_contract(turn: dict) -> None:
         assert removed_field not in turn
 
 
+def test_requirement_analysis_lab_template_assets_can_be_listed_read_and_saved(tmp_path, monkeypatch) -> None:
+    template_root = tmp_path / "templates"
+    template_root.mkdir()
+    (template_root / "81433.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
+    (template_root / "82259.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
+    monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", template_root)
+
+    client = TestClient(create_app())
+
+    listed = client.get("/api/requirement-analysis/templates")
+    assert listed.status_code == 200
+    assert listed.json()["items"] == [
+        {
+            "template_id": "81433号",
+            "template_code": "81433",
+            "name": "软件级需求规格说明模板",
+            "description": "Lab 可编辑 Markdown 模板。",
+            "status": "active",
+        },
+        {
+            "template_id": "82259号",
+            "template_code": "82259",
+            "name": "平台级需求规格说明模板",
+            "description": "Lab 可编辑 Markdown 模板。",
+            "status": "available",
+        },
+    ]
+
+    detail = client.get("/api/requirement-analysis/templates/81433号")
+    assert detail.status_code == 200
+    assert detail.json()["template_id"] == "81433号"
+    assert detail.json()["content"].startswith("# 81433 软件级需求规格模板")
+    assert detail.json()["format"] == "markdown"
+
+    saved = client.put(
+        "/api/requirement-analysis/templates/81433号",
+        json={"content": "# 81433 软件级需求规格模板\n\n## 1. 修改后的范围\n"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["content"].endswith("## 1. 修改后的范围\n")
+    assert (template_root / "81433.md").read_text(encoding="utf-8").endswith("## 1. 修改后的范围\n")
+
+    missing = client.get("/api/requirement-analysis/templates/unknown")
+    assert missing.status_code == 404
+
+
 def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     client = TestClient(create_app())
 
@@ -57,8 +104,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert config["defaults"] == {
         "topic": "默认运算软件需求规格说明",
         "orchestrator_id": "xg-heuristic-orchestrator",
-        "provider_id": "mock",
-        "model": "mock-requirement-analysis-v1",
+        "provider_id": "deepseek",
+        "model": "provider-default",
         "template_id": "81433号",
         "knowledge_package_id": "airspace-domain-demo",
         "write_policy": "patch_suggestion_only",
@@ -172,7 +219,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert "applied_section_ids" not in payload["turn"]["spec_execution"]["working_document_update"]
     assert payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0001"]
     assert payload["turn"]["spec_execution"]["working_document_update"]["applied_fragment_ids"] == ["frag-0001"]
-    assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["working_document_update"]["after_excerpt"]
+    assert "1.1 编写目的" in payload["turn"]["spec_execution"]["working_document_update"]["after_excerpt"]
     assert "section_review" not in payload["turn"]["post_update_review"]
     assert payload["turn"]["post_update_review"]["target_review"]["status"] in {"acceptable", "closed"}
     assert payload["turn"]["post_update_review"]["global_review"]["status"] in {"move_next_node", "continue"}
@@ -181,7 +228,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert any("用户输入是本轮 Turn 起点" in item for item in payload["turn"]["decision_trace"])
     assert payload["turn"]["normalized_input"]["input_type"] == "free_text"
     assert "本轮已补入临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
-    assert "1 总则 / 编写目的" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "1.1 编写目的" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "软件定位" in payload["turn"]["next_interaction"]["prompt"]
     assert payload["turn"]["next_interaction"]["type"] == "choice_question"
     assert [option["label"] for option in payload["turn"]["next_interaction"]["options"]] == [
@@ -189,7 +236,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "协同规划平台",
         "二者兼有但先做分析",
     ]
-    assert payload["turn"]["spec_execution"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
+    assert payload["turn"]["spec_execution"]["target_anchor_plan"][0]["template_clause_id"] == "REQ-1.1"
+    assert payload["turn"]["spec_execution"]["document_patch"][0]["plan_ref"] == "AP-001"
     assert payload["turn"]["spec_execution"]["document_patch"][0]["operation"] == "append_or_update"
     assert payload["turn"]["confidence"] == "medium"
     assert [item["stage_id"] for item in payload["session"]["provider_logs"]] == [
@@ -209,10 +257,11 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["provider_logs"][2]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "review_after_apply"
     assert payload["session"]["provider_logs"][3]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "next_interaction_planning"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
-    assert payload["session"]["document_patch"][0]["section"] == "1 总则 / 编写目的"
+    assert payload["session"]["document_patch"][0]["plan_ref"] == "AP-001"
     assert "sections" not in payload["session"]["working_document"]
     assert payload["session"]["working_document"]["blocks"][0]["block_id"] == "blk-0001"
-    assert payload["session"]["working_document"]["blocks"][0]["anchor_path"] == "1 总则 / 编写目的"
+    assert payload["session"]["working_document"]["blocks"][0]["anchor_path"] == "REQ-1.1"
+    assert payload["session"]["working_document"]["blocks"][0]["display_heading"] == "1.1 编写目的"
     assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
     assert payload["session"]["working_document"]["revision_fragments"][0]["fragment_id"] == "frag-0001"
     assert payload["session"]["working_document"]["revision_fragments"][0]["turn_id"] == "turn-0001"
@@ -224,7 +273,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["facts"][0]["fact_id"] == "F-001"
     assert payload["session"]["facts"][0]["source_question_ids"] == ["Q-001"]
     assert payload["session"]["patches"][0]["patch_id"] == "P-001"
-    assert payload["session"]["patches"][0]["target_section"] == "1 总则 / 编写目的"
+    assert payload["session"]["patches"][0]["target_section"] == "1.1 编写目的"
     assert payload["session"]["patches"][0]["source_fact_ids"] == ["F-001"]
     assert payload["session"]["patches"][0]["source_question_ids"] == ["Q-001"]
     assert payload["session"]["next_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
@@ -275,7 +324,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert "空域领域" in second_payload["session"]["facts"][1]["content"]
     assert second_payload["session"]["facts"][1]["source_question_ids"] == ["Q-002"]
     assert second_payload["session"]["patches"][1]["patch_id"] == "P-002"
-    assert second_payload["session"]["patches"][1]["target_section"] == "2 项目概述 / 软件定位"
+    assert second_payload["session"]["patches"][1]["target_section"] == "2.1 软件定位"
     assert second_payload["session"]["patches"][1]["source_question_ids"] == ["Q-002"]
     assert second_payload["session"]["active_spec_node_id"] == "SPEC-REQ-3.1"
     assert [item["call_id"] for item in second_payload["session"]["provider_logs"]] == [
@@ -567,11 +616,34 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                     {"key": "A", "label": "先确认输入"},
                     {"key": "B", "label": "先确认输出"},
                 ],
+                "template_shape_assessment": {
+                    "shape_type": "coarse_grained_extensible",
+                    "reason": "模板允许在既有条款下补写软件定位。",
+                    "allowed_write_modes": ["append_existing_clause"],
+                    "forbidden_write_modes": [],
+                    "template_revision_recommendations": [],
+                },
+                "target_anchor_plan": [
+                    {
+                        "plan_id": "AP-001",
+                        "decision_type": "append_existing_clause",
+                        "template_clause_id": "REQ-2.1",
+                        "canonical_clause_heading": "2.1 软件定位",
+                        "subtopic_action": "none",
+                        "subtopic_key": "",
+                        "subtopic_title": "",
+                        "display_heading": "2.1 软件定位",
+                        "template_shape_ref": "coarse_grained_extensible",
+                        "reason": "用户选择了计算分析工具定位。",
+                        "confidence": "high",
+                        "anchor_path": "REQ-2.1",
+                    }
+                ],
                 "confirmed_facts_delta": ["DeepSeek 确认系统初步定位为空域计算分析工具"],
                 "open_questions_delta": ["输入数据来源尚未确认。"],
                 "document_patch": [
                     {
-                        "section": "2 项目概述 / 软件定位",
+                        "plan_ref": "AP-001",
                         "operation": "append_or_update",
                         "content": "本系统支持空域计算分析任务的需求澄清。",
                         "write_policy": session.write_policy,
@@ -660,8 +732,9 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
         "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
     )
     assert provider_log["audit"]["service_output"]["assistant_message"].startswith("本轮已把软件定位写入临时正文")
-    assert "写入位置：2 项目概述 / 软件定位" in provider_log["audit"]["service_output"]["assistant_message"]
-    assert provider_log["audit"]["service_output"]["document_patch"][0]["section"] == "2 项目概述 / 软件定位"
+    assert "写入位置：2.1 软件定位" in provider_log["audit"]["service_output"]["assistant_message"]
+    assert provider_log["audit"]["service_output"]["target_anchor_plan"][0]["template_clause_id"] == "REQ-2.1"
+    assert provider_log["audit"]["service_output"]["document_patch"][0]["plan_ref"] == "AP-001"
     assert captured == {
         "api_key": "test-deepseek-key",
         "base_url": "https://api.deepseek.com",
@@ -808,11 +881,34 @@ def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) 
                     "related_spec_node_ids": ["SPEC-REQ-2.1"],
                 },
                 "quick_options": [],
+                "template_shape_assessment": {
+                    "shape_type": "coarse_grained_extensible",
+                    "reason": "模板允许在既有条款下补写编写目的。",
+                    "allowed_write_modes": ["append_existing_clause"],
+                    "forbidden_write_modes": [],
+                    "template_revision_recommendations": [],
+                },
+                "target_anchor_plan": [
+                    {
+                        "plan_id": "AP-001",
+                        "decision_type": "append_existing_clause",
+                        "template_clause_id": "REQ-1.1",
+                        "canonical_clause_heading": "1.1 编写目的",
+                        "subtopic_action": "none",
+                        "subtopic_key": "",
+                        "subtopic_title": "",
+                        "display_heading": "1.1 编写目的",
+                        "template_shape_ref": "coarse_grained_extensible",
+                        "reason": "用户确认系统名称和编写目的。",
+                        "confidence": "high",
+                        "anchor_path": "REQ-1.1",
+                    }
+                ],
                 "confirmed_facts_delta": ["系统名称和编写目的已确认。"],
                 "open_questions_delta": ["下一轮确认软件定位。"],
                 "document_patch": [
                     {
-                        "section": "1 总则 / 编写目的",
+                        "plan_ref": "AP-001",
                         "operation": "append_or_update",
                         "content": "本需求规格说明用于定义默认运算软件的建设目标和需求边界。",
                         "write_policy": session.write_policy,
@@ -1005,11 +1101,34 @@ def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_
                     "related_spec_node_ids": ["SPEC-REQ-1.1"],
                 },
                 "quick_options": [],
+                "template_shape_assessment": {
+                    "shape_type": "coarse_grained_extensible",
+                    "reason": "模板允许在既有条款下补写用户与角色。",
+                    "allowed_write_modes": ["append_existing_clause"],
+                    "forbidden_write_modes": [],
+                    "template_revision_recommendations": [],
+                },
+                "target_anchor_plan": [
+                    {
+                        "plan_id": "AP-001",
+                        "decision_type": "append_existing_clause",
+                        "template_clause_id": "REQ-3.1",
+                        "canonical_clause_heading": "3.1 用户与角色",
+                        "subtopic_action": "none",
+                        "subtopic_key": "",
+                        "subtopic_title": "",
+                        "display_heading": "3.1 用户与角色",
+                        "template_shape_ref": "coarse_grained_extensible",
+                        "reason": "用户本轮直接补充了角色信息。",
+                        "confidence": "high",
+                        "anchor_path": "REQ-3.1",
+                    }
+                ],
                 "confirmed_facts_delta": ["目标用户确认：领域专家直接使用，管理员负责配置。"],
                 "open_questions_delta": [],
                 "document_patch": [
                     {
-                        "section": "3 功能需求 / 用户与角色",
+                        "plan_ref": "AP-001",
                         "operation": "append_or_update",
                         "content": "本软件主要面向领域专家使用，管理员负责初始化配置和权限维护。",
                         "write_policy": session.write_policy,
@@ -1056,7 +1175,7 @@ def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_
     assert questions[0]["target_section"] == "1 总则 / 编写目的"
     assert questions[1]["question_id"] == "Q-002"
     assert questions[1]["status"] == "confirmed"
-    assert questions[1]["target_section"] == "3 功能需求 / 用户与角色"
+    assert questions[1]["target_section"] == "3.1 用户与角色"
     assert questions[1]["resolution_fact_ids"] == ["F-001"]
     assert [question["content"] for question in questions].count(questions[0]["content"]) == 1
     assert find_spec_node(payload["session"]["spec_tree"], "SPEC-REQ-1.1")["status"] == "open"
@@ -1160,9 +1279,15 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
             '"assistant_message":"已更新需求规格。",'
             '"next_suggestion":{"kind":"topic","content":"继续补齐用户角色","reason":"角色仍缺","related_spec_node_ids":["SPEC-REQ-3.1"]},'
             '"quick_options":[{"key":"A","label":"领域专家直接使用","recommended":true}],'
+            '"template_shape_assessment":{"shape_type":"coarse_grained_extensible","reason":"模板允许补写。",'
+            '"allowed_write_modes":["append_existing_clause"],"forbidden_write_modes":[],"template_revision_recommendations":[]},'
+            '"target_anchor_plan":[{"plan_id":"AP-001","decision_type":"append_existing_clause","template_clause_id":"REQ-1.1",'
+            '"canonical_clause_heading":"1.1 编写目的","subtopic_action":"none","subtopic_key":"","subtopic_title":"",'
+            '"display_heading":"1.1 编写目的","template_shape_ref":"coarse_grained_extensible","reason":"用户说明系统目标。",'
+            '"confidence":"high","anchor_path":"REQ-1.1"}],'
             '"confirmed_facts_delta":["系统用于空域计算分析"],'
             '"open_questions_delta":["谁使用这个系统？"],'
-            '"document_patch":[{"section":"1 总则 / 编写目的","content":"本文档定义空域计算分析软件需求。"}],'
+            '"document_patch":[{"plan_ref":"AP-001","content":"本文档定义空域计算分析软件需求。"}],'
             '"annotations":[],"risks":[],"confidence":"high"}'
         )
 
@@ -1198,6 +1323,8 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
     assert output["organizer_interpretation"]["confidence"] == "high"
     assert output["assistant_message"] == "已更新需求规格。"
     assert output["quick_options"][0]["label"] == "领域专家直接使用"
+    assert output["target_anchor_plan"][0]["template_clause_id"] == "REQ-1.1"
+    assert output["document_patch"][0]["plan_ref"] == "AP-001"
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["mock"] is False
     assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "prompt"

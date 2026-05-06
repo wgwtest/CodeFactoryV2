@@ -114,4 +114,11 @@ class TurnStagePlanner:
             return ["post_update_review", "annotations"]
         if stage_kind == "next_interaction":
             return ["next_interaction_plan", "planning_trace", "confidence"]
-        return ["organizer_interpretation", "confirmed_facts_delta", "document_patch", "next_interaction_candidate"]
+        return [
+            "organizer_interpretation",
+            "template_shape_assessment",
+            "target_anchor_plan",
+            "confirmed_facts_delta",
+            "document_patch",
+            "next_interaction_candidate",
+        ]

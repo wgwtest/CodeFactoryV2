@@ -51,19 +51,35 @@ class WorkingDocumentService:
         projection_spec_node: dict,
         turn_id: str,
         user_input_summary: str = "",
+        target_anchor_plan: list[dict] | None = None,
     ) -> WorkingDocumentUpdateResult:
         self._ensure_shape(working_document)
         before_excerpt = self.render_excerpt(working_document=working_document)
         applied_block_ids: list[str] = []
         applied_fragment_ids: list[str] = []
         changed_blocks: list[dict] = []
+        plan_by_id = {
+            str(plan.get("plan_id") or "").strip(): dict(plan)
+            for plan in list(target_anchor_plan or [])
+            if isinstance(plan, dict) and str(plan.get("plan_id") or "").strip()
+        }
 
         for patch in document_patch:
             content = str(patch.get("content") or "").strip()
             if not content:
                 continue
-            anchor_path = self._anchor_path(patch=patch, projection_spec_node=projection_spec_node)
-            block = self._find_or_create_block(working_document=working_document, anchor_path=anchor_path)
+            anchor_plan = dict(plan_by_id.get(str(patch.get("plan_ref") or "").strip()) or {})
+            anchor_path = self._anchor_path(
+                patch=patch,
+                projection_spec_node=projection_spec_node,
+                anchor_plan=anchor_plan,
+            )
+            block = self._find_or_create_block(
+                working_document=working_document,
+                anchor_path=anchor_path,
+                display_heading=str(anchor_plan.get("display_heading") or ""),
+                plan_ref=str(patch.get("plan_ref") or ""),
+            )
             previous_text = str(block.get("text") or "")
             patch_result = self._apply_patch_text(previous_text=previous_text, patch=patch, content=content)
             new_text = patch_result.new_text
@@ -73,6 +89,8 @@ class WorkingDocumentService:
             fragment_id = f"frag-{len(working_document['revision_fragments']) + 1:04d}"
             block["text"] = new_text
             block["last_turn_id"] = turn_id
+            if patch.get("plan_ref"):
+                block["plan_ref"] = str(patch.get("plan_ref"))
             block["source_fragment_ids"] = self._append_unique(
                 list(block.get("source_fragment_ids", [])),
                 [fragment_id],
@@ -87,7 +105,11 @@ class WorkingDocumentService:
                 "end_offset": patch_result.end_offset,
                 "user_input_summary": user_input_summary,
                 "supplement_reason": str(patch.get("reason") or "根据本轮输入补入需求规格正文。"),
-                "hit_spec_nodes": self._hit_spec_nodes(patch=patch, projection_spec_node=projection_spec_node),
+                "hit_spec_nodes": self._hit_spec_nodes(
+                    patch=patch,
+                    projection_spec_node=projection_spec_node,
+                    anchor_plan=anchor_plan,
+                ),
                 "source_patch_ids": self._current_patch_ids(
                     patch_proposals=patch_proposals,
                     anchor_path=anchor_path,
@@ -149,7 +171,7 @@ class WorkingDocumentService:
             text = str(block.get("text") or "").strip()
             if not text:
                 continue
-            anchor = str(block.get("anchor_path") or "").strip()
+            anchor = str(block.get("display_heading") or block.get("anchor_path") or "").strip()
             lines.append(f"{anchor}\n{text}" if anchor else text)
         return "\n\n".join(lines)
 
@@ -175,16 +197,29 @@ class WorkingDocumentService:
         for block in working_document["blocks"]:
             anchor_path = str(block.get("anchor_path") or "")
             block["order_index"] = self._anchor_order_index(anchor_path)
-            block["display_heading"] = self._anchor_display_heading(anchor_path)
+            block["display_heading"] = str(block.get("display_heading") or self._anchor_display_heading(anchor_path))
         working_document["blocks"].sort(key=lambda block: (int(block.get("order_index") or 99_999), str(block.get("block_id") or "")))
 
-    def _find_or_create_block(self, *, working_document: dict, anchor_path: str) -> dict:
+    def _find_or_create_block(
+        self,
+        *,
+        working_document: dict,
+        anchor_path: str,
+        display_heading: str = "",
+        plan_ref: str = "",
+    ) -> dict:
         for block in working_document["blocks"]:
             if str(block.get("anchor_path") or "") == anchor_path:
+                if display_heading:
+                    block["display_heading"] = display_heading
+                if plan_ref:
+                    block["plan_ref"] = plan_ref
                 return block
         block = self._document_block(
             block_id=f"blk-{len(working_document['blocks']) + 1:04d}",
             anchor_path=anchor_path,
+            display_heading=display_heading or self._anchor_display_heading(anchor_path),
+            plan_ref=plan_ref,
         )
         working_document["blocks"].append(block)
         working_document["blocks"].sort(key=lambda item: (int(item.get("order_index") or 99_999), str(item.get("block_id") or "")))
@@ -198,15 +233,18 @@ class WorkingDocumentService:
         anchor_path: str,
         text: str = "",
         last_turn_id: str | None = None,
+        display_heading: str = "",
+        plan_ref: str = "",
     ) -> dict:
         return {
             "block_id": block_id,
             "anchor_path": anchor_path,
             "block_type": "paragraph",
             "order_index": cls._anchor_order_index(anchor_path),
-            "display_heading": cls._anchor_display_heading(anchor_path),
+            "display_heading": display_heading or cls._anchor_display_heading(anchor_path),
             "text": text,
             "last_turn_id": last_turn_id,
+            "plan_ref": plan_ref,
             "source_fragment_ids": [],
         }
 
@@ -227,6 +265,9 @@ class WorkingDocumentService:
     @staticmethod
     def _parse_anchor_path(anchor_path: str) -> tuple[int, int, str]:
         normalized = " ".join(str(anchor_path or "").replace("\\", "/").split())
+        req_match = re.match(r"^REQ-(?P<section>\d+)\.(?P<clause>\d+)$", normalized)
+        if req_match:
+            return int(req_match.group("section")), int(req_match.group("clause")), ""
         parts = [part.strip() for part in normalized.split("/") if part.strip()]
         if not parts:
             return 0, 0, ""
@@ -315,21 +356,25 @@ class WorkingDocumentService:
         )
 
     @staticmethod
-    def _anchor_path(*, patch: dict, projection_spec_node: dict) -> str:
+    def _anchor_path(*, patch: dict, projection_spec_node: dict, anchor_plan: dict | None = None) -> str:
+        anchor_plan = dict(anchor_plan or {})
         return str(
-            patch.get("anchor_path")
-            or patch.get("section")
+            anchor_plan.get("anchor_path")
+            or patch.get("anchor_path")
             or projection_spec_node.get("target_section")
             or projection_spec_node.get("node_id")
             or "未绑定模板章节"
         )
 
     @staticmethod
-    def _hit_spec_nodes(*, patch: dict, projection_spec_node: dict) -> list[str]:
+    def _hit_spec_nodes(*, patch: dict, projection_spec_node: dict, anchor_plan: dict | None = None) -> list[str]:
         candidates = patch.get("hit_spec_nodes")
         if isinstance(candidates, list):
             return [str(item) for item in candidates if str(item).strip()]
         node_id = str(projection_spec_node.get("node_id") or "").strip()
+        if not node_id and anchor_plan:
+            clause_id = str(anchor_plan.get("template_clause_id") or "").strip()
+            node_id = f"SPEC-{clause_id}" if clause_id else ""
         return [node_id] if node_id else []
 
     @staticmethod

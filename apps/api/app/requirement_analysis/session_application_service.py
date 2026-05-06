@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.requirement_analysis.lab_config_service import RequirementAnalysisLabConfigService
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
 from app.requirement_analysis.session_service import RequirementAnalysisSessionService
+from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 
 
 class RequirementAnalysisApplicationService:
@@ -11,6 +12,7 @@ class RequirementAnalysisApplicationService:
     def __init__(self, session) -> None:
         self.session_service = RequirementAnalysisSessionService(session)
         self.lab_config_service = RequirementAnalysisLabConfigService()
+        self.template_service = RequirementAnalysisTemplateService()
 
     def get_lab_config(self) -> dict:
         return self.lab_config_service.get_config()
@@ -20,6 +22,15 @@ class RequirementAnalysisApplicationService:
 
     def list_providers(self) -> dict:
         return self.session_service.list_providers()
+
+    def list_templates(self) -> dict:
+        return self.template_service.list_templates()
+
+    def get_template(self, template_id: str) -> dict | None:
+        return self.template_service.get_template(template_id)
+
+    def save_template(self, template_id: str, content: str) -> dict | None:
+        return self.template_service.save_template(template_id, content)
 
     def create_session(self, payload: RequirementAnalysisSessionCreate) -> dict:
         return self.session_service.create_session(payload)

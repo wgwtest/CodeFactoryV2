@@ -80,6 +80,9 @@ class DeepSeekRequirementAnalysisClient:
             "working_document_json": json.dumps(context.get("working_document") or {}, ensure_ascii=False),
             "working_document_after_apply_json": json.dumps(context.get("working_document_after_apply") or {}, ensure_ascii=False),
             "working_document_update_json": json.dumps(context.get("working_document_update") or {}, ensure_ascii=False),
+            "chapter_configuration_context_json": json.dumps(context.get("chapter_configuration_context") or {}, ensure_ascii=False),
+            "template_shape_assessment_json": json.dumps(context.get("template_shape_assessment") or {}, ensure_ascii=False),
+            "target_anchor_plan_json": json.dumps(context.get("target_anchor_plan") or [], ensure_ascii=False),
             "working_document_excerpt": str((context.get("working_document_after_apply") or {}).get("excerpt") or context.get("working_document_excerpt") or ""),
             "review_target_paths": list(context.get("review_target_paths") or []),
             "recent_revision_fragments": list(context.get("recent_revision_fragments") or []),
@@ -292,9 +295,15 @@ class DeepSeekRequirementAnalysisClient:
             "next_suggestion": self._normalize_next_suggestion(payload.get("next_suggestion")),
             "next_question": str(payload.get("next_question") or ""),
             "quick_options": self._normalize_quick_options(payload.get("quick_options")),
+            "template_shape_assessment": self._normalize_template_shape_assessment(payload.get("template_shape_assessment")),
+            "target_anchor_plan": self._normalize_target_anchor_plan(payload.get("target_anchor_plan")),
             "confirmed_facts_delta": self._string_list(payload.get("confirmed_facts_delta")),
             "open_questions_delta": self._string_list(payload.get("open_questions_delta")),
-            "document_patch": self._normalize_document_patch(payload.get("document_patch"), session=session),
+            "document_patch": self._normalize_document_patch(
+                payload.get("document_patch"),
+                session=session,
+                target_anchor_plan=self._normalize_target_anchor_plan(payload.get("target_anchor_plan")),
+            ),
             "annotations": self._string_list(payload.get("annotations")),
             "risks": self._string_list(payload.get("risks")),
             "confidence": self._normalize_confidence(payload.get("confidence")),
@@ -405,20 +414,82 @@ class DeepSeekRequirementAnalysisClient:
         return options
 
     @staticmethod
-    def _normalize_document_patch(value: Any, *, session: SessionSnapshot) -> list[dict]:
+    def _normalize_template_shape_assessment(value: Any) -> dict:
+        if not isinstance(value, dict):
+            return {
+                "shape_type": "coarse_grained_extensible",
+                "reason": "",
+                "allowed_write_modes": [],
+                "forbidden_write_modes": [],
+                "template_revision_recommendations": [],
+            }
+        return {
+            "shape_type": str(value.get("shape_type") or "coarse_grained_extensible"),
+            "reason": str(value.get("reason") or ""),
+            "allowed_write_modes": DeepSeekRequirementAnalysisClient._string_list(value.get("allowed_write_modes")),
+            "forbidden_write_modes": DeepSeekRequirementAnalysisClient._string_list(value.get("forbidden_write_modes")),
+            "template_revision_recommendations": DeepSeekRequirementAnalysisClient._string_list(
+                value.get("template_revision_recommendations")
+            ),
+        }
+
+    @staticmethod
+    def _normalize_target_anchor_plan(value: Any) -> list[dict]:
         if not isinstance(value, list):
             return []
+        plans: list[dict] = []
+        seen: set[str] = set()
+        for index, item in enumerate(value[:8], start=1):
+            if not isinstance(item, dict):
+                continue
+            plan_id = str(item.get("plan_id") or f"AP-{index:03d}").strip()
+            if not plan_id or plan_id in seen:
+                raise ValueError(f"invalid target_anchor_plan.plan_id: {plan_id}")
+            seen.add(plan_id)
+            template_clause_id = str(item.get("template_clause_id") or "").strip()
+            if not template_clause_id:
+                raise ValueError(f"target_anchor_plan {plan_id} missing template_clause_id")
+            plans.append(
+                {
+                    "plan_id": plan_id,
+                    "decision_type": str(item.get("decision_type") or "append_existing_clause"),
+                    "template_clause_id": template_clause_id,
+                    "canonical_clause_heading": str(item.get("canonical_clause_heading") or ""),
+                    "subtopic_action": str(item.get("subtopic_action") or "none"),
+                    "subtopic_key": str(item.get("subtopic_key") or ""),
+                    "subtopic_title": str(item.get("subtopic_title") or ""),
+                    "display_heading": str(item.get("display_heading") or item.get("canonical_clause_heading") or template_clause_id),
+                    "template_shape_ref": str(item.get("template_shape_ref") or ""),
+                    "reason": str(item.get("reason") or ""),
+                    "confidence": DeepSeekRequirementAnalysisClient._normalize_confidence(item.get("confidence")),
+                    "anchor_path": str(item.get("anchor_path") or ""),
+                }
+            )
+        return plans
+
+    @staticmethod
+    def _normalize_document_patch(
+        value: Any,
+        *,
+        session: SessionSnapshot,
+        target_anchor_plan: list[dict] | None = None,
+    ) -> list[dict]:
+        if not isinstance(value, list):
+            return []
+        known_plan_ids = {str(plan.get("plan_id")) for plan in list(target_anchor_plan or [])}
         patches = []
         for item in value[:6]:
             if not isinstance(item, dict):
                 continue
-            section = str(item.get("section") or "").strip()
+            plan_ref = str(item.get("plan_ref") or "").strip()
             content = str(item.get("content") or "").strip()
-            if not section or not content:
+            if not plan_ref or not content:
                 continue
+            if known_plan_ids and plan_ref not in known_plan_ids:
+                raise ValueError(f"document_patch.plan_ref does not match target_anchor_plan: {plan_ref}")
             patches.append(
                 {
-                    "section": section,
+                    "plan_ref": plan_ref,
                     "operation": str(item.get("operation") or "append_or_update"),
                     "content": content,
                     "write_policy": str(item.get("write_policy") or session.write_policy),
@@ -538,6 +609,9 @@ class DeepSeekRequirementAnalysisClient:
             "working_document_json": str((prompt_bundle or {}).get("working_document_json") or ""),
             "working_document_after_apply_json": str((prompt_bundle or {}).get("working_document_after_apply_json") or ""),
             "working_document_update_json": str((prompt_bundle or {}).get("working_document_update_json") or ""),
+            "chapter_configuration_context_json": str((prompt_bundle or {}).get("chapter_configuration_context_json") or ""),
+            "template_shape_assessment_json": str((prompt_bundle or {}).get("template_shape_assessment_json") or ""),
+            "target_anchor_plan_json": str((prompt_bundle or {}).get("target_anchor_plan_json") or ""),
             "working_document_excerpt": str((prompt_bundle or {}).get("working_document_excerpt") or ""),
             "review_target_paths": list((prompt_bundle or {}).get("review_target_paths") or []),
             "recent_revision_fragments": list((prompt_bundle or {}).get("recent_revision_fragments") or []),

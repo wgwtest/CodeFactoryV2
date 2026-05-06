@@ -23,10 +23,22 @@ def test_orchestrator_runtime_loads_assets_and_normalizes_output() -> None:
     normalized = validator.normalize_turn_output(
         {
             "assistant_message": "已补齐定位。",
+            "template_shape_assessment": {
+                "shape_type": "coarse_grained_extensible",
+                "reason": "测试模板允许条款下补写。",
+            },
+            "target_anchor_plan": [
+                {
+                    "plan_id": "AP-001",
+                    "decision_type": "append_existing_clause",
+                    "template_clause_id": "REQ-2.1",
+                    "display_heading": "2.1 软件定位",
+                }
+            ],
             "confirmed_facts_delta": ["软件定位初步确认：计算分析工具"],
             "document_patch": [
                 {
-                    "section": "2 项目概述 / 软件定位",
+                    "plan_ref": "AP-001",
                     "content": "软件定位为：计算分析工具",
                 }
             ],
@@ -37,7 +49,9 @@ def test_orchestrator_runtime_loads_assets_and_normalizes_output() -> None:
         raw_response={"mock": True},
     )
     assert normalized["next_suggestion"]["reason"] == "Provider 未生成下一轮建议。"
+    assert normalized["target_anchor_plan"][0]["template_clause_id"] == "REQ-2.1"
     assert normalized["document_patch"][0]["operation"] == "append_or_update"
+    assert normalized["document_patch"][0]["plan_ref"] == "AP-001"
     assert normalized["raw_model_response"]["provider_id"] == "mock"
 
     host = OrchestratorRunnerHost(loader=loader, validator=validator)
@@ -78,7 +92,8 @@ def test_orchestrator_runtime_executes_local_runner_entry() -> None:
 
     assert output["organizer_interpretation"]["confidence"] == "high"
     assert "强规则组织器" in output["assistant_message"]
-    assert output["document_patch"][0]["section"] == "1 总则 / 编写目的"
+    assert output["target_anchor_plan"][0]["template_clause_id"] == "REQ-1.1"
+    assert output["document_patch"][0]["plan_ref"] == "AP-001"
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["runner_invoked"] is True
     assert output["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")

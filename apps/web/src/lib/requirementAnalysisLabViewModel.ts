@@ -19,7 +19,15 @@ export function resolveDefaultRequirementAnalysisOrchestratorId(
 }
 
 export function resolveDefaultRequirementAnalysisProviderId(providers: RequirementAnalysisProvider[], defaultProviderId: string) {
-  return providers.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ?? providers[0]?.provider_id ?? defaultProviderId;
+  if (!providers.length) {
+    return "";
+  }
+  return (
+    providers.find((provider) => provider.provider_id === "deepseek")?.provider_id ??
+    providers.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ??
+    providers[0]?.provider_id ??
+    defaultProviderId
+  );
 }
 
 export function resolveRequirementAnalysisWritePolicyLabel(

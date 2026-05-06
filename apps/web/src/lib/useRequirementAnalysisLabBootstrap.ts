@@ -4,17 +4,20 @@ import type {
   RequirementAnalysisLabConfig,
   RequirementAnalysisOrchestratorEnvelope,
   RequirementAnalysisProvider,
+  RequirementAnalysisTemplateSummary,
 } from "./api";
 import {
   getRequirementAnalysisLabConfig,
   getRequirementAnalysisOrchestrators,
   getRequirementAnalysisProviders,
+  getRequirementAnalysisTemplates,
 } from "./requirementAnalysis";
 
 export type RequirementAnalysisLabBootstrap = {
   labConfig: RequirementAnalysisLabConfig | null;
   orchestratorsEnvelope: RequirementAnalysisOrchestratorEnvelope | null;
   providers: RequirementAnalysisProvider[];
+  templates: RequirementAnalysisTemplateSummary[];
   loading: boolean;
   error: string | null;
 };
@@ -23,6 +26,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
   const [labConfig, setLabConfig] = useState<RequirementAnalysisLabConfig | null>(null);
   const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [providers, setProviders] = useState<RequirementAnalysisProvider[]>([]);
+  const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,10 +36,11 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     async function load() {
       try {
         setLoading(true);
-        const [configResponse, orchestratorsResponse, providersResponse] = await Promise.all([
+        const [configResponse, orchestratorsResponse, providersResponse, templatesResponse] = await Promise.all([
           getRequirementAnalysisLabConfig(),
           getRequirementAnalysisOrchestrators(),
           getRequirementAnalysisProviders(),
+          getRequirementAnalysisTemplates(),
         ]);
         if (cancelled) {
           return;
@@ -43,6 +48,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
         setLabConfig(configResponse.data);
         setOrchestratorsEnvelope(orchestratorsResponse.data);
         setProviders(providersResponse.data.items);
+        setTemplates(templatesResponse.data.items);
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
@@ -61,5 +67,5 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     };
   }, []);
 
-  return { labConfig, orchestratorsEnvelope, providers, loading, error };
+  return { labConfig, orchestratorsEnvelope, providers, templates, loading, error };
 }

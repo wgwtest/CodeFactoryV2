@@ -2116,6 +2116,23 @@ export type RequirementAnalysisProviderEnvelope = {
   items: RequirementAnalysisProvider[];
 };
 
+export type RequirementAnalysisTemplateSummary = {
+  template_id: string;
+  template_code: string;
+  name: string;
+  description: string;
+  status: "active" | "available" | "disabled" | string;
+};
+
+export type RequirementAnalysisTemplateEnvelope = {
+  items: RequirementAnalysisTemplateSummary[];
+};
+
+export type RequirementAnalysisTemplateDetail = RequirementAnalysisTemplateSummary & {
+  format: "markdown" | string;
+  content: string;
+};
+
 export type RequirementAnalysisPageMeta = {
   title: string;
   subtitle: string;
@@ -2179,10 +2196,33 @@ export type RequirementAnalysisMessage = {
 };
 
 export type RequirementAnalysisDocumentPatch = {
-  section: string;
+  plan_ref: string;
   operation: string;
   content: string;
   write_policy?: string;
+};
+
+export type RequirementAnalysisTemplateShapeAssessment = {
+  shape_type: string;
+  reason?: string;
+  allowed_write_modes?: string[];
+  forbidden_write_modes?: string[];
+  template_revision_recommendations?: string[];
+};
+
+export type RequirementAnalysisTargetAnchorPlan = {
+  plan_id: string;
+  decision_type: string;
+  template_clause_id: string;
+  canonical_clause_heading?: string;
+  subtopic_action?: string;
+  subtopic_key?: string;
+  subtopic_title?: string;
+  display_heading?: string;
+  template_shape_ref?: string;
+  reason?: string;
+  confidence?: string;
+  anchor_path?: string;
 };
 
 export type RequirementAnalysisQuestionStatus = "open" | "confirmed" | "cancelled" | "superseded" | "review";
@@ -2297,6 +2337,8 @@ export type RequirementAnalysisSpecExecution = {
   assistant_message: string;
   confirmed_facts: string[];
   affected_spec_nodes: RequirementAnalysisAffectedSpecNode[];
+  template_shape_assessment?: RequirementAnalysisTemplateShapeAssessment;
+  target_anchor_plan?: RequirementAnalysisTargetAnchorPlan[];
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document_update: {
     applied_block_ids: string[];

@@ -19,28 +19,41 @@ class SpecProjectionService:
         self.spec_tree_service = spec_tree_service
 
     def project(self, *, spec_tree: list[dict], model_output: dict, fallback_node_id: str) -> SpecProjectionResult:
-        patch_sections = [
-            str(patch.get("section") or "").strip()
+        plan_by_id = {
+            str(plan.get("plan_id") or "").strip(): dict(plan)
+            for plan in list(model_output.get("target_anchor_plan") or [])
+            if isinstance(plan, dict) and str(plan.get("plan_id") or "").strip()
+        }
+        plan_refs = [
+            str(patch.get("plan_ref") or "").strip()
             for patch in model_output.get("document_patch", [])
             if isinstance(patch, dict)
         ]
-        for section in patch_sections:
-            matched = self.spec_tree_service.find_spec_node_by_target_section(spec_tree, section)
-            if matched and matched.get("node_id"):
-                projection_id = str(matched["node_id"])
-                return SpecProjectionResult(
-                    projection_spec_node_id=projection_id,
-                    projection_spec_node=self.spec_tree_service.active_spec_node_context(spec_tree, projection_id),
-                    affected_spec_nodes=self.affected_spec_nodes(spec_tree=spec_tree, node_ids=[projection_id]),
-                    fallback_used=False,
-                    reason=f"模型候选 patch 章节匹配完成度树节点：{section}。",
-                )
+        projection_ids: list[str] = []
+        for plan_ref in plan_refs:
+            plan = plan_by_id.get(plan_ref)
+            if not plan:
+                continue
+            clause_id = str(plan.get("template_clause_id") or "").strip()
+            node_id = f"SPEC-{clause_id}" if clause_id else ""
+            matched = self.spec_tree_service.find_spec_node(spec_tree, node_id)
+            if matched and matched.get("node_id") and node_id not in projection_ids:
+                projection_ids.append(node_id)
+        if projection_ids:
+            projection_id = projection_ids[0]
+            return SpecProjectionResult(
+                projection_spec_node_id=projection_id,
+                projection_spec_node=self.spec_tree_service.active_spec_node_context(spec_tree, projection_id),
+                affected_spec_nodes=self.affected_spec_nodes(spec_tree=spec_tree, node_ids=projection_ids),
+                fallback_used=False,
+                reason=f"模型目标锚点规划匹配完成度树节点：{', '.join(projection_ids)}。",
+            )
         return SpecProjectionResult(
             projection_spec_node_id=fallback_node_id,
             projection_spec_node=self.spec_tree_service.active_spec_node_context(spec_tree, fallback_node_id),
             affected_spec_nodes=self.affected_spec_nodes(spec_tree=spec_tree, node_ids=[fallback_node_id]),
             fallback_used=True,
-            reason="模型候选章节未匹配完成度树，回退到当前活动节点。",
+            reason="模型目标锚点规划未匹配完成度树，回退到当前活动节点。",
         )
 
     def affected_spec_nodes(self, *, spec_tree: list[dict], node_ids: list[str]) -> list[dict]:

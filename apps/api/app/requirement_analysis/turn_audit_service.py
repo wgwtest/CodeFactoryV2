@@ -94,6 +94,8 @@ class RequirementAnalysisTurnAuditService:
             "assistant_message": model_output["assistant_message"],
             "confirmed_facts": model_output["confirmed_facts_delta"],
             "affected_spec_nodes": affected_spec_nodes,
+            "template_shape_assessment": model_output.get("template_shape_assessment", {}),
+            "target_anchor_plan": model_output.get("target_anchor_plan", []),
             "document_patch": model_output["document_patch"],
             "working_document_update": working_document_update,
             "state_changes": state_changes,

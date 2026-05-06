@@ -1,6 +1,8 @@
 {
   "adopt_fields": [
     "organizer_interpretation",
+    "template_shape_assessment",
+    "target_anchor_plan",
     "confirmed_facts_delta",
     "document_patch",
     "annotations",
