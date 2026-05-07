@@ -227,33 +227,53 @@ class DeepSeekRequirementAnalysisClient:
         raw_content: str | None = None,
         stage: dict | None = None,
     ) -> dict:
-        prompt_id = str((prompt_bundle or {}).get("prompt_id") or (stage or {}).get("prompt_id") or "write")
-        if prompt_id == "intent_understanding":
-            normalized_output = {
+        normalized_output = {
+            "confidence": self._normalize_confidence(payload.get("confidence")),
+        }
+        if self._has_any(payload, "intent_understanding_result", "target_document_structure", "stage_task_definition", "stage_quality_constraints"):
+            normalized_output.update({
                 "intent_understanding_result": self._normalize_intent_understanding_result(payload.get("intent_understanding_result")),
                 "target_document_structure": self._normalize_target_document_structure(payload.get("target_document_structure")),
                 "stage_task_definition": self._normalize_stage_task_definition(payload.get("stage_task_definition")),
                 "stage_quality_constraints": self._normalize_stage_quality_constraints(payload.get("stage_quality_constraints")),
-                "confidence": self._normalize_confidence(payload.get("confidence")),
-            }
-            return {
-                **normalized_output,
-                "raw_model_response": self._stage_raw_model_response(
-                    session=session,
-                    user_input=user_input,
-                    prompt_bundle=prompt_bundle,
-                    request_messages=request_messages,
-                    raw_content=raw_content,
-                    payload=payload,
-                    normalized_output=normalized_output,
-                    stage=stage,
-                ),
-            }
-        if prompt_id == "decision_state_delta":
+            })
+        if self._has_any(payload, "compliance_result", "target_review", "global_review", "rewrite_advice", "review_annotations"):
+            normalized_output.update({
+                "compliance_result": str(payload.get("compliance_result") or "needs_followup"),
+                "written_fact_summary": self._string_list(payload.get("written_fact_summary")),
+                "blocking_findings": self._string_list(payload.get("blocking_findings")),
+                "blocking_reasons": self._string_list(payload.get("blocking_reasons")),
+                "planning_evidence": self._string_list(payload.get("planning_evidence")),
+                "target_review": self._normalize_target_review(payload.get("target_review")),
+                "global_review": self._normalize_global_review(payload.get("global_review")),
+                "rewrite_advice": self._string_list(payload.get("rewrite_advice")),
+                "review_annotations": self._string_list(payload.get("review_annotations")),
+            })
+        if self._has_any(payload, "next_interaction_plan", "planning_trace"):
+            normalized_output.update({
+                "next_interaction_plan": self._normalize_next_interaction_plan(payload.get("next_interaction_plan")),
+                "planning_trace": self._string_list(payload.get("planning_trace")),
+            })
+        if self._has_any(
+            payload,
+            "organizer_interpretation",
+            "assistant_message",
+            "next_suggestion",
+            "next_question",
+            "quick_options",
+            "decision_state_delta",
+            "template_shape_assessment",
+            "target_anchor_plan",
+            "confirmed_facts_delta",
+            "open_questions_delta",
+            "document_patch",
+            "annotations",
+            "risks",
+        ):
             target_anchor_plan = self._normalize_target_anchor_plan(payload.get("target_anchor_plan"))
-            normalized_output = {
+            normalized_output.update({
                 "organizer_interpretation": self._normalize_organizer_interpretation(payload.get("organizer_interpretation")),
-                "assistant_message": str(payload.get("assistant_message") or "本轮已更新结构化状态。"),
+                "assistant_message": str(payload.get("assistant_message") or "已接收，本轮需要继续补齐需求信息。"),
                 "next_suggestion": self._normalize_next_suggestion(payload.get("next_suggestion")),
                 "next_question": str(payload.get("next_question") or ""),
                 "quick_options": self._normalize_quick_options(payload.get("quick_options")),
@@ -269,85 +289,7 @@ class DeepSeekRequirementAnalysisClient:
                 ),
                 "annotations": self._string_list(payload.get("annotations")),
                 "risks": self._string_list(payload.get("risks")),
-                "confidence": self._normalize_confidence(payload.get("confidence")),
-            }
-            return {
-                **normalized_output,
-                "raw_model_response": self._stage_raw_model_response(
-                    session=session,
-                    user_input=user_input,
-                    prompt_bundle=prompt_bundle,
-                    request_messages=request_messages,
-                    raw_content=raw_content,
-                    payload=payload,
-                    normalized_output=normalized_output,
-                    stage=stage,
-                ),
-            }
-        if prompt_id == "review_after_apply":
-            normalized_output = {
-                "compliance_result": str(payload.get("compliance_result") or "needs_followup"),
-                "written_fact_summary": self._string_list(payload.get("written_fact_summary")),
-                "blocking_findings": self._string_list(payload.get("blocking_findings")),
-                "blocking_reasons": self._string_list(payload.get("blocking_reasons")),
-                "planning_evidence": self._string_list(payload.get("planning_evidence")),
-                "target_review": self._normalize_target_review(payload.get("target_review")),
-                "global_review": self._normalize_global_review(payload.get("global_review")),
-                "rewrite_advice": self._string_list(payload.get("rewrite_advice")),
-                "review_annotations": self._string_list(payload.get("review_annotations")),
-                "confidence": self._normalize_confidence(payload.get("confidence")),
-            }
-            return {
-                **normalized_output,
-                "raw_model_response": self._stage_raw_model_response(
-                    session=session,
-                    user_input=user_input,
-                    prompt_bundle=prompt_bundle,
-                    request_messages=request_messages,
-                    raw_content=raw_content,
-                    payload=payload,
-                    normalized_output=normalized_output,
-                    stage=stage,
-                ),
-            }
-        if prompt_id == "next_interaction_planning":
-            normalized_output = {
-                "next_interaction_plan": self._normalize_next_interaction_plan(payload.get("next_interaction_plan")),
-                "planning_trace": self._string_list(payload.get("planning_trace")),
-                "confidence": self._normalize_confidence(payload.get("confidence")),
-            }
-            return {
-                **normalized_output,
-                "raw_model_response": self._stage_raw_model_response(
-                    session=session,
-                    user_input=user_input,
-                    prompt_bundle=prompt_bundle,
-                    request_messages=request_messages,
-                    raw_content=raw_content,
-                    payload=payload,
-                    normalized_output=normalized_output,
-                    stage=stage,
-                ),
-            }
-        normalized_output = {
-            "organizer_interpretation": self._normalize_organizer_interpretation(payload.get("organizer_interpretation")),
-            "assistant_message": str(payload.get("assistant_message") or "已接收，本轮需要继续补齐需求信息。"),
-            "next_suggestion": self._normalize_next_suggestion(payload.get("next_suggestion")),
-            "next_question": str(payload.get("next_question") or ""),
-            "quick_options": self._normalize_quick_options(payload.get("quick_options")),
-            "template_shape_assessment": self._normalize_template_shape_assessment(payload.get("template_shape_assessment")),
-            "target_anchor_plan": self._normalize_target_anchor_plan(payload.get("target_anchor_plan")),
-            "confirmed_facts_delta": self._string_list(payload.get("confirmed_facts_delta")),
-            "open_questions_delta": self._string_list(payload.get("open_questions_delta")),
-            "document_patch": self._normalize_document_patch(
-                payload.get("document_patch"),
-                session=session,
-                target_anchor_plan=self._normalize_target_anchor_plan(payload.get("target_anchor_plan")),
-            ),
-            "annotations": self._string_list(payload.get("annotations")),
-            "risks": self._string_list(payload.get("risks")),
-            "confidence": self._normalize_confidence(payload.get("confidence")),
-        }
+            })
         return {
             **normalized_output,
             "raw_model_response": self._stage_raw_model_response(
@@ -361,6 +303,10 @@ class DeepSeekRequirementAnalysisClient:
                 stage=stage,
             ),
         }
+
+    @staticmethod
+    def _has_any(payload: dict[str, Any], *keys: str) -> bool:
+        return any(key in payload for key in keys)
 
     @staticmethod
     def _string_list(value: Any) -> list[str]:
