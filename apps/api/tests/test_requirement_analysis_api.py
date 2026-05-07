@@ -207,7 +207,6 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "brainstorm-v1",
         "brainstorm-v1-dify-workflow",
         "xg-local-heuristic-orchestrator",
-        "xg-local-strong-rule-orchestrator",
         "xg-dify-workflow-orchestrator",
     }.issubset(plugin_ids)
 
@@ -776,7 +775,7 @@ def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> No
     assert third_payload["turn"]["normalized_input"]["semantic"] == "领域专家直接使用"
 
 
-def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> None:
+def test_requirement_analysis_lab_rejects_removed_xg_strong_rule_orchestrator() -> None:
     client = TestClient(create_app())
 
     created = client.post(
@@ -792,44 +791,8 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
         },
     )
 
-    assert created.status_code == 200
-    session = created.json()
-    assert session["orchestrator"]["orchestrator_id"] == "xg-local-strong-rule-orchestrator"
-    assert session["orchestrator"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
-    assert session["orchestrator"]["plugin_type"] == "local_package"
-    assert session["orchestrator"]["observability_level"] == "full"
-    assert session["orchestrator"]["document_type"] == "xg"
-    assert session["orchestrator"]["mode"] == "local_runner"
-    assert session["orchestrator"]["capabilities"]["stage_audits"] is True
-
-    turn = client.post(
-        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
-        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
-    )
-
-    assert turn.status_code == 200
-    payload = turn.json()
-    assert_new_turn_contract(payload["turn"])
-    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
-    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "full"
-    assert payload["turn"]["orchestrator_plugin"]["plugin_type"] == "local_package"
-    assert payload["turn"]["raw_plugin_response"]["contract_version"] == "xg-observable-orchestrator-contract@1"
-    assert payload["turn"]["raw_plugin_response"]["plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
-    assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "supplement_requirement"
-    assert "强规则组织器" in payload["turn"]["spec_execution"]["assistant_message"]
-    assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
-    assert payload["turn"]["closure_decision"]["status"] == "closed"
-    assert any("强规则组织器" in item for item in payload["turn"]["decision_trace"])
-    assert payload["turn"]["raw_model_response"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
-    assert payload["turn"]["raw_model_response"]["mode"] == "local_runner"
-    assert payload["turn"]["raw_model_response"]["runner_invoked"] is True
-    runner_entry = payload["turn"]["raw_model_response"]["runner_entry"].replace("\\", "/")
-    assert runner_entry.endswith("xg-strong-rule-orchestrator/runner.py")
-    assert payload["session"]["provider_logs"][0]["orchestrator_id"] == "xg-strong-rule-orchestrator"
-    assert payload["session"]["provider_logs"][0]["orchestrator_mode"] == "local_runner"
-    assert len(payload["session"]["provider_logs"]) == 1
-    assert payload["session"]["provider_logs"][0]["stage_id"] == "run"
-    assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+    assert created.status_code == 400
+    assert "unsupported orchestrator" in created.json()["detail"]
 
 
 def test_requirement_analysis_lab_runs_brainstorm_v1_as_plugin() -> None:

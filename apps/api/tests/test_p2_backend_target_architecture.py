@@ -91,6 +91,15 @@ def test_requirement_analysis_j5_services_can_be_imported() -> None:
     assert is_dataclass(stage_prompt_resolver.StagePrompt)
 
 
+def test_decision_state_service_is_owned_by_orchestrator_runtime() -> None:
+    runtime_decision_state_service = import_module("app.orchestrators.runtime.decision_state_service")
+    session_service_source = inspect.getsource(import_module("app.requirement_analysis.session_service"))
+
+    assert hasattr(runtime_decision_state_service, "DecisionStateService")
+    assert "app.orchestrators.runtime.decision_state_service" in session_service_source
+    assert "app.requirement_analysis.decision_state_service" not in session_service_source
+
+
 def test_requirement_analysis_turn_engine_has_no_owner_back_reference() -> None:
     source = inspect.getsource(RequirementAnalysisTurnEngine)
 

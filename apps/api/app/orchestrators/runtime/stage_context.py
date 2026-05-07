@@ -6,6 +6,7 @@ from app.requirement_analysis.chapter_configuration_context_builder import Chapt
 from app.requirement_analysis.session_snapshot import SessionSnapshot
 from app.requirement_analysis.turn_context_builder import TurnContext
 from app.requirement_analysis.working_document_service import WorkingDocumentService
+from .stage_output_slots import StageOutputSlots
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,7 @@ class StageRuntimeContextBuilder:
         session: SessionSnapshot,
         context: TurnContext,
         stage: dict,
+        stage_output_slots: StageOutputSlots | None = None,
         intent_understanding_result: dict | None = None,
         target_document_structure: dict | None = None,
         stage_task_definition: dict | None = None,
@@ -86,6 +88,31 @@ class StageRuntimeContextBuilder:
         review_after_apply_result: dict | None = None,
     ) -> StageRuntimeContext:
         state = dict(session.payload or {})
+        slot_values = (stage_output_slots or StageOutputSlots()).context_values(list(stage.get("input_sources") or []))
+        if intent_understanding_result is None and isinstance(slot_values.get("intent_understanding_result"), dict):
+            intent_understanding_result = dict(slot_values["intent_understanding_result"])
+        if target_document_structure is None and isinstance(slot_values.get("target_document_structure"), dict):
+            target_document_structure = dict(slot_values["target_document_structure"])
+        if stage_task_definition is None and isinstance(slot_values.get("stage_task_definition"), dict):
+            stage_task_definition = dict(slot_values["stage_task_definition"])
+        if stage_quality_constraints is None and isinstance(slot_values.get("stage_quality_constraints"), dict):
+            stage_quality_constraints = dict(slot_values["stage_quality_constraints"])
+        if template_shape_assessment is None and isinstance(slot_values.get("template_shape_assessment"), dict):
+            template_shape_assessment = dict(slot_values["template_shape_assessment"])
+        if target_anchor_plan is None and isinstance(slot_values.get("target_anchor_plan"), list):
+            target_anchor_plan = list(slot_values["target_anchor_plan"])
+        if decision_state is None and isinstance(slot_values.get("decision_state"), dict):
+            decision_state = dict(slot_values["decision_state"])
+        if decision_state_document is None and isinstance(slot_values.get("decision_state_document"), dict):
+            decision_state_document = dict(slot_values["decision_state_document"])
+        if working_document is None and isinstance(slot_values.get("working_document"), dict):
+            working_document = dict(slot_values["working_document"])
+        if working_document_after_apply is None and isinstance(slot_values.get("working_document_after_apply"), dict):
+            working_document_after_apply = dict(slot_values["working_document_after_apply"])
+        if working_document_update is None and isinstance(slot_values.get("working_document_update"), dict):
+            working_document_update = dict(slot_values["working_document_update"])
+        if review_after_apply_result is None and isinstance(slot_values.get("review_after_apply_result"), dict):
+            review_after_apply_result = dict(slot_values["review_after_apply_result"])
         working_doc = dict(
             working_document
             or context.working_document

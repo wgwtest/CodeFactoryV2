@@ -23,6 +23,7 @@ from app.requirement_analysis.working_document_service import WorkingDocumentSer
 from .decision_state_service import DecisionStateService
 from .stage_context import StageRuntimeContextBuilder
 from .stage_executor import TurnStageExecutor, TurnStageResult
+from .stage_output_slots import StageOutputSlots
 from .stage_plan import TurnStagePlan, TurnStagePlanner
 from .stage_reducer import TurnStageReducer
 from .turn_strategy_service import TurnStrategyService
@@ -93,34 +94,33 @@ class PolicyInterpretedRuntime:
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
         stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
         stage_results: list[TurnStageResult] = []
-        intent_output = {
-            "intent_understanding_result": {},
-            "target_document_structure": {},
-            "stage_task_definition": {},
-            "stage_quality_constraints": {},
-            "confidence": "medium",
-        }
+        stage_output_slots = StageOutputSlots()
         for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="intent"):
             stage_input = self.stage_runtime_context_builder.build(
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 working_document=working_document,
             ).to_prompt_context()
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        intent_output = self.turn_stage_reducer.reduce_intent_stage(plan=stage_plan, stage_results=stage_results)
-        intent_understanding_result = dict(intent_output.get("intent_understanding_result") or {})
-        target_document_structure = dict(intent_output.get("target_document_structure") or {})
-        stage_task_definition = dict(intent_output.get("stage_task_definition") or {})
-        stage_quality_constraints = dict(intent_output.get("stage_quality_constraints") or {})
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        intent_understanding_result = dict(stage_output_slots.get("intent_understanding_result", {}) or {})
+        target_document_structure = dict(stage_output_slots.get("target_document_structure", {}) or {})
+        stage_task_definition = dict(stage_output_slots.get("stage_task_definition", {}) or {})
+        stage_quality_constraints = dict(stage_output_slots.get("stage_quality_constraints", {}) or {})
 
         write_stage_kind = "decision_state_delta" if self._stages_by_kind(stage_plan=stage_plan, stage_kind="decision_state_delta") else "write"
         for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind=write_stage_kind):
@@ -128,6 +128,7 @@ class PolicyInterpretedRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -135,19 +136,27 @@ class PolicyInterpretedRuntime:
                 working_document=working_document,
             ).to_prompt_context()
             stage_input["decision_state"] = decision_state
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        if write_stage_kind == "decision_state_delta":
-            model_output = self.turn_stage_reducer.reduce_decision_state_delta_stage(plan=stage_plan, stage_results=stage_results)
-        else:
-            model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        model_output = self.turn_stage_reducer.reduce_latest_by_targets(
+            plan=stage_plan,
+            stage_results=stage_results,
+            output_targets={"document_patch", "decision_state_delta"},
+        )
+        if not model_output:
+            raise ValueError("turn stage results include no document or decision-state output stage")
         decision_state_delta = decision_state_service.normalize_delta(
             model_output.get("decision_state_delta"),
             turn_id=turn_id,
@@ -161,6 +170,7 @@ class PolicyInterpretedRuntime:
                 session=session,
                 context=context,
                 stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+                stage_output_slots=stage_output_slots,
                 working_document=working_document,
             ).chapter_configuration_context,
         )
@@ -181,6 +191,8 @@ class PolicyInterpretedRuntime:
             decision_state=decision_state,
             session_phase="analysis",
         )
+        stage_output_slots.set("decision_state", decision_state)
+        stage_output_slots.set("decision_state_document", decision_state_document)
         write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
         next_open_before_update = self.spec_tree_service.first_open_spec_node_id(context.spec_tree)
@@ -235,6 +247,7 @@ class PolicyInterpretedRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -248,28 +261,46 @@ class PolicyInterpretedRuntime:
                 decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(review_stage_input)
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        review_reduction = self.turn_stage_reducer.reduce_review_stage(
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+                fallback_targets={"target_review": target_review, "global_review": global_review},
+            )
+        review_stage_output = self.turn_stage_reducer.reduce_latest_by_targets(
             plan=stage_plan,
             stage_results=stage_results,
-            target_review=target_review,
-            global_review=global_review,
+            output_targets={"target_review", "global_review", "review_after_apply_result"},
         )
-        target_review = dict(review_reduction["target_review"])
-        global_review = dict(review_reduction["global_review"])
+        if isinstance(review_stage_output.get("target_review"), dict):
+            target_review = self.turn_stage_reducer._merge_target_review(
+                fallback=target_review,
+                override=review_stage_output["target_review"],
+            )
+        if isinstance(review_stage_output.get("global_review"), dict):
+            global_review = self.turn_stage_reducer._merge_global_review(
+                fallback=global_review,
+                override=review_stage_output["global_review"],
+            )
+        if global_review.get("status") == "continue_same_target":
+            global_review["status"] = "continue_same_topic"
         review_after_apply_result = {
-            **dict(review_reduction.get("review_stage_output") or {}),
+            **dict(review_stage_output or {}),
             "target_review": target_review,
             "global_review": global_review,
         }
+        stage_output_slots.set("target_review", target_review)
+        stage_output_slots.set("global_review", global_review)
+        stage_output_slots.set("review_after_apply_result", review_after_apply_result)
         can_close = target_review["status"] in {"acceptable", "closed"}
         spec_update = self.spec_tree_service.update_spec_tree(
             spec_tree=context.spec_tree,
@@ -305,6 +336,7 @@ class PolicyInterpretedRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -329,18 +361,24 @@ class PolicyInterpretedRuntime:
                     "spec_tree": spec_update_payload["spec_tree"],
                 }
             )
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        next_planning_output = self.turn_stage_reducer.reduce_next_interaction_stage(
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        next_planning_output = self.turn_stage_reducer.reduce_latest_by_targets(
             plan=stage_plan,
             stage_results=stage_results,
+            output_targets={"next_interaction_plan", "planning_trace"},
         )
         next_interaction_plan = dict(next_planning_output.get("next_interaction_plan") or {})
         next_interaction = self._next_interaction_from_plan(

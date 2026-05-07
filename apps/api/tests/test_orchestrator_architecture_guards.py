@@ -30,16 +30,35 @@ def test_policy_interpreted_plugins_do_not_keep_copied_runtime_implementation() 
         Path("orchestrators/xg/xg-heuristic-orchestrator/turn_stage_reducer.py"),
         Path("orchestrators/xg/xg-heuristic-orchestrator/stage_runtime_context_builder.py"),
         Path("orchestrators/xg/xg-heuristic-orchestrator/turn_strategy_service.py"),
+        Path("orchestrators/xg/xg-heuristic-orchestrator/decision_state_service.py"),
         Path("orchestrators/xg/brainstorm-v1/local_xg_turn_runtime.py"),
         Path("orchestrators/xg/brainstorm-v1/turn_stage_planner.py"),
         Path("orchestrators/xg/brainstorm-v1/turn_stage_executor.py"),
         Path("orchestrators/xg/brainstorm-v1/turn_stage_reducer.py"),
         Path("orchestrators/xg/brainstorm-v1/stage_runtime_context_builder.py"),
         Path("orchestrators/xg/brainstorm-v1/turn_strategy_service.py"),
+        Path("orchestrators/xg/brainstorm-v1/decision_state_service.py"),
     ]
 
     for path in copied_runtime_files:
         assert not path.exists(), f"{path} should be served by app.orchestrators.runtime, not copied in plugin package"
+
+
+def test_policy_interpreted_adapters_do_not_construct_runtime_input() -> None:
+    adapter_paths = [
+        Path("orchestrators/xg/xg-heuristic-orchestrator/adapter.py"),
+        Path("orchestrators/xg/brainstorm-v1/adapter.py"),
+    ]
+    forbidden_fragments = (
+        "_session_snapshot",
+        "SessionSnapshot",
+        "RequirementAnalysisTurnCreate",
+    )
+
+    for path in adapter_paths:
+        source = path.read_text(encoding="utf-8")
+        for fragment in forbidden_fragments:
+            assert fragment not in source, f"{path} still owns host runtime input mapping: {fragment}"
 
 
 def test_policy_interpreted_runtime_does_not_infer_stage_kind_from_stage_id() -> None:
@@ -61,3 +80,17 @@ def test_policy_interpreted_runtime_does_not_infer_stage_kind_from_stage_id() ->
     assert "review" not in constants
     assert "next_interaction" not in constants
     assert "planning" not in constants
+
+
+def test_policy_interpreted_runtime_uses_generic_stage_reduction() -> None:
+    source = Path("apps/api/app/orchestrators/runtime/policy_interpreted_runtime.py").read_text(encoding="utf-8")
+    forbidden_fragments = (
+        "reduce_intent_stage",
+        "reduce_decision_state_delta_stage",
+        "reduce_write_stage",
+        "reduce_review_stage",
+        "reduce_next_interaction_stage",
+    )
+
+    for fragment in forbidden_fragments:
+        assert fragment not in source, f"PolicyInterpretedRuntime still calls business-named reducer: {fragment}"

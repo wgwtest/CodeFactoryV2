@@ -68,6 +68,4 @@ class TurnStageExecutor:
             from _codefactory_plugin_xg_local_heuristic_orchestrator.local_xg_mock_stage_provider import LocalXGMockStageProvider
 
             return LocalXGMockStageProvider(provider_call_service=self.provider_call_service)
-        from _codefactory_plugin_xg_local_strong_rule_orchestrator.local_xg_mock_stage_provider import LocalXGMockStageProvider
-
-        return LocalXGMockStageProvider(provider_call_service=self.provider_call_service)
+        raise ValueError(f"unsupported local mock stage provider package: {package_path}")

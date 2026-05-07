@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest
+from app.orchestrators.runtime.request_mapper import OrchestratorRunRequestMapper
+
 
 class OrchestratorRuntimeHost:
     def __init__(
@@ -71,6 +74,17 @@ class OrchestratorRuntimeHost:
             working_document_service=self.working_document_service,
             working_document_review_service=self.working_document_review_service,
             turn_decision_service=self.turn_decision_service,
+        )
+
+    def run_policy_interpreted(
+        self,
+        request: OrchestratorRunRequest,
+        manifest: OrchestratorPluginManifest,
+    ):
+        runtime_input = OrchestratorRunRequestMapper().build(request=request, manifest=manifest)
+        return self.build_policy_interpreted_runtime().run_turn(
+            runtime_input.session_snapshot,
+            runtime_input.turn_payload,
         )
 
     def build_local_xg_turn_runtime(

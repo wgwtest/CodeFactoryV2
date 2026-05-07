@@ -12,6 +12,7 @@ from app.requirement_analysis.session_snapshot import SessionSnapshot
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.orchestrators.runtime.runtime_host import OrchestratorRuntimeHost
+from app.orchestrators.runtime.request_mapper import OrchestratorRunRequestMapper
 
 
 def test_adapter_loader_passes_runtime_host_to_plugin_constructor(tmp_path) -> None:
@@ -198,3 +199,113 @@ def test_runtime_host_build_policy_interpreted_runtime_returns_shared_runtime() 
     from app.orchestrators.runtime.policy_interpreted_runtime import PolicyInterpretedRuntime
 
     assert isinstance(runtime, PolicyInterpretedRuntime)
+
+
+def test_request_mapper_builds_shared_runtime_input() -> None:
+    manifest = OrchestratorPluginManifest(
+        plugin_id="brainstorm-v1",
+        name="Brainstorm V1",
+        plugin_type="local_package",
+        document_type="xg",
+        contract="xg-observable-orchestrator-contract@1",
+        status="active",
+        priority=1,
+        capabilities={"document_patch": True},
+        requires={"template": True},
+        adapter_entry="local_xg",
+        adapter_module="adapter",
+        adapter_class="LocalXGOrchestratorPluginAdapter",
+        package_path="orchestrators/xg/brainstorm-v1",
+    )
+    request = OrchestratorRunRequest(
+        contract_version="xg-observable-orchestrator-contract@1",
+        session={
+            "session_id": "ra-001",
+            "topic": "默认运算软件需求规格说明",
+            "provider_id": "deepseek",
+            "model": "deepseek-chat",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+        turn={
+            "user_input": "请补充软件定位",
+            "previous_interaction": {"type": "choice_question", "prompt": "上一问"},
+        },
+        template={},
+        document_context={
+            "state": {"session_phase": "exploration_convergence"},
+            "confirmed_facts": ["已确认事实 A"],
+            "open_questions": ["未闭合问题 A"],
+            "working_document": {"blocks": [{"block_id": "blk-1"}]},
+            "patches": [{"patch_id": "p-1"}],
+            "spec_tree": [{"node_id": "SPEC-REQ-1.1"}],
+            "active_spec_node": {"node_id": "SPEC-REQ-1.1"},
+        },
+        execution_options={},
+    )
+
+    runtime_input = OrchestratorRunRequestMapper().build(request=request, manifest=manifest)
+
+    assert runtime_input.session_snapshot.orchestrator_id == "brainstorm-v1"
+    assert runtime_input.session_snapshot.provider_id == "deepseek"
+    assert runtime_input.turn_payload.user_input == "请补充软件定位"
+    assert runtime_input.session_snapshot.payload["confirmed_facts"] == ["已确认事实 A"]
+    assert runtime_input.session_snapshot.payload["questions"] == ["未闭合问题 A"]
+    assert runtime_input.session_snapshot.payload["next_interaction"] == {"type": "choice_question", "prompt": "上一问"}
+    assert runtime_input.session_snapshot.payload["session_phase"] == "exploration_convergence"
+
+
+def test_runtime_host_run_policy_interpreted_uses_shared_request_mapper(monkeypatch) -> None:
+    runtime_host = OrchestratorRuntimeHost(
+        turn_context_builder=object(),
+        provider_call_service=object(),
+        provider_call_log_service=object(),
+        spec_tree_service=object(),
+        spec_projection_service=object(),
+        summary_artifact_service=object(),
+        turn_audit_service=object(),
+        turn_output_service=object(),
+        next_interaction_service=object(),
+        working_document_service=object(),
+        working_document_review_service=object(),
+        turn_decision_service=object(),
+    )
+    manifest = OrchestratorPluginManifest(
+        plugin_id="xg-heuristic-orchestrator",
+        name="Heuristic",
+        plugin_type="local_package",
+        document_type="xg",
+        contract="xg-observable-orchestrator-contract@1",
+        status="active",
+        priority=1,
+        capabilities={"document_patch": True},
+        requires={"template": True},
+        adapter_entry="local_xg",
+        adapter_module="adapter",
+        adapter_class="LocalXGOrchestratorPluginAdapter",
+        package_path="orchestrators/xg/xg-heuristic-orchestrator",
+    )
+    request = OrchestratorRunRequest(
+        contract_version="xg-observable-orchestrator-contract@1",
+        session={"session_id": "ra-001", "topic": "默认运算软件需求规格说明"},
+        turn={"user_input": "测试输入"},
+        template={},
+        document_context={},
+        execution_options={},
+    )
+    captured: dict[str, object] = {}
+
+    class StubRuntime:
+        def run_turn(self, session, payload):
+            captured["session"] = session
+            captured["payload"] = payload
+            return TurnExecutionResult(turn={"turn_id": "turn-0001"}, state_patch={}, provider_logs=[])
+
+    monkeypatch.setattr(runtime_host, "build_policy_interpreted_runtime", lambda: StubRuntime())
+
+    result = runtime_host.run_policy_interpreted(request, manifest)
+
+    assert isinstance(captured["session"], SessionSnapshot)
+    assert isinstance(captured["payload"], RequirementAnalysisTurnCreate)
+    assert result.turn["turn_id"] == "turn-0001"

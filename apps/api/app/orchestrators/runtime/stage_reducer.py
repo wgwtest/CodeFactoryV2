@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .stage_executor import TurnStageResult
+from .stage_output_slots import StageOutputSlots
 from .stage_plan import TurnStagePlan
 
 
@@ -33,6 +34,62 @@ class TurnStageAudit:
 
 
 class TurnStageReducer:
+    def reduce_stage(
+        self,
+        *,
+        plan: TurnStagePlan,
+        stage: dict,
+        result: TurnStageResult,
+        slots: StageOutputSlots,
+        fallback_targets: dict | None = None,
+    ) -> dict:
+        if not any(str(item.get("stage_id") or "") == result.stage_id for item in plan.stages):
+            raise ValueError(f"turn stage result is not in plan: {result.stage_id}")
+        output = dict(result.model_output)
+        fallback = dict(fallback_targets or {})
+        output_targets = [str(item) for item in list(stage.get("output_targets") or []) if str(item).strip()]
+        adopt_fields = [str(item) for item in list(stage.get("adopt_fields") or output_targets) if str(item).strip()]
+        target_names = output_targets or adopt_fields or list(output.keys())
+        adopted: dict = {}
+        for field in adopt_fields:
+            if field not in target_names:
+                continue
+            if field in output:
+                value = output[field]
+            elif field in fallback:
+                value = fallback[field]
+            else:
+                continue
+            adopted[field] = value
+            slots.set(field, value)
+        for target in target_names:
+            if target in adopted:
+                continue
+            if target in output:
+                slots.set(target, output[target])
+            elif target in fallback:
+                slots.set(target, fallback[target])
+        slots.set_stage_output(
+            stage_id=result.stage_id,
+            output=output,
+            adopted_fields=list(adopted.keys()),
+        )
+        return adopted
+
+    def reduce_latest_by_targets(
+        self,
+        *,
+        plan: TurnStagePlan,
+        stage_results: list[TurnStageResult],
+        output_targets: set[str],
+    ) -> dict:
+        for result in reversed(stage_results):
+            stage = self._stage_for_result(plan=plan, stage_id=result.stage_id)
+            targets = {str(item) for item in list(stage.get("output_targets") or [])}
+            if targets & output_targets:
+                return dict(result.model_output)
+        return {}
+
     def reduce_intent_stage(self, *, plan: TurnStagePlan, stage_results: list[TurnStageResult]) -> dict:
         intent_results = [result for result in stage_results if self._stage_kind(plan, result.stage_id) == "intent"]
         if not intent_results:
@@ -194,3 +251,10 @@ class TurnStageReducer:
             if stage.get("stage_id") == stage_id:
                 return str(stage.get("stage_kind") or "write")
         return "write"
+
+    @staticmethod
+    def _stage_for_result(*, plan: TurnStagePlan, stage_id: str) -> dict:
+        for stage in plan.stages:
+            if str(stage.get("stage_id") or "") == stage_id:
+                return dict(stage)
+        return {}
