@@ -2202,8 +2202,11 @@ export type P3DesignLabSession = {
 export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
 
 export type RequirementAnalysisOrchestrator = {
+  plugin_id?: string;
   orchestrator_id: string;
   name: string;
+  plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+  observability_level?: "full" | "limited" | "none";
   version?: string;
   stage?: string;
   document_type?: string;
@@ -2212,7 +2215,7 @@ export type RequirementAnalysisOrchestrator = {
   status: RequirementAnalysisOrchestratorStatus;
   description: string;
   entry?: string | null;
-  capabilities?: readonly string[];
+  capabilities?: readonly string[] | Record<string, boolean>;
   requires?: Record<string, unknown>;
   package_path?: string;
 };
@@ -2544,6 +2547,11 @@ export type RequirementAnalysisTurn = {
   turn_id: string;
   session_id: string;
   user_input: string;
+  orchestrator_plugin?: {
+    plugin_id: string;
+    plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+    observability_level?: "full" | "limited" | "none";
+  };
   previous_interaction: RequirementAnalysisInteraction;
   normalized_input: {
     input_type: string;
@@ -2561,6 +2569,7 @@ export type RequirementAnalysisTurn = {
   confidence: string;
   service_steps: RequirementAnalysisServiceStep[];
   raw_model_response: Record<string, unknown>;
+  raw_plugin_response?: Record<string, unknown>;
   created_at: string;
 };
 
@@ -2630,7 +2639,7 @@ export type RequirementAnalysisSession = {
 
 export type RequirementAnalysisSessionCreateInput = {
   topic: string;
-  orchestrator_id: string;
+  orchestrator_id?: string;
   provider_id: string;
   model?: string;
   template_id?: string;

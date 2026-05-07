@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.requirement_analysis.turn_stage_executor import TurnStageResult
-from app.requirement_analysis.turn_stage_planner import TurnStagePlan
+from .turn_stage_executor import TurnStageResult
+from .turn_stage_planner import TurnStagePlan
 
 
 @dataclass(frozen=True)

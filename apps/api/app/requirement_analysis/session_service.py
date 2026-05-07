@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.config import settings
 from app.db.models.requirements import RequirementAnalysisSession
 from app.orchestrators.package_loader import OrchestratorPackage, get_orchestrator_registry
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry, reload_orchestrator_plugin_registry
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
@@ -24,10 +25,6 @@ from app.requirement_analysis.turn_decision_service import TurnDecisionService
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
-from app.requirement_analysis.turn_stage_executor import TurnStageExecutor
-from app.requirement_analysis.turn_stage_planner import TurnStagePlanner
-from app.requirement_analysis.turn_stage_reducer import TurnStageReducer
-from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
 
@@ -53,16 +50,10 @@ class RequirementAnalysisSessionService:
         self.working_document_review_service = WorkingDocumentReviewService(
             working_document_service=self.working_document_service,
         )
-        self.turn_stage_planner = TurnStagePlanner()
-        self.turn_stage_reducer = TurnStageReducer()
         self.turn_decision_service = TurnDecisionService()
         self.next_interaction_service = NextInteractionService(
             input_normalizer=self.input_normalizer,
             process_artifact_service=self.process_artifact_service,
-        )
-        self.turn_strategy_service = TurnStrategyService()
-        self.turn_stage_executor = TurnStageExecutor(
-            provider_call_service=self.provider_call_service,
         )
         self.turn_context_builder = TurnContextBuilder(
             input_normalizer=self.input_normalizer,
@@ -80,19 +71,22 @@ class RequirementAnalysisSessionService:
             turn_audit_service=self.turn_audit_service,
             turn_output_service=self.turn_output_service,
             next_interaction_service=self.next_interaction_service,
-            turn_strategy_service=self.turn_strategy_service,
-            turn_stage_planner=self.turn_stage_planner,
-            turn_stage_executor=self.turn_stage_executor,
-            turn_stage_reducer=self.turn_stage_reducer,
             working_document_service=self.working_document_service,
             working_document_review_service=self.working_document_review_service,
             turn_decision_service=self.turn_decision_service,
         )
 
     def list_orchestrators(self) -> dict:
-        registry = get_orchestrator_registry()
+        registry = get_orchestrator_plugin_registry()
+        return self._orchestrator_envelope(registry.list_plugins())
+
+    def reload_orchestrators(self) -> dict:
+        registry = reload_orchestrator_plugin_registry()
+        return self._orchestrator_envelope(registry.list_plugins())
+
+    def _orchestrator_envelope(self, plugins: list) -> dict:
         return {
-            "items": [package.to_api() for package in registry.list_packages()],
+            "items": [plugin.to_api() for plugin in plugins],
             "stable_contract": self._stable_contract(),
             "output_protocol": [
                 "previous_interaction",
@@ -110,7 +104,8 @@ class RequirementAnalysisSessionService:
 
     def create_session(self, payload: RequirementAnalysisSessionCreate) -> dict:
         orchestrator_id = self._normalize_orchestrator_id(payload.orchestrator_id)
-        orchestrator = self._orchestrator(orchestrator_id)
+        orchestrator_plugin = self._orchestrator_plugin(orchestrator_id)
+        orchestrator = self._orchestrator(orchestrator_id) if orchestrator_plugin.plugin_type == "local_package" else None
         if payload.provider_id not in supported_provider_ids():
             raise ValueError("unsupported provider")
         if payload.provider_id == "deepseek" and not settings.requirement_analysis_deepseek_api_key:
@@ -118,7 +113,10 @@ class RequirementAnalysisSessionService:
 
         now = self._now()
         model = self._resolve_model(payload.provider_id, payload.model)
-        spec_tree = self._new_spec_tree(payload.template_id, orchestrator_id=orchestrator.orchestrator_id)
+        spec_tree = self._new_spec_tree(
+            payload.template_id,
+            orchestrator_id=orchestrator.orchestrator_id if orchestrator is not None else orchestrator_id,
+        )
         active_spec_node_id = self._first_open_spec_node_id(spec_tree)
         working_document = self.working_document_service.initialize(
             topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
@@ -172,7 +170,7 @@ class RequirementAnalysisSessionService:
         }
         session = RequirementAnalysisSession(
             topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
-            orchestrator_id=orchestrator.orchestrator_id,
+            orchestrator_id=orchestrator_id,
             provider_id=payload.provider_id,
             model=model,
             template_id=payload.template_id,
@@ -237,7 +235,7 @@ class RequirementAnalysisSessionService:
             "session_id": session.id,
             "topic": session.topic,
             "status": session.status,
-            "orchestrator": self._orchestrator(session.orchestrator_id).to_api(),
+            "orchestrator": self._serialize_orchestrator(session.orchestrator_id),
             "provider_id": session.provider_id,
             "model": session.model,
             "template_id": session.template_id,
@@ -268,11 +266,34 @@ class RequirementAnalysisSessionService:
         }
 
     def _normalize_orchestrator_id(self, orchestrator_id: str) -> str:
+        registry = get_orchestrator_plugin_registry()
         normalized = orchestrator_id.strip()
-        return normalized
+        if not normalized:
+            return registry.default_plugin().plugin_id
+        return registry.require(normalized).plugin_id
 
     def _orchestrator(self, orchestrator_id: str) -> OrchestratorPackage:
-        return get_orchestrator_registry().require(self._normalize_orchestrator_id(orchestrator_id))
+        package_id = get_orchestrator_plugin_registry().local_package_id_for_plugin(orchestrator_id)
+        return get_orchestrator_registry().require(package_id)
+
+    def _orchestrator_plugin(self, orchestrator_id: str):
+        return get_orchestrator_plugin_registry().require(self._normalize_orchestrator_id(orchestrator_id))
+
+    def _serialize_orchestrator(self, orchestrator_id: str) -> dict:
+        plugin = self._orchestrator_plugin(orchestrator_id).to_api()
+        if plugin["plugin_type"] != "local_package":
+            return plugin
+        package = self._orchestrator(orchestrator_id).to_api()
+        return {
+            **plugin,
+            **package,
+            "plugin_id": plugin["plugin_id"],
+            "plugin_type": plugin["plugin_type"],
+            "observability_level": plugin["observability_level"],
+            "capabilities": plugin["capabilities"],
+            "contract": plugin["contract"],
+            "orchestrator_id": plugin["orchestrator_id"],
+        }
 
     def _provider(self, provider_id: str) -> dict:
         for provider in PROVIDER_DEFINITIONS:

@@ -1,5 +1,6 @@
 {
   "id": "xg-strong-rule-orchestrator",
+  "plugin_id": "xg-local-strong-rule-orchestrator",
   "name": "XG Strong Rule Orchestrator",
   "version": "0.1.0",
   "stage": "P2",
@@ -9,6 +10,10 @@
   "entry": "runner.py",
   "status": "active",
   "priority": 20,
+  "package_id": "xg-strong-rule-orchestrator",
+  "aliases": ["xg-strong-rule-orchestrator"],
+  "adapter_module": "adapter",
+  "adapter_class": "LocalXGOrchestratorPluginAdapter",
   "description": "面向需求规格说明的强规则组织器，强调规则优先、强审计链和严格闭环。",
   "capabilities": [
     "rule_based_flow",

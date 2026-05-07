@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict
-
-
-RequirementAnalysisOrchestratorId = Literal["xg-heuristic-orchestrator", "xg-strong-rule-orchestrator"]
-RequirementAnalysisProviderId = Literal["mock", "deepseek", "openai"]
 
 
 class RequirementAnalysisSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     topic: str
-    orchestrator_id: str = "xg-heuristic-orchestrator"
+    orchestrator_id: str = ""
     provider_id: str = "mock"
     model: str = "mock-requirement-analysis-v1"
     template_id: str = "81433号"

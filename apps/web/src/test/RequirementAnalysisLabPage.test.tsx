@@ -153,7 +153,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
     if (url === "/requirement-analysis/sessions") {
       expect(body).toMatchObject({
         topic: "配置下发的需求规格探索课题",
-        orchestrator_id: "xg-heuristic-orchestrator",
+        orchestrator_id: "xg-local-heuristic-orchestrator",
         provider_id: "deepseek",
         model: "deepseek-config-model",
         template_id: "xg-template-82259-default",
@@ -242,6 +242,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByRole("button", { name: "删除实例" })).toBeInTheDocument();
   expect(screen.getByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.getByText("XG Strong Rule Orchestrator")).toBeInTheDocument();
+  expect(await screen.findAllByText("完整观测")).toHaveLength(2);
+  expect(screen.getByText("有限观测")).toBeInTheDocument();
+  expect(screen.getByText("Dify Workflow")).toBeInTheDocument();
   expect(screen.getByText("DeepSeek")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /选择模板实例 软件级需求规格说明模板/ })).toBeInTheDocument();
   await waitFor(() =>
@@ -522,6 +525,118 @@ test("switches to session tab immediately while startup request is still pending
   expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
 });
 
+test("falls back to active mock provider when DeepSeek is not configured during startup", async () => {
+  const session = {
+    ...buildSession("created"),
+    provider_id: "mock",
+    model: "provider-default",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { provider_id: "mock", name: "Mock Provider", status: "active" },
+            { provider_id: "deepseek", name: "DeepSeek", status: "not_configured" },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-default",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基于 81433 的默认实例模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "软件级需求规格说明模板",
+          description: "基于 81433 的默认实例模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-analysis/sessions") {
+      expect(body).toMatchObject({
+        topic: "配置下发的需求规格探索课题",
+        orchestrator_id: "xg-local-heuristic-orchestrator",
+        provider_id: "mock",
+        model: "deepseek-config-model",
+        template_id: "xg-template-81433-default",
+        knowledge_package_id: "configured-knowledge-package",
+        write_policy: "configured_patch_only",
+      });
+      return Promise.resolve({ data: session });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText(/当前 Provider：Mock Provider/)).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith(
+      "/requirement-analysis/sessions",
+      expect.objectContaining({
+        provider_id: "mock",
+      }),
+    ),
+  );
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
+});
+
 test("shows a protocol error instead of blanking when Current Turn misses required audit fields", async () => {
   const session = buildSession("created");
   const malformedEnvelope = buildMalformedTurnEnvelope();
@@ -732,6 +847,154 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
   expect(screen.queryByText("当前 Turn 协议错误")).not.toBeInTheDocument();
 });
 
+test("shows limited-observability plugin fallback when Dify turn has no stage audits", async () => {
+  const session = buildSession("created");
+  const envelope = buildDifyTurnEnvelope();
+
+  mockRequirementAnalysisBootstrap();
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    if (url === "/requirement-analysis/sessions/ra-airspace-001/turns") {
+      return Promise.resolve({ data: envelope });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
+
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+  fireEvent.change(screen.getByPlaceholderText("输入 A / 继续 / 更正式 / 或直接描述需求..."), {
+    target: { value: "这个系统叫空域运算软件" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await screen.findByText("Dify workflow 预留插件已生成整篇正文草稿。");
+
+  fireEvent.click(screen.getByRole("tab", { name: /当前 Turn/ }));
+
+  expect(screen.getByText("有限观测")).toBeInTheDocument();
+  expect(screen.getByText("Dify Workflow")).toBeInTheDocument();
+  expect(screen.getByText("该插件未提供阶段审计输出")).toBeInTheDocument();
+  expect(screen.getByText(/fake-xg-dify-workflow/)).toBeInTheDocument();
+});
+
+test("reloads orchestrator plugins from backend response without hardcoded plugin names", async () => {
+  const initialOrchestrators = {
+    ...buildOrchestrators(),
+    items: [buildOrchestrators().items[0]],
+  };
+  const reloadedOrchestrators = {
+    ...buildOrchestrators(),
+    items: [
+      {
+        plugin_id: "xg-custom-plugin-orchestrator",
+        orchestrator_id: "xg-custom-plugin-orchestrator",
+        name: "XG Custom Plugin Orchestrator",
+        plugin_type: "dify_workflow",
+        observability_level: "limited",
+        document_type: "xg",
+        contract: "xg-observable-orchestrator-contract@1",
+        status: "active",
+        description: "通过插件目录 reload 后发现的组织器。",
+        entry: null,
+        capabilities: {
+          filled_document_text: true,
+          document_patch: false,
+          stage_results: false,
+          stage_audits: false,
+          provider_logs: false,
+          decision_trace: false,
+          review_after_apply: false,
+          spec_tree_update: false,
+          streaming_events: false,
+        },
+        requires: { template: true },
+        package_path: "orchestrators/xg/xg-custom-plugin-orchestrator",
+      },
+    ],
+  } as const;
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: initialOrchestrators });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-default",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基于 81433 的默认实例模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "软件级需求规格说明模板",
+          description: "基于 81433 的默认实例模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/orchestrators/reload") {
+      return Promise.resolve({ data: reloadedOrchestrators });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("XG Heuristic Orchestrator")).toBeInTheDocument();
+  expect(screen.queryByText("XG Custom Plugin Orchestrator")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "重新扫描组织器" }));
+
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/orchestrators/reload"));
+  expect(await screen.findByText("XG Custom Plugin Orchestrator")).toBeInTheDocument();
+  expect(screen.queryByText("XG Heuristic Orchestrator")).not.toBeInTheDocument();
+  expect(screen.getByText(/当前组织器：XG Custom Plugin Orchestrator/)).toBeInTheDocument();
+});
+
 test("lets provider log audit outputs expand until near one screen before internal scrolling", () => {
   const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
 
@@ -829,34 +1092,84 @@ function buildOrchestrators() {
   return {
     items: [
       {
-        orchestrator_id: "xg-heuristic-orchestrator",
+        plugin_id: "xg-local-heuristic-orchestrator",
+        orchestrator_id: "xg-local-heuristic-orchestrator",
         name: "XG Heuristic Orchestrator",
+        plugin_type: "local_package",
+        observability_level: "full",
         version: "0.1.0",
         stage: "P2",
         document_type: "xg",
-        contract: "xg-orchestrator-contract@1",
+        contract: "xg-observable-orchestrator-contract@1",
         mode: "policy_interpreted",
         status: "active",
         description: "面向需求规格说明的开放式 Requirement Analysis 组织器。",
         entry: null,
-        capabilities: ["free_text_input", "guided_question", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+        capabilities: {
+          filled_document_text: false,
+          document_patch: true,
+          stage_results: true,
+          stage_audits: true,
+          provider_logs: true,
+          decision_trace: true,
+          review_after_apply: true,
+          spec_tree_update: true,
+          streaming_events: false,
+        },
         requires: { template: true, knowledge_binding: true, model_provider: "optional" },
         package_path: "orchestrators/xg/xg-heuristic-orchestrator",
       },
       {
-        orchestrator_id: "xg-strong-rule-orchestrator",
+        plugin_id: "xg-local-strong-rule-orchestrator",
+        orchestrator_id: "xg-local-strong-rule-orchestrator",
         name: "XG Strong Rule Orchestrator",
+        plugin_type: "local_package",
+        observability_level: "full",
         version: "0.1.0",
         stage: "P2",
         document_type: "xg",
-        contract: "xg-orchestrator-contract@1",
+        contract: "xg-observable-orchestrator-contract@1",
         mode: "local_runner",
         status: "active",
         description: "面向需求规格说明的强规则组织器。",
         entry: "runner.py",
-        capabilities: ["rule_based_flow", "strict_turn_closure", "quick_options", "spec_tree_update", "document_patch", "turn_audit"],
+        capabilities: {
+          filled_document_text: false,
+          document_patch: true,
+          stage_results: true,
+          stage_audits: true,
+          provider_logs: true,
+          decision_trace: true,
+          review_after_apply: true,
+          spec_tree_update: true,
+          streaming_events: false,
+        },
         requires: { template: true, knowledge_binding: true, model_provider: "optional" },
         package_path: "orchestrators/xg/xg-strong-rule-orchestrator",
+      },
+      {
+        plugin_id: "xg-dify-workflow-orchestrator",
+        orchestrator_id: "xg-dify-workflow-orchestrator",
+        name: "XG Dify Workflow Orchestrator",
+        plugin_type: "dify_workflow",
+        observability_level: "limited",
+        document_type: "xg",
+        contract: "xg-observable-orchestrator-contract@1",
+        status: "available",
+        description: "面向需求规格说明的 Dify workflow 预留组织器。",
+        entry: null,
+        capabilities: {
+          filled_document_text: true,
+          document_patch: false,
+          stage_results: false,
+          stage_audits: false,
+          provider_logs: false,
+          decision_trace: false,
+          review_after_apply: false,
+          spec_tree_update: false,
+          streaming_events: true,
+        },
+        requires: { template: true, knowledge_binding: false, model_provider: "external_workflow" },
       },
     ] as const,
     stable_contract: buildStableContract(),
@@ -1666,6 +1979,87 @@ function buildTurnEnvelopeWithSparseReviewArrays(): RequirementAnalysisTurnEnvel
       turns: [sparseTurn],
     },
     turn: sparseTurn,
+  };
+}
+
+function buildDifyTurnEnvelope(): RequirementAnalysisTurnEnvelope {
+  const envelope = buildTurnEnvelope();
+  const difyTurn = {
+    ...envelope.turn,
+    user_input: "这个系统叫空域运算软件",
+    orchestrator_plugin: {
+      plugin_id: "xg-dify-workflow-orchestrator",
+      plugin_type: "dify_workflow",
+      observability_level: "limited",
+    },
+    spec_execution: {
+      ...envelope.turn.spec_execution,
+      assistant_message: "Dify workflow 预留插件已生成整篇正文草稿。",
+      confirmed_facts: ["这个系统叫空域运算软件"],
+      document_patch: [
+        {
+          plan_ref: "AP-DIFY-001",
+          operation: "append_or_update",
+          content: "# 需求规格说明\n\n## 本轮补充\n\n这个系统叫空域运算软件\n",
+        },
+      ],
+    },
+    stage_audits: [],
+    decision_trace: [],
+    raw_plugin_response: {
+      raw_output: {
+        raw_workflow_trace: {
+          fake: true,
+          workflow_id: "fake-xg-dify-workflow",
+        },
+      },
+    },
+  } as unknown as RequirementAnalysisTurnEnvelope["turn"];
+  return {
+    session: {
+      ...envelope.session,
+      turns: [difyTurn],
+      messages: [
+        ...buildSession("waiting_user").messages,
+        { id: "msg-0002", role: "user", content: "这个系统叫空域运算软件", turn_id: "turn-0001" },
+        {
+          id: "msg-0003",
+          role: "assistant",
+          content: "Dify workflow 预留插件已生成整篇正文草稿。",
+          turn_id: "turn-0001",
+        },
+      ],
+      working_document: {
+        ...envelope.session.working_document,
+        blocks: [
+          {
+            block_id: "blk-dify-0001",
+            anchor_path: "REQ-1.1",
+            block_type: "paragraph",
+            order_index: 10,
+            text: "# 需求规格说明\n\n## 本轮补充\n\n这个系统叫空域运算软件\n",
+            last_turn_id: "turn-0001",
+            source_fragment_ids: ["frag-dify-0001"],
+          },
+        ],
+        revision_fragments: [
+          {
+            fragment_id: "frag-dify-0001",
+            turn_id: "turn-0001",
+            color_token: "turn-color-01",
+            target_block_id: "blk-dify-0001",
+            apply_mode: "append_to_block",
+            start_offset: 0,
+            end_offset: 14,
+            user_input_summary: "这个系统叫空域运算软件",
+            supplement_reason: "fake Dify workflow 整篇正文草稿",
+            hit_spec_nodes: ["SPEC-REQ-1.1"],
+          },
+        ],
+      },
+      provider_logs: [],
+    },
+    turn: difyTurn,
   };
 }
 

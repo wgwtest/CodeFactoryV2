@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.models.requirements import RequirementAnalysisSession
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
 
@@ -37,7 +38,7 @@ class NextInteractionService:
             next_question = str(focus_node.get("question") or focus_node.get("title"))
             if model_output.get("raw_model_response", {}).get("mock") or not model_output.get("quick_options"):
                 quick_options = self.process_artifact_service.quick_options_for_node(
-                    session.orchestrator_id,
+                    get_orchestrator_plugin_registry().local_package_id_for_plugin(session.orchestrator_id),
                     focus_node,
                 )
             else:
@@ -49,10 +50,7 @@ class NextInteractionService:
             next_content = f"建议下一步确认：{next_question}"
         else:
             next_content = "当前完成度树暂无待确认节点，可以进入整体复核。"
-        orchestrator_id = str(model_output.get("raw_model_response", {}).get("orchestrator_id") or "")
-        if orchestrator_id == "xg-strong-rule-orchestrator":
-            assistant_message = f"强规则组织器已按固定闭环更新：{updated_sections}。{next_content}"
-        elif continue_same_topic:
+        if continue_same_topic:
             assistant_message = f"基于你的输入，本轮先写入了：{updated_sections}。当前章节仍需继续补齐。"
         else:
             assistant_message = f"基于你的输入，本轮更新了：{updated_sections}。{next_content}"

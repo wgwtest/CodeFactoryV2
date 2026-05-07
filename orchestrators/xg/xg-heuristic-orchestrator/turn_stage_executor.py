@@ -30,14 +30,26 @@ class TurnStageExecutor:
         stage_input: dict | None = None,
     ) -> TurnStageResult:
         stage_type = str(stage.get("stage_type") or orchestrator.mode)
-        provider_run_result = self.provider_call_service.run_orchestrator(
-            orchestrator=orchestrator,
-            session=session,
-            user_input=context.user_input,
-            normalized=context.normalized_input,
-            stage=stage,
-            stage_input=stage_input or {},
-        )
+        if session.provider_id == "mock" and orchestrator.mode != "local_runner":
+            from .local_xg_mock_stage_provider import LocalXGMockStageProvider
+
+            provider_run_result = LocalXGMockStageProvider(provider_call_service=self.provider_call_service).run(
+                orchestrator=orchestrator,
+                session=session,
+                user_input=context.user_input,
+                normalized=context.normalized_input,
+                stage=stage,
+                stage_input=stage_input or {},
+            )
+        else:
+            provider_run_result = self.provider_call_service.run_orchestrator(
+                orchestrator=orchestrator,
+                session=session,
+                user_input=context.user_input,
+                normalized=context.normalized_input,
+                stage=stage,
+                stage_input=stage_input or {},
+            )
         return TurnStageResult(
             stage_id=str(stage.get("stage_id") or "stage-001"),
             stage_type=stage_type,

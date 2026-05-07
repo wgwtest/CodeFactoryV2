@@ -2,6 +2,8 @@ from importlib import import_module
 import inspect
 from dataclasses import is_dataclass
 
+from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
+from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 
@@ -32,11 +34,6 @@ def test_requirement_analysis_j5_services_can_be_imported() -> None:
     session_snapshot = import_module("app.requirement_analysis.session_snapshot")
     turn_context_builder = import_module("app.requirement_analysis.turn_context_builder")
     turn_execution_result = import_module("app.requirement_analysis.turn_execution_result")
-    turn_strategy_service = import_module("app.requirement_analysis.turn_strategy_service")
-    turn_stage_planner = import_module("app.requirement_analysis.turn_stage_planner")
-    turn_stage_executor = import_module("app.requirement_analysis.turn_stage_executor")
-    turn_stage_reducer = import_module("app.requirement_analysis.turn_stage_reducer")
-    stage_runtime_context_builder = import_module("app.requirement_analysis.stage_runtime_context_builder")
     turn_decision_service = import_module("app.requirement_analysis.turn_decision_service")
     spec_projection_service = import_module("app.requirement_analysis.spec_projection_service")
     next_interaction_service = import_module("app.requirement_analysis.next_interaction_service")
@@ -48,6 +45,14 @@ def test_requirement_analysis_j5_services_can_be_imported() -> None:
     stage_schema_resolver = import_module("app.orchestrators.stage_schema_resolver")
     stage_adoption_policy_resolver = import_module("app.orchestrators.stage_adoption_policy_resolver")
     stage_prompt_bundle_builder = import_module("app.orchestrators.stage_prompt_bundle_builder")
+    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
+    adapter = load_orchestrator_plugin_adapter(manifest)
+    plugin_module_prefix = adapter.__class__.__module__.rsplit(".", 1)[0]
+    turn_strategy_service = import_module(f"{plugin_module_prefix}.turn_strategy_service")
+    turn_stage_planner = import_module(f"{plugin_module_prefix}.turn_stage_planner")
+    turn_stage_executor = import_module(f"{plugin_module_prefix}.turn_stage_executor")
+    turn_stage_reducer = import_module(f"{plugin_module_prefix}.turn_stage_reducer")
+    stage_runtime_context_builder = import_module(f"{plugin_module_prefix}.stage_runtime_context_builder")
 
     assert hasattr(session_snapshot, "SessionSnapshot")
     assert hasattr(turn_context_builder, "TurnContext")
