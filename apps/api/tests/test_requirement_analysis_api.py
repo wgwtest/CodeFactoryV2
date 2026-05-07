@@ -204,6 +204,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     items = orchestrators.json()["items"]
     plugin_ids = {item["plugin_id"] for item in items}
     assert {
+        "brainstorm-v1",
         "xg-local-heuristic-orchestrator",
         "xg-local-strong-rule-orchestrator",
         "xg-dify-workflow-orchestrator",
@@ -223,6 +224,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert dify["observability_level"] == "limited"
     assert dify["capabilities"]["filled_document_text"] is True
     assert dify["capabilities"]["stage_audits"] is False
+
+    brainstorm = next(item for item in items if item["plugin_id"] == "brainstorm-v1")
+    assert brainstorm["plugin_type"] == "local_package"
+    assert brainstorm["observability_level"] == "full"
+    assert brainstorm["capabilities"]["decision_trace"] is True
+    assert brainstorm["package_id"] == "brainstorm-v1"
 
     created = client.post(
         "/api/requirement-analysis/sessions",
@@ -613,6 +620,46 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert len(payload["session"]["provider_logs"]) == 1
     assert payload["session"]["provider_logs"][0]["stage_id"] == "run"
     assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+
+
+def test_requirement_analysis_lab_runs_brainstorm_v1_as_plugin() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["orchestrator_id"] == "brainstorm-v1"
+    assert session["orchestrator"]["plugin_id"] == "brainstorm-v1"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "brainstorm-v1"
+    assert payload["turn"]["decision_state_delta"]["confirmed_facts"]
+    assert payload["turn"]["decision_state_change_summary"]["added_counts"]["confirmed_facts"] == 1
+    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert payload["session"]["decision_state"]["confirmed_facts"]
+    assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert payload["session"]["provider_logs"][1]["stage_id"] == "decision_state_delta"
 
 
 def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:

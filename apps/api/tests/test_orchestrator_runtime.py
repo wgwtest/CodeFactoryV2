@@ -70,13 +70,22 @@ def test_orchestrator_runtime_loads_assets_and_normalizes_output() -> None:
     assert "需求规格说明写作 Lab" in prompt_bundle["assembled_prompt"]
     assert "用户输入驱动" in prompt_bundle["assembled_prompt"]
 
+    brainstorm = loader.load("brainstorm-v1")
+    assert brainstorm.package.orchestrator_id == "brainstorm-v1"
+    assert brainstorm.spec_strategy["turn_strategy"]["strategy_id"] == "decision_state_loop"
+    assert [stage["stage_id"] for stage in brainstorm.spec_strategy["turn_strategy"]["stages"]] == [
+        "intent_understanding",
+        "decision_state_delta",
+        "next_interaction_planning",
+    ]
+
 
 def test_legacy_package_loader_ignores_non_local_plugin_packages() -> None:
     loader = OrchestratorPackageLoader()
 
     package_ids = {item.package.orchestrator_id for item in loader.load_all()}
 
-    assert package_ids == {"xg-heuristic-orchestrator", "xg-strong-rule-orchestrator"}
+    assert package_ids == {"brainstorm-v1", "xg-heuristic-orchestrator", "xg-strong-rule-orchestrator"}
 
 
 def test_turn_engine_does_not_dispatch_by_plugin_type_or_adapter_entry() -> None:
@@ -311,3 +320,58 @@ def test_orchestrator_runtime_executes_local_runner_entry() -> None:
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["runner_invoked"] is True
     assert output["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")
+
+
+def test_brainstorm_v1_adapter_returns_decision_state_output() -> None:
+    manifest = OrchestratorPluginManifest(
+        plugin_id="brainstorm-v1",
+        name="Brainstorm v1",
+        plugin_type="local_package",
+        document_type="xg",
+        contract="xg-observable-orchestrator-contract@1",
+        status="active",
+        priority=20,
+        capabilities={"document_patch": True, "decision_trace": True, "spec_tree_update": True},
+        requires={"template": True},
+        adapter_entry="local_xg",
+        adapter_module="adapter",
+        adapter_class="LocalXGOrchestratorPluginAdapter",
+        package_path="orchestrators/xg/brainstorm-v1",
+        package_id="brainstorm-v1",
+    )
+    adapter = load_orchestrator_plugin_adapter(manifest)
+
+    result = adapter.run(
+        OrchestratorRunRequest(
+            contract_version="xg-observable-orchestrator-contract@1",
+            session={
+                "session_id": "session-brainstorm-v1",
+                "topic": "空域运算软件",
+                "orchestrator_id": "brainstorm-v1",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "write_policy": "patch_suggestion_only",
+            },
+            turn={"user_input": "系统用于空域计算分析"},
+            template={"template_id": "81433号"},
+            document_context={
+                "active_spec_node": {
+                    "node_id": "SPEC-REQ-1.1",
+                    "title": "REQ-1.1 编写目的",
+                    "target_section": "1 总则 / 编写目的",
+                    "question": "请确认软件名称、背景领域和编写目的。",
+                },
+                "spec_tree": [],
+                "working_document": {},
+                "state": {},
+            },
+            execution_options={},
+        )
+    )
+
+    assert result.plugin["plugin_id"] == "brainstorm-v1"
+    assert result.state_output["decision_state_delta"]["confirmed_facts"]
+    assert result.state_output["decision_state_change_summary"]["added_counts"]["confirmed_facts"] == 1
+    assert result.state_output["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert result.final_output["document_patch"]

@@ -246,6 +246,8 @@ class RequirementAnalysisSessionService:
             "turns": list(state.get("turns", [])),
             "confirmed_facts": list(state.get("confirmed_facts", [])),
             "open_questions": list(state.get("open_questions", [])),
+            "decision_state": dict(state.get("decision_state") or {}),
+            "decision_state_document": dict(state.get("decision_state_document") or {}),
             "document_patch": list(state.get("document_patch", [])),
             "working_document": dict(
                 state.get("working_document")

@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "required": ["target_review", "global_review", "confidence"],
+  "properties": {
+    "target_review": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"type": "string", "enum": ["acceptable", "insufficient", "contradictory"]},
+        "reason": {"type": "string"},
+        "covered_points": {"type": "array", "items": {"type": "string"}},
+        "missing_aspects": {"type": "array", "items": {"type": "string"}},
+        "evidence_block_ids": {"type": "array", "items": {"type": "string"}},
+        "evidence_fragment_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "global_review": {
+      "type": "object",
+      "required": ["status", "summary"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["continue_same_target", "continue_same_topic", "move_next_node", "whole_document_review"]
+        },
+        "summary": {"type": "string"},
+        "remaining_gaps": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "rewrite_advice": {"type": "array", "items": {"type": "string"}},
+    "review_annotations": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "string"}
+  }
+}

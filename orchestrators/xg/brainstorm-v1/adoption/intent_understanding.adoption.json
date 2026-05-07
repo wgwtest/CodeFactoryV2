@@ -1,0 +1,11 @@
+{
+  "adopt_fields": [
+    "intent_understanding_result",
+    "target_document_structure",
+    "stage_task_definition",
+    "stage_quality_constraints",
+    "confidence"
+  ],
+  "ignore_fields": ["document_patch", "target_review", "next_interaction_plan"],
+  "failure_policy": "block_turn"
+}

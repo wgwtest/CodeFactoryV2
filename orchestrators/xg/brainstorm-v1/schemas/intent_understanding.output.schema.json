@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "required": [
+    "intent_understanding_result",
+    "target_document_structure",
+    "stage_task_definition",
+    "stage_quality_constraints",
+    "confidence"
+  ],
+  "properties": {
+    "intent_understanding_result": {
+      "type": "object",
+      "properties": {
+        "user_goal_summary": { "type": "string" },
+        "input_type": { "type": "string" },
+        "relation_to_previous_interaction": { "type": "string" },
+        "option_handling": { "type": "string" },
+        "matched_option": { "type": ["string", "null"] },
+        "supplemental_facts": { "type": "array", "items": { "type": "string" } },
+        "target_section_candidates": { "type": "array", "items": { "type": "string" } },
+        "document_strategy": { "type": "string" },
+        "write_task_candidate": { "type": "string" },
+        "review_focus_candidate": { "type": "string" },
+        "ambiguities": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "target_document_structure": {
+      "type": "object",
+      "properties": {
+        "target_sections": { "type": "array", "items": { "type": "string" } },
+        "target_anchor_paths": { "type": "array", "items": { "type": "string" } },
+        "current_major_gaps": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "stage_task_definition": {
+      "type": "object",
+      "properties": {
+        "task_summary": { "type": "string" },
+        "target_sections": { "type": "array", "items": { "type": "string" } },
+        "non_goals": { "type": "array", "items": { "type": "string" } },
+        "must_output": { "type": "array", "items": { "type": "string" } },
+        "review_standard": { "type": "string" }
+      }
+    },
+    "stage_quality_constraints": {
+      "type": "object",
+      "properties": {
+        "minimum_depth": { "type": "string" },
+        "must_cover_dimensions": { "type": "array", "items": { "type": "string" } },
+        "assistant_reply_style": { "type": "string" }
+      }
+    },
+    "confidence": { "type": "string" }
+  }
+}

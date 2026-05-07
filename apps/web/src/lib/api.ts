@@ -2562,6 +2562,13 @@ export type RequirementAnalysisTurn = {
   input_relation: RequirementAnalysisInputRelation;
   spec_execution: RequirementAnalysisSpecExecution;
   post_update_review: RequirementAnalysisPostUpdateReview;
+  decision_state_delta?: RequirementAnalysisDecisionState;
+  decision_state_change_summary?: {
+    turn_id: string;
+    added_counts: Record<string, number>;
+    next_focus: string;
+  };
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   closure_decision: RequirementAnalysisClosureAssessment;
   next_interaction: RequirementAnalysisInteraction;
   stage_audits?: RequirementAnalysisTurnStageAudit[];
@@ -2571,6 +2578,36 @@ export type RequirementAnalysisTurn = {
   raw_model_response: Record<string, unknown>;
   raw_plugin_response?: Record<string, unknown>;
   created_at: string;
+};
+
+export type RequirementAnalysisDecisionStateItem = {
+  item_id?: string;
+  content: string;
+  source_turn_id?: string | null;
+  target_section?: string;
+  status?: string;
+};
+
+export type RequirementAnalysisDecisionState = {
+  topic?: string;
+  confirmed_facts: RequirementAnalysisDecisionStateItem[];
+  confirmed_decisions: RequirementAnalysisDecisionStateItem[];
+  tentative_assumptions: RequirementAnalysisDecisionStateItem[];
+  open_questions: RequirementAnalysisDecisionStateItem[];
+  rejected_directions: RequirementAnalysisDecisionStateItem[];
+  next_focus: string;
+  chapter_projections: RequirementAnalysisDecisionStateItem[];
+};
+
+export type RequirementAnalysisDecisionStateDocument = {
+  document_id: string;
+  title: string;
+  phase: string;
+  sections: Array<{
+    section_id: string;
+    heading: string;
+    items: RequirementAnalysisDecisionStateItem[];
+  }>;
 };
 
 export type RequirementAnalysisTurnStageAudit = {
@@ -2621,6 +2658,8 @@ export type RequirementAnalysisSession = {
   turns: RequirementAnalysisTurn[];
   confirmed_facts: string[];
   open_questions: string[];
+  decision_state?: RequirementAnalysisDecisionState;
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document: RequirementAnalysisWorkingDocument;
   questions: RequirementAnalysisQuestionItem[];

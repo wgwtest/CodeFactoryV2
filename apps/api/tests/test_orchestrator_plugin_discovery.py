@@ -106,6 +106,7 @@ def test_repository_plugins_are_discoverable() -> None:
     plugin_ids = {item.manifest.plugin_id for item in discovered.plugins}
 
     assert "xg-local-heuristic-orchestrator" in plugin_ids
+    assert "brainstorm-v1" in plugin_ids
     assert "xg-local-strong-rule-orchestrator" in plugin_ids
     assert "xg-dify-workflow-orchestrator" in plugin_ids
     assert all(item.adapter_path.parent == item.plugin_dir for item in discovered.plugins)

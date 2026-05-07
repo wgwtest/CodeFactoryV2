@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "required": ["next_interaction_plan", "confidence"],
+  "properties": {
+    "next_interaction_plan": {
+      "type": "object",
+      "properties": {
+        "planning_strategy": { "type": "string" },
+        "user_message": { "type": "string" },
+        "next_question": { "type": "string" },
+        "quick_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": { "type": "string" },
+              "label": { "type": "string" },
+              "recommended": { "type": "boolean" }
+            }
+          }
+        },
+        "plan_reason": { "type": "string" },
+        "review_acknowledgement": { "type": "string" },
+        "target_spec_nodes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "planning_trace": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confidence": { "type": "string" }
+  }
+}

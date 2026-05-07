@@ -1,0 +1,10 @@
+{
+  "adopt_fields": [
+    "target_review",
+    "global_review",
+    "review_annotations",
+    "confidence"
+  ],
+  "ignore_fields": ["document_patch", "confirmed_facts_delta", "open_questions_delta"],
+  "failure_policy": "block_turn"
+}
