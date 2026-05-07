@@ -77,6 +77,8 @@ class DeepSeekRequirementAnalysisClient:
         stage = stage or {"stage_id": "write", "stage_kind": "write", "prompt_id": "write"}
         context = dict(stage_input or self._base_stage_context(session=session, user_input=user_input, normalized=normalized))
         extra_prompt_bundle = {
+            "decision_state_json": json.dumps(context.get("decision_state") or state.get("decision_state") or {}, ensure_ascii=False),
+            "decision_state_document_json": json.dumps(context.get("decision_state_document") or state.get("decision_state_document") or {}, ensure_ascii=False),
             "working_document_json": json.dumps(context.get("working_document") or {}, ensure_ascii=False),
             "working_document_after_apply_json": json.dumps(context.get("working_document_after_apply") or {}, ensure_ascii=False),
             "working_document_update_json": json.dumps(context.get("working_document_update") or {}, ensure_ascii=False),
@@ -193,6 +195,8 @@ class DeepSeekRequirementAnalysisClient:
         safe_prompt_bundle = {
             "assembled_prompt": str((prompt_bundle or {}).get("assembled_prompt") or ""),
             "context_json": str((prompt_bundle or {}).get("context_json") or ""),
+            "decision_state_json": str((prompt_bundle or {}).get("decision_state_json") or ""),
+            "decision_state_document_json": str((prompt_bundle or {}).get("decision_state_document_json") or ""),
             "working_document_json": str((prompt_bundle or {}).get("working_document_json") or ""),
             "working_document_after_apply_json": str((prompt_bundle or {}).get("working_document_after_apply_json") or ""),
             "working_document_update_json": str((prompt_bundle or {}).get("working_document_update_json") or ""),

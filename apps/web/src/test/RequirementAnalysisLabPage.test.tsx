@@ -356,6 +356,13 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByRole("tab", { name: /当前 Turn.*turn-0001/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.queryByText("当前 Turn turn-0001")).not.toBeInTheDocument();
   expect(screen.getByText("临时正文")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "结构化状态" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("需求分析结构化状态")).toBeInTheDocument();
+  expect(screen.getByText("一、已确认事实")).toBeInTheDocument();
+  expect(screen.getAllByText("系统初步定位为空域计算分析工具").length).toBeGreaterThan(0);
+  expect(screen.getByText("六、下一步交互焦点")).toBeInTheDocument();
+  expect(screen.getByText("继续确认输入数据来源和输出结果形式。")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "临时正文" }));
   expect(screen.getByText("81433号需求规格说明（Lab 临时正文）")).toBeInTheDocument();
   const workingDocumentPage = screen.getByTestId("requirement-analysis-working-document-page");
   expect(workingDocumentPage).toBeInTheDocument();
@@ -412,6 +419,9 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("上轮系统留题")).toBeInTheDocument();
   expect(screen.getByText("本轮用户输入")).toBeInTheDocument();
   expect(screen.getByText("输入承接判断")).toBeInTheDocument();
+  expect(screen.getByText("本轮结构化状态增量")).toBeInTheDocument();
+  expect(screen.getByText("confirmed_facts: +1")).toBeInTheDocument();
+  expect(screen.getByText("未闭合问题")).toBeInTheDocument();
   expect(screen.getByText("规格补充执行")).toBeInTheDocument();
   expect(screen.getByText("临时正文应用结果")).toBeInTheDocument();
   expect(screen.getByText("目标范围回看")).toBeInTheDocument();
@@ -429,7 +439,7 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.queryByText("下一轮建议话题")).not.toBeInTheDocument();
   expect(screen.getAllByText("SPEC-1.1").length).toBeGreaterThan(0);
   expect(screen.getAllByText("quick_option_answer").length).toBeGreaterThan(0);
-  expect(screen.getByText("系统初步定位为空域计算分析工具")).toBeInTheDocument();
+  expect(screen.getAllByText("系统初步定位为空域计算分析工具").length).toBeGreaterThan(0);
   expect(screen.getAllByText("1.1 系统目标").length).toBeGreaterThan(0);
   expect(screen.getByText("应用正文块：blk-0001")).toBeInTheDocument();
   expect(screen.getByText("当前章节已具备可接受表达。")).toBeInTheDocument();
@@ -456,6 +466,10 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByRole("tab", { name: "当前 turn 上下文" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("provider_request.prompt_bundle.context_json")).toBeInTheDocument();
   expect(screen.getByText("（写入提示词的结构化上下文快照，用于确认本轮带入了哪些会话状态。）")).toBeInTheDocument();
+  expect(screen.getByText("provider_request.prompt_bundle.decision_state_json")).toBeInTheDocument();
+  expect(screen.getByText("provider_request.prompt_bundle.decision_state_document_json")).toBeInTheDocument();
+  expect(screen.getAllByText(/当前需求分析结构化状态快照/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/结构化状态承载页快照/).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("tab", { name: "输出格式要求" }));
   expect(screen.getByRole("tab", { name: "输出格式要求" })).toHaveAttribute("aria-selected", "true");
@@ -470,6 +484,8 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(screen.getByText("（组织器拼装后的完整提示词，用于检查模型实际收到的任务说明。）")).toBeInTheDocument();
   expect(screen.getAllByText("provider_request.prompt_bundle.stage_id").length).toBeGreaterThan(0);
   expect(screen.getAllByText("provider_request.prompt_bundle.prompt_id").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("provider_request.prompt_bundle.decision_state_json").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("provider_request.prompt_bundle.decision_state_document_json").length).toBeGreaterThan(0);
   expect(screen.getAllByText("（Mock Provider 的调试上下文，仅在本地模拟调用时使用。）").length).toBeGreaterThan(0);
   expect(screen.getAllByText("（运行器传入 Provider 的会话与组织器上下文，用于复盘调用边界。）").length).toBeGreaterThan(0);
   expect(screen.getByText("assembled prompt")).toBeInTheDocument();
@@ -523,6 +539,36 @@ test("switches to session tab immediately while startup request is still pending
 
   deferredSession.resolve({ data: buildSession("created") });
   expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
+});
+
+test("shows empty structured state instead of blanking when new session has no decision state document sections", async () => {
+  const session = {
+    ...buildSession("created"),
+    decision_state: {},
+    decision_state_document: {},
+  };
+  mockRequirementAnalysisBootstrap();
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
+
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "结构化状态" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("当前会话尚未形成结构化状态。")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "" })).toBeInTheDocument();
 });
 
 test("falls back to active mock provider when DeepSeek is not configured during startup", async () => {
@@ -1062,6 +1108,7 @@ test("renders one right-side revision marker per turn even when the turn edits m
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await screen.findByText("会话 ra-airspace-001");
+  fireEvent.click(screen.getByRole("tab", { name: "临时正文" }));
 
   await screen.findByTestId("requirement-analysis-marker-frag-0001");
   const markers = Array.from(document.querySelectorAll('[data-marker-group="requirement-analysis-revision-marker"]'));
@@ -1272,6 +1319,18 @@ function buildLabConfig() {
           used_when: "每次调用模型前使用。",
         },
         {
+          path: "provider_request.prompt_bundle.decision_state_json",
+          label: "Decision State JSON",
+          description: "当前需求分析结构化状态快照，用于确认模型调用前读取了哪些已沉淀事实、决策、假设和未闭合问题。",
+          used_when: "结构化状态增量和下一步交互规划阶段调用模型前使用。",
+        },
+        {
+          path: "provider_request.prompt_bundle.decision_state_document_json",
+          label: "Decision State Document JSON",
+          description: "结构化状态承载页快照，用于核对用户可见的结构化状态页与模型上下文是否一致。",
+          used_when: "需要模型基于结构化状态承载页继续规划或解释时使用。",
+        },
+        {
           path: "provider_request.prompt_bundle.working_document_json",
           label: "Working Document JSON",
           description: "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
@@ -1469,6 +1528,82 @@ function buildSession(status: RequirementAnalysisSession["status"]): Requirement
     turns: [],
     confirmed_facts: [],
     open_questions: ["需要确认系统更偏向计算分析工具、协同规划平台，还是二者都有。"],
+    decision_state: {
+      topic: "空域运算软件需求规格探索",
+      confirmed_facts: [
+        {
+          item_id: "DS-F-001",
+          content: "系统初步定位为空域计算分析工具",
+          source_turn_id: "turn-0001",
+          target_section: "1.1 系统目标",
+          status: "active",
+        },
+      ],
+      confirmed_decisions: [],
+      tentative_assumptions: [],
+      open_questions: [
+        {
+          item_id: "DS-Q-001",
+          content: "需要确认输入数据来源和输出结果形式。",
+          source_turn_id: "turn-0001",
+          target_section: "1.1 系统目标",
+          status: "open",
+        },
+      ],
+      rejected_directions: [],
+      next_focus: "继续确认输入数据来源和输出结果形式。",
+      chapter_projections: [],
+    },
+    decision_state_document: {
+      document_id: "decision-state-document",
+      title: "需求分析结构化状态",
+      phase: "exploration_convergence",
+      sections: [
+        {
+          section_id: "confirmed_facts",
+          heading: "一、已确认事实",
+          items: [
+            {
+              item_id: "DS-F-001",
+              content: "系统初步定位为空域计算分析工具",
+              source_turn_id: "turn-0001",
+              target_section: "1.1 系统目标",
+              status: "active",
+            },
+          ],
+        },
+        { section_id: "confirmed_decisions", heading: "二、已确认决策", items: [] },
+        { section_id: "tentative_assumptions", heading: "三、暂定假设", items: [] },
+        {
+          section_id: "open_questions",
+          heading: "四、未闭合问题",
+          items: [
+            {
+              item_id: "DS-Q-001",
+              content: "需要确认输入数据来源和输出结果形式。",
+              source_turn_id: "turn-0001",
+              target_section: "1.1 系统目标",
+              status: "open",
+            },
+          ],
+        },
+        { section_id: "rejected_directions", heading: "五、被否定方向", items: [] },
+        {
+          section_id: "next_focus",
+          heading: "六、下一步交互焦点",
+          items: [
+            {
+              item_id: "DS-FOCUS",
+              content: "继续确认输入数据来源和输出结果形式。",
+              source_turn_id: null,
+              target_section: "",
+              status: "active",
+            },
+          ],
+        },
+        { section_id: "chapter_projections", heading: "七、章节投影", items: [] },
+      ],
+    },
     document_patch: [],
     working_document: {
       document_id: "lab-working-document",
@@ -1574,6 +1709,38 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
     input_relation: {
       relation: "none",
       reason: "首轮没有上轮系统留题。",
+    },
+    decision_state_delta: {
+      confirmed_facts: [
+        {
+          content: "系统初步定位为空域计算分析工具",
+          target_section: "1.1 系统目标",
+          status: "active",
+        },
+      ],
+      confirmed_decisions: [],
+      tentative_assumptions: [],
+      open_questions: [
+        {
+          content: "输入数据来源、计算结果形式、专家校核职责尚未确认。",
+          target_section: "2.1 输入数据",
+          status: "open",
+        },
+      ],
+      rejected_directions: [],
+      next_focus: "建议下一步确认输入数据来源和输出结果形式。",
+      chapter_projections: [
+        {
+          content: "1.1 系统目标",
+          target_section: "1.1 系统目标",
+          status: "projected",
+        },
+      ],
+    },
+    decision_state_change_summary: {
+      turn_id: "turn-0001",
+      added_counts: { confirmed_facts: 1, open_questions: 1, chapter_projections: 1 },
+      next_focus: "建议下一步确认输入数据来源和输出结果形式。",
     },
     decision_trace: ["用户输入是本轮 Turn 起点。", "本轮影响 1.1 系统目标。"],
     normalized_input: {
@@ -1817,6 +1984,8 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                   prompt_id: "write",
                   assembled_prompt: "assembled prompt",
                   context_json: '{"topic":"空域运算软件需求规格探索"}',
+                  decision_state_json: '{"confirmed_facts":[{"content":"系统初步定位为空域计算分析工具"}]}',
+                  decision_state_document_json: '{"title":"需求分析结构化状态"}',
                   working_document_json: '{"document_id":"lab-working-document"}',
                   working_document_excerpt: "",
                   review_target_paths: ["1.1 系统目标"],
@@ -1884,6 +2053,8 @@ function buildTurnEnvelope(): RequirementAnalysisTurnEnvelope {
                 prompt_id: "review_after_apply",
                 assembled_prompt: "review assembled prompt",
                 context_json: '{"topic":"空域运算软件需求规格探索"}',
+                decision_state_json: '{"confirmed_facts":[{"content":"系统初步定位为空域计算分析工具"}]}',
+                decision_state_document_json: '{"title":"需求分析结构化状态"}',
                 working_document_after_apply_json: '{"blocks":[{"block_id":"blk-0001"}]}',
                 review_target_paths: ["1.1 系统目标"],
                 recent_revision_fragments: ["frag-0001"],

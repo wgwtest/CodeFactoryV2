@@ -1078,6 +1078,45 @@
   white-space: nowrap;
 }
 
+.requirement-analysis-lab-decision-state-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed #c7d5d1;
+  background: #fbfcfc;
+}
+
+.requirement-analysis-lab-decision-state-sections,
+.requirement-analysis-lab-decision-state-items {
+  display: grid;
+  gap: 8px;
+}
+
+.requirement-analysis-lab-decision-state-section,
+.requirement-analysis-lab-decision-state-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #d8e2de;
+  background: #ffffff;
+}
+
+.requirement-analysis-lab-decision-delta-group,
+.requirement-analysis-lab-decision-delta-item {
+  display: grid;
+  gap: 6px;
+}
+
+.requirement-analysis-lab-decision-delta-group {
+  padding: 8px 0 0;
+}
+
+.requirement-analysis-lab-decision-delta-item {
+  padding: 8px 10px;
+  border: 1px solid #dde5e1;
+  background: #fbfdfc;
+}
+
 .requirement-analysis-lab-turn-card ol {
   margin: 0;
   padding-left: 18px;

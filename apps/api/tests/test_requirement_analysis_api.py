@@ -1651,16 +1651,33 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
             "messages": [],
             "confirmed_facts": [],
             "open_questions": [],
+            "decision_state": {
+                "topic": "空域运算软件需求规格探索",
+                "confirmed_facts": [{"content": "系统初步定位为空域计算分析工具"}],
+                "confirmed_decisions": [],
+                "tentative_assumptions": [],
+                "open_questions": [],
+                "rejected_directions": [],
+                "next_focus": "确认用户角色。",
+                "chapter_projections": [],
+            },
+            "decision_state_document": {
+                "document_id": "decision-state-document",
+                "title": "需求分析结构化状态",
+                "phase": "exploration_convergence",
+                "sections": [],
+            },
         }
 
-    prompt = DummyClient()._build_prompt_bundle(  # noqa: SLF001
+    prompt_bundle = DummyClient()._build_prompt_bundle(  # noqa: SLF001
         session=DummySession(),
         user_input="主要给领域专家使用",
         normalized={"input_type": "free_text", "matched_option": None, "semantic": "主要给领域专家使用"},
         orchestrator_id="xg-heuristic-orchestrator",
         stage={"stage_id": "intent_understanding", "stage_kind": "intent", "prompt_id": "intent_understanding"},
         stage_input={},
-    )["assembled_prompt"]
+    )
+    prompt = prompt_bundle["assembled_prompt"]
 
     assert "用户输入是本轮 Turn 的起点" in prompt
     assert "previous_interaction" in prompt
@@ -1668,6 +1685,8 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
     assert "不要强行把它解释成当前 active 节点的答案" in prompt
     assert "intent_understanding_result" in prompt
     assert "stage_task_definition" in prompt
+    assert "系统初步定位为空域计算分析工具" in prompt_bundle["decision_state_json"]
+    assert "需求分析结构化状态" in prompt_bundle["decision_state_document_json"]
 
 
 def test_deepseek_client_run_stage_parses_write_json_response_without_network() -> None:
@@ -1754,6 +1773,8 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["mock"] is False
     assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "prompt"
+    assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["decision_state_json"] == ""
+    assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["decision_state_document_json"] == ""
     assert output["raw_model_response"]["provider_request"]["messages"][1]["content"] == "prompt"
     assert "已更新需求规格" in output["raw_model_response"]["provider_response"]["raw_content"]
     assert output["raw_model_response"]["provider_response"]["parsed_json"]["assistant_message"] == "已更新需求规格。"

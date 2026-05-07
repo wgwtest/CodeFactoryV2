@@ -1267,6 +1267,16 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
               <LogAuditBlock
                 logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_json"
+                value={getString(promptBundle, "decision_state_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_document_json"
+                value={getString(promptBundle, "decision_state_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
                 title="provider_request.prompt_bundle.working_document_json"
                 value={getString(promptBundle, "working_document_json")}
               />
@@ -1309,6 +1319,16 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               />
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.stage_id" value={getString(promptBundle, "stage_id") || log.stage_id || getString(mockContext, "stage_id")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_json"
+                value={getString(promptBundle, "decision_state_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_document_json"
+                value={getString(promptBundle, "decision_state_document_json")}
+              />
               <LogAuditBlock
                 logSchema={logSchema}
                 title="provider_request.prompt_bundle.working_document_json"
@@ -1482,11 +1502,16 @@ function buildWorkingDocumentSegments(text: string, fragments: WorkingDocumentFr
 function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {
   return (
     <section className="requirement-analysis-lab-panel requirement-analysis-lab-summary">
-      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是会话内临时正文；完成度树和沟通路径作为辅助对照。" />
+      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是结构化状态承载页；临时正文、完成度树和沟通路径作为辅助对照。" />
       {session ? (
         <Tabs
-          defaultActiveKey="working-document"
+          defaultActiveKey="decision-state"
           items={[
+            {
+              key: "decision-state",
+              label: "结构化状态",
+              children: <DecisionStateDocumentView session={session} />,
+            },
             {
               key: "working-document",
               label: "临时正文",
@@ -1510,6 +1535,50 @@ function SessionSummary({ session }: { session: RequirementAnalysisSession | nul
         </div>
       )}
     </section>
+  );
+}
+
+function DecisionStateDocumentView({ session }: { session: RequirementAnalysisSession }) {
+  const document = session.decision_state_document;
+  const sections = Array.isArray(document?.sections) ? document.sections : [];
+  if (!document || !sections.length) {
+    return (
+      <div className="requirement-analysis-lab-decision-state-panel">
+        <Text type="secondary">当前会话尚未形成结构化状态。</Text>
+      </div>
+    );
+  }
+
+  return (
+    <div className="requirement-analysis-lab-decision-state-panel">
+      <div className="requirement-analysis-lab-summary-title-row">
+        <Text strong>{document.title || "需求分析结构化状态"}</Text>
+        <Tag color="purple">{document.phase || "未开始"}</Tag>
+      </div>
+      <div className="requirement-analysis-lab-decision-state-sections">
+        {sections.map((section) => (
+          <div className="requirement-analysis-lab-decision-state-section" key={section.section_id}>
+            <Text strong>{section.heading}</Text>
+            {section.items.length ? (
+              <div className="requirement-analysis-lab-decision-state-items">
+                {section.items.map((item, index) => (
+                  <div className="requirement-analysis-lab-decision-state-item" key={item.item_id ?? `${section.section_id}-${index}`}>
+                    <Text>{item.content}</Text>
+                    <div className="requirement-analysis-lab-turn-inline">
+                      {item.status ? <Tag color={item.status === "open" ? "gold" : "green"}>{item.status}</Tag> : null}
+                      {item.target_section ? <Tag>{item.target_section}</Tag> : null}
+                      {item.source_turn_id ? <Tag>{item.source_turn_id}</Tag> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Text type="secondary">当前未形成内容。</Text>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1822,6 +1891,7 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         </Tag>
         <Text>{turn.input_relation.reason}</Text>
       </div>
+      <DecisionStateDeltaSummary turn={turn} />
       {turn.stage_audits?.length ? <StageAuditSummary stageAudits={turn.stage_audits} /> : null}
       <div className="requirement-analysis-lab-turn-card">
         <Text type="secondary">规格补充执行</Text>
@@ -1918,6 +1988,56 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
           ))}
         </ol>
       </div>
+    </div>
+  );
+}
+
+function DecisionStateDeltaSummary({ turn }: { turn: RequirementAnalysisTurn }) {
+  const delta = turn.decision_state_delta;
+  const changeSummary = turn.decision_state_change_summary;
+  if (!delta && !changeSummary) {
+    return null;
+  }
+  const groups = [
+    { key: "confirmed_facts", label: "已确认事实", items: delta?.confirmed_facts ?? [] },
+    { key: "confirmed_decisions", label: "已确认决策", items: delta?.confirmed_decisions ?? [] },
+    { key: "tentative_assumptions", label: "暂定假设", items: delta?.tentative_assumptions ?? [] },
+    { key: "open_questions", label: "未闭合问题", items: delta?.open_questions ?? [] },
+    { key: "rejected_directions", label: "被否定方向", items: delta?.rejected_directions ?? [] },
+    { key: "chapter_projections", label: "章节投影", items: delta?.chapter_projections ?? [] },
+  ];
+  const addedCounts = changeSummary?.added_counts ? Object.entries(changeSummary.added_counts) : [];
+
+  return (
+    <div className="requirement-analysis-lab-turn-card is-audit">
+      <Text type="secondary">本轮结构化状态增量</Text>
+      {addedCounts.length ? (
+        <div className="requirement-analysis-lab-turn-inline">
+          {addedCounts.map(([key, count]) => (
+            <Tag key={key}>
+              {key}: +{count}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
+      {groups.map((group) =>
+        group.items.length ? (
+          <div className="requirement-analysis-lab-decision-delta-group" key={group.key}>
+            <Text strong>{group.label}</Text>
+            {group.items.map((item, index) => (
+              <div className="requirement-analysis-lab-decision-delta-item" key={item.item_id ?? `${group.key}-${index}`}>
+                <Text>{item.content}</Text>
+                <div className="requirement-analysis-lab-turn-inline">
+                  {item.status ? <Tag color={item.status === "open" ? "gold" : "green"}>{item.status}</Tag> : null}
+                  {item.target_section ? <Tag>{item.target_section}</Tag> : null}
+                  {item.source_turn_id ? <Tag>{item.source_turn_id}</Tag> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null,
+      )}
+      {delta?.next_focus || changeSummary?.next_focus ? <Text type="secondary">下一步焦点：{delta?.next_focus || changeSummary?.next_focus}</Text> : null}
     </div>
   );
 }

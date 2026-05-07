@@ -83,6 +83,18 @@ class RequirementAnalysisLabConfigService:
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
+                        "path": "provider_request.prompt_bundle.decision_state_json",
+                        "label": "Decision State JSON",
+                        "description": "当前需求分析结构化状态快照，用于确认模型调用前读取了哪些已沉淀事实、决策、假设和未闭合问题。",
+                        "used_when": "结构化状态增量和下一步交互规划阶段调用模型前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.decision_state_document_json",
+                        "label": "Decision State Document JSON",
+                        "description": "结构化状态承载页快照，用于核对用户可见的结构化状态页与模型上下文是否一致。",
+                        "used_when": "需要模型基于结构化状态承载页继续规划或解释时使用。",
+                    },
+                    {
                         "path": "provider_request.prompt_bundle.stage_task_definition_json",
                         "label": "Stage Task Definition JSON",
                         "description": "本阶段任务定义，用于追溯模型被要求解决什么问题、写入哪些章节和按什么标准接受。",
