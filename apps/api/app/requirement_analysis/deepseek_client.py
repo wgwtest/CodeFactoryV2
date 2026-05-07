@@ -83,8 +83,11 @@ class DeepSeekRequirementAnalysisClient:
             "chapter_configuration_context_json": json.dumps(context.get("chapter_configuration_context") or {}, ensure_ascii=False),
             "template_shape_assessment_json": json.dumps(context.get("template_shape_assessment") or {}, ensure_ascii=False),
             "target_anchor_plan_json": json.dumps(context.get("target_anchor_plan") or [], ensure_ascii=False),
-            "decision_state_json": json.dumps(context.get("decision_state") or {}, ensure_ascii=False),
-            "decision_state_document_json": json.dumps(context.get("decision_state_document") or {}, ensure_ascii=False),
+            "decision_state_json": json.dumps(context.get("decision_state") or state.get("decision_state") or {}, ensure_ascii=False),
+            "decision_state_document_json": json.dumps(
+                context.get("decision_state_document") or state.get("decision_state_document") or {},
+                ensure_ascii=False,
+            ),
             "working_document_excerpt": str((context.get("working_document_after_apply") or {}).get("excerpt") or context.get("working_document_excerpt") or ""),
             "review_target_paths": list(context.get("review_target_paths") or []),
             "recent_revision_fragments": list(context.get("recent_revision_fragments") or []),

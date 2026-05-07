@@ -104,6 +104,38 @@ def test_discover_documents_skips_spreadsheets_for_formal_extraction_and_records
     ]
 
 
+def test_load_runtime_acceptance_slow_profile_reads_source_config(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / archive_builder.RUNTIME_SLOW_PROFILE_FILENAME).write_text(
+        json.dumps(
+            {
+                "enabled": True,
+                "stage_delay_ms": 900,
+                "chunk_delay_ms": 180,
+                "document_delay_ms": 600,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile = archive_builder.load_runtime_acceptance_slow_profile(source_root)
+
+    assert profile.enabled is True
+    assert profile.stage_delay_seconds == 0.9
+    assert profile.chunk_delay_seconds == 0.18
+    assert profile.document_delay_seconds == 0.6
+
+
+def test_load_runtime_acceptance_slow_profile_defaults_to_disabled(tmp_path: Path) -> None:
+    profile = archive_builder.load_runtime_acceptance_slow_profile(tmp_path)
+
+    assert profile.enabled is False
+    assert profile.stage_delay_seconds == 0
+    assert profile.chunk_delay_seconds == 0
+    assert profile.document_delay_seconds == 0
+
+
 def test_formal_extraction_requires_structured_llm(monkeypatch) -> None:
     segments = [_segment("国家空域系统运行协调说明")]
 
@@ -259,7 +291,9 @@ def test_build_archive_knowledge_records_skipped_spreadsheet_warnings(tmp_path: 
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-1"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-1"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -319,7 +353,9 @@ def test_build_archive_knowledge_skips_docling_failed_pdf_and_continues(tmp_path
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-good"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-good"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -383,7 +419,9 @@ def test_build_archive_knowledge_skips_docling_failed_docx_and_continues(tmp_pat
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(document, document_id="doc-good"),
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
+            document, document_id="doc-good"
+        ),
     )
 
     result = archive_builder.build_archive_knowledge(
@@ -450,7 +488,7 @@ def test_build_archive_knowledge_skips_doc_conversion_failure_and_continues(
     monkeypatch.setattr(
         archive_builder,
         "build_document_contribution",
-        lambda document, extraction_service=None, *, document_id=None: _simple_contribution(
+        lambda document, extraction_service=None, *, document_id=None, policy_snapshot=None: _simple_contribution(
             document, document_id="doc-good"
         ),
     )

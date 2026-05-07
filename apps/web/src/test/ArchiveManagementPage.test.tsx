@@ -632,6 +632,16 @@ test("renders overview workspace with archive table", async () => {
   expect(screen.getAllByText("知识库二").length).toBeGreaterThan(0);
 });
 
+test("shows retry action when archive list loading fails", async () => {
+  archiveContextValue.error = "Network Error";
+
+  render(<ArchiveManagementPage />);
+
+  expect(await screen.findByText("知识库列表加载失败")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "重新加载知识库列表" }));
+  expect(refreshArchivesMock).toHaveBeenCalledWith("kb-1");
+});
+
 test("enters single archive and single document views with runtime stream data", async () => {
   render(<ArchiveManagementPage />);
 

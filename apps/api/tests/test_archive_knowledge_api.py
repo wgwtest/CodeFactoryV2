@@ -446,6 +446,9 @@ def test_archive_routes_return_summary_graph_processes_and_search(tmp_path) -> N
         "review_status": "pending",
         "evidence_excerpt": "OV-1 excerpt",
         "evidence_document_title": "NAS AV-1",
+        "candidate_source": "publication_candidate_snapshot",
+        "source_scope": "post_quality_gate_publication_candidate",
+        "governance_boundary": "post_publication_confirmation",
     }
 
 
@@ -726,6 +729,10 @@ def test_archive_publish_creates_versioned_snapshot_and_publication_overview(tmp
     publication_before = client.get("/api/knowledge/archive/20161116-nas/publication")
     assert publication_before.status_code == 200
     assert publication_before.json()["current_version"] is None
+    assert publication_before.json()["candidate_source"] == "publication_candidate_snapshot"
+    assert publication_before.json()["machine_publication_label"] == "机器已发布候选"
+    assert publication_before.json()["governance_confirmation_label"] == "等待治理确认"
+    assert publication_before.json()["formal_entry_label"] == "尚未正式入库"
 
     approved = client.post(
         "/api/knowledge/archive/20161116-nas/reviews/batch-approve",
@@ -770,6 +777,9 @@ def test_archive_publish_creates_versioned_snapshot_and_publication_overview(tmp
         },
     }
     assert publication_after.json()["versions"][0]["version_label"] == "v1"
+    assert publication_after.json()["machine_publication_label"] == "机器已发布候选"
+    assert publication_after.json()["governance_confirmation_label"] == "治理已确认"
+    assert publication_after.json()["formal_entry_label"] == "已正式入库"
 
     graph = client.get("/api/knowledge/archive/20161116-nas/graph")
     assert graph.status_code == 200

@@ -1,9 +1,15 @@
+import json
+import shutil
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
 from app.requirement_analysis import deepseek_client as requirement_analysis_client_module
 from app.main import create_app
+from app.orchestrators.plugin_contracts import OrchestratorRunResult
+from app.orchestrators.plugin_discovery import OrchestratorPluginDiscovery
 
 
 def find_spec_node(nodes: list[dict], node_id: str) -> dict | None:
@@ -46,6 +52,43 @@ def assert_new_turn_contract(turn: dict) -> None:
         "assistant_message",
     ]:
         assert removed_field not in turn
+
+
+def _write_reload_test_plugin(
+    root: Path,
+    *,
+    plugin_id: str = "xg-reload-test-orchestrator",
+    plugin_name: str = "XG Reload Test Orchestrator",
+) -> Path:
+    plugin_dir = root / "xg" / plugin_id
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": plugin_id,
+                "name": plugin_name,
+                "plugin_type": "dify_workflow",
+                "document_type": "xg",
+                "contract": "xg-observable-orchestrator-contract@1",
+                "status": "active",
+                "priority": 10,
+                "capabilities": {"filled_document_text": True},
+                "requires": {"template": True, "model_provider": "optional"},
+                "adapter_entry": "dify_workflow",
+                "adapter_module": "adapter",
+                "adapter_class": "ReloadTestAdapter",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (plugin_dir / "adapter.py").write_text(
+        "class ReloadTestAdapter:\n"
+        "    def __init__(self, *, manifest, package=None):\n"
+        "        self.manifest = manifest\n",
+        encoding="utf-8",
+    )
+    return plugin_dir
 
 
 def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tmp_path, monkeypatch) -> None:
@@ -144,7 +187,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert config["page"]["title"] == "P2 XG 需求分析组织器 Lab"
     assert config["defaults"] == {
         "topic": "默认运算软件需求规格说明",
-        "orchestrator_id": "xg-heuristic-orchestrator",
+        "orchestrator_id": "xg-local-heuristic-orchestrator",
         "provider_id": "deepseek",
         "model": "provider-default",
         "template_id": "xg-template-81433-default",
@@ -159,18 +202,34 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     orchestrators = client.get("/api/requirement-analysis/orchestrators")
     assert orchestrators.status_code == 200
     items = orchestrators.json()["items"]
-    assert items[0]["orchestrator_id"] == "xg-heuristic-orchestrator"
-    assert items[0]["status"] == "active"
-    assert items[0]["document_type"] == "xg"
-    assert items[0]["contract"] == "xg-orchestrator-contract@1"
-    assert items[0]["mode"] == "policy_interpreted"
-    assert {item["orchestrator_id"] for item in items} >= {
-        "xg-heuristic-orchestrator",
-        "xg-strong-rule-orchestrator",
-    }
-    strong_rule = next(item for item in items if item["orchestrator_id"] == "xg-strong-rule-orchestrator")
-    assert strong_rule["mode"] == "local_runner"
-    assert "rule_based_flow" in strong_rule["capabilities"]
+    plugin_ids = {item["plugin_id"] for item in items}
+    assert {
+        "brainstorm-v1",
+        "xg-local-heuristic-orchestrator",
+        "xg-local-strong-rule-orchestrator",
+        "xg-dify-workflow-orchestrator",
+    }.issubset(plugin_ids)
+
+    heuristic = next(item for item in items if item["plugin_id"] == "xg-local-heuristic-orchestrator")
+    assert heuristic["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+    assert heuristic["plugin_type"] == "local_package"
+    assert heuristic["document_type"] == "xg"
+    assert heuristic["contract"] == "xg-observable-orchestrator-contract@1"
+    assert heuristic["observability_level"] == "full"
+    assert heuristic["capabilities"]["document_patch"] is True
+    assert heuristic["capabilities"]["stage_audits"] is True
+
+    dify = next(item for item in items if item["plugin_id"] == "xg-dify-workflow-orchestrator")
+    assert dify["plugin_type"] == "dify_workflow"
+    assert dify["observability_level"] == "limited"
+    assert dify["capabilities"]["filled_document_text"] is True
+    assert dify["capabilities"]["stage_audits"] is False
+
+    brainstorm = next(item for item in items if item["plugin_id"] == "brainstorm-v1")
+    assert brainstorm["plugin_type"] == "local_package"
+    assert brainstorm["observability_level"] == "full"
+    assert brainstorm["capabilities"]["decision_trace"] is True
+    assert brainstorm["package_id"] == "brainstorm-v1"
 
     created = client.post(
         "/api/requirement-analysis/sessions",
@@ -188,7 +247,10 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     session = created.json()
     assert session["status"] == "created"
     assert session["session_phase"] == "exploration_convergence"
-    assert session["orchestrator"]["orchestrator_id"] == "xg-heuristic-orchestrator"
+    assert session["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+    assert session["orchestrator"]["plugin_id"] == "xg-local-heuristic-orchestrator"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
     assert session["orchestrator"]["name"] == "XG Heuristic Orchestrator"
     assert session["orchestrator"]["document_type"] == "xg"
     assert session["orchestrator"]["mode"] == "policy_interpreted"
@@ -272,7 +334,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
     assert any("用户输入是本轮 Turn 起点" in item for item in payload["turn"]["decision_trace"])
     assert payload["turn"]["normalized_input"]["input_type"] == "free_text"
-    assert "本轮已更新结构化状态" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "建议下一步确认" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "软件定位" in payload["turn"]["next_interaction"]["prompt"]
     assert payload["turn"]["next_interaction"]["type"] == "choice_question"
     assert [option["label"] for option in payload["turn"]["next_interaction"]["options"]] == [
@@ -300,7 +363,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["provider_logs"][2]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "next_interaction_planning"
     assert "软件名称" in payload["session"]["provider_logs"][2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_json"]
     assert "需求分析结构化状态" in payload["session"]["provider_logs"][2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_document_json"]
-    assert payload["session"]["decision_state"]["confirmed_facts"][0]["content"].startswith("软件名称")
+    assert "空域运算软件" in payload["session"]["decision_state"]["confirmed_facts"][0]["content"]
     assert payload["session"]["decision_state_document"]["sections"][0]["heading"] == "一、已确认事实"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["plan_ref"] == "AP-001"
@@ -351,8 +414,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
-    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
-    assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
+    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
+    assert "空域领域的计算分析工具" in second_payload["turn"]["spec_execution"]["document_patch"][0]["content"]
     assert second_payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
         "领域专家直接使用",
@@ -398,6 +461,52 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert_new_turn_contract(recovered_payload["turns"][1])
     assert recovered_payload["messages"][-1]["role"] == "assistant"
     assert recovered_payload["messages"][-1]["turn_id"] == "turn-0002"
+
+
+def test_requirement_analysis_lab_config_default_orchestrator_comes_from_plugin_registry(tmp_path: Path, monkeypatch) -> None:
+    from app.orchestrators import plugin_registry as plugin_registry_module
+
+    _write_reload_test_plugin(
+        tmp_path,
+        plugin_id="xg-registry-default-orchestrator",
+        plugin_name="XG Registry Default Orchestrator",
+    )
+
+    monkeypatch.setattr(
+        plugin_registry_module,
+        "OrchestratorPluginDiscovery",
+        lambda: OrchestratorPluginDiscovery(root=tmp_path),
+    )
+    plugin_registry_module.reload_orchestrator_plugin_registry()
+    client = TestClient(create_app())
+
+    try:
+        lab_config = client.get("/api/requirement-analysis/lab-config")
+
+        assert lab_config.status_code == 200
+        assert lab_config.json()["defaults"]["orchestrator_id"] == "xg-registry-default-orchestrator"
+    finally:
+        plugin_registry_module.get_orchestrator_plugin_registry.cache_clear()
+
+
+def test_requirement_analysis_session_can_default_to_discovered_orchestrator() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+
 
 
 def test_requirement_analysis_decision_state_is_applied_before_next_interaction_planning(monkeypatch) -> None:
@@ -598,6 +707,7 @@ def test_requirement_analysis_decision_state_is_applied_before_next_interaction_
     assert "系统需要态势展示能力和 GIS 分析工具。" in str(captured_next_stage_input["decision_state_document"])
 
 
+
 def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> None:
     client = TestClient(create_app())
 
@@ -676,10 +786,13 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
 
     assert created.status_code == 200
     session = created.json()
-    assert session["orchestrator"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
+    assert session["orchestrator"]["orchestrator_id"] == "xg-local-strong-rule-orchestrator"
+    assert session["orchestrator"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
     assert session["orchestrator"]["document_type"] == "xg"
     assert session["orchestrator"]["mode"] == "local_runner"
-    assert "strict_turn_closure" in session["orchestrator"]["capabilities"]
+    assert session["orchestrator"]["capabilities"]["stage_audits"] is True
 
     turn = client.post(
         f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
@@ -689,6 +802,11 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert turn.status_code == 200
     payload = turn.json()
     assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
+    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "full"
+    assert payload["turn"]["orchestrator_plugin"]["plugin_type"] == "local_package"
+    assert payload["turn"]["raw_plugin_response"]["contract_version"] == "xg-observable-orchestrator-contract@1"
+    assert payload["turn"]["raw_plugin_response"]["plugin"]["plugin_id"] == "xg-local-strong-rule-orchestrator"
     assert payload["turn"]["spec_execution"]["interpretation"]["intent"] == "supplement_requirement"
     assert "强规则组织器" in payload["turn"]["spec_execution"]["assistant_message"]
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
@@ -697,12 +815,282 @@ def test_requirement_analysis_lab_runs_xg_strong_rule_orchestrator_package() -> 
     assert payload["turn"]["raw_model_response"]["orchestrator_id"] == "xg-strong-rule-orchestrator"
     assert payload["turn"]["raw_model_response"]["mode"] == "local_runner"
     assert payload["turn"]["raw_model_response"]["runner_invoked"] is True
-    assert payload["turn"]["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")
+    runner_entry = payload["turn"]["raw_model_response"]["runner_entry"].replace("\\", "/")
+    assert runner_entry.endswith("xg-strong-rule-orchestrator/runner.py")
     assert payload["session"]["provider_logs"][0]["orchestrator_id"] == "xg-strong-rule-orchestrator"
     assert payload["session"]["provider_logs"][0]["orchestrator_mode"] == "local_runner"
     assert len(payload["session"]["provider_logs"]) == 1
     assert payload["session"]["provider_logs"][0]["stage_id"] == "run"
     assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+
+
+def test_requirement_analysis_lab_runs_brainstorm_v1_as_plugin() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["orchestrator_id"] == "brainstorm-v1"
+    assert session["orchestrator"]["plugin_id"] == "brainstorm-v1"
+    assert session["orchestrator"]["plugin_type"] == "local_package"
+    assert session["orchestrator"]["observability_level"] == "full"
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "brainstorm-v1"
+    assert payload["turn"]["decision_state_delta"]["confirmed_facts"]
+    assert payload["turn"]["decision_state_change_summary"]["added_counts"]["confirmed_facts"] == 1
+    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert payload["session"]["decision_state"]["confirmed_facts"]
+    assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert payload["session"]["provider_logs"][1]["stage_id"] == "decision_state_delta"
+
+
+def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["plugin_type"] == "dify_workflow"
+    assert session["orchestrator"]["observability_level"] == "limited"
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-dify-workflow-orchestrator"
+    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "limited"
+    assert payload["turn"]["stage_audits"] == []
+    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["fake"] is True
+    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
+
+
+def test_requirement_analysis_lab_runs_dify_through_manifest_adapter_loader(monkeypatch) -> None:
+    from app.requirement_analysis import turn_engine as turn_engine_module
+
+    calls: list[str] = []
+
+    class FakeAdapter:
+        def __init__(self, plugin_id: str) -> None:
+            self.plugin_id = plugin_id
+
+        def run(self, request) -> OrchestratorRunResult:
+            from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
+
+            base_result = OrchestratorRunResult(
+                contract_version=request.contract_version,
+                plugin={
+                    "plugin_id": self.plugin_id,
+                    "plugin_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                final_output={
+                    "filled_document_text": "# 需求规格说明\n\nadapter loader sentinel",
+                    "document_patch": [],
+                    "changed_sections": [],
+                    "completion_status": "partial",
+                    "confidence": "medium",
+                },
+                interaction_output={
+                    "assistant_message": "adapter loader sentinel",
+                    "next_question": "继续补充。",
+                    "quick_options": [],
+                    "suggested_focus": {},
+                },
+                process_output={
+                    "stage_results": [],
+                    "stage_audits": [],
+                    "decision_trace": ["adapter loader was used"],
+                    "provider_logs": [],
+                    "review_after_apply_result": {},
+                    "annotations": [],
+                    "risks": [],
+                },
+                state_output={
+                    "confirmed_facts_delta": ["adapter loader sentinel"],
+                    "open_questions_delta": ["继续补充。"],
+                    "spec_tree_update": {},
+                    "working_document_update": {},
+                    "turn_path_update": {},
+                },
+                raw_output={
+                    "raw_plugin_response": {},
+                    "raw_model_response": {},
+                    "raw_workflow_trace": {"sentinel": True},
+                },
+            )
+            turn_result = PluginTurnResultMaterializer().materialize(request=request, result=base_result)
+            return base_result.model_copy(
+                update={
+                    "raw_output": {
+                    **dict(base_result.raw_output or {}),
+                    "turn_execution_result": turn_result,
+                    },
+                }
+            )
+
+    def fake_loader(manifest, **_kwargs):
+        calls.append(manifest.plugin_id)
+        return FakeAdapter(manifest.plugin_id)
+
+    monkeypatch.setattr(turn_engine_module, "load_orchestrator_plugin_adapter", fake_loader, raising=False)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert calls == ["xg-dify-workflow-orchestrator"]
+    assert payload["turn"]["spec_execution"]["assistant_message"] == "adapter loader sentinel"
+    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["sentinel"] is True
+
+
+def test_requirement_analysis_lab_runs_local_xg_through_manifest_adapter_loader(monkeypatch) -> None:
+    from app.requirement_analysis import turn_engine as turn_engine_module
+
+    original_loader = turn_engine_module.load_orchestrator_plugin_adapter
+    calls: list[str] = []
+
+    def recording_loader(manifest, **kwargs):
+        calls.append(manifest.plugin_id)
+        return original_loader(manifest, **kwargs)
+
+    monkeypatch.setattr(turn_engine_module, "load_orchestrator_plugin_adapter", recording_loader, raising=False)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件"},
+    )
+
+    assert turn.status_code == 200
+    assert calls == ["xg-local-heuristic-orchestrator"]
+
+
+def test_requirement_analysis_orchestrator_reload_reflects_plugin_directory_changes(tmp_path: Path, monkeypatch) -> None:
+    from app.orchestrators import plugin_registry as plugin_registry_module
+
+    plugin_dir = _write_reload_test_plugin(tmp_path)
+    backup_dir = tmp_path / ".backup" / plugin_dir.name
+
+    monkeypatch.setattr(
+        plugin_registry_module,
+        "OrchestratorPluginDiscovery",
+        lambda: OrchestratorPluginDiscovery(root=tmp_path),
+    )
+    plugin_registry_module.reload_orchestrator_plugin_registry()
+    client = TestClient(create_app())
+
+    listed = client.get("/api/requirement-analysis/orchestrators")
+    assert listed.status_code == 200
+    assert {item["plugin_id"] for item in listed.json()["items"]} == {"xg-reload-test-orchestrator"}
+
+    try:
+        created = client.post(
+            "/api/requirement-analysis/sessions",
+            json={
+                "topic": "目录插拔验证",
+                "orchestrator_id": "xg-reload-test-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "write_policy": "patch_suggestion_only",
+            },
+        )
+        assert created.status_code == 200
+
+        backup_dir.parent.mkdir(parents=True)
+        shutil.move(plugin_dir, backup_dir)
+
+        reloaded = client.post("/api/requirement-analysis/orchestrators/reload")
+        assert reloaded.status_code == 200
+        assert reloaded.json()["items"] == []
+
+        rejected = client.post(
+            "/api/requirement-analysis/sessions",
+            json={
+                "topic": "目录插拔验证",
+                "orchestrator_id": "xg-reload-test-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "write_policy": "patch_suggestion_only",
+            },
+        )
+        assert rejected.status_code == 400
+        assert rejected.json()["detail"] == "unsupported orchestrator"
+
+        shutil.move(backup_dir, plugin_dir)
+        restored = client.post("/api/requirement-analysis/orchestrators/reload")
+        assert restored.status_code == 200
+        assert [item["plugin_id"] for item in restored.json()["items"]] == ["xg-reload-test-orchestrator"]
+    finally:
+        plugin_registry_module.get_orchestrator_plugin_registry.cache_clear()
 
 
 def test_requirement_analysis_lab_rejects_unknown_orchestrator() -> None:
@@ -839,6 +1227,105 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                         "provider_response": {"raw_content": '{"next_interaction_plan":{"next_question":"下一轮可以确认输入数据来源。"}}', "parsed_json": {}},
                     },
                 }
+            if stage_id == "decision_state_delta":
+                return {
+                    "organizer_interpretation": {
+                        "summary": "用户选择先按计算分析工具理解。",
+                        "intent": "confirm_direction",
+                        "confidence": "high",
+                    },
+                    "assistant_message": "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
+                    "decision_state_delta": {
+                        "confirmed_facts": [
+                            {
+                                "content": "DeepSeek 确认系统初步定位为空域计算分析工具",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "active",
+                            }
+                        ],
+                        "confirmed_decisions": [
+                            {
+                                "content": "先按计算分析工具理解。",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "active",
+                            }
+                        ],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "content": "输入数据来源尚未确认。",
+                                "target_section": "3 功能需求 / 输入数据来源",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "chapter_projections": [
+                            {
+                                "content": "2.1 软件定位",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "projected",
+                            }
+                        ],
+                        "next_focus": "下一轮可以确认输入数据来源。",
+                    },
+                    "template_shape_assessment": {
+                        "shape_type": "coarse_grained_extensible",
+                        "reason": "模板允许在既有条款下补写软件定位。",
+                        "allowed_write_modes": ["append_existing_clause"],
+                        "forbidden_write_modes": [],
+                        "template_revision_recommendations": [],
+                    },
+                    "target_anchor_plan": [
+                        {
+                            "plan_id": "AP-001",
+                            "decision_type": "append_existing_clause",
+                            "template_clause_id": "REQ-2.1",
+                            "canonical_clause_heading": "2.1 软件定位",
+                            "subtopic_action": "none",
+                            "subtopic_key": "",
+                            "subtopic_title": "",
+                            "display_heading": "2.1 软件定位",
+                            "template_shape_ref": "coarse_grained_extensible",
+                            "reason": "用户选择了计算分析工具定位。",
+                            "confidence": "high",
+                            "anchor_path": "REQ-2.1",
+                        }
+                    ],
+                    "confirmed_facts_delta": ["DeepSeek 确认系统初步定位为空域计算分析工具"],
+                    "open_questions_delta": ["输入数据来源尚未确认。"],
+                    "document_patch": [
+                        {
+                            "plan_ref": "AP-001",
+                            "operation": "append_or_update",
+                            "content": "本系统支持空域计算分析任务的需求澄清。",
+                            "write_policy": session.write_policy,
+                        }
+                    ],
+                    "annotations": ["DeepSeek Provider 返回结构化 Turn 输出。"],
+                    "risks": [],
+                    "confidence": "medium",
+                    "raw_model_response": {
+                        "provider_id": "deepseek",
+                        "mock": False,
+                        "provider_request": {
+                            "messages": [
+                                {"role": "system", "content": "system prompt"},
+                                {"role": "user", "content": "assembled prompt"},
+                            ],
+                            "prompt_bundle": prompt_bundle,
+                        },
+                        "provider_response": {
+                            "raw_content": '{"decision_state_delta":{"confirmed_facts":[{"content":"DeepSeek 确认系统初步定位为空域计算分析工具"}]}}',
+                            "parsed_json": {
+                                "decision_state_delta": {
+                                    "confirmed_facts": [
+                                        {"content": "DeepSeek 确认系统初步定位为空域计算分析工具"}
+                                    ]
+                                }
+                            },
+                        },
+                    },
+                }
             return {
                 "organizer_interpretation": {
                     "summary": "用户选择先按计算分析工具理解。",
@@ -962,22 +1449,15 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert provider_log["audit"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "assembled prompt"
     assert "working_document_json" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "current_section_draft" not in provider_log["audit"]["provider_request"]["prompt_bundle"]
-    assert "decision_state_json" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "working_document_excerpt" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "review_target_paths" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "recent_revision_fragments" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "review_goal" in provider_log["audit"]["provider_request"]["prompt_bundle"]
-    assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
-    assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
-        "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
-    )
-    assert provider_log["audit"]["service_output"]["assistant_message"].startswith("本轮已更新结构化状态")
+    assert provider_log["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "decision_state_delta"
+    assert provider_log["audit"]["provider_normalized_output"]["decision_state_delta"]["confirmed_facts"]
+    assert provider_log["audit"]["service_output"]["assistant_message"].startswith("本轮已把软件定位写入临时正文")
     assert provider_log["audit"]["service_output"]["target_anchor_plan"][0]["template_clause_id"] == "REQ-2.1"
     assert provider_log["audit"]["service_output"]["document_patch"][0]["plan_ref"] == "AP-001"
-    assert provider_log["audit"]["service_output"]["working_document_update"]["applied_block_ids"] == ["blk-0001"]
-    planning_log = payload["session"]["provider_logs"][2]
-    assert "DeepSeek 确认系统初步定位为空域计算分析工具" in planning_log["audit"]["provider_request"]["prompt_bundle"]["decision_state_json"]
-    assert "需求分析结构化状态" in planning_log["audit"]["provider_request"]["prompt_bundle"]["decision_state_document_json"]
     assert captured == {
         "api_key": "test-deepseek-key",
         "base_url": "https://api.deepseek.com",
@@ -993,7 +1473,7 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
         }
 
 
-def test_requirement_analysis_lab_records_three_stage_provider_logs(monkeypatch) -> None:
+def test_requirement_analysis_lab_records_decision_state_provider_logs(monkeypatch) -> None:
     calls: list[dict] = []
 
     class FakeDeepSeekClient:
@@ -1069,6 +1549,79 @@ def test_requirement_analysis_lab_records_three_stage_provider_logs(monkeypatch)
                     "confidence": "high",
                 }
                 return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+            if stage["stage_kind"] == "decision_state_delta":
+                output = {
+                    "organizer_interpretation": {
+                        "summary": "用户确认系统名称和编写目的。",
+                        "intent": "supplement_requirement",
+                        "confidence": "high",
+                    },
+                    "assistant_message": "本轮已沉淀系统名称和编写目的。",
+                    "decision_state_delta": {
+                        "confirmed_facts": [
+                            {
+                                "content": "系统名称和编写目的已确认。",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "active",
+                            }
+                        ],
+                        "confirmed_decisions": [],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "content": "下一轮确认软件定位。",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "chapter_projections": [
+                            {
+                                "content": "1.1 编写目的",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "projected",
+                            }
+                        ],
+                        "next_focus": "下一轮确认软件定位。",
+                    },
+                    "template_shape_assessment": {
+                        "shape_type": "coarse_grained_extensible",
+                        "reason": "模板允许在既有条款下补写编写目的。",
+                        "allowed_write_modes": ["append_existing_clause"],
+                        "forbidden_write_modes": [],
+                        "template_revision_recommendations": [],
+                    },
+                    "target_anchor_plan": [
+                        {
+                            "plan_id": "AP-001",
+                            "decision_type": "append_existing_clause",
+                            "template_clause_id": "REQ-1.1",
+                            "canonical_clause_heading": "1.1 编写目的",
+                            "subtopic_action": "none",
+                            "subtopic_key": "",
+                            "subtopic_title": "",
+                            "display_heading": "1.1 编写目的",
+                            "template_shape_ref": "coarse_grained_extensible",
+                            "reason": "用户确认系统名称和编写目的。",
+                            "confidence": "high",
+                            "anchor_path": "REQ-1.1",
+                        }
+                    ],
+                    "confirmed_facts_delta": ["系统名称和编写目的已确认。"],
+                    "open_questions_delta": ["下一轮确认软件定位。"],
+                    "document_patch": [
+                        {
+                            "plan_ref": "AP-001",
+                            "operation": "append_or_update",
+                            "content": "本需求规格说明用于定义默认运算软件的建设目标和需求边界。",
+                            "write_policy": session.write_policy,
+                        }
+                    ],
+                    "annotations": [],
+                    "risks": [],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
             if stage["stage_kind"] == "next_interaction":
                 output = {
                     "next_interaction_plan": {
@@ -1076,11 +1629,11 @@ def test_requirement_analysis_lab_records_three_stage_provider_logs(monkeypatch)
                         "user_message": "模型规划：编写目的已补齐，下一步确认软件定位。",
                         "next_question": "建议下一步确认软件定位。",
                         "quick_options": [{"key": "A", "label": "计算分析工具", "recommended": True}],
-                        "plan_reason": "Review 已通过，完成度树下一 open 节点为软件定位。",
-                        "review_acknowledgement": "编写目的已覆盖。",
+                        "plan_reason": "结构化状态显示软件定位仍需确认。",
+                        "review_acknowledgement": "结构化状态已应用。",
                         "target_spec_nodes": ["SPEC-REQ-2.1"],
                     },
-                    "planning_trace": ["模型规划阶段已执行。"],
+                    "planning_trace": ["模型规划阶段已读取 decision_state。"],
                     "confidence": "high",
                 }
                 return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
@@ -1123,33 +1676,6 @@ def test_requirement_analysis_lab_records_three_stage_provider_logs(monkeypatch)
                 ],
                 "confirmed_facts_delta": ["系统名称和编写目的已确认。"],
                 "open_questions_delta": ["下一轮确认软件定位。"],
-                "decision_state_delta": {
-                    "confirmed_facts": [
-                        {
-                            "content": "系统名称和编写目的已确认。",
-                            "target_section": "1 总则 / 编写目的",
-                            "status": "active",
-                        }
-                    ],
-                    "confirmed_decisions": [],
-                    "tentative_assumptions": [],
-                    "open_questions": [
-                        {
-                            "content": "下一轮确认软件定位。",
-                            "target_section": "2 项目概述 / 软件定位",
-                            "status": "open",
-                        }
-                    ],
-                    "rejected_directions": [],
-                    "chapter_projections": [
-                        {
-                            "content": "1.1 编写目的",
-                            "target_section": "1 总则 / 编写目的",
-                            "status": "projected",
-                        }
-                    ],
-                    "next_focus": "建议下一步确认软件定位。",
-                },
                 "document_patch": [
                     {
                         "plan_ref": "AP-001",
@@ -1204,16 +1730,13 @@ def test_requirement_analysis_lab_records_three_stage_provider_logs(monkeypatch)
     assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "decision_state_delta"
     assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["prompt_id"] == "decision_state_delta"
     assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "next_interaction_planning"
-    assert provider_logs[1]["audit"]["provider_normalized_output"]["decision_state_delta"]["confirmed_facts"][0]["content"] == (
-        "系统名称和编写目的已确认。"
-    )
-    assert provider_logs[1]["audit"]["service_output"]["working_document_update"]["applied_block_ids"] == ["blk-0001"]
-    assert payload["turn"]["post_update_review"]["target_review"]["review_target"] == ["REQ-1.1"]
-    assert payload["turn"]["post_update_review"]["target_review"]["reason"] == "当前目标范围已具备可接受表达。"
+    assert provider_logs[1]["audit"]["provider_normalized_output"]["decision_state_delta"]["confirmed_facts"][0]["content"] == "系统名称和编写目的已确认。"
+    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_json"]
+    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
     assert payload["turn"]["next_interaction_plan"]["next_question"] == "建议下一步确认软件定位。"
     assert calls[1]["stage"]["prompt_id"] == "decision_state_delta"
-    assert calls[1]["stage_input"]["decision_state"]["open_questions"][0]["content"]
     assert calls[2]["stage"]["prompt_id"] == "next_interaction_planning"
+    assert calls[2]["stage_input"]["decision_state"]["confirmed_facts"]
 
 
 def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_without_confirming_first_open_question(
@@ -1467,16 +1990,33 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
             "messages": [],
             "confirmed_facts": [],
             "open_questions": [],
+            "decision_state": {
+                "topic": "空域运算软件需求规格探索",
+                "confirmed_facts": [{"content": "系统初步定位为空域计算分析工具"}],
+                "confirmed_decisions": [],
+                "tentative_assumptions": [],
+                "open_questions": [],
+                "rejected_directions": [],
+                "next_focus": "确认用户角色。",
+                "chapter_projections": [],
+            },
+            "decision_state_document": {
+                "document_id": "decision-state-document",
+                "title": "需求分析结构化状态",
+                "phase": "exploration_convergence",
+                "sections": [],
+            },
         }
 
-    prompt = DummyClient()._build_prompt_bundle(  # noqa: SLF001
+    prompt_bundle = DummyClient()._build_prompt_bundle(  # noqa: SLF001
         session=DummySession(),
         user_input="主要给领域专家使用",
         normalized={"input_type": "free_text", "matched_option": None, "semantic": "主要给领域专家使用"},
         orchestrator_id="xg-heuristic-orchestrator",
         stage={"stage_id": "intent_understanding", "stage_kind": "intent", "prompt_id": "intent_understanding"},
         stage_input={},
-    )["assembled_prompt"]
+    )
+    prompt = prompt_bundle["assembled_prompt"]
 
     assert "用户输入是本轮 Turn 的起点" in prompt
     assert "previous_interaction" in prompt
@@ -1484,6 +2024,8 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
     assert "不要强行把它解释成当前 active 节点的答案" in prompt
     assert "intent_understanding_result" in prompt
     assert "stage_task_definition" in prompt
+    assert "系统初步定位为空域计算分析工具" in prompt_bundle["decision_state_json"]
+    assert "需求分析结构化状态" in prompt_bundle["decision_state_document_json"]
 
 
 def test_deepseek_client_run_stage_parses_write_json_response_without_network() -> None:
@@ -1570,6 +2112,8 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
     assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
     assert output["raw_model_response"]["mock"] is False
     assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["assembled_prompt"] == "prompt"
+    assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["decision_state_json"] == ""
+    assert output["raw_model_response"]["provider_request"]["prompt_bundle"]["decision_state_document_json"] == ""
     assert output["raw_model_response"]["provider_request"]["messages"][1]["content"] == "prompt"
     assert "已更新需求规格" in output["raw_model_response"]["provider_response"]["raw_content"]
     assert output["raw_model_response"]["provider_response"]["parsed_json"]["assistant_message"] == "已更新需求规格。"

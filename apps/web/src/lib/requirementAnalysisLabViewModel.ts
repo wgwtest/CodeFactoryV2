@@ -13,6 +13,7 @@ export function resolveDefaultRequirementAnalysisOrchestratorId(
 ) {
   return (
     orchestrators.find((orchestrator) => orchestrator.orchestrator_id === defaultOrchestratorId)?.orchestrator_id ??
+    orchestrators.find((orchestrator) => orchestrator.plugin_id === defaultOrchestratorId)?.orchestrator_id ??
     orchestrators[0]?.orchestrator_id ??
     defaultOrchestratorId
   );
@@ -22,8 +23,11 @@ export function resolveDefaultRequirementAnalysisProviderId(providers: Requireme
   if (!providers.length) {
     return "";
   }
+  const activeProviders = providers.filter((provider) => provider.status === "active");
   return (
-    providers.find((provider) => provider.provider_id === "deepseek")?.provider_id ??
+    activeProviders.find((provider) => provider.provider_id === "deepseek")?.provider_id ??
+    activeProviders.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ??
+    activeProviders[0]?.provider_id ??
     providers.find((provider) => provider.provider_id === defaultProviderId)?.provider_id ??
     providers[0]?.provider_id ??
     defaultProviderId

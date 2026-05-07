@@ -38,12 +38,49 @@ def build_evidence_pack_snapshot(
     llm_model = extraction.get("llm_model") or "unknown"
     status = RuntimeStatus.COMPLETED if evidence_count else RuntimeStatus.WARNING
 
+    input_set_id = f"{document_id}:evidence-pack:evidence-input-set"
+    policy_node_id = f"{document_id}:evidence-pack:pack-policy"
     query_node_id = f"{document_id}:evidence-pack:query"
     pack_node_id = f"{document_id}:evidence-pack:pack"
     rerank_node_id = f"{document_id}:evidence-pack:rerank"
     target_node_id = f"{document_id}:evidence-pack:targets"
 
     nodes = [
+        RuntimeGraphNode(
+            node_id=input_set_id,
+            label="证据候选集合",
+            node_type="evidence_unit_input_set",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={
+                "evidence_count": evidence_count,
+                "candidate_count": candidate_count,
+                "relation_count": relation_count,
+            },
+            attributes={
+                "source_stage": "evidence_graph_chunk_layer",
+                "aggregation": "semantic",
+            },
+        ),
+        RuntimeGraphNode(
+            node_id=policy_node_id,
+            label="证据包策略",
+            node_type="evidence_pack_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={"top_k": evidence_count, "selected_evidence_count": evidence_count},
+            attributes={
+                "rule_key": "evidence_pack.selection_and_rerank",
+                "default_action": "select_ranked_evidence",
+                "strategy": extraction.get("strategy") or "unknown",
+                "llm_provider": llm_provider,
+                "llm_model": llm_model,
+            },
+        ),
         RuntimeGraphNode(
             node_id=query_node_id,
             label="检索请求",
@@ -100,6 +137,28 @@ def build_evidence_pack_snapshot(
 
     edges = [
         RuntimeGraphEdge(
+            edge_id=f"{input_set_id}:feeds-policy",
+            source=input_set_id,
+            target=policy_node_id,
+            relation="feeds_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "rankable evidence units from evidence graph"},
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{policy_node_id}:governs-query",
+            source=policy_node_id,
+            target=query_node_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "top-k selection and rerank policy"},
+        ),
+        RuntimeGraphEdge(
             edge_id=f"{query_node_id}:selected_into",
             source=query_node_id,
             target=pack_node_id,
@@ -153,8 +212,8 @@ def build_evidence_pack_snapshot(
             RuntimeGraphEdge(
                 edge_id=f"{evidence_node_id}:selected",
                 source=evidence_node_id,
-                target=pack_node_id,
-                relation="selected_into",
+                target=input_set_id,
+                relation="contains",
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.SOURCE,
@@ -225,6 +284,67 @@ def build_evidence_pack_snapshot(
     )
 
     node_observers = {
+        input_set_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="证据候选集合",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-pack:input-set",
+                    kind="evidence",
+                    level="success" if evidence_count else "warning",
+                    message=f"Evidence pack receives {evidence_count} evidence units as the candidate input set before policy selection.",
+                    object_id=input_set_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="input-set",
+                    title="Input Set",
+                    fields=[
+                        RuntimeSummaryField(key="node_type", label="node_type", value="evidence_unit_input_set"),
+                        RuntimeSummaryField(key="evidence_count", label="evidence_count", value=str(evidence_count), tone="success" if evidence_count else "warning"),
+                        RuntimeSummaryField(key="source_stage", label="source_stage", value="evidence_graph_chunk_layer", tone="info"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-policy", label="查看选择策略", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        policy_node_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="证据包策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-pack:policy",
+                    kind="decision",
+                    level="success" if evidence_count else "warning",
+                    message="证据包策略会对候选证据排序，选择进入证据包的载荷，并把结果送入下游候选生成。",
+                    object_id=policy_node_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-basis",
+                    title="Policy / Action Basis",
+                    fields=[
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="evidence_pack.selection_and_rerank", tone="info"),
+                        RuntimeSummaryField(key="default_action", label="default_action", value="select_ranked_evidence", tone="info"),
+                        RuntimeSummaryField(key="top_k", label="top_k", value=str(evidence_count), tone="success" if evidence_count else "warning"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-input-set", label="查看证据输入集合", target_kind="node", target_id=input_set_id),
+                RuntimeAction(action_id="view-pack", label="查看证据包", target_kind="node", target_id=pack_node_id),
+            ],
+        ),
         pack_node_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="节点视角 · 证据包",
@@ -308,6 +428,66 @@ def build_evidence_pack_snapshot(
         )
 
     edge_observers = {
+        f"{input_set_id}:feeds-policy": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="feeds_policy",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-pack:feeds-policy",
+                    kind="decision",
+                    level="success" if evidence_count else "warning",
+                    message="证据候选集合会先进入证据包策略，再触发检索与重排动作。",
+                    object_id=f"{input_set_id}:feeds-policy",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="Action Basis",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="feeds_policy"),
+                        RuntimeSummaryField(key="basis", label="basis", value="rankable evidence units from evidence graph"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=input_set_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        f"{policy_node_id}:governs-query": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:evidence-pack:governs-query",
+                    kind="decision",
+                    level="success" if evidence_count else "warning",
+                    message="Selection and rerank policy determines the query payload that becomes the evidence pack.",
+                    object_id=f"{policy_node_id}:governs-query",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-edge",
+                    title="Policy Decision",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="evidence_pack.selection_and_rerank"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=policy_node_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=query_node_id),
+            ],
+        ),
         f"{query_node_id}:selected_into": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
             title="边视角 · selected_into",
@@ -349,7 +529,7 @@ def build_evidence_pack_snapshot(
         graph=RuntimeStageGraph(
             nodes=nodes,
             edges=edges,
-            primary_node_ids=[query_node_id, pack_node_id, rerank_node_id, target_node_id],
+            primary_node_ids=[input_set_id, policy_node_id, query_node_id, pack_node_id, rerank_node_id, target_node_id],
             primary_edge_ids=[edge.edge_id for edge in edges if edge.is_primary],
         ),
         stage_observer=stage_observer,

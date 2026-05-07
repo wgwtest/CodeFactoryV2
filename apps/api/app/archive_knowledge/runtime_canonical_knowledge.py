@@ -36,6 +36,8 @@ def build_canonical_knowledge_snapshot(
     relation_count = len(relations)
     status = RuntimeStatus.COMPLETED if item_count else RuntimeStatus.WARNING
 
+    input_set_id = f"{document_id}:canonical:input-set"
+    policy_node_id = f"{document_id}:canonical:canonicalization-policy"
     item_set_id = f"{document_id}:canonical:item-set"
     relation_set_id = f"{document_id}:canonical:relation-set"
     merge_decision_id = f"{document_id}:canonical:merge-decisions"
@@ -46,8 +48,37 @@ def build_canonical_knowledge_snapshot(
 
     nodes: list[RuntimeGraphNode] = [
         RuntimeGraphNode(
+            node_id=input_set_id,
+            label="整合候选集合",
+            node_type="canonical_candidate_input_set",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={"candidate_count": item_count, "relation_count": relation_count},
+            attributes={
+                "source_stage": "definition_summary_conflict_consolidation",
+                "aggregation": "semantic",
+            },
+        ),
+        RuntimeGraphNode(
+            node_id=policy_node_id,
+            label="规范化策略",
+            node_type="canonicalization_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={"merged_item_count": item_count, "relation_count": relation_count},
+            attributes={
+                "rule_key": "canonical_knowledge.merge_and_normalize",
+                "default_action": "merge_supported_candidates",
+                "review_scope": "canonical_items_and_relations",
+            },
+        ),
+        RuntimeGraphNode(
             node_id=item_set_id,
-            label="Canonical Item Set",
+            label="规范知识对象集合",
             node_type="canonical_item_set",
             stage_id=definition.stage_id,
             status=status,
@@ -62,7 +93,7 @@ def build_canonical_knowledge_snapshot(
         ),
         RuntimeGraphNode(
             node_id=relation_set_id,
-            label="Canonical Relation Set",
+            label="规范关系集合",
             node_type="canonical_relation_set",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if relation_count else RuntimeStatus.WARNING,
@@ -72,7 +103,7 @@ def build_canonical_knowledge_snapshot(
         ),
         RuntimeGraphNode(
             node_id=merge_decision_id,
-            label="Merge Decisions",
+            label="合并决策",
             node_type="merge_decision_group",
             stage_id=definition.stage_id,
             status=status,
@@ -82,7 +113,7 @@ def build_canonical_knowledge_snapshot(
         ),
         RuntimeGraphNode(
             node_id=dropped_candidate_id,
-            label="Dropped Candidates",
+            label="剔除候选集合",
             node_type="dropped_candidate_group",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED,
@@ -92,6 +123,28 @@ def build_canonical_knowledge_snapshot(
     ]
 
     edges: list[RuntimeGraphEdge] = [
+        RuntimeGraphEdge(
+            edge_id=f"{input_set_id}:feeds-policy",
+            source=input_set_id,
+            target=policy_node_id,
+            relation="feeds_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "consolidated definitions, summaries, conflicts, and relations"},
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{policy_node_id}:governs-merge",
+            source=policy_node_id,
+            target=merge_decision_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "canonical merge, dedupe, and relation exposure policy"},
+        ),
         RuntimeGraphEdge(
             edge_id=f"{merge_decision_id}:results_in",
             source=merge_decision_id,
@@ -131,7 +184,6 @@ def build_canonical_knowledge_snapshot(
                 stage_id=definition.stage_id,
                 status=_review_status_to_runtime(item.get("review_status", "pending")),
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
                 metrics={"evidence_count": len(item.get("evidence", []))},
                 attributes={
                     "item_id": item.get("id"),
@@ -151,7 +203,6 @@ def build_canonical_knowledge_snapshot(
                 stage_id=definition.stage_id,
                 status=_review_status_to_runtime(item.get("review_status", "pending")),
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
             )
         )
 
@@ -182,7 +233,6 @@ def build_canonical_knowledge_snapshot(
                 stage_id=definition.stage_id,
                 status=RuntimeStatus.COMPLETED,
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
                 attributes={
                     "confidence": str(relation.get("confidence") or ""),
                     "evidence": relation.get("evidence") or "",
@@ -272,6 +322,67 @@ def build_canonical_knowledge_snapshot(
     )
 
     node_observers: dict[str, RuntimeObserverPayload] = {
+        input_set_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="整合候选集合",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:canonical:input-set",
+                    kind="progress",
+                    level="success" if item_count else "warning",
+                    message=f"规范知识阶段接收上游 {item_count} 个整合候选和 {relation_count} 条关系候选。",
+                    object_id=input_set_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="input-set",
+                    title="输入集合",
+                    fields=[
+                        RuntimeSummaryField(key="node_type", label="node_type", value="canonical_candidate_input_set"),
+                        RuntimeSummaryField(key="candidate_count", label="candidate_count", value=str(item_count), tone="success" if item_count else "warning"),
+                        RuntimeSummaryField(key="source_stage", label="source_stage", value="definition_summary_conflict_consolidation", tone="info"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-policy", label="查看规范化策略", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        policy_node_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="规范化策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:canonical:policy",
+                    kind="decision",
+                    level="success" if item_count else "warning",
+                    message="规范化策略会在质量评估前，把受支撑的候选合并为稳定的规范知识对象和关系集合。",
+                    object_id=policy_node_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-basis",
+                    title="策略 / 动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="canonical_knowledge.merge_and_normalize", tone="info"),
+                        RuntimeSummaryField(key="default_action", label="default_action", value="merge_supported_candidates", tone="info"),
+                        RuntimeSummaryField(key="merged_item_count", label="merged_item_count", value=str(item_count), tone="success" if item_count else "warning"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-input-set", label="查看整合输入集合", target_kind="node", target_id=input_set_id),
+                RuntimeAction(action_id="view-merge-decisions", label="查看合并决策", target_kind="node", target_id=merge_decision_id),
+            ],
+        ),
         item_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Canonical Item Set",
@@ -307,8 +418,8 @@ def build_canonical_knowledge_snapshot(
                 ),
             ],
             actions=[
-                RuntimeAction(action_id="view-merge-decisions", label="View Merge Decisions", target_kind="node", target_id=merge_decision_id),
-                RuntimeAction(action_id="view-canonical-relations", label="View Canonical Relation Set", target_kind="node", target_id=relation_set_id),
+                RuntimeAction(action_id="view-merge-decisions", label="查看合并决策", target_kind="node", target_id=merge_decision_id),
+                RuntimeAction(action_id="view-canonical-relations", label="查看规范关系集合", target_kind="node", target_id=relation_set_id),
             ],
         ),
         relation_set_id: RuntimeObserverPayload(
@@ -337,7 +448,7 @@ def build_canonical_knowledge_snapshot(
                 )
             ],
             actions=[
-                RuntimeAction(action_id="view-stage-graph", label="View Stage Graph", target_kind="graph"),
+                RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph"),
             ],
         ),
         merge_decision_id: RuntimeObserverPayload(
@@ -350,7 +461,7 @@ def build_canonical_knowledge_snapshot(
                     event_id=f"{document_id}:canonical:merge",
                     kind="decision",
                     level="info",
-                    message="Merge decisions consolidate candidate outputs into normalized canonical objects before governance evaluation.",
+                    message="合并决策会在治理评估前，把候选输出收敛为规范对象。",
                     object_id=merge_decision_id,
                     object_kind="node",
                 )
@@ -366,7 +477,7 @@ def build_canonical_knowledge_snapshot(
                 )
             ],
             actions=[
-                RuntimeAction(action_id="view-item-set", label="View Canonical Item Set", target_kind="node", target_id=item_set_id),
+                RuntimeAction(action_id="view-item-set", label="查看规范知识对象集合", target_kind="node", target_id=item_set_id),
             ],
         ),
     }
@@ -457,8 +568,19 @@ def build_canonical_knowledge_snapshot(
         graph={
             "nodes": nodes,
             "edges": edges,
-            "primary_node_ids": [node.node_id for node in nodes if node.is_primary],
-            "primary_edge_ids": [edge.edge_id for edge in edges if edge.is_primary],
+            "primary_node_ids": [
+                input_set_id,
+                policy_node_id,
+                merge_decision_id,
+                item_set_id,
+                relation_set_id,
+            ],
+            "primary_edge_ids": [
+                f"{input_set_id}:feeds-policy",
+                f"{policy_node_id}:governs-merge",
+                f"{merge_decision_id}:results_in",
+                f"{item_set_id}:supports",
+            ],
         },
         stage_observer=stage_observer,
         node_observers=node_observers,

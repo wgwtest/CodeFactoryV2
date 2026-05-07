@@ -125,6 +125,10 @@ export type KnowledgeArchiveBuildState = {
   current_document_title: string | null;
   current_document_path: string | null;
   current_chunk: KnowledgeArchiveBuildStateChunk | null;
+  current_stage_id?: string | null;
+  current_stage_label?: string | null;
+  current_stage_status?: string | null;
+  current_stage_message?: string | null;
   policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
   warning_count?: number;
   warnings?: KnowledgeArchiveBuildWarning[];
@@ -169,12 +173,57 @@ export type ArchivePolicyAction =
   | "延迟发布";
 
 */
+export type ArchivePolicyEffectKind =
+  | "filter"
+  | "score"
+  | "normalize"
+  | "merge"
+  | "split"
+  | "block"
+  | "publish_candidate";
+
+export type ArchiveRuleInputFieldContract = {
+  field_name: string;
+  source_artifact?: string;
+  field_type: string;
+  required?: boolean;
+  include_in_input_hash?: boolean;
+  validation?: string;
+  example?: string;
+  business_meaning?: string;
+  missing_action?: ArchivePolicyAction | string;
+};
+
+export type ArchiveRuleOutputFieldContract = {
+  field_name: string;
+  target_artifact?: string;
+  field_type: string;
+  producer?: string;
+  include_in_output_hash?: boolean;
+  write_to_runtime?: boolean;
+  write_to_audit?: boolean;
+  used_for_impact?: boolean;
+  example?: string;
+  business_meaning?: string;
+};
+
 export type ArchiveStagePolicyRule = {
   key: string;
   name: string;
   meaning: string;
   threshold: string;
   action: ArchivePolicyAction;
+  rule_id?: string | null;
+  rule_version?: string | null;
+  effect_kind?: ArchivePolicyEffectKind | string | null;
+  scope_selector?: Record<string, unknown>;
+  input_schema?: ArchiveRuleInputFieldContract[];
+  output_schema?: ArchiveRuleOutputFieldContract[];
+  parameters?: Record<string, unknown>;
+  trace_fields?: string[];
+  rule_hash?: string | null;
+  contract_status?: "valid" | "invalid" | string | null;
+  contract_errors?: string[];
 };
 
 export type ArchiveStagePolicyConfig = {
@@ -195,6 +244,11 @@ export type ArchiveStagePolicyConfig = {
 
 export type ArchivePolicyConfig = {
   archive_id: string;
+  policy_package_id?: string | null;
+  policy_package_name?: string | null;
+  policy_package_version_id?: string | null;
+  policy_package_version_status?: string | null;
+  policy_package_version_hash?: string | null;
   version_label: string;
   scope_label: string;
   ai_autoadapt_enabled: boolean;
@@ -204,6 +258,11 @@ export type ArchivePolicyConfig = {
 };
 
 export type UpdateArchivePolicyConfigInput = {
+  policy_package_id?: string | null;
+  policy_package_name?: string | null;
+  policy_package_version_id?: string | null;
+  policy_package_version_status?: string | null;
+  policy_package_version_hash?: string | null;
   version_label: string;
   scope_label: string;
   ai_autoadapt_enabled: boolean;
@@ -218,12 +277,18 @@ export type ArchivePolicyRuntimeSnapshotStage = {
   ai_mode: string;
   default_action: ArchivePolicyAction;
   rule_count: number;
+  rules?: ArchiveStagePolicyRule[];
 };
 
 export type ArchivePolicyRuntimeSnapshot = {
   snapshot_id: string;
   captured_at: string | null;
   archive_id: string;
+  policy_package_id?: string | null;
+  policy_package_name?: string | null;
+  policy_package_version_id?: string | null;
+  policy_package_version_status?: string | null;
+  policy_package_version_hash?: string | null;
   version_label: string;
   scope_label: string;
   ai_autoadapt_enabled: boolean;
@@ -436,6 +501,9 @@ export type ArchiveReviewCandidate = {
   review_status: ArchiveReviewStatus;
   evidence_excerpt: string;
   evidence_document_title: string | null;
+  candidate_source?: string;
+  source_scope?: string;
+  governance_boundary?: string;
 };
 
 export type ArchiveKnowledgeItemUpdateInput = {
@@ -478,6 +546,19 @@ export type ArchivePublicationOverview = {
     entity_count: number;
     event_count: number;
     process_count: number;
+  };
+  candidate_source?: string;
+  candidate_scope?: string;
+  machine_publication_status?: string;
+  machine_publication_label?: string;
+  governance_confirmation_status?: string;
+  governance_confirmation_label?: string;
+  formal_entry_status?: string;
+  formal_entry_label?: string;
+  review_summary?: {
+    pending_count: number;
+    approved_count: number;
+    rejected_count: number;
   };
 };
 
@@ -577,6 +658,28 @@ export type ArchiveDocumentRuntimeStageSnapshot = {
   stage_observer: ArchiveDocumentRuntimeObserverPayload;
   node_observers: Record<string, ArchiveDocumentRuntimeObserverPayload>;
   edge_observers: Record<string, ArchiveDocumentRuntimeObserverPayload>;
+  rule_execution_records?: ArchiveRuleExecutionRecord[];
+};
+
+export type ArchiveRuleExecutionRecord = {
+  execution_id: string;
+  archive_id: string;
+  document_id: string;
+  stage_id: string;
+  rule_id: string;
+  rule_version: string;
+  rule_hash?: string | null;
+  snapshot_id?: string | null;
+  input_artifact_refs: string[];
+  input_hash?: string | null;
+  output_artifact_refs: string[];
+  output_hash?: string | null;
+  affected_object_ids: string[];
+  affected_relation_ids: string[];
+  decision: string;
+  metrics: Record<string, unknown>;
+  executed_at?: string | null;
+  source: "runtime_trace" | "policy_snapshot" | "derived";
 };
 
 export type ArchiveDocumentRuntimeContract = {
@@ -591,6 +694,7 @@ export type ArchiveDocumentRuntimeContract = {
   source_document: Record<string, unknown>;
   policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
   stages: ArchiveDocumentRuntimeStageSnapshot[];
+  rule_execution_records?: ArchiveRuleExecutionRecord[];
 };
 
 export type RequirementFormalElement = {
@@ -1063,6 +1167,7 @@ export type ApplicationRequirementDraftExport = {
 
 export type ToolStatus = "draft" | "active" | "archived";
 export type ToolVerificationStatus = "unverified" | "verified" | "warning" | "failed";
+export type SupportedSource = "p1_readonly_api" | "frozen_snapshot" | "manual_input" | "tool_hub_snapshot";
 export type ToolGranularity = "atomic" | "composite" | "page_level";
 export type ToolPackagingType = "source_package" | "build_artifact" | "http_endpoint" | "descriptor_only";
 export type ToolIntegrationMode =
@@ -1073,6 +1178,7 @@ export type ToolIntegrationMode =
   | "mount_page"
   | "manual";
 export type ToolDependencyPolicy = "peer" | "bundled" | "external";
+export type ToolBuildRunStatus = "queued" | "running" | "completed" | "failed";
 
 export type ToolHubCatalogItem = {
   id: string;
@@ -1107,7 +1213,7 @@ export type ToolDefinition = {
   lifecycle_stage_ids: string[];
   input_types: string[];
   output_types: string[];
-  supported_sources: string[];
+  supported_sources: SupportedSource[];
   usage_notes: string;
   keywords: string[];
   verification: ToolVerification;
@@ -1115,7 +1221,27 @@ export type ToolDefinition = {
   updated_at: string;
 };
 
-export type ToolDefinitionWriteInput = Omit<ToolDefinition, "tool_id" | "created_at" | "updated_at">;
+export type ToolDefinitionWriteInput = Omit<
+  ToolDefinition,
+  | "tool_id"
+  | "created_at"
+  | "updated_at"
+  | "tool_granularity"
+  | "packaging_type"
+  | "integration_mode"
+  | "dependency_policy"
+  | "runtime_dependencies"
+  | "host_constraints"
+  | "supported_sources"
+> & {
+  tool_granularity?: ToolGranularity;
+  packaging_type?: ToolPackagingType;
+  integration_mode?: ToolIntegrationMode;
+  dependency_policy?: ToolDependencyPolicy;
+  runtime_dependencies?: string[];
+  host_constraints?: Record<string, string | string[]>;
+  supported_sources?: string[];
+};
 
 export type ToolListEnvelope = {
   items: ToolDefinition[];
@@ -1444,7 +1570,7 @@ export type ToolBuildRun = {
   build_run_id: string;
   build_request_id: string;
   tool_id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: ToolBuildRunStatus;
   queue_name: string;
   payload: Record<string, unknown>;
   artifact_version_id?: string | null;
@@ -2076,8 +2202,11 @@ export type P3DesignLabSession = {
 export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
 
 export type RequirementAnalysisOrchestrator = {
+  plugin_id?: string;
   orchestrator_id: string;
   name: string;
+  plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+  observability_level?: "full" | "limited" | "none";
   version?: string;
   stage?: string;
   document_type?: string;
@@ -2086,7 +2215,7 @@ export type RequirementAnalysisOrchestrator = {
   status: RequirementAnalysisOrchestratorStatus;
   description: string;
   entry?: string | null;
-  capabilities?: readonly string[];
+  capabilities?: readonly string[] | Record<string, boolean>;
   requires?: Record<string, unknown>;
   package_path?: string;
 };
@@ -2458,6 +2587,11 @@ export type RequirementAnalysisTurn = {
   turn_id: string;
   session_id: string;
   user_input: string;
+  orchestrator_plugin?: {
+    plugin_id: string;
+    plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+    observability_level?: "full" | "limited" | "none";
+  };
   previous_interaction: RequirementAnalysisInteraction;
   normalized_input: {
     input_type: string;
@@ -2470,6 +2604,13 @@ export type RequirementAnalysisTurn = {
   decision_state_change_summary?: Record<string, unknown>;
   spec_execution: RequirementAnalysisSpecExecution;
   post_update_review: RequirementAnalysisPostUpdateReview;
+  decision_state_delta?: RequirementAnalysisDecisionState;
+  decision_state_change_summary?: {
+    turn_id: string;
+    added_counts: Record<string, number>;
+    next_focus: string;
+  };
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   closure_decision: RequirementAnalysisClosureAssessment;
   next_interaction: RequirementAnalysisInteraction;
   stage_audits?: RequirementAnalysisTurnStageAudit[];
@@ -2477,7 +2618,38 @@ export type RequirementAnalysisTurn = {
   confidence: string;
   service_steps: RequirementAnalysisServiceStep[];
   raw_model_response: Record<string, unknown>;
+  raw_plugin_response?: Record<string, unknown>;
   created_at: string;
+};
+
+export type RequirementAnalysisDecisionStateItem = {
+  item_id?: string;
+  content: string;
+  source_turn_id?: string | null;
+  target_section?: string;
+  status?: string;
+};
+
+export type RequirementAnalysisDecisionState = {
+  topic?: string;
+  confirmed_facts: RequirementAnalysisDecisionStateItem[];
+  confirmed_decisions: RequirementAnalysisDecisionStateItem[];
+  tentative_assumptions: RequirementAnalysisDecisionStateItem[];
+  open_questions: RequirementAnalysisDecisionStateItem[];
+  rejected_directions: RequirementAnalysisDecisionStateItem[];
+  next_focus: string;
+  chapter_projections: RequirementAnalysisDecisionStateItem[];
+};
+
+export type RequirementAnalysisDecisionStateDocument = {
+  document_id: string;
+  title: string;
+  phase: string;
+  sections: Array<{
+    section_id: string;
+    heading: string;
+    items: RequirementAnalysisDecisionStateItem[];
+  }>;
 };
 
 export type RequirementAnalysisTurnStageAudit = {
@@ -2532,6 +2704,8 @@ export type RequirementAnalysisSession = {
   turns: RequirementAnalysisTurn[];
   confirmed_facts: string[];
   open_questions: string[];
+  decision_state?: RequirementAnalysisDecisionState;
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document: RequirementAnalysisWorkingDocument;
   questions: RequirementAnalysisQuestionItem[];
@@ -2550,7 +2724,7 @@ export type RequirementAnalysisSession = {
 
 export type RequirementAnalysisSessionCreateInput = {
   topic: string;
-  orchestrator_id: string;
+  orchestrator_id?: string;
   provider_id: string;
   model?: string;
   template_id?: string;

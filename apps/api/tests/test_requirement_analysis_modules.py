@@ -4,20 +4,42 @@ from app.requirement_analysis.process_artifact_service import ProcessArtifactSer
 from app.requirement_analysis.session_repository import RequirementAnalysisSessionRepository
 from app.orchestrators.contract_validator import OrchestratorContractValidator
 from app.orchestrators.package_loader import OrchestratorPackageLoader, get_orchestrator_registry
+from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.runner_host import OrchestratorRunnerHost
+from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService, SpecTreeUpdateResult
 from app.db.models.requirements import RequirementAnalysisSession
 from app.requirement_analysis.provider_call_service import ProviderRunResult
-from app.requirement_analysis.stage_runtime_context_builder import StageRuntimeContextBuilder
 from app.requirement_analysis.summary_artifact_service import ArtifactUpdateResult, RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_context_builder import TurnContext
 from app.requirement_analysis.turn_decision_service import TurnDecisionService, TurnDecisionResult
-from app.requirement_analysis.turn_stage_planner import TurnStagePlanner, TurnStagePlan
-from app.requirement_analysis.turn_stage_reducer import TurnStageAudit, TurnStageReducer
-from app.requirement_analysis.turn_stage_executor import TurnStageExecutor, TurnStageResult
-from app.requirement_analysis.turn_strategy_service import TurnStrategyService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
+
+
+def _local_xg_module(module_name: str):
+    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
+    adapter = load_orchestrator_plugin_adapter(manifest)
+    return __import__(adapter.__class__.__module__.rsplit(".", 1)[0] + f".{module_name}", fromlist=["*"])
+
+
+_stage_runtime_context_builder = _local_xg_module("stage_runtime_context_builder")
+StageRuntimeContextBuilder = _stage_runtime_context_builder.StageRuntimeContextBuilder
+
+_turn_strategy_service = _local_xg_module("turn_strategy_service")
+TurnStrategyService = _turn_strategy_service.TurnStrategyService
+
+_turn_stage_planner = _local_xg_module("turn_stage_planner")
+TurnStagePlanner = _turn_stage_planner.TurnStagePlanner
+TurnStagePlan = _turn_stage_planner.TurnStagePlan
+
+_turn_stage_reducer = _local_xg_module("turn_stage_reducer")
+TurnStageAudit = _turn_stage_reducer.TurnStageAudit
+TurnStageReducer = _turn_stage_reducer.TurnStageReducer
+
+_turn_stage_executor = _local_xg_module("turn_stage_executor")
+TurnStageExecutor = _turn_stage_executor.TurnStageExecutor
+TurnStageResult = _turn_stage_executor.TurnStageResult
 
 
 def test_chapter_configuration_context_is_available_to_write_prompt(db_session) -> None:

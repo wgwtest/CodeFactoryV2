@@ -38,6 +38,7 @@ def build_concept_candidate_review_snapshot(
     status = RuntimeStatus.COMPLETED if candidate_count else RuntimeStatus.WARNING
 
     pack_input_id = f"{document_id}:concept-review:evidence-pack"
+    policy_node_id = f"{document_id}:concept-review:review-policy"
     concept_set_id = f"{document_id}:concept-review:candidate-set"
     category_group_id = f"{document_id}:concept-review:categories"
     alias_group_id = f"{document_id}:concept-review:aliases"
@@ -46,7 +47,7 @@ def build_concept_candidate_review_snapshot(
     nodes: list[RuntimeGraphNode] = [
         RuntimeGraphNode(
             node_id=pack_input_id,
-            label="Evidence Pack Input",
+            label="证据包输入",
             node_type="evidence_pack_input",
             stage_id=definition.stage_id,
             status=status,
@@ -58,8 +59,27 @@ def build_concept_candidate_review_snapshot(
             },
         ),
         RuntimeGraphNode(
+            node_id=policy_node_id,
+            label="概念审查策略",
+            node_type="concept_review_policy",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            metrics={
+                "candidate_count": candidate_count,
+                "evidence_count": evidence_count,
+                "category_count": len(category_counter),
+            },
+            attributes={
+                "rule_key": "concept_candidate_review.evidence_supported_candidates",
+                "default_action": "classify_and_keep_supported_candidates",
+                "review_scope": "entity_event_process_candidates",
+            },
+        ),
+        RuntimeGraphNode(
             node_id=concept_set_id,
-            label="Concept Candidate Set",
+            label="概念候选集合",
             node_type="concept_candidate_set",
             stage_id=definition.stage_id,
             status=status,
@@ -74,7 +94,7 @@ def build_concept_candidate_review_snapshot(
         ),
         RuntimeGraphNode(
             node_id=category_group_id,
-            label="Category Groups",
+            label="分类聚合",
             node_type="category_group",
             stage_id=definition.stage_id,
             status=status,
@@ -83,7 +103,7 @@ def build_concept_candidate_review_snapshot(
         ),
         RuntimeGraphNode(
             node_id=alias_group_id,
-            label="Alias Groups",
+            label="别名聚合",
             node_type="alias_group",
             stage_id=definition.stage_id,
             status=RuntimeStatus.COMPLETED if alias_count else RuntimeStatus.WARNING,
@@ -94,14 +114,26 @@ def build_concept_candidate_review_snapshot(
 
     edges: list[RuntimeGraphEdge] = [
         RuntimeGraphEdge(
-            edge_id=f"{pack_input_id}:proposes",
+            edge_id=f"{pack_input_id}:feeds-policy",
             source=pack_input_id,
-            target=concept_set_id,
-            relation="proposes",
+            target=policy_node_id,
+            relation="feeds_policy",
             stage_id=definition.stage_id,
             status=status,
             origin=RuntimeOrigin.DERIVED,
             is_primary=True,
+            attributes={"basis": "evidence pack candidate payload"},
+        ),
+        RuntimeGraphEdge(
+            edge_id=f"{policy_node_id}:governs-candidate-set",
+            source=policy_node_id,
+            target=concept_set_id,
+            relation="governs",
+            stage_id=definition.stage_id,
+            status=status,
+            origin=RuntimeOrigin.DERIVED,
+            is_primary=True,
+            attributes={"basis": "evidence support, type classification, and alias grouping"},
         ),
         RuntimeGraphEdge(
             edge_id=f"{concept_set_id}:categorized_as",
@@ -125,6 +157,37 @@ def build_concept_candidate_review_snapshot(
     ]
 
     node_observers: dict[str, RuntimeObserverPayload] = {
+        policy_node_id: RuntimeObserverPayload(
+            mode=RuntimeObserverMode.NODE,
+            title="概念审查策略",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:concept-review:policy",
+                    kind="decision",
+                    level="success" if candidate_count else "warning",
+                    message="概念审查策略会把证据包输出筛选为有支撑的概念候选，并补齐类型、分类与别名判断。",
+                    object_id=policy_node_id,
+                    object_kind="node",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="policy-basis",
+                    title="策略 / 动作依据",
+                    fields=[
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="concept_candidate_review.evidence_supported_candidates", tone="info"),
+                        RuntimeSummaryField(key="default_action", label="default_action", value="classify_and_keep_supported_candidates", tone="info"),
+                        RuntimeSummaryField(key="candidate_count", label="candidate_count", value=str(candidate_count), tone="success" if candidate_count else "warning"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-input-pack", label="查看证据包输入", target_kind="node", target_id=pack_input_id),
+                RuntimeAction(action_id="view-candidate-set", label="查看概念候选集合", target_kind="node", target_id=concept_set_id),
+            ],
+        ),
         concept_set_id: RuntimeObserverPayload(
             mode=RuntimeObserverMode.NODE,
             title="Concept Candidate Set",
@@ -165,27 +228,27 @@ def build_concept_candidate_review_snapshot(
                 ),
             ],
             actions=[
-                RuntimeAction(action_id="view-stage-graph", label="View stage graph", target_kind="graph"),
+                RuntimeAction(action_id="view-stage-graph", label="查看阶段图谱", target_kind="graph"),
             ],
         ),
     }
     edge_observers: dict[str, RuntimeObserverPayload] = {
-        f"{pack_input_id}:proposes": RuntimeObserverPayload(
+        f"{pack_input_id}:feeds-policy": RuntimeObserverPayload(
             mode=RuntimeObserverMode.EDGE,
-            title="proposes",
+            title="送入策略",
             subtitle=document_title,
             status=status,
             stream=[
                 RuntimeEvent(
-                    event_id=f"{document_id}:concept-review:edge-proposes",
+                    event_id=f"{document_id}:concept-review:edge-feeds-policy",
                     kind="decision",
                     level="success" if candidate_count else "warning",
                     message=(
-                        f"The evidence pack proposed {candidate_count} concept candidates for review."
+                         f"证据包将 {candidate_count} 个候选对象送入概念审查策略。"
                         if candidate_count
-                        else "The evidence pack could not propose any concept candidates."
+                         else "证据包尚未提供可进入概念审查策略的候选对象。"
                     ),
-                    object_id=f"{pack_input_id}:proposes",
+                    object_id=f"{pack_input_id}:feeds-policy",
                     object_kind="edge",
                 )
             ],
@@ -194,14 +257,44 @@ def build_concept_candidate_review_snapshot(
                     section_id="edge-summary",
                     title="Relation Summary",
                     fields=[
-                        RuntimeSummaryField(key="relation", label="relation", value="proposes"),
+                        RuntimeSummaryField(key="relation", label="relation", value="feeds_policy"),
                         RuntimeSummaryField(key="candidate_count", label="candidate_count", value=str(candidate_count)),
                     ],
                 )
             ],
             actions=[
-                RuntimeAction(action_id="view-source-node", label="View source node", target_kind="node", target_id=pack_input_id),
-                RuntimeAction(action_id="view-target-node", label="View target node", target_kind="node", target_id=concept_set_id),
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=pack_input_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=policy_node_id),
+            ],
+        ),
+        f"{policy_node_id}:governs-candidate-set": RuntimeObserverPayload(
+            mode=RuntimeObserverMode.EDGE,
+            title="governs",
+            subtitle=document_title,
+            status=status,
+            stream=[
+                RuntimeEvent(
+                    event_id=f"{document_id}:concept-review:edge-governs",
+                    kind="decision",
+                    level="success" if candidate_count else "warning",
+                    message="概念审查策略决定哪些证据支撑候选可以成为该阶段输出集合。",
+                    object_id=f"{policy_node_id}:governs-candidate-set",
+                    object_kind="edge",
+                )
+            ],
+            sections=[
+                RuntimeSummarySection(
+                    section_id="edge-summary",
+                    title="策略决策",
+                    fields=[
+                        RuntimeSummaryField(key="relation", label="relation", value="governs"),
+                        RuntimeSummaryField(key="rule_key", label="rule_key", value="concept_candidate_review.evidence_supported_candidates"),
+                    ],
+                )
+            ],
+            actions=[
+                RuntimeAction(action_id="view-source-node", label="查看源节点", target_kind="node", target_id=policy_node_id),
+                RuntimeAction(action_id="view-target-node", label="查看目标节点", target_kind="node", target_id=concept_set_id),
             ],
         ),
     }
@@ -219,7 +312,6 @@ def build_concept_candidate_review_snapshot(
                 stage_id=definition.stage_id,
                 status=candidate_status,
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
                 metrics={"evidence_count": len(item.get("evidence", [])), "alias_count": len(item.get("aliases", []))},
                 attributes={
                     "item_id": item.get("id"),
@@ -238,7 +330,6 @@ def build_concept_candidate_review_snapshot(
                 stage_id=definition.stage_id,
                 status=candidate_status,
                 origin=RuntimeOrigin.SOURCE,
-                is_primary=index <= 4,
             )
         )
 

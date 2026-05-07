@@ -16,11 +16,7 @@ class RequirementAnalysisTurnAuditService:
         next_open_before_update: str | None,
         orchestrator: OrchestratorPackage,
     ) -> list[str]:
-        orchestrator_label = (
-            "强规则组织器"
-            if orchestrator.orchestrator_id == "xg-strong-rule-orchestrator"
-            else orchestrator.name
-        )
+        orchestrator_label = orchestrator.name
         return [
             f"当前组织器：{orchestrator_label}（{orchestrator.orchestrator_id} / {orchestrator.mode}）。",
             "用户输入是本轮 Turn 起点。",

@@ -41,6 +41,22 @@ def test_get_archive_policy_config_returns_default_contract(tmp_path) -> None:
     assert payload["stage_order"][0] == "asset_intake"
     assert payload["stages"]["asset_intake"]["label"] == "素材接入"
     assert payload["stages"]["quality_policy_evaluation_governance_gate"]["default_action"] == "block_return"
+    assert payload["policy_package_id"] == "20161116-nas:default-policy-package"
+    assert payload["policy_package_version_id"] == "20161116-nas:policy:v1"
+    assert payload["policy_package_version_hash"].startswith("sha256:")
+
+    first_rule = payload["stages"]["asset_intake"]["rules"][0]
+    assert first_rule["rule_id"] == first_rule["key"]
+    assert first_rule["rule_version"]
+    assert first_rule["effect_kind"]
+    assert first_rule["rule_hash"].startswith("sha256:")
+    assert first_rule["contract_status"] == "valid"
+    assert {field["field_name"] for field in first_rule["input_schema"]} >= {"input_hash"}
+    assert {field["field_name"] for field in first_rule["output_schema"]} >= {
+        "affected_object_ids",
+        "output_hash",
+    }
+    assert {"rule_id", "rule_version", "input_hash", "output_hash"}.issubset(first_rule["trace_fields"])
 
 
 def test_put_archive_policy_config_persists_updates(tmp_path) -> None:
@@ -97,6 +113,57 @@ def test_put_archive_policy_config_persists_updates(tmp_path) -> None:
     assert persisted["stages"]["asset_intake"]["rules"][-1]["action"] == "manual_review"
 
 
+def test_put_archive_policy_config_recomputes_rule_and_package_hash(tmp_path) -> None:
+    app = create_app()
+    registry_service = build_registry_service(tmp_path)
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    client = TestClient(app)
+
+    original = client.get("/api/archives/20161116-nas/policy-config")
+    assert original.status_code == 200
+    payload = original.json()
+    original_package_hash = payload["policy_package_version_hash"]
+    target_rule = payload["stages"]["asset_intake"]["rules"][0]
+    original_rule_hash = target_rule["rule_hash"]
+
+    target_rule["input_schema"].append(
+        {
+            "field_name": "contract_revision_reason",
+            "source_artifact": "policy_editor",
+            "field_type": "string",
+            "required": False,
+            "include_in_input_hash": True,
+            "validation": "optional",
+            "example": "tighten source traceability",
+            "business_meaning": "why the contract changed",
+            "missing_action": "warn_continue",
+        }
+    )
+
+    response = client.put(
+        "/api/archives/20161116-nas/policy-config",
+        json={
+            "policy_package_id": payload["policy_package_id"],
+            "policy_package_name": payload["policy_package_name"],
+            "policy_package_version_id": payload["policy_package_version_id"],
+            "policy_package_version_status": payload["policy_package_version_status"],
+            "policy_package_version_hash": original_package_hash,
+            "version_label": payload["version_label"],
+            "scope_label": payload["scope_label"],
+            "ai_autoadapt_enabled": payload["ai_autoadapt_enabled"],
+            "stage_order": payload["stage_order"],
+            "stages": payload["stages"],
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    updated_rule = updated["stages"]["asset_intake"]["rules"][0]
+    assert updated_rule["rule_hash"] != original_rule_hash
+    assert updated["policy_package_version_hash"] != original_package_hash
+    assert updated_rule["contract_status"] == "valid"
+
+
 def test_extract_archive_freezes_policy_snapshot_for_running_build(tmp_path) -> None:
     app = create_app()
     registry_service = build_registry_service(tmp_path)
@@ -133,8 +200,14 @@ def test_extract_archive_freezes_policy_snapshot_for_running_build(tmp_path) -> 
             assert policy_snapshot["version_label"] == "13 阶段抽取蓝图 v3"
             assert policy_snapshot["scope_label"] == "单文档抽取过程 / 快照验证"
             assert policy_snapshot["snapshot_id"]
+            assert policy_snapshot["policy_package_version_id"] == "kb-policy:policy:v1"
+            assert policy_snapshot["policy_package_version_hash"].startswith("sha256:")
             assert policy_snapshot["stages"][0]["stage_id"] == "asset_intake"
             assert policy_snapshot["stages"][0]["default_action"] == "manual_review"
+            assert policy_snapshot["stages"][0]["rules"]
+            assert policy_snapshot["stages"][0]["rules"][0]["threshold"]
+            assert policy_snapshot["stages"][0]["rules"][0]["input_schema"]
+            assert policy_snapshot["stages"][0]["rules"][0]["output_schema"]
             return {
                 "archive_id": archive_id,
                 "source_dir": str(source_dir),

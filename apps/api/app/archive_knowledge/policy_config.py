@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from hashlib import md5
+from hashlib import md5, sha256
 import json
 from typing import Any
 
@@ -11,6 +11,26 @@ POLICY_ACTIONS = [
     "manual_review",
     "block_return",
     "defer_publish",
+]
+
+POLICY_EFFECT_KINDS = [
+    "filter",
+    "score",
+    "normalize",
+    "merge",
+    "split",
+    "block",
+    "publish_candidate",
+]
+
+REQUIRED_TRACE_FIELDS = [
+    "rule_id",
+    "rule_version",
+    "stage_id",
+    "snapshot_id",
+    "input_hash",
+    "output_hash",
+    "affected_object_ids",
 ]
 
 DEFAULT_STAGE_ORDER = [
@@ -28,6 +48,329 @@ DEFAULT_STAGE_ORDER = [
     "quality_policy_evaluation_governance_gate",
     "indexes_snapshots_apis",
 ]
+
+QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate"
+
+
+def _short_hash(payload: Any) -> str:
+    normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return "sha256:" + sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _field_contract(
+    *,
+    field_name: str,
+    source_artifact: str,
+    field_type: str,
+    required: bool = True,
+    include_in_input_hash: bool = True,
+    validation: str = "",
+    example: str = "",
+    business_meaning: str = "",
+    missing_action: str = "block_return",
+) -> dict[str, Any]:
+    return {
+        "field_name": field_name,
+        "source_artifact": source_artifact,
+        "field_type": field_type,
+        "required": required,
+        "include_in_input_hash": include_in_input_hash,
+        "validation": validation,
+        "example": example,
+        "business_meaning": business_meaning or field_name,
+        "missing_action": missing_action,
+    }
+
+
+def _output_contract(
+    *,
+    field_name: str,
+    target_artifact: str,
+    field_type: str,
+    producer: str = "rule_engine",
+    include_in_output_hash: bool = True,
+    write_to_runtime: bool = True,
+    write_to_audit: bool = True,
+    used_for_impact: bool = False,
+    example: str = "",
+    business_meaning: str = "",
+) -> dict[str, Any]:
+    return {
+        "field_name": field_name,
+        "target_artifact": target_artifact,
+        "field_type": field_type,
+        "producer": producer,
+        "include_in_output_hash": include_in_output_hash,
+        "write_to_runtime": write_to_runtime,
+        "write_to_audit": write_to_audit,
+        "used_for_impact": used_for_impact,
+        "example": example,
+        "business_meaning": business_meaning or field_name,
+    }
+
+
+def _infer_effect_kind(stage_id: str, rule_key: str, action: str) -> str:
+    text = f"{stage_id} {rule_key}".lower()
+    if action == "block_return":
+        return "block"
+    if action == "defer_publish" or "publish" in text or "index" in text:
+        return "publish_candidate"
+    if "merge" in text or "canonical" in text or "candidate" in text:
+        return "merge"
+    if "split" in text or "chunk" in text or "segment" in text:
+        return "split"
+    if "score" in text or "confidence" in text or action == "warn_continue":
+        return "score"
+    if "normalize" in text or "parser" in text or "document" in text:
+        return "normalize"
+    return "filter"
+
+
+def _default_scope_selector(stage_id: str, rule_key: str) -> dict[str, Any]:
+    return {
+        "object_types": ["candidate_knowledge"],
+        "source_stage_id": stage_id,
+        "rule_key": rule_key,
+        "min_confidence": 0.0,
+        "requires_source_anchor": True,
+    }
+
+
+def _default_input_schema(stage_id: str, rule_key: str, threshold: str) -> list[dict[str, Any]]:
+    source_artifact = f"{stage_id}.input"
+    return [
+        _field_contract(
+            field_name="candidate_id",
+            source_artifact=source_artifact,
+            field_type="string",
+            validation="non_empty",
+            example="CND-001",
+            business_meaning="candidate object identifier",
+        ),
+        _field_contract(
+            field_name="source_anchor_ids",
+            source_artifact="evidence_anchor",
+            field_type="string[]",
+            validation="len >= 1",
+            example="[A-102, A-115]",
+            business_meaning="source anchors used by the rule",
+            missing_action="warn_continue",
+        ),
+        _field_contract(
+            field_name="policy_snapshot_id",
+            source_artifact="policy_snapshot",
+            field_type="string",
+            validation="non_empty",
+            example="RS-20260506-0948",
+            business_meaning="frozen policy snapshot for this run",
+        ),
+        _field_contract(
+            field_name="rule_threshold",
+            source_artifact="policy_rule",
+            field_type="string",
+            validation="non_empty",
+            example=threshold,
+            business_meaning=f"threshold expression for {rule_key}",
+        ),
+        _field_contract(
+            field_name="input_hash",
+            source_artifact="runtime_snapshot",
+            field_type="string",
+            validation="sha256",
+            example="inp_b34e7d...",
+            business_meaning="stable digest used for impact and incremental recompute",
+        ),
+    ]
+
+
+def _default_output_schema(effect_kind: str) -> list[dict[str, Any]]:
+    output_fields = [
+        _output_contract(
+            field_name="decision",
+            target_artifact="rule_execution_record",
+            field_type="enum",
+            example=effect_kind,
+            business_meaning="rule decision or effect kind",
+        ),
+        _output_contract(
+            field_name="decision_reason",
+            target_artifact="audit_log",
+            field_type="string",
+            example="threshold matched",
+            business_meaning="human-readable rule decision reason",
+        ),
+        _output_contract(
+            field_name="affected_object_ids",
+            target_artifact="impact_set",
+            field_type="string[]",
+            used_for_impact=True,
+            example="[OBJ-M-204]",
+            business_meaning="objects that must be tracked for recompute",
+        ),
+        _output_contract(
+            field_name="output_hash",
+            target_artifact="runtime_snapshot",
+            field_type="string",
+            example="out_a91e...",
+            business_meaning="stable digest of the rule output",
+        ),
+    ]
+    if effect_kind == "merge":
+        output_fields.insert(
+            0,
+            _output_contract(
+                field_name="merged_object_id",
+                target_artifact="candidate_knowledge",
+                field_type="string",
+                used_for_impact=True,
+                example="OBJ-M-204",
+                business_meaning="merged object produced by this rule",
+            ),
+        )
+        output_fields.insert(
+            1,
+            _output_contract(
+                field_name="discarded_candidate_ids",
+                target_artifact="runtime_relation",
+                field_type="string[]",
+                used_for_impact=True,
+                example="[CND-1002, CND-1008]",
+                business_meaning="candidates folded into the merged object",
+            ),
+        )
+    if effect_kind == "block":
+        output_fields.insert(
+            0,
+            _output_contract(
+                field_name="blocked_reason",
+                target_artifact="gate_decision",
+                field_type="string",
+                used_for_impact=True,
+                example="supporting_documents < 2",
+                business_meaning="blocking reason returned to the upstream stage",
+            ),
+        )
+    if effect_kind == "publish_candidate":
+        output_fields.insert(
+            0,
+            _output_contract(
+                field_name="publication_candidate_ids",
+                target_artifact="publication_snapshot",
+                field_type="string[]",
+                used_for_impact=True,
+                example="[PCS-001]",
+                business_meaning="candidate objects exposed to publication snapshot",
+            ),
+        )
+    return output_fields
+
+
+def _default_parameters(rule_key: str, threshold: str) -> dict[str, Any]:
+    return {
+        "match_mode": "all",
+        "conditions": [
+            {
+                "condition_id": f"{rule_key}:threshold",
+                "left": "actual",
+                "operator": "matches",
+                "right": threshold,
+            }
+        ],
+        "ai_threshold_recommendation": "allowed",
+    }
+
+
+def _contract_errors(rule: dict[str, Any]) -> list[str]:
+    input_fields = {str(field.get("field_name")) for field in rule.get("input_schema", []) if isinstance(field, dict)}
+    output_fields = {str(field.get("field_name")) for field in rule.get("output_schema", []) if isinstance(field, dict)}
+    trace_fields = {str(field) for field in rule.get("trace_fields", [])}
+    errors: list[str] = []
+
+    for field_name in ("input_hash",):
+        if field_name not in input_fields:
+            errors.append(f"missing input_schema.{field_name}")
+    for field_name in ("output_hash", "affected_object_ids"):
+        if field_name not in output_fields:
+            errors.append(f"missing output_schema.{field_name}")
+    for field_name in REQUIRED_TRACE_FIELDS:
+        if field_name not in trace_fields:
+            errors.append(f"missing trace_fields.{field_name}")
+    return errors
+
+
+def _enrich_rule_contract(
+    stage_id: str,
+    raw_rule: dict[str, Any],
+    *,
+    fallback_action: str,
+    index: int,
+) -> dict[str, Any]:
+    key = str(raw_rule.get("key") or raw_rule.get("rule_id") or f"rule-{index + 1}")
+    action = _normalize_stage_action(stage_id, raw_rule.get("action"), fallback=fallback_action)
+    effect_kind = str(raw_rule.get("effect_kind") or "")
+    if effect_kind not in POLICY_EFFECT_KINDS:
+        effect_kind = _infer_effect_kind(stage_id, key, action)
+
+    enriched: dict[str, Any] = {
+        "key": key,
+        "rule_id": str(raw_rule.get("rule_id") or key),
+        "name": str(raw_rule.get("name") or "未命名规则"),
+        "meaning": str(raw_rule.get("meaning") or ""),
+        "threshold": str(raw_rule.get("threshold") or ""),
+        "action": action,
+        "rule_version": str(raw_rule.get("rule_version") or "r1.0"),
+        "effect_kind": effect_kind,
+        "scope_selector": raw_rule.get("scope_selector") if isinstance(raw_rule.get("scope_selector"), dict) else _default_scope_selector(stage_id, key),
+        "input_schema": raw_rule.get("input_schema") if isinstance(raw_rule.get("input_schema"), list) else _default_input_schema(stage_id, key, str(raw_rule.get("threshold") or "")),
+        "output_schema": raw_rule.get("output_schema") if isinstance(raw_rule.get("output_schema"), list) else _default_output_schema(effect_kind),
+        "parameters": raw_rule.get("parameters") if isinstance(raw_rule.get("parameters"), dict) else _default_parameters(key, str(raw_rule.get("threshold") or "")),
+        "trace_fields": _normalize_text_list(raw_rule.get("trace_fields"), REQUIRED_TRACE_FIELDS[:]),
+    }
+    hash_payload = {
+        "rule_id": enriched["rule_id"],
+        "rule_version": enriched["rule_version"],
+        "effect_kind": enriched["effect_kind"],
+        "scope_selector": enriched["scope_selector"],
+        "input_schema": enriched["input_schema"],
+        "output_schema": enriched["output_schema"],
+        "parameters": enriched["parameters"],
+        "trace_fields": enriched["trace_fields"],
+        "action": enriched["action"],
+        "threshold": enriched["threshold"],
+    }
+    # The server owns the digest so clients cannot accidentally keep a stale hash
+    # after editing the rule contract.
+    enriched["rule_hash"] = _short_hash(hash_payload)
+    enriched["contract_errors"] = _contract_errors(enriched)
+    enriched["contract_status"] = "valid" if not enriched["contract_errors"] else "invalid"
+    return enriched
+
+
+def _enrich_stage_rules(stage_id: str, rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enriched_rules: list[dict[str, Any]] = []
+    for index, rule in enumerate(rules):
+        fallback_action = str(rule.get("action") or "auto_pass") if isinstance(rule, dict) else "auto_pass"
+        enriched_rules.append(
+            _enrich_rule_contract(
+                stage_id,
+                rule if isinstance(rule, dict) else {},
+                fallback_action=fallback_action,
+                index=index,
+            )
+        )
+    return enriched_rules
+
+
+def _policy_package_hash(config: dict[str, Any]) -> str:
+    return _short_hash(
+        {
+            "version_label": config.get("version_label"),
+            "scope_label": config.get("scope_label"),
+            "ai_autoadapt_enabled": config.get("ai_autoadapt_enabled"),
+            "stage_order": config.get("stage_order"),
+            "stages": config.get("stages"),
+        }
+    )
 
 
 def _rule(key: str, name: str, meaning: str, threshold: str, action: str) -> dict[str, str]:
@@ -275,18 +618,18 @@ STAGE_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
         stage_id="quality_policy_evaluation_governance_gate",
         label="质量门禁",
         group="规范化与发布",
-        objective="集中执行质量门禁，决定当前对象是进入发布、告警继续还是阻断。",
-        ai_mode="质量门禁决策辅助",
+        objective="集中执行质量门禁，决定当前对象是进入发布、告警继续还是阻断；本阶段不交由人工参与。",
+        ai_mode="质量门禁规则执行",
         default_action="block_return",
         inputs=["规范知识对象", "质量策略集", "阶段级风险信号"],
-        ai_adaptation="AI 根据前序阶段风险信号给出门禁建议，但最终由策略阈值决定通过、告警或阻断。",
+        ai_adaptation="AI 只负责整理前序风险信号和指标，最终由策略阈值确定通过、告警继续、延迟发布或阻断。",
         rules=[
             _rule("gate-1", "支撑文档下限", "支撑证据不足时直接阻断", "supporting_documents >= 2", "block_return"),
-            _rule("gate-2", "风险信号汇总", "风险过高时转人工复核", "risk_score < 0.65", "manual_review"),
+            _rule("gate-2", "风险信号汇总", "风险过高时记录告警并继续发布链", "risk_score < 0.65", "warn_continue"),
             _rule("gate-3", "发布前冲突清零", "存在硬冲突时禁止进入发布链", "hard_conflict = 0", "block_return"),
         ],
-        branches=["门禁通过 -> 发布/API", "风险中等 -> 人工复核", "硬冲突或支撑不足 -> 阻断回退规范知识"],
-        outputs=["Gate 决策", "阻断/告警原因", "人工复核转交建议"],
+        branches=["门禁通过 -> 发布/API", "风险中等 -> 带告警继续发布链", "硬冲突或支撑不足 -> 阻断回退规范知识"],
+        outputs=["Gate 决策", "阻断/告警原因", "发布链策略标记"],
         observability=["supporting_documents", "risk_score", "hard_conflict", "gate_decision"],
     ),
     "indexes_snapshots_apis": _stage(
@@ -311,21 +654,39 @@ STAGE_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
 
 
 def build_default_archive_policy_config(archive_id: str) -> dict[str, Any]:
-    return {
+    stages = deepcopy(STAGE_POLICY_DEFAULTS)
+    for stage_id, stage in stages.items():
+        stage["rules"] = _enrich_stage_rules(stage_id, stage.get("rules", []))
+
+    config = {
         "archive_id": archive_id,
+        "policy_package_id": f"{archive_id}:default-policy-package",
+        "policy_package_name": "合同通用抽取",
+        "policy_package_version_id": f"{archive_id}:policy:v1",
+        "policy_package_version_status": "published",
+        "policy_package_version_hash": None,
         "version_label": "13 阶段抽取蓝图 v1",
         "scope_label": "单文档抽取过程",
         "ai_autoadapt_enabled": True,
         "updated_at": None,
         "stage_order": DEFAULT_STAGE_ORDER[:],
-        "stages": deepcopy(STAGE_POLICY_DEFAULTS),
+        "stages": stages,
     }
+    config["policy_package_version_hash"] = _policy_package_hash(config)
+    return config
 
 
 def _normalize_action(value: Any, *, fallback: str) -> str:
     if isinstance(value, str) and value in POLICY_ACTIONS:
         return value
     return fallback
+
+
+def _normalize_stage_action(stage_id: str, value: Any, *, fallback: str) -> str:
+    action = _normalize_action(value, fallback=fallback)
+    if stage_id == QUALITY_GATE_STAGE_ID and action == "manual_review":
+        return "warn_continue"
+    return action
 
 
 def _normalize_text_list(values: Any, fallback: list[str]) -> list[str]:
@@ -335,26 +696,52 @@ def _normalize_text_list(values: Any, fallback: list[str]) -> list[str]:
     return normalized or fallback
 
 
-def _normalize_rules(raw_rules: Any, fallback: list[dict[str, str]]) -> list[dict[str, str]]:
+def _normalize_rules(stage_id: str, raw_rules: Any, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not isinstance(raw_rules, list):
-        return fallback
+        return _enrich_stage_rules(stage_id, fallback)
 
-    normalized: list[dict[str, str]] = []
+    normalized: list[dict[str, Any]] = []
     for index, raw_rule in enumerate(raw_rules):
         if not isinstance(raw_rule, dict):
             continue
 
+        fallback_rule = fallback[min(index, len(fallback) - 1)] if fallback else {"action": "auto_pass"}
         normalized.append(
-            {
-                "key": str(raw_rule.get("key") or f"rule-{index + 1}"),
-                "name": str(raw_rule.get("name") or "未命名规则"),
-                "meaning": str(raw_rule.get("meaning") or ""),
-                "threshold": str(raw_rule.get("threshold") or ""),
-                "action": _normalize_action(raw_rule.get("action"), fallback=fallback[min(index, len(fallback) - 1)]["action"]),
-            }
+            _enrich_rule_contract(
+                stage_id,
+                raw_rule,
+                fallback_action=str(fallback_rule.get("action") or "auto_pass"),
+                index=index,
+            )
         )
 
-    return normalized or fallback
+    return normalized or _enrich_stage_rules(stage_id, fallback)
+
+
+def _normalize_quality_gate_stage(stage: dict[str, Any]) -> dict[str, Any]:
+    default_stage = STAGE_POLICY_DEFAULTS[QUALITY_GATE_STAGE_ID]
+    stage["ai_mode"] = default_stage["ai_mode"]
+
+    if "人工" in str(stage.get("objective", "")) or "复核" in str(stage.get("objective", "")):
+        stage["objective"] = default_stage["objective"]
+    if "人工" in str(stage.get("ai_adaptation", "")) or "复核" in str(stage.get("ai_adaptation", "")):
+        stage["ai_adaptation"] = default_stage["ai_adaptation"]
+    if any("人工" in str(item) or "复核" in str(item) for item in stage.get("branches", [])):
+        stage["branches"] = default_stage["branches"]
+    if any("人工" in str(item) or "复核" in str(item) for item in stage.get("outputs", [])):
+        stage["outputs"] = default_stage["outputs"]
+
+    default_rules_by_key = {rule["key"]: rule for rule in default_stage["rules"]}
+    for rule in stage.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+
+        rule["action"] = _normalize_stage_action(QUALITY_GATE_STAGE_ID, rule.get("action"), fallback="warn_continue")
+        default_rule = default_rules_by_key.get(str(rule.get("key")))
+        if default_rule and ("人工" in str(rule.get("meaning", "")) or "复核" in str(rule.get("meaning", ""))):
+            rule["meaning"] = default_rule["meaning"]
+
+    return stage
 
 
 def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
@@ -364,6 +751,14 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
 
     config["version_label"] = str(raw_config.get("version_label") or config["version_label"])
     config["scope_label"] = str(raw_config.get("scope_label") or config["scope_label"])
+    config["policy_package_id"] = str(raw_config.get("policy_package_id") or config["policy_package_id"])
+    config["policy_package_name"] = str(raw_config.get("policy_package_name") or config["policy_package_name"])
+    config["policy_package_version_id"] = str(
+        raw_config.get("policy_package_version_id") or config["policy_package_version_id"]
+    )
+    config["policy_package_version_status"] = str(
+        raw_config.get("policy_package_version_status") or config["policy_package_version_status"]
+    )
     config["ai_autoadapt_enabled"] = bool(raw_config.get("ai_autoadapt_enabled", config["ai_autoadapt_enabled"]))
     config["updated_at"] = raw_config.get("updated_at")
 
@@ -374,12 +769,14 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
 
     raw_stages = raw_config.get("stages", {})
     if not isinstance(raw_stages, dict):
+        config["policy_package_version_hash"] = _policy_package_hash(config)
         return config
 
     for stage_id in DEFAULT_STAGE_ORDER:
         stage_default = deepcopy(STAGE_POLICY_DEFAULTS[stage_id])
         raw_stage = raw_stages.get(stage_id, {})
         if not isinstance(raw_stage, dict):
+            stage_default["rules"] = _enrich_stage_rules(stage_id, stage_default.get("rules", []))
             config["stages"][stage_id] = stage_default
             continue
 
@@ -387,16 +784,23 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
         stage_default["label"] = str(raw_stage.get("label") or stage_default["label"])
         stage_default["group"] = str(raw_stage.get("group") or stage_default["group"])
         stage_default["ai_mode"] = str(raw_stage.get("ai_mode") or stage_default["ai_mode"])
-        stage_default["default_action"] = _normalize_action(raw_stage.get("default_action"), fallback=stage_default["default_action"])
+        stage_default["default_action"] = _normalize_stage_action(
+            stage_id,
+            raw_stage.get("default_action"),
+            fallback=stage_default["default_action"],
+        )
         stage_default["objective"] = str(raw_stage.get("objective") or stage_default["objective"])
         stage_default["inputs"] = _normalize_text_list(raw_stage.get("inputs"), stage_default["inputs"])
         stage_default["ai_adaptation"] = str(raw_stage.get("ai_adaptation") or stage_default["ai_adaptation"])
-        stage_default["rules"] = _normalize_rules(raw_stage.get("rules"), stage_default["rules"])
+        stage_default["rules"] = _normalize_rules(stage_id, raw_stage.get("rules"), stage_default["rules"])
         stage_default["branches"] = _normalize_text_list(raw_stage.get("branches"), stage_default["branches"])
         stage_default["outputs"] = _normalize_text_list(raw_stage.get("outputs"), stage_default["outputs"])
         stage_default["observability"] = _normalize_text_list(raw_stage.get("observability"), stage_default["observability"])
+        if stage_id == QUALITY_GATE_STAGE_ID:
+            stage_default = _normalize_quality_gate_stage(stage_default)
         config["stages"][stage_id] = stage_default
 
+    config["policy_package_version_hash"] = _policy_package_hash(config)
     return config
 
 
@@ -409,6 +813,11 @@ def build_policy_run_snapshot(
     normalized = normalize_archive_policy_config(archive_id, policy_config)
     snapshot_payload = {
         "archive_id": archive_id,
+        "policy_package_id": normalized["policy_package_id"],
+        "policy_package_name": normalized["policy_package_name"],
+        "policy_package_version_id": normalized["policy_package_version_id"],
+        "policy_package_version_status": normalized["policy_package_version_status"],
+        "policy_package_version_hash": normalized["policy_package_version_hash"],
         "version_label": normalized["version_label"],
         "scope_label": normalized["scope_label"],
         "ai_autoadapt_enabled": normalized["ai_autoadapt_enabled"],
@@ -422,6 +831,7 @@ def build_policy_run_snapshot(
                 "ai_mode": normalized["stages"][stage_id]["ai_mode"],
                 "default_action": normalized["stages"][stage_id]["default_action"],
                 "rule_count": len(normalized["stages"][stage_id]["rules"]),
+                "rules": deepcopy(normalized["stages"][stage_id]["rules"]),
             }
             for stage_id in normalized["stage_order"]
             if stage_id in normalized["stages"]

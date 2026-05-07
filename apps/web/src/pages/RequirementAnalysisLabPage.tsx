@@ -24,6 +24,7 @@ import {
   createRequirementAnalysisTurn,
   deleteRequirementAnalysisTemplate,
   getRequirementAnalysisTemplate,
+  reloadRequirementAnalysisOrchestrators,
   saveRequirementAnalysisTemplate,
 } from "../lib/requirementAnalysis";
 import {
@@ -82,9 +83,33 @@ function buildDefaultRequirementAnalysisTemplateDescription(baseTemplateId: stri
   return `基于 ${baseTemplateCode} 扩充的 Lab 模板实例。`;
 }
 
+function formatObservabilityLevel(level?: string) {
+  if (level === "full") {
+    return "完整观测";
+  }
+  if (level === "limited") {
+    return "有限观测";
+  }
+  return "无过程观测";
+}
+
+function formatPluginType(type?: string) {
+  if (type === "dify_workflow") {
+    return "Dify Workflow";
+  }
+  if (type === "local_package") {
+    return "本地组织器";
+  }
+  if (type === "remote_service") {
+    return "远端服务";
+  }
+  return "组织器";
+}
+
 export function RequirementAnalysisLabPage() {
-  const { labConfig, orchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
+  const { labConfig, orchestratorsEnvelope: bootstrappedOrchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
     useRequirementAnalysisLabBootstrap();
+  const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
@@ -100,6 +125,7 @@ export function RequirementAnalysisLabPage() {
   const [templateDraft, setTemplateDraft] = useState("");
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [reloadingOrchestrators, setReloadingOrchestrators] = useState(false);
   const [topic, setTopic] = useState("");
   const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("config");
   const [session, setSession] = useState<RequirementAnalysisSession | null>(null);
@@ -113,6 +139,10 @@ export function RequirementAnalysisLabPage() {
   useEffect(() => {
     setTemplates(bootstrappedTemplates);
   }, [bootstrappedTemplates]);
+
+  useEffect(() => {
+    setOrchestratorsEnvelope(bootstrappedOrchestratorsEnvelope);
+  }, [bootstrappedOrchestratorsEnvelope]);
 
   useEffect(() => {
     if (!labConfig || !orchestratorsEnvelope) {
@@ -185,6 +215,17 @@ export function RequirementAnalysisLabPage() {
   );
   const providerOptions = useMemo(() => sortRequirementAnalysisProviders(providers), [providers]);
 
+  useEffect(() => {
+    if (!providers.length || !selectedProviderId) {
+      return;
+    }
+    const selectedProvider = providers.find((provider) => provider.provider_id === selectedProviderId);
+    if (selectedProvider?.status === "active") {
+      return;
+    }
+    setSelectedProviderId(resolveDefaultRequirementAnalysisProviderId(providers, labConfig?.defaults.provider_id ?? selectedProviderId));
+  }, [labConfig?.defaults.provider_id, providers, selectedProviderId]);
+
   const logCount = session?.provider_logs.length ?? 0;
   const defaultWritePolicyLabel = labConfig
     ? resolveRequirementAnalysisWritePolicyLabel(labConfig.defaults.write_policy, labConfig.write_policies)
@@ -193,12 +234,24 @@ export function RequirementAnalysisLabPage() {
 
   async function handleStart() {
     setActiveTab("session");
+    const resolvedProviderId =
+      activeProvider?.status === "active"
+        ? selectedProviderId
+        : resolveDefaultRequirementAnalysisProviderId(providers, labConfig?.defaults.provider_id ?? selectedProviderId);
+    const resolvedProvider = providers.find((provider) => provider.provider_id === resolvedProviderId);
+    if (!resolvedProvider || resolvedProvider.status !== "active") {
+      setError("当前没有已启用的模型 Provider，请先配置 DeepSeek/OpenAI 或启用 Mock Provider。");
+      return;
+    }
+    if (resolvedProviderId !== selectedProviderId) {
+      setSelectedProviderId(resolvedProviderId);
+    }
     try {
       setActing(true);
       const response = await createRequirementAnalysisSession({
         topic,
         orchestrator_id: selectedOrchestratorId,
-        provider_id: selectedProviderId,
+        provider_id: resolvedProviderId,
         model: labConfig?.defaults.model ?? "",
         template_id: startupTemplateId || selectedTemplateId || labConfig?.defaults.template_id,
         knowledge_package_id: labConfig?.defaults.knowledge_package_id,
@@ -211,6 +264,26 @@ export function RequirementAnalysisLabPage() {
       setError(startError instanceof Error ? startError.message : "启动 XG 需求分析会话失败");
     } finally {
       setActing(false);
+    }
+  }
+
+  async function handleReloadOrchestrators() {
+    try {
+      setReloadingOrchestrators(true);
+      const response = await reloadRequirementAnalysisOrchestrators();
+      const nextEnvelope = response.data;
+      const nextOrchestrators = nextEnvelope.items;
+      const nextSelectedOrchestratorId =
+        nextOrchestrators.find((item) => item.orchestrator_id === selectedOrchestratorId)?.orchestrator_id ??
+        nextOrchestrators[0]?.orchestrator_id ??
+        "";
+      setSelectedOrchestratorId(nextSelectedOrchestratorId);
+      setOrchestratorsEnvelope(nextEnvelope);
+      setError(null);
+    } catch (reloadError) {
+      setError(reloadError instanceof Error ? reloadError.message : "重新扫描组织器失败");
+    } finally {
+      setReloadingOrchestrators(false);
     }
   }
 
@@ -431,6 +504,7 @@ export function RequirementAnalysisLabPage() {
                 onEnterSession={() => setActiveTab("session")}
                 onProviderSelect={setSelectedProviderId}
                 onStart={() => void handleStart()}
+                onReloadOrchestrators={() => void handleReloadOrchestrators()}
                 onOrchestratorSelect={setSelectedOrchestratorId}
                 onTopicChange={setTopic}
                 orchestratorsEnvelope={orchestratorsEnvelope}
@@ -465,6 +539,7 @@ export function RequirementAnalysisLabPage() {
                 selectedOrchestrator={selectedOrchestrator}
                 selectedOrchestratorId={selectedOrchestratorId}
                 selectedProviderId={selectedProviderId}
+                reloadingOrchestrators={reloadingOrchestrators}
                 topic={topic}
               />
             ) : null}
@@ -528,6 +603,7 @@ function ConfigTab({
   onEnterSession,
   onProviderSelect,
   onStart,
+  onReloadOrchestrators,
   onOrchestratorSelect,
   onTopicChange,
   onTemplateDraftChange,
@@ -562,6 +638,7 @@ function ConfigTab({
   selectedOrchestrator,
   selectedOrchestratorId,
   selectedProviderId,
+  reloadingOrchestrators,
   topic,
 }: {
   activeProvider: RequirementAnalysisProvider | null;
@@ -571,6 +648,7 @@ function ConfigTab({
   onEnterSession: () => void;
   onProviderSelect: (providerId: string) => void;
   onStart: () => void;
+  onReloadOrchestrators: () => void;
   onOrchestratorSelect: (orchestratorId: string) => void;
   onTopicChange: (topic: string) => void;
   onTemplateDraftChange: (content: string) => void;
@@ -606,6 +684,7 @@ function ConfigTab({
   selectedOrchestratorId: string;
   selectedProviderId: string;
   topic: string;
+  reloadingOrchestrators?: boolean;
 }) {
   const topicField = labConfig.startup_fields.find((field) => field.field === "topic");
   const templateDirty = Boolean(
@@ -636,7 +715,13 @@ function ConfigTab({
                     <Text strong>{orchestrator.name}</Text>
                     <Text type="secondary">{orchestrator.description}</Text>
                   </span>
-                  <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
+                  <Space wrap>
+                    <Tag>{formatPluginType(orchestrator.plugin_type)}</Tag>
+                    <Tag color={orchestrator.observability_level === "full" ? "green" : orchestrator.observability_level === "limited" ? "orange" : "default"}>
+                      {formatObservabilityLevel(orchestrator.observability_level)}
+                    </Tag>
+                    <Tag color={orchestrator.status === "active" ? "green" : "default"}>{orchestrator.status}</Tag>
+                  </Space>
                 </button>
               ))}
             </div>
@@ -686,6 +771,9 @@ function ConfigTab({
             </div>
             <Button block loading={acting} onClick={onStart} type="primary">
               启动验证
+            </Button>
+            <Button block loading={reloadingOrchestrators} onClick={onReloadOrchestrators}>
+              重新扫描组织器
             </Button>
             <Text className="requirement-analysis-lab-current-config" type="secondary">
               当前 Provider：{activeProvider?.name ?? selectedProviderId}；当前组织器：
@@ -1350,6 +1438,12 @@ function getString(value: unknown, key: string): string {
   return typeof nested === "string" ? nested : "";
 }
 
+function getWorkflowTraceId(rawPluginResponse: unknown): string {
+  const rawOutput = getRecord(rawPluginResponse, "raw_output");
+  const workflowTrace = getRecord(rawOutput, "raw_workflow_trace");
+  return getString(workflowTrace, "workflow_id");
+}
+
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -1458,6 +1552,14 @@ function SessionSummary({ session }: { session: RequirementAnalysisSession | nul
 
 function DecisionStateDocumentView({ session }: { session: RequirementAnalysisSession }) {
   const document = session.decision_state_document;
+  const sections = Array.isArray(document?.sections) ? document.sections : [];
+  if (!document || !sections.length) {
+    return (
+      <div className="requirement-analysis-lab-decision-state-panel">
+        <Text type="secondary">当前会话尚未形成结构化状态。</Text>
+      </div>
+    );
+  }
 
   return (
     <div className="requirement-analysis-lab-spec-summary">
@@ -1472,11 +1574,11 @@ function DecisionStateDocumentView({ session }: { session: RequirementAnalysisSe
         <div className="requirement-analysis-lab-working-document-sheet is-decision-state">
           <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-decision-state-page">
             <div className="requirement-analysis-lab-working-document-page-head">
-              <Text strong>{document.title}</Text>
+              <Text strong>{document.title || "需求分析结构化状态"}</Text>
               <Text type="secondary">{session.topic}</Text>
             </div>
             <div className="requirement-analysis-lab-working-document-body">
-              {document.sections.map((section) => (
+              {sections.map((section) => (
                 <div className="requirement-analysis-lab-working-document-block" key={section.section_id}>
                   <div className="requirement-analysis-lab-working-document-anchor">
                     <Text strong>{section.heading}</Text>
@@ -1766,8 +1868,26 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
   const nextTargetSpecNodeIds = asStringArray(turn.next_interaction.target_spec_node_ids);
   const nextOptions = Array.isArray(turn.next_interaction.options) ? turn.next_interaction.options : [];
   const decisionTrace = asStringArray(turn.decision_trace);
+  const plugin = turn.orchestrator_plugin;
+  const workflowId = getWorkflowTraceId(turn.raw_plugin_response);
   return (
     <div className="requirement-analysis-lab-turn-view">
+      {plugin ? (
+        <div className="requirement-analysis-lab-turn-card is-audit">
+          <Text type="secondary">组织器插件</Text>
+          <div className="requirement-analysis-lab-turn-inline">
+            <Tag>{formatPluginType(plugin.plugin_type)}</Tag>
+            <Tag color={plugin.observability_level === "full" ? "green" : plugin.observability_level === "limited" ? "orange" : "default"}>
+              {formatObservabilityLevel(plugin.observability_level)}
+            </Tag>
+            <Tag>{plugin.plugin_id}</Tag>
+          </div>
+          {workflowId ? <Text type="secondary">Workflow ID：{workflowId}</Text> : null}
+        </div>
+      ) : null}
+      {!turn.stage_audits?.length && plugin?.observability_level === "limited" ? (
+        <Alert type="info" showIcon message="该插件未提供阶段审计输出" />
+      ) : null}
       <div className="requirement-analysis-lab-turn-card is-audit">
         <Text type="secondary">上轮系统留题</Text>
         <div className="requirement-analysis-lab-turn-inline">
@@ -1798,6 +1918,7 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
         </Tag>
         <Text>{turn.input_relation.reason}</Text>
       </div>
+      <DecisionStateDeltaSummary turn={turn} />
       {turn.stage_audits?.length ? <StageAuditSummary stageAudits={turn.stage_audits} /> : null}
       <div className="requirement-analysis-lab-turn-card">
         <Text type="secondary">规格补充执行</Text>
@@ -1894,6 +2015,56 @@ function TurnView({ turn }: { turn: RequirementAnalysisTurn }) {
           ))}
         </ol>
       </div>
+    </div>
+  );
+}
+
+function DecisionStateDeltaSummary({ turn }: { turn: RequirementAnalysisTurn }) {
+  const delta = turn.decision_state_delta;
+  const changeSummary = turn.decision_state_change_summary;
+  if (!delta && !changeSummary) {
+    return null;
+  }
+  const groups = [
+    { key: "confirmed_facts", label: "已确认事实", items: delta?.confirmed_facts ?? [] },
+    { key: "confirmed_decisions", label: "已确认决策", items: delta?.confirmed_decisions ?? [] },
+    { key: "tentative_assumptions", label: "暂定假设", items: delta?.tentative_assumptions ?? [] },
+    { key: "open_questions", label: "未闭合问题", items: delta?.open_questions ?? [] },
+    { key: "rejected_directions", label: "被否定方向", items: delta?.rejected_directions ?? [] },
+    { key: "chapter_projections", label: "章节投影", items: delta?.chapter_projections ?? [] },
+  ];
+  const addedCounts = changeSummary?.added_counts ? Object.entries(changeSummary.added_counts) : [];
+
+  return (
+    <div className="requirement-analysis-lab-turn-card is-audit">
+      <Text type="secondary">本轮结构化状态增量</Text>
+      {addedCounts.length ? (
+        <div className="requirement-analysis-lab-turn-inline">
+          {addedCounts.map(([key, count]) => (
+            <Tag key={key}>
+              {key}: +{count}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
+      {groups.map((group) =>
+        group.items.length ? (
+          <div className="requirement-analysis-lab-decision-delta-group" key={group.key}>
+            <Text strong>{group.label}</Text>
+            {group.items.map((item, index) => (
+              <div className="requirement-analysis-lab-decision-delta-item" key={item.item_id ?? `${group.key}-${index}`}>
+                <Text>{item.content}</Text>
+                <div className="requirement-analysis-lab-turn-inline">
+                  {item.status ? <Tag color={item.status === "open" ? "gold" : "green"}>{item.status}</Tag> : null}
+                  {item.target_section ? <Tag>{item.target_section}</Tag> : null}
+                  {item.source_turn_id ? <Tag>{item.source_turn_id}</Tag> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null,
+      )}
+      {delta?.next_focus || changeSummary?.next_focus ? <Text type="secondary">下一步焦点：{delta?.next_focus || changeSummary?.next_focus}</Text> : null}
     </div>
   );
 }

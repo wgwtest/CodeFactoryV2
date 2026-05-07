@@ -13,6 +13,9 @@ from app.knowledge_builder import (
     _resolve_item_id,
     _slug,
 )
+from app.archive_knowledge.quality_gate_policy import (
+    build_quality_gate_runtime_trace as evaluate_quality_gate_policy,
+)
 
 ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("entities", "entity"),
@@ -26,9 +29,11 @@ def build_document_contribution(
     extraction_service=None,
     *,
     document_id: str | None = None,
+    policy_snapshot: dict | None = None,
 ) -> dict:
     document_id = document_id or _document_id(document.path)
     batch = _extract_document_knowledge(document, document_id, extraction_service)
+    runtime_trace = dict(batch.metadata.get("runtime_trace") or {})
 
     items_by_key: dict[tuple[str, str], dict] = {}
     for candidate in batch.candidates:
@@ -92,6 +97,13 @@ def build_document_contribution(
             **batch.metadata,
         },
     }
+    runtime_trace["quality_policy_evaluation_governance_gate"] = _build_quality_gate_runtime_trace(
+        document_id=document_id,
+        document_title=document.title,
+        contribution=contribution,
+        policy_snapshot=policy_snapshot,
+    )
+    contribution["extraction"]["runtime_trace"] = runtime_trace
     return contribution
 
 
@@ -491,6 +503,21 @@ class DocumentArtifactRepository:
             normalized["entity_count"] + normalized["event_count"] + normalized["process_count"],
         )
         return normalized
+
+
+def _build_quality_gate_runtime_trace(
+    *,
+    document_id: str,
+    document_title: str,
+    contribution: dict,
+    policy_snapshot: dict | None = None,
+) -> dict:
+    return evaluate_quality_gate_policy(
+        document_id=document_id,
+        document_title=document_title,
+        contribution=contribution,
+        policy_snapshot=policy_snapshot,
+    )
 
 
 def _finalize_collection(items_by_key: dict[tuple[str, str], dict], item_kind: str) -> list[dict]:

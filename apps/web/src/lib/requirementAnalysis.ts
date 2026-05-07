@@ -18,6 +18,10 @@ export function getRequirementAnalysisOrchestrators() {
   return api.get<RequirementAnalysisOrchestratorEnvelope>("/requirement-analysis/orchestrators");
 }
 
+export function reloadRequirementAnalysisOrchestrators() {
+  return api.post<RequirementAnalysisOrchestratorEnvelope>("/requirement-analysis/orchestrators/reload");
+}
+
 export function getRequirementAnalysisProviders() {
   return api.get<RequirementAnalysisProviderEnvelope>("/requirement-analysis/providers");
 }

@@ -806,8 +806,8 @@ def test_build_archive_knowledge_persists_completed_formal_documents_before_late
 
     monkeypatch.setattr(archive_builder, "parse_discovered_document", fake_parse_discovered_document)
 
-    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None):
-        del extraction_service, document_id
+    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None, policy_snapshot=None):
+        del extraction_service, document_id, policy_snapshot
         if document.path == documents[2].path:
             raise ValueError("正式知识库抽取要求使用结构化大模型抽取，但当前调用失败：Request timed out.")
         return contributions[document.path]
@@ -971,8 +971,8 @@ def test_build_archive_knowledge_resumes_from_checkpoint_without_reextracting_co
 
     monkeypatch.setattr(archive_builder, "parse_discovered_document", fake_parse_discovered_document)
 
-    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None):
-        del extraction_service, document_id
+    def fake_build_document_contribution(document, extraction_service=None, *, document_id=None, policy_snapshot=None):
+        del extraction_service, document_id, policy_snapshot
         called_document_paths.append(document.path)
         return _build_document_contribution_payload(document, entity_name=f"{document.title}实体")
 
