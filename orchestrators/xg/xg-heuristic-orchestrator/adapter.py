@@ -1,21 +1,15 @@
 from __future__ import annotations
 
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest, OrchestratorRunResult
-from app.requirement_analysis.models import RequirementAnalysisTurnCreate
-from app.requirement_analysis.session_snapshot import SessionSnapshot
-from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 
 
 class LocalXGOrchestratorPluginAdapter:
-    def __init__(self, *, manifest: OrchestratorPluginManifest, package=None) -> None:
+    def __init__(self, *, manifest: OrchestratorPluginManifest, package=None, runtime_host=None) -> None:
         self.manifest = manifest
+        self.runtime_host = runtime_host
 
     def run(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
-        runtime = self._runtime(request)
-        turn_result = runtime.run_turn(
-            self._session_snapshot(request),
-            RequirementAnalysisTurnCreate(user_input=str(request.turn.get("user_input") or "")),
-        )
+        turn_result = self._run_policy_interpreted(request)
         return OrchestratorRunResult(
             contract_version=request.contract_version,
             plugin={
@@ -64,68 +58,7 @@ class LocalXGOrchestratorPluginAdapter:
             },
         )
 
-    @staticmethod
-    def _runtime(request: OrchestratorRunRequest):
-        from app.db.session import SessionLocal
-        from .local_xg_turn_runtime import LocalXGTurnRuntime
-        from .turn_stage_executor import TurnStageExecutor
-        from .turn_stage_planner import TurnStagePlanner
-        from .turn_stage_reducer import TurnStageReducer
-        from .turn_strategy_service import TurnStrategyService
-
-        db = SessionLocal()
-        service = RequirementAnalysisSessionService(db)
-        return LocalXGTurnRuntime(
-            turn_context_builder=service.turn_context_builder,
-            provider_call_service=service.provider_call_service,
-            provider_call_log_service=service.provider_call_log_service,
-            spec_tree_service=service.spec_tree_service,
-            spec_projection_service=service.spec_projection_service,
-            summary_artifact_service=service.summary_artifact_service,
-            turn_audit_service=service.turn_audit_service,
-            turn_output_service=service.turn_output_service,
-            next_interaction_service=service.next_interaction_service,
-            turn_strategy_service=TurnStrategyService(),
-            turn_stage_planner=TurnStagePlanner(),
-            turn_stage_executor=TurnStageExecutor(
-                provider_call_service=service.provider_call_service,
-            ),
-            turn_stage_reducer=TurnStageReducer(),
-            working_document_service=service.working_document_service,
-            working_document_review_service=service.working_document_review_service,
-            turn_decision_service=service.turn_decision_service,
-        )
-
-    def _session_snapshot(self, request: OrchestratorRunRequest) -> SessionSnapshot:
-        session = dict(request.session or {})
-        context = dict(request.document_context or {})
-        payload = dict(context.get("state") or {})
-        payload.setdefault("turns", [])
-        payload.setdefault("messages", [])
-        payload.setdefault("confirmed_facts", list(context.get("confirmed_facts") or []))
-        payload.setdefault("open_questions", [])
-        payload.setdefault("document_patch", [])
-        payload.setdefault("working_document", dict(context.get("working_document") or {}))
-        payload.setdefault("questions", list(context.get("open_questions") or []))
-        payload.setdefault("facts", [])
-        payload.setdefault("patches", list(context.get("patches") or []))
-        payload.setdefault("spec_tree", list(context.get("spec_tree") or []))
-        payload.setdefault("active_spec_node_id", str((context.get("active_spec_node") or {}).get("node_id") or ""))
-        payload.setdefault("turn_path", [])
-        payload.setdefault("next_interaction", dict(request.turn.get("previous_interaction") or {}))
-        payload.setdefault("last_quick_options", [])
-        payload.setdefault("annotations", [])
-        payload.setdefault("risks", [])
-        payload.setdefault("provider_logs", [])
-        return SessionSnapshot(
-            session_id=str(session.get("session_id") or ""),
-            topic=str(session.get("topic") or ""),
-            orchestrator_id=self.manifest.plugin_id,
-            provider_id=str(session.get("provider_id") or "mock"),
-            model=str(session.get("model") or "mock-requirement-analysis-v1"),
-            template_id=str(session.get("template_id") or "81433号"),
-            knowledge_package_id=str(session.get("knowledge_package_id") or ""),
-            write_policy=str(session.get("write_policy") or "patch_suggestion_only"),
-            status="created",
-            payload=payload,
-        )
+    def _run_policy_interpreted(self, request: OrchestratorRunRequest):
+        if self.runtime_host is None:
+            raise RuntimeError("runtime_host_missing")
+        return self.runtime_host.run_policy_interpreted(request, self.manifest)

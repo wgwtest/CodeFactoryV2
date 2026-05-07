@@ -31,9 +31,7 @@ class TurnStageExecutor:
     ) -> TurnStageResult:
         stage_type = str(stage.get("stage_type") or orchestrator.mode)
         if session.provider_id == "mock" and orchestrator.mode != "local_runner":
-            from .local_xg_mock_stage_provider import LocalXGMockStageProvider
-
-            provider_run_result = LocalXGMockStageProvider(provider_call_service=self.provider_call_service).run(
+            provider_run_result = self._mock_stage_provider(orchestrator=orchestrator).run(
                 orchestrator=orchestrator,
                 session=session,
                 user_input=context.user_input,
@@ -56,3 +54,18 @@ class TurnStageExecutor:
             provider_run_result=provider_run_result,
             model_output=provider_run_result.model_output,
         )
+
+    def _mock_stage_provider(self, *, orchestrator: OrchestratorPackage):
+        from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
+
+        plugin = get_orchestrator_plugin_registry().require(orchestrator.orchestrator_id)
+        package_path = plugin.package_path
+        if package_path.endswith("brainstorm-v1"):
+            from _codefactory_plugin_brainstorm_v1.local_xg_mock_stage_provider import LocalXGMockStageProvider
+
+            return LocalXGMockStageProvider(provider_call_service=self.provider_call_service)
+        if package_path.endswith("xg-heuristic-orchestrator"):
+            from _codefactory_plugin_xg_local_heuristic_orchestrator.local_xg_mock_stage_provider import LocalXGMockStageProvider
+
+            return LocalXGMockStageProvider(provider_call_service=self.provider_call_service)
+        raise ValueError(f"unsupported local mock stage provider package: {package_path}")

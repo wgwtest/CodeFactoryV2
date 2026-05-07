@@ -6,6 +6,7 @@ from app.orchestrators.contract_validator import OrchestratorContractValidator
 from app.orchestrators.package_loader import OrchestratorPackageLoader
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest
 from app.orchestrators.runner_host import OrchestratorRunnerHost
+from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 
 
@@ -19,11 +20,12 @@ def test_orchestrator_runtime_loads_assets_and_normalizes_output() -> None:
     assert heuristic.artifact_rules["clauses"]["REQ-2.1"]["quick_options"][0]["label"] == "计算分析工具"
     assert heuristic.spec_strategy["clauses"]["REQ-2.1"]["question"] == "组织器策略问题：请确认软件定位、领域边界、解决的问题，以及第一阶段明确不做的内容。"
 
-    strong_rule = loader.load("xg-strong-rule-orchestrator")
-    assert strong_rule.package.mode == "local_runner"
-    assert strong_rule.entry_path.endswith("runner.py")
-    assert strong_rule.artifact_rules["clauses"]["REQ-2.1"]["patch_template"] == "软件定位为：{semantic}"
-    assert strong_rule.spec_strategy["defaults"]["leaf_question_template"] == "强规则组织器要求补齐：{clause_title}。"
+    try:
+        loader.load("xg-strong-rule-orchestrator")
+    except ValueError as exc:
+        assert "unsupported orchestrator" in str(exc)
+    else:
+        raise AssertionError("removed strong-rule package should not be loadable")
 
     validator = OrchestratorContractValidator()
     normalized = validator.normalize_turn_output(
@@ -85,7 +87,7 @@ def test_legacy_package_loader_ignores_non_local_plugin_packages() -> None:
 
     package_ids = {item.package.orchestrator_id for item in loader.load_all()}
 
-    assert package_ids == {"brainstorm-v1", "xg-heuristic-orchestrator", "xg-strong-rule-orchestrator"}
+    assert package_ids == {"brainstorm-v1", "xg-heuristic-orchestrator"}
 
 
 def test_turn_engine_does_not_dispatch_by_plugin_type_or_adapter_entry() -> None:
@@ -177,70 +179,41 @@ def test_plugin_adapter_loader_supports_plugin_local_relative_imports(tmp_path: 
     assert result.final_output["filled_document_text"] == "ok"
 
 
-def test_local_xg_runtime_is_plugin_local_not_host_owned() -> None:
+def test_policy_runtime_is_host_owned_and_no_strong_rule_runtime_remains() -> None:
     host_adapter = Path("apps/api/app/orchestrators/adapters/local_xg_plugin.py")
-    host_runtime = Path("apps/api/app/orchestrators/adapters/local_xg_turn_runtime.py")
-    host_stage_runtime_context_builder = Path("apps/api/app/requirement_analysis/stage_runtime_context_builder.py")
-    host_turn_strategy_service = Path("apps/api/app/requirement_analysis/turn_strategy_service.py")
-    host_turn_stage_planner = Path("apps/api/app/requirement_analysis/turn_stage_planner.py")
-    host_turn_stage_executor = Path("apps/api/app/requirement_analysis/turn_stage_executor.py")
-    host_turn_stage_reducer = Path("apps/api/app/requirement_analysis/turn_stage_reducer.py")
+    host_runtime = Path("apps/api/app/orchestrators/runtime/policy_interpreted_runtime.py")
+    host_stage_runtime_context_builder = Path("apps/api/app/orchestrators/runtime/stage_context.py")
+    host_turn_strategy_service = Path("apps/api/app/orchestrators/runtime/turn_strategy_service.py")
+    host_turn_stage_planner = Path("apps/api/app/orchestrators/runtime/stage_plan.py")
+    host_turn_stage_executor = Path("apps/api/app/orchestrators/runtime/stage_executor.py")
+    host_turn_stage_reducer = Path("apps/api/app/orchestrators/runtime/stage_reducer.py")
     heuristic_runtime = Path("orchestrators/xg/xg-heuristic-orchestrator/local_xg_turn_runtime.py")
     heuristic_stage_runtime_context_builder = Path("orchestrators/xg/xg-heuristic-orchestrator/stage_runtime_context_builder.py")
     heuristic_turn_strategy_service = Path("orchestrators/xg/xg-heuristic-orchestrator/turn_strategy_service.py")
     heuristic_turn_stage_planner = Path("orchestrators/xg/xg-heuristic-orchestrator/turn_stage_planner.py")
     heuristic_turn_stage_executor = Path("orchestrators/xg/xg-heuristic-orchestrator/turn_stage_executor.py")
     heuristic_turn_stage_reducer = Path("orchestrators/xg/xg-heuristic-orchestrator/turn_stage_reducer.py")
-    strong_rule_runtime = Path("orchestrators/xg/xg-strong-rule-orchestrator/local_xg_turn_runtime.py")
-    strong_rule_stage_runtime_context_builder = Path("orchestrators/xg/xg-strong-rule-orchestrator/stage_runtime_context_builder.py")
-    strong_rule_turn_strategy_service = Path("orchestrators/xg/xg-strong-rule-orchestrator/turn_strategy_service.py")
-    strong_rule_turn_stage_planner = Path("orchestrators/xg/xg-strong-rule-orchestrator/turn_stage_planner.py")
-    strong_rule_turn_stage_executor = Path("orchestrators/xg/xg-strong-rule-orchestrator/turn_stage_executor.py")
-    strong_rule_turn_stage_reducer = Path("orchestrators/xg/xg-strong-rule-orchestrator/turn_stage_reducer.py")
     heuristic_adapter_source = Path("orchestrators/xg/xg-heuristic-orchestrator/adapter.py").read_text(encoding="utf-8")
-    heuristic_runtime_source = heuristic_runtime.read_text(encoding="utf-8")
-    strong_rule_adapter_source = Path("orchestrators/xg/xg-strong-rule-orchestrator/adapter.py").read_text(encoding="utf-8")
-    strong_rule_runtime_source = strong_rule_runtime.read_text(encoding="utf-8")
 
     assert not host_adapter.exists()
-    assert not host_runtime.exists()
-    assert not host_stage_runtime_context_builder.exists()
-    assert not host_turn_strategy_service.exists()
-    assert not host_turn_stage_planner.exists()
-    assert not host_turn_stage_executor.exists()
-    assert not host_turn_stage_reducer.exists()
-    assert heuristic_runtime.exists()
-    assert heuristic_stage_runtime_context_builder.exists()
-    assert heuristic_turn_strategy_service.exists()
-    assert heuristic_turn_stage_planner.exists()
-    assert heuristic_turn_stage_executor.exists()
-    assert heuristic_turn_stage_reducer.exists()
-    assert strong_rule_runtime.exists()
-    assert strong_rule_stage_runtime_context_builder.exists()
-    assert strong_rule_turn_strategy_service.exists()
-    assert strong_rule_turn_stage_planner.exists()
-    assert strong_rule_turn_stage_executor.exists()
-    assert strong_rule_turn_stage_reducer.exists()
+    assert host_runtime.exists()
+    assert host_stage_runtime_context_builder.exists()
+    assert host_turn_strategy_service.exists()
+    assert host_turn_stage_planner.exists()
+    assert host_turn_stage_executor.exists()
+    assert host_turn_stage_reducer.exists()
+    assert not heuristic_runtime.exists()
+    assert not heuristic_stage_runtime_context_builder.exists()
+    assert not heuristic_turn_strategy_service.exists()
+    assert not heuristic_turn_stage_planner.exists()
+    assert not heuristic_turn_stage_executor.exists()
+    assert not heuristic_turn_stage_reducer.exists()
+    assert not Path("orchestrators/xg/xg-strong-rule-orchestrator").exists()
     assert "app.orchestrators.adapters.local_xg_plugin" not in heuristic_adapter_source
-    assert "app.orchestrators.adapters.local_xg_plugin" not in strong_rule_adapter_source
     assert "service.turn_strategy_service" not in heuristic_adapter_source
     assert "service.turn_stage_planner" not in heuristic_adapter_source
     assert "service.turn_stage_executor" not in heuristic_adapter_source
     assert "service.turn_stage_reducer" not in heuristic_adapter_source
-    assert "service.turn_strategy_service" not in strong_rule_adapter_source
-    assert "service.turn_stage_planner" not in strong_rule_adapter_source
-    assert "service.turn_stage_executor" not in strong_rule_adapter_source
-    assert "service.turn_stage_reducer" not in strong_rule_adapter_source
-    assert "app.requirement_analysis.stage_runtime_context_builder" not in heuristic_runtime_source
-    assert "app.requirement_analysis.turn_strategy_service" not in heuristic_runtime_source
-    assert "app.requirement_analysis.turn_stage_planner" not in heuristic_runtime_source
-    assert "app.requirement_analysis.turn_stage_executor" not in heuristic_runtime_source
-    assert "app.requirement_analysis.turn_stage_reducer" not in heuristic_runtime_source
-    assert "app.requirement_analysis.stage_runtime_context_builder" not in strong_rule_runtime_source
-    assert "app.requirement_analysis.turn_strategy_service" not in strong_rule_runtime_source
-    assert "app.requirement_analysis.turn_stage_planner" not in strong_rule_runtime_source
-    assert "app.requirement_analysis.turn_stage_executor" not in strong_rule_runtime_source
-    assert "app.requirement_analysis.turn_stage_reducer" not in strong_rule_runtime_source
 
 
 def test_dify_workflow_adapter_implementation_is_plugin_local() -> None:
@@ -288,41 +261,18 @@ def test_host_provider_layers_do_not_branch_on_xg_stage_protocol() -> None:
         assert constants.isdisjoint(forbidden), f"{path} must not hardcode XG stage protocol names"
 
 
-def test_orchestrator_runtime_executes_local_runner_entry() -> None:
+def test_removed_strong_rule_local_runner_is_not_executable() -> None:
     host = OrchestratorRunnerHost()
 
-    output = host.execute_local_runner(
-        "xg-strong-rule-orchestrator",
-        context={
-            "session": {
-                "provider_id": "mock",
-                "model": "mock-requirement-analysis-v1",
-                "write_policy": "patch_suggestion_only",
-            },
-            "user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-            "normalized": {
-                "input_type": "free_text",
-                "semantic": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-            },
-            "active_spec_node": {
-                "node_id": "SPEC-REQ-1.1",
-                "title": "REQ-1.1 编写目的",
-                "target_section": "1 总则 / 编写目的",
-                "question": "系统要做什么？",
-            },
-        },
-    )
-
-    assert output["organizer_interpretation"]["confidence"] == "high"
-    assert "强规则组织器" in output["assistant_message"]
-    assert output["target_anchor_plan"][0]["template_clause_id"] == "REQ-1.1"
-    assert output["document_patch"][0]["plan_ref"] == "AP-001"
-    assert output["document_patch"][0]["write_policy"] == "patch_suggestion_only"
-    assert output["raw_model_response"]["runner_invoked"] is True
-    assert output["raw_model_response"]["runner_entry"].endswith("xg-strong-rule-orchestrator/runner.py")
+    try:
+        host.execute_local_runner("xg-strong-rule-orchestrator", context={})
+    except ValueError as exc:
+        assert "unsupported orchestrator" in str(exc)
+    else:
+        raise AssertionError("removed strong-rule local runner should not execute")
 
 
-def test_brainstorm_v1_adapter_returns_decision_state_output() -> None:
+def test_brainstorm_v1_adapter_returns_decision_state_output(db_session) -> None:
     manifest = OrchestratorPluginManifest(
         plugin_id="brainstorm-v1",
         name="Brainstorm v1",
@@ -339,7 +289,8 @@ def test_brainstorm_v1_adapter_returns_decision_state_output() -> None:
         package_path="orchestrators/xg/brainstorm-v1",
         package_id="brainstorm-v1",
     )
-    adapter = load_orchestrator_plugin_adapter(manifest)
+    runtime_host = RequirementAnalysisSessionService(db_session).turn_engine.runtime_host
+    adapter = load_orchestrator_plugin_adapter(manifest, runtime_host=runtime_host)
 
     result = adapter.run(
         OrchestratorRunRequest(

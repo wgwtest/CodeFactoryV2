@@ -21,14 +21,15 @@ from app.requirement_analysis.turn_output_service import RequirementAnalysisTurn
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
 from .decision_state_service import DecisionStateService
-from .stage_runtime_context_builder import StageRuntimeContextBuilder
-from .turn_stage_executor import TurnStageExecutor, TurnStageResult
-from .turn_stage_planner import TurnStagePlan, TurnStagePlanner
-from .turn_stage_reducer import TurnStageReducer
+from .stage_context import StageRuntimeContextBuilder
+from .stage_executor import TurnStageExecutor, TurnStageResult
+from .stage_output_slots import StageOutputSlots
+from .stage_plan import TurnStagePlan, TurnStagePlanner
+from .stage_reducer import TurnStageReducer
 from .turn_strategy_service import TurnStrategyService
 
 
-class LocalXGTurnRuntime:
+class PolicyInterpretedRuntime:
     def __init__(
         self,
         *,
@@ -93,34 +94,33 @@ class LocalXGTurnRuntime:
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
         stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
         stage_results: list[TurnStageResult] = []
-        intent_output = {
-            "intent_understanding_result": {},
-            "target_document_structure": {},
-            "stage_task_definition": {},
-            "stage_quality_constraints": {},
-            "confidence": "medium",
-        }
+        stage_output_slots = StageOutputSlots()
         for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="intent"):
             stage_input = self.stage_runtime_context_builder.build(
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 working_document=working_document,
             ).to_prompt_context()
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        intent_output = self.turn_stage_reducer.reduce_intent_stage(plan=stage_plan, stage_results=stage_results)
-        intent_understanding_result = dict(intent_output.get("intent_understanding_result") or {})
-        target_document_structure = dict(intent_output.get("target_document_structure") or {})
-        stage_task_definition = dict(intent_output.get("stage_task_definition") or {})
-        stage_quality_constraints = dict(intent_output.get("stage_quality_constraints") or {})
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        intent_understanding_result = dict(stage_output_slots.get("intent_understanding_result", {}) or {})
+        target_document_structure = dict(stage_output_slots.get("target_document_structure", {}) or {})
+        stage_task_definition = dict(stage_output_slots.get("stage_task_definition", {}) or {})
+        stage_quality_constraints = dict(stage_output_slots.get("stage_quality_constraints", {}) or {})
 
         write_stage_kind = "decision_state_delta" if self._stages_by_kind(stage_plan=stage_plan, stage_kind="decision_state_delta") else "write"
         for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind=write_stage_kind):
@@ -128,6 +128,7 @@ class LocalXGTurnRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -135,19 +136,27 @@ class LocalXGTurnRuntime:
                 working_document=working_document,
             ).to_prompt_context()
             stage_input["decision_state"] = decision_state
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        if write_stage_kind == "decision_state_delta":
-            model_output = self.turn_stage_reducer.reduce_decision_state_delta_stage(plan=stage_plan, stage_results=stage_results)
-        else:
-            model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        model_output = self.turn_stage_reducer.reduce_latest_by_targets(
+            plan=stage_plan,
+            stage_results=stage_results,
+            output_targets={"document_patch", "decision_state_delta"},
+        )
+        if not model_output:
+            raise ValueError("turn stage results include no document or decision-state output stage")
         decision_state_delta = decision_state_service.normalize_delta(
             model_output.get("decision_state_delta"),
             turn_id=turn_id,
@@ -161,6 +170,7 @@ class LocalXGTurnRuntime:
                 session=session,
                 context=context,
                 stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+                stage_output_slots=stage_output_slots,
                 working_document=working_document,
             ).chapter_configuration_context,
         )
@@ -181,6 +191,8 @@ class LocalXGTurnRuntime:
             decision_state=decision_state,
             session_phase="analysis",
         )
+        stage_output_slots.set("decision_state", decision_state)
+        stage_output_slots.set("decision_state_document", decision_state_document)
         write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
         next_open_before_update = self.spec_tree_service.first_open_spec_node_id(context.spec_tree)
@@ -235,6 +247,7 @@ class LocalXGTurnRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -248,28 +261,46 @@ class LocalXGTurnRuntime:
                 decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(review_stage_input)
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        review_reduction = self.turn_stage_reducer.reduce_review_stage(
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+                fallback_targets={"target_review": target_review, "global_review": global_review},
+            )
+        review_stage_output = self.turn_stage_reducer.reduce_latest_by_targets(
             plan=stage_plan,
             stage_results=stage_results,
-            target_review=target_review,
-            global_review=global_review,
+            output_targets={"target_review", "global_review", "review_after_apply_result"},
         )
-        target_review = dict(review_reduction["target_review"])
-        global_review = dict(review_reduction["global_review"])
+        if isinstance(review_stage_output.get("target_review"), dict):
+            target_review = self.turn_stage_reducer._merge_target_review(
+                fallback=target_review,
+                override=review_stage_output["target_review"],
+            )
+        if isinstance(review_stage_output.get("global_review"), dict):
+            global_review = self.turn_stage_reducer._merge_global_review(
+                fallback=global_review,
+                override=review_stage_output["global_review"],
+            )
+        if global_review.get("status") == "continue_same_target":
+            global_review["status"] = "continue_same_topic"
         review_after_apply_result = {
-            **dict(review_reduction.get("review_stage_output") or {}),
+            **dict(review_stage_output or {}),
             "target_review": target_review,
             "global_review": global_review,
         }
+        stage_output_slots.set("target_review", target_review)
+        stage_output_slots.set("global_review", global_review)
+        stage_output_slots.set("review_after_apply_result", review_after_apply_result)
         can_close = target_review["status"] in {"acceptable", "closed"}
         spec_update = self.spec_tree_service.update_spec_tree(
             spec_tree=context.spec_tree,
@@ -305,6 +336,7 @@ class LocalXGTurnRuntime:
                 session=session,
                 context=context,
                 stage=stage,
+                stage_output_slots=stage_output_slots,
                 intent_understanding_result=intent_understanding_result,
                 target_document_structure=target_document_structure,
                 stage_task_definition=stage_task_definition,
@@ -329,18 +361,24 @@ class LocalXGTurnRuntime:
                     "spec_tree": spec_update_payload["spec_tree"],
                 }
             )
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
-                    session=session,
-                    context=context,
-                    stage_input=stage_input,
-                )
+            result = self.turn_stage_executor.run(
+                stage=stage,
+                orchestrator=orchestrator,
+                session=session,
+                context=context,
+                stage_input=stage_input,
             )
-        next_planning_output = self.turn_stage_reducer.reduce_next_interaction_stage(
+            stage_results.append(result)
+            self.turn_stage_reducer.reduce_stage(
+                plan=stage_plan,
+                stage=stage,
+                result=result,
+                slots=stage_output_slots,
+            )
+        next_planning_output = self.turn_stage_reducer.reduce_latest_by_targets(
             plan=stage_plan,
             stage_results=stage_results,
+            output_targets={"next_interaction_plan", "planning_trace"},
         )
         next_interaction_plan = dict(next_planning_output.get("next_interaction_plan") or {})
         next_interaction = self._next_interaction_from_plan(
@@ -631,7 +669,7 @@ class LocalXGTurnRuntime:
         user_message = str(next_interaction_plan.get("user_message") or "").strip()
         next_question = str(next_interaction_plan.get("next_question") or next_interaction.get("prompt") or "").strip()
         quick_options = list(next_interaction_plan.get("quick_options") or next_interaction.get("options") or [])
-        assistant_message = LocalXGTurnRuntime._assistant_message_after_planning(
+        assistant_message = PolicyInterpretedRuntime._assistant_message_after_planning(
             model_output=model_output,
             planning_user_message=user_message,
             next_question=next_question,
@@ -684,14 +722,14 @@ class LocalXGTurnRuntime:
         if planning_message and "临时正文" in planning_message:
             base_message = planning_message
             if sections and not any(section in base_message for section in sections):
-                base_message = LocalXGTurnRuntime._append_sentence(
+                base_message = PolicyInterpretedRuntime._append_sentence(
                     base_message,
                     f"写入位置：{'、'.join(sections)}。",
                 )
         else:
             base_message = write_summary
         if next_question and next_question not in planning_message:
-            base_message = LocalXGTurnRuntime._append_sentence(
+            base_message = PolicyInterpretedRuntime._append_sentence(
                 base_message,
                 f"建议下一步确认：{next_question}",
             )
@@ -756,8 +794,8 @@ class LocalXGTurnRuntime:
             stage = self._stage_for_result(stage_plan=stage_plan, stage_result=stage_result)
             if not self._should_write_provider_log(stage=stage):
                 continue
-            stage_kind = self._stage_kind(stage_result=stage_result)
-            if stage_kind == "review":
+            stage_kind = self._stage_kind(stage_plan=stage_plan, stage_result=stage_result)
+            if self._stage_outputs_review(stage=stage):
                 model_output = stage_result.model_output
                 provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
                 service_output = {
@@ -769,7 +807,7 @@ class LocalXGTurnRuntime:
                         "global_review": global_review,
                     },
                 }
-            elif stage_kind == "write":
+            elif self._stage_outputs_document_patch(stage=stage):
                 model_output = final_write_model_output
                 provider_normalized_output = final_write_provider_normalized_output
                 service_output = {
@@ -817,14 +855,23 @@ class LocalXGTurnRuntime:
         return execution_mode in {"model", "local_runner"}
 
     @staticmethod
-    def _stage_kind(*, stage_result: TurnStageResult) -> str:
-        if "intent" in stage_result.stage_id:
-            return "intent"
-        if "next_interaction" in stage_result.stage_id or "planning" in stage_result.stage_id:
-            return "next_interaction"
-        if "review" in stage_result.stage_id:
-            return "review"
-        return "write"
+    def _stage_outputs_review(*, stage: dict) -> bool:
+        output_targets = {str(item) for item in list(stage.get("output_targets") or [])}
+        return {"target_review", "global_review", "review_after_apply_result"} & output_targets != set()
+
+    @staticmethod
+    def _stage_outputs_document_patch(*, stage: dict) -> bool:
+        output_targets = {str(item) for item in list(stage.get("output_targets") or [])}
+        return "document_patch" in output_targets
+
+    def _stage_kind(self, *, stage_plan: TurnStagePlan, stage_result: TurnStageResult) -> str:
+        return str(
+            self._stage_for_result(
+                stage_plan=stage_plan,
+                stage_result=stage_result,
+            ).get("stage_kind")
+            or "write"
+        )
 
     @staticmethod
     def _orchestrator(orchestrator_id: str) -> OrchestratorPackage:

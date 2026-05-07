@@ -2,8 +2,6 @@ from importlib import import_module
 import inspect
 from dataclasses import is_dataclass
 
-from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
-from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 from app.requirement_analysis.turn_engine import RequirementAnalysisTurnEngine
 
@@ -45,19 +43,18 @@ def test_requirement_analysis_j5_services_can_be_imported() -> None:
     stage_schema_resolver = import_module("app.orchestrators.stage_schema_resolver")
     stage_adoption_policy_resolver = import_module("app.orchestrators.stage_adoption_policy_resolver")
     stage_prompt_bundle_builder = import_module("app.orchestrators.stage_prompt_bundle_builder")
-    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    plugin_module_prefix = adapter.__class__.__module__.rsplit(".", 1)[0]
-    turn_strategy_service = import_module(f"{plugin_module_prefix}.turn_strategy_service")
-    turn_stage_planner = import_module(f"{plugin_module_prefix}.turn_stage_planner")
-    turn_stage_executor = import_module(f"{plugin_module_prefix}.turn_stage_executor")
-    turn_stage_reducer = import_module(f"{plugin_module_prefix}.turn_stage_reducer")
-    stage_runtime_context_builder = import_module(f"{plugin_module_prefix}.stage_runtime_context_builder")
+    runtime_host = import_module("app.orchestrators.runtime.runtime_host")
+    turn_strategy_service = import_module("app.orchestrators.runtime.turn_strategy_service")
+    turn_stage_planner = import_module("app.orchestrators.runtime.stage_plan")
+    turn_stage_executor = import_module("app.orchestrators.runtime.stage_executor")
+    turn_stage_reducer = import_module("app.orchestrators.runtime.stage_reducer")
+    stage_runtime_context_builder = import_module("app.orchestrators.runtime.stage_context")
 
     assert hasattr(session_snapshot, "SessionSnapshot")
     assert hasattr(turn_context_builder, "TurnContext")
     assert hasattr(turn_context_builder, "TurnContextBuilder")
     assert hasattr(turn_execution_result, "TurnExecutionResult")
+    assert hasattr(runtime_host, "OrchestratorRuntimeHost")
     assert hasattr(turn_strategy_service, "TurnStrategyService")
     assert hasattr(turn_strategy_service, "XGTurnStrategy")
     assert hasattr(turn_stage_planner, "TurnStagePlanner")
@@ -94,6 +91,15 @@ def test_requirement_analysis_j5_services_can_be_imported() -> None:
     assert is_dataclass(stage_prompt_resolver.StagePrompt)
 
 
+def test_decision_state_service_is_owned_by_orchestrator_runtime() -> None:
+    runtime_decision_state_service = import_module("app.orchestrators.runtime.decision_state_service")
+    session_service_source = inspect.getsource(import_module("app.requirement_analysis.session_service"))
+
+    assert hasattr(runtime_decision_state_service, "DecisionStateService")
+    assert "app.orchestrators.runtime.decision_state_service" in session_service_source
+    assert "app.requirement_analysis.decision_state_service" not in session_service_source
+
+
 def test_requirement_analysis_turn_engine_has_no_owner_back_reference() -> None:
     source = inspect.getsource(RequirementAnalysisTurnEngine)
 
@@ -110,12 +116,9 @@ def test_requirement_analysis_turn_engine_returns_result_without_writing_session
     assert "session.status =" not in source
 
 
-def test_requirement_analysis_plugin_runtime_passes_full_context_to_review_stage() -> None:
-    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    plugin_module_prefix = adapter.__class__.__module__.rsplit(".", 1)[0]
-    runtime_module = import_module(f"{plugin_module_prefix}.local_xg_turn_runtime")
-    source = inspect.getsource(runtime_module.LocalXGTurnRuntime)
+def test_requirement_analysis_policy_runtime_passes_full_context_to_review_stage() -> None:
+    runtime_module = import_module("app.orchestrators.runtime.policy_interpreted_runtime")
+    source = inspect.getsource(runtime_module.PolicyInterpretedRuntime)
 
     assert "stage_input=review_stage_input" not in source
     assert "review_stage_input = self._review_stage_input" in source

@@ -6,6 +6,7 @@ from app.orchestrators.plugin_contracts import (
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.plugin_result_normalizer import OrchestratorPluginResultNormalizer
 from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
+from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 
 
 def test_observable_orchestrator_plugin_manifest_contract() -> None:
@@ -137,9 +138,9 @@ def test_plugin_registry_lists_local_and_dify_plugins() -> None:
     plugin_ids = {plugin.plugin_id for plugin in plugins}
 
     assert "xg-local-heuristic-orchestrator" in plugin_ids
-    assert "xg-local-strong-rule-orchestrator" in plugin_ids
     assert "xg-dify-workflow-orchestrator" in plugin_ids
     assert "brainstorm-v1-dify-workflow" in plugin_ids
+    assert "xg-local-strong-rule-orchestrator" not in plugin_ids
 
     dify = registry.require("xg-dify-workflow-orchestrator")
     assert dify.plugin_type == "dify_workflow"
@@ -159,15 +160,18 @@ def test_plugin_registry_resolves_manifest_aliases_and_package_ids() -> None:
     registry = OrchestratorPluginRegistry()
 
     heuristic = registry.require("xg-heuristic-orchestrator")
-    strong_rule = registry.require("xg-strong-rule-orchestrator")
 
     assert heuristic.plugin_id == "xg-local-heuristic-orchestrator"
     assert heuristic.package_id == "xg-heuristic-orchestrator"
     assert heuristic.aliases == ("xg-heuristic-orchestrator",)
     assert registry.local_package_id_for_plugin("xg-local-heuristic-orchestrator") == "xg-heuristic-orchestrator"
     assert registry.local_package_id_for_plugin("xg-heuristic-orchestrator") == "xg-heuristic-orchestrator"
-    assert strong_rule.plugin_id == "xg-local-strong-rule-orchestrator"
-    assert registry.local_package_id_for_plugin("xg-strong-rule-orchestrator") == "xg-strong-rule-orchestrator"
+    try:
+        registry.require("xg-strong-rule-orchestrator")
+    except ValueError as exc:
+        assert "unsupported orchestrator" in str(exc)
+    else:
+        raise AssertionError("removed strong-rule orchestrator should not resolve by alias")
 
 
 def test_plugin_manifest_requires_local_adapter_entry() -> None:
@@ -185,6 +189,29 @@ def test_plugin_manifest_requires_local_adapter_entry() -> None:
         assert "adapter_class" in str(exc)
     else:
         raise AssertionError("manifest without local adapter entry should fail")
+
+
+def test_policy_interpreted_stage_strategy_must_declare_explicit_runtime_fields() -> None:
+    registry = OrchestratorPluginRegistry()
+    plugin_ids = ("xg-local-heuristic-orchestrator", "brainstorm-v1")
+
+    for plugin_id in plugin_ids:
+        package_id = registry.local_package_id_for_plugin(plugin_id)
+        spec_strategy_path = f"orchestrators/xg/{package_id}/spec_strategy.json"
+        import json
+        from pathlib import Path
+
+        payload = json.loads(Path(spec_strategy_path).read_text(encoding="utf-8"))
+        stages = list((payload.get("turn_strategy") or {}).get("stages") or [])
+        assert stages, f"{plugin_id} must declare turn_strategy.stages"
+        for stage in stages:
+            assert stage.get("stage_id"), f"{plugin_id} stage missing stage_id"
+            assert stage.get("stage_kind"), f"{plugin_id} stage missing stage_kind"
+            assert stage.get("execution_mode"), f"{plugin_id} stage missing execution_mode"
+            assert stage.get("prompt_id"), f"{plugin_id} stage missing prompt_id"
+            assert stage.get("input_sources") is not None, f"{plugin_id} stage missing input_sources"
+            assert stage.get("adopt_fields") is not None, f"{plugin_id} stage missing adopt_fields"
+            assert stage.get("failure_policy"), f"{plugin_id} stage missing failure_policy"
 
 
 def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
@@ -300,62 +327,15 @@ def test_brainstorm_v1_dify_workflow_adapter_runs_local_workflow_shape() -> None
     assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
 
 
-def test_local_xg_plugin_wraps_existing_runner_output() -> None:
+def test_removed_strong_rule_plugin_is_not_loadable(db_session) -> None:
     registry = OrchestratorPluginRegistry()
-    manifest = registry.require("xg-local-strong-rule-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    request = OrchestratorRunRequest(
-        contract_version="xg-observable-orchestrator-contract@1",
-        session={
-            "session_id": "ra-001",
-            "topic": "空域运算软件需求规格探索",
-            "template_id": "81433号",
-            "knowledge_package_id": "airspace-domain-demo",
-            "orchestrator_id": "xg-local-strong-rule-orchestrator",
-            "provider_id": "mock",
-            "model": "mock-requirement-analysis-v1",
-            "write_policy": "patch_suggestion_only",
-        },
-        turn={
-            "turn_id": "turn-0001",
-            "turn_index": 1,
-            "user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-            "normalized_input": {
-                "input_type": "free_text",
-                "semantic": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-            },
-            "previous_interaction": {"type": "none"},
-            "input_relation": {"relation": "none"},
-        },
-        template={"template_id": "81433号", "format": "structured", "content": "", "parsed_structure": {}},
-        document_context={
-            "working_document": {"document_id": "lab-working-document", "blocks": []},
-            "active_spec_node": {
-                "node_id": "SPEC-REQ-1.1",
-                "title": "REQ-1.1 编写目的",
-                "target_section": "1 总则 / 编写目的",
-                "question": "系统要做什么？",
-            },
-            "spec_tree": [],
-            "confirmed_facts": [],
-            "open_questions": [],
-            "patches": [],
-            "history_summary": "",
-        },
-        execution_options={"expected_output": "both", "observability_required": "full", "streaming_enabled": False},
-    )
 
-    result = adapter.run(request)
-
-    assert result.plugin["plugin_id"] == "xg-local-strong-rule-orchestrator"
-    assert result.plugin["observability_level"] == "full"
-    assert result.final_output["document_patch"][0]["plan_ref"] == "AP-001"
-    assert "写入临时正文" in result.interaction_output["assistant_message"]
-    assert "强规则组织器要求补齐" in result.interaction_output["next_question"]
-    assert result.process_output["stage_audits"]
-    assert result.process_output["provider_logs"]
-    assert result.state_output["confirmed_facts_delta"]
-    assert result.raw_output["turn_execution_result"].turn["raw_model_response"]["runner_invoked"] is True
+    try:
+        registry.require("xg-local-strong-rule-orchestrator")
+    except ValueError as exc:
+        assert "unsupported orchestrator" in str(exc)
+    else:
+        raise AssertionError("removed strong-rule plugin should not be loadable")
 
 
 def test_dify_workflow_plugin_returns_limited_observability_result() -> None:

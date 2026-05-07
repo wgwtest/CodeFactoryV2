@@ -3,10 +3,15 @@ from app.requirement_analysis.input_relation_classifier import InputRelationClas
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
 from app.requirement_analysis.session_repository import RequirementAnalysisSessionRepository
 from app.orchestrators.contract_validator import OrchestratorContractValidator
+from app.orchestrators.runtime.stage_output_slots import StageOutputSlots
+from app.orchestrators.runtime.stage_context import StageRuntimeContextBuilder
+from app.orchestrators.runtime.stage_executor import TurnStageExecutor, TurnStageResult
+from app.orchestrators.runtime.stage_plan import TurnStagePlan, TurnStagePlanner
+from app.orchestrators.runtime.stage_reducer import TurnStageAudit, TurnStageReducer
+from app.orchestrators.runtime.turn_strategy_service import TurnStrategyService
 from app.orchestrators.package_loader import OrchestratorPackageLoader, get_orchestrator_registry
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.runner_host import OrchestratorRunnerHost
-from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService, SpecTreeUpdateResult
 from app.db.models.requirements import RequirementAnalysisSession
 from app.requirement_analysis.provider_call_service import ProviderRunResult
@@ -17,29 +22,39 @@ from app.requirement_analysis.working_document_review_service import WorkingDocu
 from app.requirement_analysis.working_document_service import WorkingDocumentService
 
 
-def _local_xg_module(module_name: str):
-    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    return __import__(adapter.__class__.__module__.rsplit(".", 1)[0] + f".{module_name}", fromlist=["*"])
+def test_stage_reducer_adopts_output_by_targets_and_fields() -> None:
+    stage = {
+        "stage_id": "custom_stage",
+        "stage_kind": "custom",
+        "stage_type": "policy_interpreted",
+        "execution_mode": "model",
+        "output_targets": ["custom_slot", "confidence"],
+        "adopt_fields": ["custom_slot", "confidence"],
+    }
+    plan = TurnStagePlan(
+        strategy_id="test",
+        orchestrator_id="brainstorm-v1",
+        stages=(stage,),
+        adoption_policy="adopt_last_completed_stage",
+    )
+    result = TurnStageResult(
+        stage_id="custom_stage",
+        stage_type="policy_interpreted",
+        provider_run_result=object(),
+        model_output={
+            "custom_slot": {"value": "被采纳"},
+            "confidence": "high",
+            "ignored": "不应采纳",
+        },
+    )
+    slots = StageOutputSlots()
 
+    adopted = TurnStageReducer().reduce_stage(plan=plan, stage=stage, result=result, slots=slots)
 
-_stage_runtime_context_builder = _local_xg_module("stage_runtime_context_builder")
-StageRuntimeContextBuilder = _stage_runtime_context_builder.StageRuntimeContextBuilder
-
-_turn_strategy_service = _local_xg_module("turn_strategy_service")
-TurnStrategyService = _turn_strategy_service.TurnStrategyService
-
-_turn_stage_planner = _local_xg_module("turn_stage_planner")
-TurnStagePlanner = _turn_stage_planner.TurnStagePlanner
-TurnStagePlan = _turn_stage_planner.TurnStagePlan
-
-_turn_stage_reducer = _local_xg_module("turn_stage_reducer")
-TurnStageAudit = _turn_stage_reducer.TurnStageAudit
-TurnStageReducer = _turn_stage_reducer.TurnStageReducer
-
-_turn_stage_executor = _local_xg_module("turn_stage_executor")
-TurnStageExecutor = _turn_stage_executor.TurnStageExecutor
-TurnStageResult = _turn_stage_executor.TurnStageResult
+    assert adopted == {"custom_slot": {"value": "被采纳"}, "confidence": "high"}
+    assert slots.get("custom_slot") == {"value": "被采纳"}
+    assert slots.get("confidence") == "high"
+    assert slots.adopted_fields("custom_stage") == ["custom_slot", "confidence"]
 
 
 def test_chapter_configuration_context_is_available_to_write_prompt(db_session) -> None:
@@ -264,12 +279,6 @@ def test_requirement_analysis_modules_cover_turn_core_contract(db_session) -> No
     node = spec_tree_service.active_spec_node_context(spec_tree, "SPEC-REQ-2.1")
     assert node["target_section"] == "2 项目概述 / 软件定位"
     assert node["question"] == "组织器策略问题：请确认软件定位、领域边界、解决的问题，以及第一阶段明确不做的内容。"
-    strong_tree = spec_tree_service.new_spec_tree(
-        "81433号",
-        orchestrator_id="xg-strong-rule-orchestrator",
-    )
-    strong_node = spec_tree_service.active_spec_node_context(strong_tree, "SPEC-REQ-2.1")
-    assert strong_node["question"] == "强规则组织器要求补齐：软件定位。"
 
     artifact_service = ProcessArtifactService()
     assert (

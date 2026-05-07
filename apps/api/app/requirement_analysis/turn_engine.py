@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
 from app.orchestrators.plugin_contracts import OrchestratorRunRequest
 from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
+from app.orchestrators.runtime import OrchestratorRuntimeHost
 from app.requirement_analysis.models import RequirementAnalysisTurnCreate
 from app.requirement_analysis.session_snapshot import SessionSnapshot
 from app.requirement_analysis.turn_context_builder import TurnContextBuilder
@@ -16,10 +17,25 @@ class RequirementAnalysisTurnEngine:
         *,
         turn_context_builder: TurnContextBuilder,
         working_document_service: WorkingDocumentService,
-        **_dependencies,
+        runtime_host=None,
+        **dependencies,
     ) -> None:
         self.turn_context_builder = turn_context_builder
         self.working_document_service = working_document_service
+        self.runtime_host = runtime_host or OrchestratorRuntimeHost(
+            turn_context_builder=turn_context_builder,
+            working_document_service=working_document_service,
+            provider_call_service=dependencies.get("provider_call_service"),
+            provider_call_log_service=dependencies.get("provider_call_log_service"),
+            spec_tree_service=dependencies.get("spec_tree_service"),
+            spec_projection_service=dependencies.get("spec_projection_service"),
+            summary_artifact_service=dependencies.get("summary_artifact_service"),
+            turn_audit_service=dependencies.get("turn_audit_service"),
+            turn_output_service=dependencies.get("turn_output_service"),
+            next_interaction_service=dependencies.get("next_interaction_service"),
+            working_document_review_service=dependencies.get("working_document_review_service"),
+            turn_decision_service=dependencies.get("turn_decision_service"),
+        )
 
     def run_turn(self, session: SessionSnapshot, payload: RequirementAnalysisTurnCreate) -> TurnExecutionResult:
         state = dict(session.payload or {})
@@ -32,7 +48,7 @@ class RequirementAnalysisTurnEngine:
             or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
         )
         plugin = get_orchestrator_plugin_registry().require(session.orchestrator_id)
-        adapter = load_orchestrator_plugin_adapter(plugin)
+        adapter = load_orchestrator_plugin_adapter(plugin, runtime_host=self.runtime_host)
         result = adapter.run(
             self._build_plugin_request(
                 session=session,

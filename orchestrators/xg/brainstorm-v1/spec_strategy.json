@@ -10,6 +10,8 @@
         "stage_type": "policy_interpreted",
         "stage_kind": "intent",
         "prompt_id": "intent_understanding",
+        "schema_id": "intent_understanding",
+        "adoption_id": "intent_understanding",
         "execution_mode": "model",
         "requires_provider_call": true,
         "input_sources": [
@@ -24,13 +26,23 @@
           "stage_task_definition",
           "stage_quality_constraints",
           "confidence"
-        ]
+        ],
+        "output_targets": [
+          "intent_understanding_result",
+          "target_document_structure",
+          "stage_task_definition",
+          "stage_quality_constraints",
+          "confidence"
+        ],
+        "failure_policy": "block_turn"
       },
       {
         "stage_id": "decision_state_delta",
         "stage_type": "policy_interpreted",
         "stage_kind": "decision_state_delta",
         "prompt_id": "decision_state_delta",
+        "schema_id": "decision_state_delta",
+        "adoption_id": "decision_state_delta",
         "execution_mode": "model",
         "requires_provider_call": true,
         "input_sources": [
@@ -50,13 +62,26 @@
           "annotations",
           "risks",
           "confidence"
-        ]
+        ],
+        "output_targets": [
+          "organizer_interpretation",
+          "decision_state_delta",
+          "confirmed_facts_delta",
+          "open_questions_delta",
+          "document_patch",
+          "annotations",
+          "risks",
+          "confidence"
+        ],
+        "failure_policy": "block_turn"
       },
       {
         "stage_id": "next_interaction_planning",
         "stage_type": "policy_interpreted",
         "stage_kind": "next_interaction",
         "prompt_id": "next_interaction_planning",
+        "schema_id": "next_interaction_planning",
+        "adoption_id": "next_interaction_planning",
         "execution_mode": "model",
         "requires_provider_call": true,
         "input_sources": [
@@ -68,7 +93,13 @@
           "next_interaction_plan",
           "planning_trace",
           "confidence"
-        ]
+        ],
+        "output_targets": [
+          "next_interaction_plan",
+          "planning_trace",
+          "confidence"
+        ],
+        "failure_policy": "block_turn"
       }
     ]
   },
