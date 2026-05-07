@@ -17,6 +17,15 @@
       "name": "平台级需求规格说明模板",
       "description": "基于 82259 的默认实例模板。",
       "status": "available"
+    },
+    {
+      "template_id": "xg-template-81433-默认运算软件需求规格说明模板实例-v1-0",
+      "template_code": "81433",
+      "base_template_id": "81433号",
+      "base_template_name": "软件级需求规格说明模板",
+      "name": "默认运算软件需求规格说明模板实例-v1.1",
+      "description": "基于 81433 扩充的 Lab 模板实例。",
+      "status": "available"
     }
   ]
 }

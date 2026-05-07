@@ -173,6 +173,15 @@ class RequirementAnalysisProviderCallService:
                 stage=stage or {},
                 stage_input=stage_input or {},
             )
+        if stage_kind == "decision_state_delta":
+            return self.mock_decision_state_delta_output(
+                session,
+                user_input,
+                normalized,
+                orchestrator=orchestrator,
+                stage=stage or {},
+                stage_input=stage_input or {},
+            )
         if stage_kind == "next_interaction":
             return self.mock_next_interaction_output(
                 session,
@@ -223,6 +232,8 @@ class RequirementAnalysisProviderCallService:
             "template_revision_recommendations": [],
         }
         fact = self.process_artifact_service.fact_for_node(orchestrator.orchestrator_id, active_node, semantic)
+        if template_clause_id == "REQ-1.1" and not fact.startswith("软件名称"):
+            fact = f"软件名称与编写目的初步确认：{semantic}"
         patch_content = self.process_artifact_service.patch_for_node(orchestrator.orchestrator_id, active_node, semantic)
         next_question = str(active_node.get("question") if active_node else "请继续补充需求规格说明。")
         quick_options = self.process_artifact_service.quick_options_for_node(orchestrator.orchestrator_id, active_node)
@@ -316,6 +327,105 @@ class RequirementAnalysisProviderCallService:
                 },
                 "provider_normalized_output": provider_response,
             },
+        })
+
+    def mock_decision_state_delta_output(
+        self,
+        session: SessionSnapshot,
+        user_input: str,
+        normalized: dict,
+        *,
+        orchestrator: OrchestratorPackage,
+        stage: dict,
+        stage_input: dict,
+    ) -> ProviderRunResult:
+        legacy_output = self.mock_model_output(
+            session,
+            user_input,
+            normalized,
+            orchestrator=orchestrator,
+            stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+            stage_input=stage_input,
+        ).model_output
+        semantic = str(normalized.get("semantic") or user_input)
+        target_section = ""
+        if legacy_output.get("target_anchor_plan"):
+            target_section = str(
+                legacy_output["target_anchor_plan"][0].get("display_heading")
+                or legacy_output["target_anchor_plan"][0].get("canonical_clause_heading")
+                or ""
+            )
+        next_question = str((legacy_output.get("open_questions_delta") or [""])[0])
+        decision_state_delta = {
+            "confirmed_facts": [
+                {
+                    "content": str(item),
+                    "source_turn_id": stage_input.get("turn_context", {}).get("turn_id"),
+                    "target_section": target_section,
+                    "status": "active",
+                }
+                for item in list(legacy_output.get("confirmed_facts_delta") or [])
+                if str(item).strip()
+            ],
+            "confirmed_decisions": [],
+            "tentative_assumptions": [
+                {
+                    "content": f"后续需求分析暂按用户本轮描述推进：{semantic}",
+                    "source_turn_id": stage_input.get("turn_context", {}).get("turn_id"),
+                    "target_section": target_section,
+                    "status": "tentative",
+                }
+            ]
+            if semantic
+            else [],
+            "open_questions": [
+                {
+                    "content": next_question,
+                    "source_turn_id": stage_input.get("turn_context", {}).get("turn_id"),
+                    "target_section": target_section,
+                    "status": "open",
+                }
+            ]
+            if next_question
+            else [],
+            "rejected_directions": [],
+            "chapter_projections": [
+                {
+                    "content": target_section,
+                    "source_turn_id": stage_input.get("turn_context", {}).get("turn_id"),
+                    "target_section": target_section,
+                    "status": "projected",
+                }
+            ]
+            if target_section
+            else [],
+            "next_focus": next_question,
+        }
+        provider_response = {
+            **{
+                key: value
+                for key, value in legacy_output.items()
+                if key != "raw_model_response"
+            },
+            "decision_state_delta": decision_state_delta,
+            "assistant_message": f"本轮已更新结构化状态：{target_section or '需求分析状态'}。",
+        }
+        return self._to_provider_run_result({
+            **provider_response,
+            "raw_model_response": self._mock_raw_model_response(
+                session=session,
+                orchestrator=orchestrator,
+                user_input=user_input,
+                provider_request=self._mock_provider_request(
+                    session=session,
+                    user_input=user_input,
+                    normalized=normalized,
+                    stage=stage,
+                    stage_input=stage_input,
+                ),
+                provider_response=provider_response,
+                raw_content="mock_decision_state_delta_output",
+            ),
         })
 
     def mock_intent_output(
@@ -506,23 +616,23 @@ class RequirementAnalysisProviderCallService:
             question = str(focus_node.get("question") or focus_node.get("title") or "请继续补充需求规格说明。")
             quick_options = self.process_artifact_service.quick_options_for_node(orchestrator.orchestrator_id, focus_node)
             strategy = "continue_same_topic" if focus_node == current_spec_node else "move_next_node"
-            user_message = f"本轮已补入临时正文，并完成应用后回看。建议下一步确认：{question}"
+            user_message = f"本轮已更新结构化状态和临时正文投影。建议下一步确认：{question}"
         else:
             question = "当前完成度树暂无待确认节点，可以进入整体复核。"
             quick_options = []
             strategy = "whole_document_review"
-            user_message = "本轮已补入临时正文，并完成应用后回看。当前可进入整体复核。"
+            user_message = "本轮已更新结构化状态和临时正文投影。当前可进入整体复核。"
         provider_response = {
             "next_interaction_plan": {
                 "planning_strategy": strategy,
                 "user_message": user_message,
                 "next_question": question,
                 "quick_options": quick_options,
-                "plan_reason": str(global_review.get("summary") or target_review.get("reason") or "基于应用后回看规划下一轮交互。"),
+                "plan_reason": str(global_review.get("summary") or target_review.get("reason") or "基于结构化状态和规格投影规划下一轮交互。"),
                 "review_acknowledgement": str(target_review.get("reason") or ""),
                 "target_spec_nodes": [str(focus_node["node_id"])] if focus_node.get("node_id") else [],
             },
-            "planning_trace": ["Mock 下一步交互规划读取了 review 结果和完成度树状态。"],
+            "planning_trace": ["Mock 下一步交互规划读取了结构化状态、规格投影和完成度树状态。"],
             "confidence": "medium",
         }
         return self._to_provider_run_result({

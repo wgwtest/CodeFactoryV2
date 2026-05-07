@@ -105,6 +105,15 @@ def test_requirement_analysis_turn_engine_returns_result_without_writing_session
     assert "session.status =" not in source
 
 
+def test_requirement_analysis_turn_engine_passes_full_runtime_context_to_compat_review_stage() -> None:
+    source = inspect.getsource(RequirementAnalysisTurnEngine)
+
+    assert "stage_input=review_stage_input" not in source
+    assert "review_stage_input = self._review_stage_input" in source
+    assert "stage_input.update(review_stage_input)" in source
+    assert "review_after_apply_result=review_after_apply_result" in source
+
+
 def test_requirement_analysis_session_service_owns_turn_result_write_boundary() -> None:
     assert hasattr(RequirementAnalysisSessionService, "apply_turn_execution_result")
     assert hasattr(RequirementAnalysisSessionService, "load_snapshot")

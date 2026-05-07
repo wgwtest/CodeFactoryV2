@@ -1,0 +1,14 @@
+{
+  "adopt_fields": [
+    "organizer_interpretation",
+    "decision_state_delta",
+    "confirmed_facts_delta",
+    "open_questions_delta",
+    "document_patch",
+    "annotations",
+    "risks",
+    "confidence"
+  ],
+  "ignore_fields": ["target_review", "global_review", "rewrite_advice", "next_interaction_plan"],
+  "failure_policy": "block_turn"
+}

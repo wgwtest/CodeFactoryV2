@@ -2,7 +2,7 @@
   "root_question": "按需求规格模板补齐可写入正文的目标节点。",
   "section_question_template": "补齐{section_title}下的需求规格信息。",
   "turn_strategy": {
-    "strategy_id": "intent_write_review_plan",
+    "strategy_id": "decision_state_loop",
     "adoption_policy": "adopt_last_completed_stage",
     "stages": [
       {
@@ -27,42 +27,28 @@
         ]
       },
       {
-        "stage_id": "write",
+        "stage_id": "decision_state_delta",
         "stage_type": "policy_interpreted",
-        "stage_kind": "write",
-        "prompt_id": "write",
+        "stage_kind": "decision_state_delta",
+        "prompt_id": "decision_state_delta",
         "execution_mode": "model",
         "requires_provider_call": true,
         "input_sources": [
           "intent_understanding_result",
           "stage_task_definition",
           "stage_quality_constraints",
+          "decision_state",
+          "spec_tree",
           "working_document"
         ],
         "adopt_fields": [
           "organizer_interpretation",
+          "decision_state_delta",
           "confirmed_facts_delta",
+          "open_questions_delta",
           "document_patch",
           "annotations",
           "risks",
-          "confidence"
-        ]
-      },
-      {
-        "stage_id": "review_after_apply",
-        "stage_type": "policy_interpreted",
-        "stage_kind": "review",
-        "prompt_id": "review_after_apply",
-        "execution_mode": "model",
-        "requires_provider_call": true,
-        "input_sources": [
-          "working_document_after_apply",
-          "working_document_update"
-        ],
-        "adopt_fields": [
-          "target_review",
-          "global_review",
-          "review_annotations",
           "confidence"
         ]
       },
@@ -74,7 +60,7 @@
         "execution_mode": "model",
         "requires_provider_call": true,
         "input_sources": [
-          "review_after_apply",
+          "decision_state",
           "spec_tree",
           "working_document"
         ],

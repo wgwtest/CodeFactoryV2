@@ -2404,6 +2404,46 @@ export type RequirementAnalysisWorkingDocument = {
   revision_fragments: RequirementAnalysisRevisionFragment[];
 };
 
+export type RequirementAnalysisSessionPhase =
+  | "configured"
+  | "exploration_convergence"
+  | "draft_entry_confirmation"
+  | "draft_generation"
+  | "draft_review"
+  | string;
+
+export type RequirementAnalysisDecisionStateItem = {
+  item_id?: string;
+  content: string;
+  source_turn_id?: string | null;
+  target_section?: string;
+  status?: string;
+};
+
+export type RequirementAnalysisDecisionState = {
+  topic?: string;
+  confirmed_facts: RequirementAnalysisDecisionStateItem[];
+  confirmed_decisions: RequirementAnalysisDecisionStateItem[];
+  tentative_assumptions: RequirementAnalysisDecisionStateItem[];
+  open_questions: RequirementAnalysisDecisionStateItem[];
+  rejected_directions: RequirementAnalysisDecisionStateItem[];
+  next_focus: string;
+  chapter_projections: RequirementAnalysisDecisionStateItem[];
+};
+
+export type RequirementAnalysisDecisionStateDocumentSection = {
+  section_id: string;
+  heading: string;
+  items: RequirementAnalysisDecisionStateItem[];
+};
+
+export type RequirementAnalysisDecisionStateDocument = {
+  document_id: string;
+  title: string;
+  phase: RequirementAnalysisSessionPhase;
+  sections: RequirementAnalysisDecisionStateDocumentSection[];
+};
+
 export type RequirementAnalysisWorkingDocumentSection = {
   section_id: string;
   target_section: string;
@@ -2426,6 +2466,8 @@ export type RequirementAnalysisTurn = {
     semantic: string;
   };
   input_relation: RequirementAnalysisInputRelation;
+  decision_state_delta?: Partial<RequirementAnalysisDecisionState>;
+  decision_state_change_summary?: Record<string, unknown>;
   spec_execution: RequirementAnalysisSpecExecution;
   post_update_review: RequirementAnalysisPostUpdateReview;
   closure_decision: RequirementAnalysisClosureAssessment;
@@ -2481,6 +2523,10 @@ export type RequirementAnalysisSession = {
   template_id: string;
   knowledge_package_id: string;
   write_policy: string;
+  session_phase: RequirementAnalysisSessionPhase;
+  decision_state: RequirementAnalysisDecisionState;
+  decision_state_document: RequirementAnalysisDecisionStateDocument;
+  draft_snapshot?: Record<string, unknown> | null;
   stable_contract: RequirementAnalysisStableContract;
   messages: RequirementAnalysisMessage[];
   turns: RequirementAnalysisTurn[];

@@ -28,11 +28,15 @@ class StagePromptBundleBuilder:
         chapter_configuration_context = dict(context.get("chapter_configuration_context") or {})
         template_shape_assessment = dict(context.get("template_shape_assessment") or {})
         target_anchor_plan = list(context.get("target_anchor_plan") or [])
+        decision_state = dict(context.get("decision_state") or {})
+        decision_state_document = dict(context.get("decision_state_document") or {})
         stage_task_definition_json = json.dumps(stage_task_definition, ensure_ascii=False)
         quality_constraints_json = json.dumps(quality_constraints, ensure_ascii=False)
         chapter_configuration_context_json = json.dumps(chapter_configuration_context, ensure_ascii=False)
         template_shape_assessment_json = json.dumps(template_shape_assessment, ensure_ascii=False)
         target_anchor_plan_json = json.dumps(target_anchor_plan, ensure_ascii=False)
+        decision_state_json = json.dumps(decision_state, ensure_ascii=False)
+        decision_state_document_json = json.dumps(decision_state_document, ensure_ascii=False)
         assembled_prompt = (
             f"{prompt.base_contract_text.strip()}\n\n"
             f"{loaded.policy_text.strip()}\n\n"
@@ -45,6 +49,8 @@ class StagePromptBundleBuilder:
             f"阶段质量约束 JSON：{quality_constraints_json}\n"
             f"模板形态评估 TemplateShapeAssessment JSON：{template_shape_assessment_json}\n"
             f"目标锚点规划 TargetAnchorPlan JSON：{target_anchor_plan_json}\n"
+            f"需求分析结构化状态 DecisionState JSON：{decision_state_json}\n"
+            f"结构化状态承载页 DecisionStateDocument JSON：{decision_state_document_json}\n"
             f"阶段采用策略 JSON：{adoption_policy_json}\n"
             f"必须返回且只返回符合此结构的 JSON：{schema_json}"
         )
@@ -62,6 +68,8 @@ class StagePromptBundleBuilder:
             "chapter_configuration_context_json": chapter_configuration_context_json,
             "template_shape_assessment_json": template_shape_assessment_json,
             "target_anchor_plan_json": target_anchor_plan_json,
+            "decision_state_json": decision_state_json,
+            "decision_state_document_json": decision_state_document_json,
             "assembled_prompt": assembled_prompt,
             "base_contract_text": prompt.base_contract_text,
             "policy_text": loaded.policy_text,

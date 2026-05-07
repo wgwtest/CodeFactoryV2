@@ -61,6 +61,17 @@ function formatRequirementAnalysisMessageRole(role: string) {
   return role;
 }
 
+function formatRequirementAnalysisSessionPhase(phase: string) {
+  const labels: Record<string, string> = {
+    configured: "已完成会话配置",
+    exploration_convergence: "探索与收束阶段",
+    draft_entry_confirmation: "落稿确认阶段",
+    draft_generation: "落稿与成稿阶段",
+    draft_review: "成稿审阅阶段",
+  };
+  return labels[phase] ?? phase;
+}
+
 function buildDefaultRequirementAnalysisTemplateName(topic: string) {
   const normalizedTopic = topic.trim() || "未命名需求规格说明";
   return `${normalizedTopic}模板实例`;
@@ -897,6 +908,7 @@ function SessionTab({
             <>
               <div className="requirement-analysis-lab-session-strip">
                 <Text strong>会话 {session.session_id}</Text>
+                <Tag color="geekblue">阶段 {formatRequirementAnalysisSessionPhase(session.session_phase)}</Tag>
                 <Tag>Provider {session.provider_id}</Tag>
                 <Tag>Model {session.model}</Tag>
                 <Tag>{resolveRequirementAnalysisWritePolicyLabel(session.write_policy, writePolicies)}</Tag>
@@ -1179,6 +1191,16 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
               <LogAuditBlock
                 logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_json"
+                value={getString(promptBundle, "decision_state_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_document_json"
+                value={getString(promptBundle, "decision_state_document_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
                 title="provider_request.prompt_bundle.working_document_json"
                 value={getString(promptBundle, "working_document_json")}
               />
@@ -1221,6 +1243,16 @@ function ProviderLogDetail({ log, logSchema }: { log: RequirementAnalysisProvide
               />
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.stage_id" value={getString(promptBundle, "stage_id") || log.stage_id || getString(mockContext, "stage_id")} />
               <LogAuditBlock logSchema={logSchema} title="provider_request.prompt_bundle.prompt_id" value={getString(promptBundle, "prompt_id") || getLogPromptId(log)} />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_json"
+                value={getString(promptBundle, "decision_state_json")}
+              />
+              <LogAuditBlock
+                logSchema={logSchema}
+                title="provider_request.prompt_bundle.decision_state_document_json"
+                value={getString(promptBundle, "decision_state_document_json")}
+              />
               <LogAuditBlock
                 logSchema={logSchema}
                 title="provider_request.prompt_bundle.working_document_json"
@@ -1388,11 +1420,16 @@ function buildWorkingDocumentSegments(text: string, fragments: WorkingDocumentFr
 function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {
   return (
     <section className="requirement-analysis-lab-panel requirement-analysis-lab-summary">
-      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是会话内临时正文；完成度树和沟通路径作为辅助对照。" />
+      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是结构化状态承载页；临时正文、完成度树和沟通路径作为辅助对照。" />
       {session ? (
         <Tabs
-          defaultActiveKey="working-document"
+          defaultActiveKey="decision-state"
           items={[
+            {
+              key: "decision-state",
+              label: "结构化状态",
+              children: <DecisionStateDocumentView session={session} />,
+            },
             {
               key: "working-document",
               label: "临时正文",
@@ -1416,6 +1453,57 @@ function SessionSummary({ session }: { session: RequirementAnalysisSession | nul
         </div>
       )}
     </section>
+  );
+}
+
+function DecisionStateDocumentView({ session }: { session: RequirementAnalysisSession }) {
+  const document = session.decision_state_document;
+
+  return (
+    <div className="requirement-analysis-lab-spec-summary">
+      <div className="requirement-analysis-lab-summary-title-row">
+        <Text strong>结构化状态 / A4 视图</Text>
+        <Space size={8} wrap>
+          <Tag color="geekblue">{formatRequirementAnalysisSessionPhase(session.session_phase)}</Tag>
+          <Tag color="blue">focus: {session.active_spec_node_id ?? "已完成"}</Tag>
+        </Space>
+      </div>
+      <div className="requirement-analysis-lab-working-document">
+        <div className="requirement-analysis-lab-working-document-sheet is-decision-state">
+          <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-decision-state-page">
+            <div className="requirement-analysis-lab-working-document-page-head">
+              <Text strong>{document.title}</Text>
+              <Text type="secondary">{session.topic}</Text>
+            </div>
+            <div className="requirement-analysis-lab-working-document-body">
+              {document.sections.map((section) => (
+                <div className="requirement-analysis-lab-working-document-block" key={section.section_id}>
+                  <div className="requirement-analysis-lab-working-document-anchor">
+                    <Text strong>{section.heading}</Text>
+                  </div>
+                  {section.items.length ? (
+                    <div className="requirement-analysis-lab-decision-state-list">
+                      {section.items.map((item, index) => (
+                        <div className="requirement-analysis-lab-decision-state-item" key={`${section.section_id}-${item.item_id ?? index}`}>
+                          <Text>{item.content}</Text>
+                          <div className="requirement-analysis-lab-decision-state-item-meta">
+                            {item.target_section ? <Tag>{item.target_section}</Tag> : null}
+                            {item.status ? <Tag color="default">{item.status}</Tag> : null}
+                            {item.source_turn_id ? <Text type="secondary">{item.source_turn_id}</Text> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">当前未形成内容。</Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

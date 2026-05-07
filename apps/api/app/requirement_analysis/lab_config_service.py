@@ -64,7 +64,7 @@ class RequirementAnalysisLabConfigService:
                     {
                         "path": "provider_request.prompt_bundle.stage_id",
                         "label": "Stage ID",
-                        "description": "当前模型调用所属的轮次阶段标识，用于区分 intent_understanding、write、review_after_apply 与 next_interaction_planning。",
+                        "description": "当前模型调用所属的轮次阶段标识，用于区分 intent_understanding、decision_state_delta 与 next_interaction_planning。",
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
@@ -83,25 +83,37 @@ class RequirementAnalysisLabConfigService:
                         "path": "provider_request.prompt_bundle.stage_task_definition_json",
                         "label": "Stage Task Definition JSON",
                         "description": "本阶段任务定义，用于追溯模型被要求解决什么问题、写入哪些章节和按什么标准接受。",
-                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
+                        "used_when": "decision_state_delta 和 next_interaction_planning 阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.quality_constraints_json",
                         "label": "Quality Constraints JSON",
                         "description": "本阶段质量约束，用于追溯最低写作深度、必须覆盖维度和助手回复要求。",
-                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
+                        "used_when": "decision_state_delta 和 next_interaction_planning 阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_json",
                         "label": "Working Document JSON",
-                        "description": "本轮调用前带入模型的临时正文快照，用于判断模型是否看到了既有正文。",
+                        "description": "本轮调用前带入模型的临时正文投影快照，用于判断模型是否看到了既有正文视图。",
                         "used_when": "每次调用模型 Provider 前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.decision_state_json",
+                        "label": "Decision State JSON",
+                        "description": "本轮模型调用前的结构化状态快照，用于确认探索阶段的业务主状态。",
+                        "used_when": "decision_state_delta 和 next_interaction_planning 阶段调用模型前使用。",
+                    },
+                    {
+                        "path": "provider_request.prompt_bundle.decision_state_document_json",
+                        "label": "Decision State Document JSON",
+                        "description": "结构化状态 A4 承载页投影，用于确认用户可见状态页与模型上下文一致。",
+                        "used_when": "结构化状态展示和 next_interaction_planning 阶段使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_after_apply_json",
                         "label": "Working Document After Apply JSON",
-                        "description": "Review 阶段使用的应用后正文快照，用于确认回看基于真实落地后的正文。",
-                        "used_when": "review_after_apply 阶段调用模型前使用。",
+                        "description": "正式落稿校核阶段使用的应用后正文快照；探索阶段通常为空。",
+                        "used_when": "正式落稿校核阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_excerpt",
@@ -112,8 +124,8 @@ class RequirementAnalysisLabConfigService:
                     {
                         "path": "provider_request.prompt_bundle.review_target_paths",
                         "label": "Review Target Paths",
-                        "description": "本轮重点审查的规格锚点路径，用于解释当前回看到底在看哪里。",
-                        "used_when": "每次调用模型 Provider 前使用。",
+                        "description": "正式落稿校核阶段重点审查的规格锚点路径；探索阶段不作为主判断依据。",
+                        "used_when": "正式落稿校核阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.recent_revision_fragments",
@@ -124,8 +136,8 @@ class RequirementAnalysisLabConfigService:
                     {
                         "path": "provider_request.prompt_bundle.review_goal",
                         "label": "Review Goal",
-                        "description": "本轮回看目标，说明当前章节还要确认什么。",
-                        "used_when": "每次调用模型 Provider 前使用。",
+                        "description": "正式落稿校核目标；探索阶段下一步焦点由结构化状态和交互规划决定。",
+                        "used_when": "正式落稿校核阶段调用模型前使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.schema_json",
@@ -192,9 +204,10 @@ class RequirementAnalysisLabConfigService:
                     "target_document_structure",
                     "stage_task_definition",
                     "stage_quality_constraints",
+                    "decision_state_delta",
+                    "decision_state_change_summary",
                     "spec_execution",
                     "post_update_review",
-                    "review_after_apply_result",
                     "next_interaction_plan",
                     "closure_decision",
                     "next_interaction",

@@ -83,6 +83,8 @@ class DeepSeekRequirementAnalysisClient:
             "chapter_configuration_context_json": json.dumps(context.get("chapter_configuration_context") or {}, ensure_ascii=False),
             "template_shape_assessment_json": json.dumps(context.get("template_shape_assessment") or {}, ensure_ascii=False),
             "target_anchor_plan_json": json.dumps(context.get("target_anchor_plan") or [], ensure_ascii=False),
+            "decision_state_json": json.dumps(context.get("decision_state") or {}, ensure_ascii=False),
+            "decision_state_document_json": json.dumps(context.get("decision_state_document") or {}, ensure_ascii=False),
             "working_document_excerpt": str((context.get("working_document_after_apply") or {}).get("excerpt") or context.get("working_document_excerpt") or ""),
             "review_target_paths": list(context.get("review_target_paths") or []),
             "recent_revision_fragments": list(context.get("recent_revision_fragments") or []),
@@ -229,6 +231,41 @@ class DeepSeekRequirementAnalysisClient:
                 "target_document_structure": self._normalize_target_document_structure(payload.get("target_document_structure")),
                 "stage_task_definition": self._normalize_stage_task_definition(payload.get("stage_task_definition")),
                 "stage_quality_constraints": self._normalize_stage_quality_constraints(payload.get("stage_quality_constraints")),
+                "confidence": self._normalize_confidence(payload.get("confidence")),
+            }
+            return {
+                **normalized_output,
+                "raw_model_response": self._stage_raw_model_response(
+                    session=session,
+                    user_input=user_input,
+                    prompt_bundle=prompt_bundle,
+                    request_messages=request_messages,
+                    raw_content=raw_content,
+                    payload=payload,
+                    normalized_output=normalized_output,
+                    stage=stage,
+                ),
+            }
+        if prompt_id == "decision_state_delta":
+            target_anchor_plan = self._normalize_target_anchor_plan(payload.get("target_anchor_plan"))
+            normalized_output = {
+                "organizer_interpretation": self._normalize_organizer_interpretation(payload.get("organizer_interpretation")),
+                "assistant_message": str(payload.get("assistant_message") or "本轮已更新结构化状态。"),
+                "next_suggestion": self._normalize_next_suggestion(payload.get("next_suggestion")),
+                "next_question": str(payload.get("next_question") or ""),
+                "quick_options": self._normalize_quick_options(payload.get("quick_options")),
+                "decision_state_delta": self._normalize_decision_state_delta(payload.get("decision_state_delta")),
+                "template_shape_assessment": self._normalize_template_shape_assessment(payload.get("template_shape_assessment")),
+                "target_anchor_plan": target_anchor_plan,
+                "confirmed_facts_delta": self._string_list(payload.get("confirmed_facts_delta")),
+                "open_questions_delta": self._string_list(payload.get("open_questions_delta")),
+                "document_patch": self._normalize_document_patch(
+                    payload.get("document_patch"),
+                    session=session,
+                    target_anchor_plan=target_anchor_plan,
+                ),
+                "annotations": self._string_list(payload.get("annotations")),
+                "risks": self._string_list(payload.get("risks")),
                 "confidence": self._normalize_confidence(payload.get("confidence")),
             }
             return {
@@ -592,6 +629,52 @@ class DeepSeekRequirementAnalysisClient:
         }
 
     @staticmethod
+    def _normalize_decision_state_delta(value: Any) -> dict:
+        if not isinstance(value, dict):
+            return {
+                "confirmed_facts": [],
+                "confirmed_decisions": [],
+                "tentative_assumptions": [],
+                "open_questions": [],
+                "rejected_directions": [],
+                "chapter_projections": [],
+                "next_focus": "",
+            }
+        return {
+            "confirmed_facts": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("confirmed_facts")),
+            "confirmed_decisions": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("confirmed_decisions")),
+            "tentative_assumptions": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("tentative_assumptions")),
+            "open_questions": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("open_questions")),
+            "rejected_directions": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("rejected_directions")),
+            "chapter_projections": DeepSeekRequirementAnalysisClient._normalize_decision_state_items(value.get("chapter_projections")),
+            "next_focus": str(value.get("next_focus") or ""),
+        }
+
+    @staticmethod
+    def _normalize_decision_state_items(value: Any) -> list[dict]:
+        if not isinstance(value, list):
+            return []
+        items: list[dict] = []
+        for item in value[:12]:
+            if isinstance(item, dict):
+                content = str(item.get("content") or item.get("summary") or item.get("text") or "").strip()
+                if not content:
+                    continue
+                items.append(
+                    {
+                        "content": content,
+                        "source_turn_id": item.get("source_turn_id"),
+                        "target_section": str(item.get("target_section") or ""),
+                        "status": str(item.get("status") or "active"),
+                    }
+                )
+                continue
+            content = str(item).strip()
+            if content:
+                items.append({"content": content, "source_turn_id": None, "target_section": "", "status": "active"})
+        return items
+
+    @staticmethod
     def _stage_raw_model_response(
         *,
         session: SessionSnapshot,
@@ -612,6 +695,8 @@ class DeepSeekRequirementAnalysisClient:
             "chapter_configuration_context_json": str((prompt_bundle or {}).get("chapter_configuration_context_json") or ""),
             "template_shape_assessment_json": str((prompt_bundle or {}).get("template_shape_assessment_json") or ""),
             "target_anchor_plan_json": str((prompt_bundle or {}).get("target_anchor_plan_json") or ""),
+            "decision_state_json": str((prompt_bundle or {}).get("decision_state_json") or ""),
+            "decision_state_document_json": str((prompt_bundle or {}).get("decision_state_document_json") or ""),
             "working_document_excerpt": str((prompt_bundle or {}).get("working_document_excerpt") or ""),
             "review_target_paths": list((prompt_bundle or {}).get("review_target_paths") or []),
             "recent_revision_fragments": list((prompt_bundle or {}).get("recent_revision_fragments") or []),

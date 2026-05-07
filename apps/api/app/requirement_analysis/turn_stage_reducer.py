@@ -51,6 +51,12 @@ class TurnStageReducer:
             raise ValueError("turn stage results include no write stage")
         return dict(write_results[0].model_output)
 
+    def reduce_decision_state_delta_stage(self, *, plan: TurnStagePlan, stage_results: list[TurnStageResult]) -> dict:
+        results = [result for result in stage_results if self._stage_kind(plan, result.stage_id) == "decision_state_delta"]
+        if not results:
+            raise ValueError("turn stage results include no decision_state_delta stage")
+        return dict(results[-1].model_output)
+
     def reduce_review_stage(
         self,
         *,
@@ -176,8 +182,10 @@ class TurnStageReducer:
             return f"阶段 {stage_id} 已生成意图理解、目标文档结构和阶段任务定义。"
         if stage_kind == "review":
             return f"阶段 {stage_id} 已基于应用后的临时正文生成回看审计。"
+        if stage_kind == "decision_state_delta":
+            return f"阶段 {stage_id} 已生成结构化状态增量与正文投影候选。"
         if stage_kind == "next_interaction":
-            return f"阶段 {stage_id} 已基于回看结果生成下一步交互规划。"
+            return f"阶段 {stage_id} 已基于结构化状态生成下一步交互规划。"
         return f"阶段 {stage_id} 已生成理解、事实和正文 patch 候选。"
 
     @staticmethod

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from app.orchestrators.package_loader import OrchestratorPackage
 from app.requirement_analysis.models import RequirementAnalysisTurnCreate
+from app.requirement_analysis.decision_state_service import DecisionStateService
 from app.requirement_analysis.next_interaction_service import NextInteractionService
 from app.requirement_analysis.provider_call_log_service import ProviderCallLogService
 from app.requirement_analysis.provider_call_service import RequirementAnalysisProviderCallService
@@ -45,6 +47,7 @@ class RequirementAnalysisTurnEngine:
         working_document_service: WorkingDocumentService,
         working_document_review_service: WorkingDocumentReviewService,
         turn_decision_service: TurnDecisionService,
+        decision_state_service: DecisionStateService,
     ) -> None:
         self.turn_context_builder = turn_context_builder
         self.provider_call_service = provider_call_service
@@ -62,9 +65,11 @@ class RequirementAnalysisTurnEngine:
         self.working_document_service = working_document_service
         self.working_document_review_service = working_document_review_service
         self.turn_decision_service = turn_decision_service
+        self.decision_state_service = decision_state_service
         self.stage_runtime_context_builder = StageRuntimeContextBuilder(
             working_document_service=working_document_service,
         )
+        self._last_stage_inputs: dict[str, dict] = {}
 
     def run_turn(self, session: SessionSnapshot, payload: RequirementAnalysisTurnCreate) -> TurnExecutionResult:
         state = dict(session.payload or {})
@@ -78,6 +83,7 @@ class RequirementAnalysisTurnEngine:
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
         stage_plan = self.turn_stage_planner.build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
         stage_results: list[TurnStageResult] = []
+        self._last_stage_inputs = {}
 
         working_document = dict(
             context.working_document
@@ -98,7 +104,7 @@ class RequirementAnalysisTurnEngine:
                 working_document=working_document,
             ).to_prompt_context()
             stage_results.append(
-                self.turn_stage_executor.run(
+                self._run_stage(
                     stage=stage,
                     orchestrator=orchestrator,
                     session=session,
@@ -112,34 +118,61 @@ class RequirementAnalysisTurnEngine:
         stage_task_definition = dict(intent_output.get("stage_task_definition") or {})
         stage_quality_constraints = dict(intent_output.get("stage_quality_constraints") or {})
 
-        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
-            stage_input = self.stage_runtime_context_builder.build(
-                session=session,
-                context=context,
-                stage=stage,
-                intent_understanding_result=intent_understanding_result,
-                target_document_structure=target_document_structure,
-                stage_task_definition=stage_task_definition,
-                stage_quality_constraints=stage_quality_constraints,
-                working_document=working_document,
-            ).to_prompt_context()
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
+        decision_state_delta_stages = self._stages_by_kind(stage_plan=stage_plan, stage_kind="decision_state_delta")
+        if decision_state_delta_stages:
+            for stage in decision_state_delta_stages:
+                stage_input = self.stage_runtime_context_builder.build(
                     session=session,
                     context=context,
-                    stage_input=stage_input,
+                    stage=stage,
+                    intent_understanding_result=intent_understanding_result,
+                    target_document_structure=target_document_structure,
+                    stage_task_definition=stage_task_definition,
+                    stage_quality_constraints=stage_quality_constraints,
+                    working_document=working_document,
+                ).to_prompt_context()
+                stage_results.append(
+                    self._run_stage(
+                        stage=stage,
+                        orchestrator=orchestrator,
+                        session=session,
+                        context=context,
+                        stage_input=stage_input,
+                    )
                 )
+            model_output = self.turn_stage_reducer.reduce_decision_state_delta_stage(
+                plan=stage_plan,
+                stage_results=stage_results,
             )
-        model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
+        else:
+            for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
+                stage_input = self.stage_runtime_context_builder.build(
+                    session=session,
+                    context=context,
+                    stage=stage,
+                    intent_understanding_result=intent_understanding_result,
+                    target_document_structure=target_document_structure,
+                    stage_task_definition=stage_task_definition,
+                    stage_quality_constraints=stage_quality_constraints,
+                    working_document=working_document,
+                ).to_prompt_context()
+                stage_results.append(
+                    self._run_stage(
+                        stage=stage,
+                        orchestrator=orchestrator,
+                        session=session,
+                        context=context,
+                        stage_input=stage_input,
+                    )
+                )
+            model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
         model_output = self.turn_output_service.normalize_turn_model_output(model_output, session=session)
         model_output = self.turn_output_service.validate_anchor_plan_refs(
             model_output=model_output,
             chapter_configuration_context=self.stage_runtime_context_builder.build(
                 session=session,
                 context=context,
-                stage={"stage_id": "write", "stage_kind": "write", "prompt_id": "write"},
+                stage={"stage_id": "decision_state_delta", "stage_kind": "decision_state_delta", "prompt_id": "decision_state_delta"},
                 working_document=working_document,
             ).chapter_configuration_context,
         )
@@ -197,37 +230,45 @@ class RequirementAnalysisTurnEngine:
             global_review=global_review,
             review_target_paths=target_review.get("review_target", []),
         )
-        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="review"):
-            stage_input = self.stage_runtime_context_builder.build(
-                session=session,
-                context=context,
-                stage=stage,
-                intent_understanding_result=intent_understanding_result,
-                target_document_structure=target_document_structure,
-                stage_task_definition=stage_task_definition,
-                stage_quality_constraints=stage_quality_constraints,
-                template_shape_assessment=model_output["template_shape_assessment"],
-                target_anchor_plan=model_output["target_anchor_plan"],
-                working_document=working_document,
-                working_document_after_apply=review_stage_input["working_document_after_apply"],
-                working_document_update=working_document_update,
-            ).to_prompt_context()
-            stage_input.update(review_stage_input)
-            stage_results.append(
-                self.turn_stage_executor.run(
-                    stage=stage,
-                    orchestrator=orchestrator,
+        review_stages = self._stages_by_kind(stage_plan=stage_plan, stage_kind="review")
+        if review_stages:
+            for stage in review_stages:
+                stage_input = self.stage_runtime_context_builder.build(
                     session=session,
                     context=context,
-                    stage_input=review_stage_input,
+                    stage=stage,
+                    intent_understanding_result=intent_understanding_result,
+                    target_document_structure=target_document_structure,
+                    stage_task_definition=stage_task_definition,
+                    stage_quality_constraints=stage_quality_constraints,
+                    template_shape_assessment=model_output["template_shape_assessment"],
+                    target_anchor_plan=model_output["target_anchor_plan"],
+                    working_document=working_document,
+                    working_document_after_apply=review_stage_input["working_document_after_apply"],
+                    working_document_update=working_document_update,
+                ).to_prompt_context()
+                stage_input.update(review_stage_input)
+                stage_results.append(
+                    self._run_stage(
+                        stage=stage,
+                        orchestrator=orchestrator,
+                        session=session,
+                        context=context,
+                        stage_input=stage_input,
+                    )
                 )
+            review_reduction = self.turn_stage_reducer.reduce_review_stage(
+                plan=stage_plan,
+                stage_results=stage_results,
+                target_review=target_review,
+                global_review=global_review,
             )
-        review_reduction = self.turn_stage_reducer.reduce_review_stage(
-            plan=stage_plan,
-            stage_results=stage_results,
-            target_review=target_review,
-            global_review=global_review,
-        )
+        else:
+            review_reduction = {
+                "target_review": target_review,
+                "global_review": global_review,
+                "review_stage_output": {},
+            }
         target_review = dict(review_reduction["target_review"])
         global_review = dict(review_reduction["global_review"])
         review_after_apply_result = {
@@ -259,6 +300,30 @@ class RequirementAnalysisTurnEngine:
         }
         continue_same_topic = global_review["status"] == "continue_same_topic"
         focus_spec_node = projection.projection_spec_node if continue_same_topic else next_spec_node
+        session_phase = str(state.get("session_phase") or "exploration_convergence")
+        decision_state = dict(state.get("decision_state") or {})
+        decision_state_delta: dict = {}
+        decision_state_change_summary: dict = {}
+        pre_planning_state_delta = self._decision_state_delta_for_pre_planning(
+            model_output=model_output,
+            turn_id=turn_id,
+            target_spec_node=projection.projection_spec_node,
+        )
+        if pre_planning_state_delta:
+            decision_state_apply_result = self.decision_state_service.apply_delta(
+                decision_state=decision_state,
+                delta=pre_planning_state_delta,
+                turn_id=turn_id,
+                target_spec_node=projection.projection_spec_node,
+                next_focus=str(pre_planning_state_delta.get("next_focus") or ""),
+            )
+            decision_state = decision_state_apply_result.decision_state
+            decision_state_delta = decision_state_apply_result.decision_state_delta
+            decision_state_change_summary = decision_state_apply_result.decision_state_change_summary
+        decision_state_document = self.decision_state_service.render_document(
+            decision_state=decision_state,
+            session_phase=session_phase,
+        )
 
         next_planning_output = {
             "next_interaction_plan": {},
@@ -276,6 +341,8 @@ class RequirementAnalysisTurnEngine:
                 stage_quality_constraints=stage_quality_constraints,
                 template_shape_assessment=model_output["template_shape_assessment"],
                 target_anchor_plan=model_output["target_anchor_plan"],
+                decision_state=decision_state,
+                decision_state_document=decision_state_document,
                 working_document=working_document,
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
@@ -293,7 +360,7 @@ class RequirementAnalysisTurnEngine:
                 }
             )
             stage_results.append(
-                self.turn_stage_executor.run(
+                self._run_stage(
                     stage=stage,
                     orchestrator=orchestrator,
                     session=session,
@@ -315,6 +382,30 @@ class RequirementAnalysisTurnEngine:
             model_output=model_output,
             next_interaction_plan=next_interaction_plan,
             next_interaction=next_interaction,
+        )
+        state_delta = dict(decision_state_delta or pre_planning_state_delta or {})
+        if not state_delta:
+            state_delta = self._decision_state_delta_for_pre_planning(
+                model_output=model_output,
+                turn_id=turn_id,
+                target_spec_node=projection.projection_spec_node,
+                next_focus=str(next_interaction.get("prompt") or ""),
+            )
+        elif next_interaction.get("prompt"):
+            state_delta = {**state_delta, "next_focus": str(next_interaction.get("prompt") or "")}
+        decision_state_apply_result = self.decision_state_service.apply_delta(
+            decision_state=dict(state.get("decision_state") or {}),
+            delta=state_delta,
+            turn_id=turn_id,
+            target_spec_node=projection.projection_spec_node,
+            next_focus=str(next_interaction.get("prompt") or ""),
+        )
+        decision_state = decision_state_apply_result.decision_state
+        decision_state_delta = decision_state_apply_result.decision_state_delta
+        decision_state_change_summary = decision_state_apply_result.decision_state_change_summary
+        decision_state_document = self.decision_state_service.render_document(
+            decision_state=decision_state,
+            session_phase=session_phase,
         )
         structured_update["questions"] = self.next_interaction_service.ensure_next_open_question(
             questions=structured_update["questions"],
@@ -400,6 +491,8 @@ class RequirementAnalysisTurnEngine:
             "target_document_structure": target_document_structure,
             "stage_task_definition": stage_task_definition,
             "stage_quality_constraints": stage_quality_constraints,
+            "decision_state_delta": decision_state_delta,
+            "decision_state_change_summary": decision_state_change_summary,
             "spec_execution": spec_execution,
             "post_update_review": post_update_review,
             "review_after_apply_result": review_after_apply_result,
@@ -460,6 +553,10 @@ class RequirementAnalysisTurnEngine:
             turn=turn,
             state_patch={
                 "turns": updated_turns,
+                "session_phase": session_phase,
+                "decision_state": decision_state,
+                "decision_state_document": decision_state_document,
+                "draft_snapshot": state.get("draft_snapshot"),
                 "messages": messages,
                 "confirmed_facts": confirmed_facts,
                 "open_questions": open_questions,
@@ -490,6 +587,25 @@ class RequirementAnalysisTurnEngine:
             {"step": 6, "title": "解析结构化输出", "status": "completed"},
             {"step": 7, "title": "校验并落状态", "status": "completed"},
         ]
+
+    def _run_stage(
+        self,
+        *,
+        stage: dict,
+        orchestrator: OrchestratorPackage,
+        session: SessionSnapshot,
+        context,
+        stage_input: dict,
+    ) -> TurnStageResult:
+        stage_id = str(stage.get("stage_id") or "stage-001")
+        self._last_stage_inputs[stage_id] = dict(stage_input or {})
+        return self.turn_stage_executor.run(
+            stage=stage,
+            orchestrator=orchestrator,
+            session=session,
+            context=context,
+            stage_input=stage_input,
+        )
 
     @staticmethod
     def _stages_by_kind(*, stage_plan: TurnStagePlan, stage_kind: str) -> list[dict]:
@@ -616,20 +732,14 @@ class RequirementAnalysisTurnEngine:
             if section and section not in sections:
                 sections.append(section)
         if sections:
-            write_summary = f"本轮已把{'、'.join(sections)}写入临时正文。"
+            write_summary = f"本轮已更新结构化状态，并同步刷新{'、'.join(sections)}的临时正文投影。"
         else:
-            write_summary = str(model_output.get("assistant_message") or "本轮已更新临时正文。").strip()
+            write_summary = str(model_output.get("assistant_message") or "本轮已更新结构化状态。").strip()
 
         planning_message = planning_user_message
-        if planning_message and "临时正文" in planning_message:
-            base_message = planning_message
-            if sections and not any(section in base_message for section in sections):
-                base_message = RequirementAnalysisTurnEngine._append_sentence(
-                    base_message,
-                    f"写入位置：{'、'.join(sections)}。",
-                )
-        else:
-            base_message = write_summary
+        base_message = write_summary
+        if planning_message and "临时正文" not in planning_message and planning_message not in base_message:
+            base_message = RequirementAnalysisTurnEngine._append_sentence(base_message, planning_message)
         if next_question and next_question not in planning_message:
             base_message = RequirementAnalysisTurnEngine._append_sentence(
                 base_message,
@@ -672,17 +782,6 @@ class RequirementAnalysisTurnEngine:
         first_call_index: int,
     ) -> list[dict]:
         logs: list[dict] = []
-        prompt_bundle_overrides = {
-            "working_document_json": str(working_document),
-            "working_document_excerpt": working_document_update.get("after_excerpt", ""),
-            "review_target_paths": target_review.get("review_target", []),
-            "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),
-            "review_goal": (
-                projection_spec_node.get("question")
-                or projection_spec_node.get("target_section")
-                or ""
-            ),
-        }
         provider_response_overrides = {
             "target_review_json": target_review,
             "global_review_json": global_review,
@@ -705,6 +804,14 @@ class RequirementAnalysisTurnEngine:
                         "global_review": global_review,
                     },
                 }
+            elif stage_kind == "decision_state_delta":
+                model_output = final_write_model_output
+                provider_normalized_output = final_write_provider_normalized_output
+                service_output = {
+                    **self.provider_call_log_service.service_output(final_write_model_output),
+                    "working_document_update": working_document_update,
+                    "post_update_review": post_update_review,
+                }
             elif stage_kind == "write":
                 model_output = final_write_model_output
                 provider_normalized_output = final_write_provider_normalized_output
@@ -717,6 +824,14 @@ class RequirementAnalysisTurnEngine:
                 model_output = stage_result.model_output
                 provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
                 service_output = self.provider_call_log_service.service_output(model_output)
+            stage_input = dict(self._last_stage_inputs.get(stage_result.stage_id) or {})
+            prompt_bundle_overrides = self._prompt_bundle_fallbacks(
+                stage_input=stage_input,
+                working_document=working_document,
+                working_document_update=working_document_update,
+                target_review=target_review,
+                projection_spec_node=projection_spec_node,
+            )
             logs.append(
                 self.provider_call_log_service.build(
                     turn_id=turn_id,
@@ -739,6 +854,63 @@ class RequirementAnalysisTurnEngine:
         return logs
 
     @staticmethod
+    def _prompt_bundle_fallbacks(
+        *,
+        stage_input: dict,
+        working_document: dict,
+        working_document_update: dict,
+        target_review: dict,
+        projection_spec_node: dict,
+    ) -> dict:
+        return {
+            "decision_state_json": RequirementAnalysisTurnEngine._json_prompt_value(stage_input.get("decision_state") or {}),
+            "decision_state_document_json": RequirementAnalysisTurnEngine._json_prompt_value(
+                stage_input.get("decision_state_document") or {}
+            ),
+            "working_document_json": RequirementAnalysisTurnEngine._json_prompt_value(
+                stage_input.get("working_document") or working_document
+            ),
+            "working_document_after_apply_json": RequirementAnalysisTurnEngine._json_prompt_value(
+                stage_input.get("working_document_after_apply") or {}
+            ),
+            "working_document_update_json": RequirementAnalysisTurnEngine._json_prompt_value(
+                stage_input.get("working_document_update") or working_document_update
+            ),
+            "working_document_excerpt": str(
+                (dict(stage_input.get("working_document_after_apply") or {}).get("excerpt"))
+                or working_document_update.get("after_excerpt")
+                or ""
+            ),
+            "review_target_paths": list(stage_input.get("review_target_paths") or target_review.get("review_target") or []),
+            "recent_revision_fragments": list(
+                stage_input.get("recent_revision_fragments") or working_document_update.get("applied_fragment_ids") or []
+            ),
+            "review_goal": str(stage_input.get("review_goal") or projection_spec_node.get("question") or projection_spec_node.get("target_section") or ""),
+        }
+
+    def _decision_state_delta_for_pre_planning(
+        self,
+        *,
+        model_output: dict,
+        turn_id: str,
+        target_spec_node: dict | None,
+        next_focus: str = "",
+    ) -> dict:
+        state_delta = dict(model_output.get("decision_state_delta") or {})
+        if state_delta:
+            return state_delta
+        return self.decision_state_service.build_delta_from_legacy_output(
+            model_output=model_output,
+            turn_id=turn_id,
+            target_spec_node=target_spec_node,
+            next_focus=next_focus,
+        )
+
+    @staticmethod
+    def _json_prompt_value(value: object) -> str:
+        return json.dumps(value, ensure_ascii=False)
+
+    @staticmethod
     def _stage_for_result(*, stage_plan: TurnStagePlan, stage_result: TurnStageResult) -> dict:
         for stage in stage_plan.stages:
             if str(stage.get("stage_id") or "") == stage_result.stage_id:
@@ -758,6 +930,8 @@ class RequirementAnalysisTurnEngine:
             return "intent"
         if "next_interaction" in stage_result.stage_id or "planning" in stage_result.stage_id:
             return "next_interaction"
+        if "decision_state_delta" in stage_result.stage_id:
+            return "decision_state_delta"
         if "review" in stage_result.stage_id:
             return "review"
         return "write"

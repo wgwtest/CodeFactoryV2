@@ -21,6 +21,8 @@ class StageRuntimeContext:
     stage_quality_constraints: dict
     template_shape_assessment: dict
     target_anchor_plan: list[dict]
+    decision_state: dict
+    decision_state_document: dict
     working_document: dict
     working_document_after_apply: dict
     working_document_update: dict
@@ -41,6 +43,8 @@ class StageRuntimeContext:
             "stage_quality_constraints": self.stage_quality_constraints,
             "template_shape_assessment": self.template_shape_assessment,
             "target_anchor_plan": list(self.target_anchor_plan),
+            "decision_state": self.decision_state,
+            "decision_state_document": self.decision_state_document,
             "working_document": self.working_document,
             "working_document_after_apply": self.working_document_after_apply,
             "working_document_update": self.working_document_update,
@@ -74,6 +78,8 @@ class StageRuntimeContextBuilder:
         stage_quality_constraints: dict | None = None,
         template_shape_assessment: dict | None = None,
         target_anchor_plan: list[dict] | None = None,
+        decision_state: dict | None = None,
+        decision_state_document: dict | None = None,
         working_document: dict | None = None,
         working_document_after_apply: dict | None = None,
         working_document_update: dict | None = None,
@@ -106,6 +112,10 @@ class StageRuntimeContextBuilder:
             stage_quality_constraints=dict(stage_quality_constraints or {}),
             template_shape_assessment=dict(template_shape_assessment or {}),
             target_anchor_plan=list(target_anchor_plan or []),
+            decision_state=dict(decision_state if decision_state is not None else state.get("decision_state") or {}),
+            decision_state_document=dict(
+                decision_state_document if decision_state_document is not None else state.get("decision_state_document") or {}
+            ),
             working_document=working_doc,
             working_document_after_apply=dict(working_document_after_apply or {}),
             working_document_update=dict(working_document_update or {}),
@@ -137,6 +147,8 @@ class StageRuntimeContextBuilder:
             "questions": context.questions,
             "facts": context.facts,
             "patches": context.patches,
+            "decision_state": dict((session.payload or {}).get("decision_state") or {}),
+            "session_phase": str((session.payload or {}).get("session_phase") or "exploration_convergence"),
         }
 
     @staticmethod

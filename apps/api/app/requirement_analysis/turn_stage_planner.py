@@ -76,6 +76,8 @@ class TurnStagePlanner:
     def _infer_stage_kind(stage_id: str, stage_type: str) -> str:
         if "intent" in stage_id:
             return "intent"
+        if "decision_state_delta" in stage_id:
+            return "decision_state_delta"
         if "next_interaction" in stage_id or "planning" in stage_id:
             return "next_interaction"
         if "review" in stage_id:
@@ -96,8 +98,10 @@ class TurnStagePlanner:
             return ["turn_context", "previous_interaction", "working_document", "spec_tree"]
         if stage_kind == "review":
             return ["working_document_after_apply", "working_document_update"]
+        if stage_kind == "decision_state_delta":
+            return ["intent_understanding_result", "decision_state", "spec_tree", "working_document"]
         if stage_kind == "next_interaction":
-            return ["review_after_apply", "spec_tree", "working_document"]
+            return ["decision_state", "spec_tree", "working_document"]
         return ["session_snapshot", "turn_context"]
 
     @staticmethod
@@ -112,6 +116,17 @@ class TurnStagePlanner:
             ]
         if stage_kind == "review":
             return ["post_update_review", "annotations"]
+        if stage_kind == "decision_state_delta":
+            return [
+                "organizer_interpretation",
+                "decision_state_delta",
+                "confirmed_facts_delta",
+                "open_questions_delta",
+                "document_patch",
+                "annotations",
+                "risks",
+                "confidence",
+            ]
         if stage_kind == "next_interaction":
             return ["next_interaction_plan", "planning_trace", "confidence"]
         return [

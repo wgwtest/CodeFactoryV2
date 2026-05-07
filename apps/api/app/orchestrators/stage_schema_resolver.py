@@ -19,6 +19,8 @@ class StageSchemaResolver:
         stage_id = str(stage.get("stage_id") or "")
         if stage_kind == "intent" or "intent" in stage_id:
             return "intent_understanding"
+        if stage_kind == "decision_state_delta" or "decision_state_delta" in stage_id:
+            return "decision_state_delta"
         if stage_kind == "next_interaction" or "next_interaction" in stage_id or "planning" in stage_id:
             return "next_interaction_planning"
         if stage_kind == "review" or "review" in stage_id:

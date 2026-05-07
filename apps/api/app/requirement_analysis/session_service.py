@@ -8,6 +8,7 @@ from app.orchestrators.package_loader import OrchestratorPackage, get_orchestrat
 from app.requirement_analysis.input_normalizer import InputNormalizer
 from app.requirement_analysis.input_relation_classifier import InputRelationClassifier
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate, RequirementAnalysisTurnCreate
+from app.requirement_analysis.decision_state_service import DecisionStateService
 from app.requirement_analysis.next_interaction_service import NextInteractionService
 from app.requirement_analysis.provider_call_log_service import ProviderCallLogService
 from app.requirement_analysis.process_artifact_service import ProcessArtifactService
@@ -39,6 +40,7 @@ class RequirementAnalysisSessionService:
         self.input_normalizer = InputNormalizer()
         self.input_relation_classifier = InputRelationClassifier(normalizer=self.input_normalizer)
         self.process_artifact_service = ProcessArtifactService()
+        self.decision_state_service = DecisionStateService()
         self.spec_tree_service = RequirementSpecTreeService(session)
         self.provider_call_service = RequirementAnalysisProviderCallService(
             spec_tree_service=self.spec_tree_service,
@@ -87,6 +89,7 @@ class RequirementAnalysisSessionService:
             working_document_service=self.working_document_service,
             working_document_review_service=self.working_document_review_service,
             turn_decision_service=self.turn_decision_service,
+            decision_state_service=self.decision_state_service,
         )
 
     def list_orchestrators(self) -> dict:
@@ -124,7 +127,23 @@ class RequirementAnalysisSessionService:
             topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
             template_id=payload.template_id,
         )
+        initial_question = self.summary_artifact_service.suggestion_content_for_node(
+            self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+        )
+        initial_active_node = self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
+        decision_state = self.decision_state_service.initialize(
+            topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
+            initial_question=initial_question,
+            active_spec_node=initial_active_node,
+        )
         state = {
+            "session_phase": "exploration_convergence",
+            "decision_state": decision_state,
+            "decision_state_document": self.decision_state_service.render_document(
+                decision_state=decision_state,
+                session_phase="exploration_convergence",
+            ),
+            "draft_snapshot": None,
             "messages": [
                 {
                     "id": "msg-0001",
@@ -138,19 +157,13 @@ class RequirementAnalysisSessionService:
             ],
             "turns": [],
             "confirmed_facts": [],
-            "open_questions": [
-                self.summary_artifact_service.suggestion_content_for_node(
-                    self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
-                )
-            ],
+            "open_questions": [initial_question],
             "document_patch": [],
             "working_document": working_document,
             "questions": [
                 {
                     "question_id": "Q-001",
-                    "content": self.summary_artifact_service.suggestion_content_for_node(
-                        self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
-                    ),
+                    "content": initial_question,
                     "status": "open",
                     "target_section": self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "").get("target_section")
                     if self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
@@ -243,6 +256,16 @@ class RequirementAnalysisSessionService:
             "template_id": session.template_id,
             "knowledge_package_id": session.knowledge_package_id,
             "write_policy": session.write_policy,
+            "session_phase": str(state.get("session_phase") or "exploration_convergence"),
+            "decision_state": self.decision_state_service.normalize_state(state.get("decision_state")),
+            "decision_state_document": dict(
+                state.get("decision_state_document")
+                or self.decision_state_service.render_document(
+                    decision_state=self.decision_state_service.normalize_state(state.get("decision_state")),
+                    session_phase=str(state.get("session_phase") or "exploration_convergence"),
+                )
+            ),
+            "draft_snapshot": state.get("draft_snapshot"),
             "stable_contract": self._stable_contract(),
             "messages": list(state.get("messages", [])),
             "turns": list(state.get("turns", [])),

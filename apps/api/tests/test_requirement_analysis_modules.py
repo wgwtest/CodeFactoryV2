@@ -292,25 +292,22 @@ def test_requirement_analysis_turn_strategy_comes_from_orchestrator_package() ->
 
     strategy = TurnStrategyService(registry=registry).load(orchestrator=orchestrator, context=context)
 
-    assert strategy.strategy_id == "xg-heuristic-orchestrator:intent_write_review_plan"
+    assert strategy.strategy_id == "xg-heuristic-orchestrator:decision_state_loop"
     assert strategy.adoption_policy == "adopt_last_completed_stage"
     assert [stage["stage_id"] for stage in strategy.stages] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
-    assert [stage["stage_type"] for stage in strategy.stages] == ["policy_interpreted"] * 4
+    assert [stage["stage_type"] for stage in strategy.stages] == ["policy_interpreted"] * 3
     assert [stage["stage_kind"] for stage in strategy.stages] == [
         "intent",
-        "write",
-        "review",
+        "decision_state_delta",
         "next_interaction",
     ]
     assert [stage["prompt_id"] for stage in strategy.stages] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
 
@@ -321,17 +318,14 @@ def test_orchestrator_package_loads_stage_prompt_schema_and_adoption_assets() ->
     assert "base_contract" in loaded.stage_prompts
     assert "intent_understanding.system" in loaded.stage_prompts
     assert "intent_understanding.user" in loaded.stage_prompts
-    assert "write.system" in loaded.stage_prompts
-    assert "write.user" in loaded.stage_prompts
-    assert "review_after_apply.system" in loaded.stage_prompts
-    assert "review_after_apply.user" in loaded.stage_prompts
+    assert "decision_state_delta.system" in loaded.stage_prompts
+    assert "decision_state_delta.user" in loaded.stage_prompts
     assert "next_interaction_planning.system" in loaded.stage_prompts
     assert "next_interaction_planning.user" in loaded.stage_prompts
     assert loaded.stage_schemas["intent_understanding"]["type"] == "object"
     assert "intent_understanding_result" in loaded.stage_schemas["intent_understanding"]["properties"]
-    assert loaded.stage_schemas["write"]["type"] == "object"
-    assert "document_patch" in loaded.stage_schemas["write"]["properties"]
-    assert "target_review" in loaded.stage_schemas["review_after_apply"]["properties"]
+    assert loaded.stage_schemas["decision_state_delta"]["type"] == "object"
+    assert "decision_state_delta" in loaded.stage_schemas["decision_state_delta"]["properties"]
     assert "next_interaction_plan" in loaded.stage_schemas["next_interaction_planning"]["properties"]
     assert loaded.stage_adoption_policies["intent_understanding"]["adopt_fields"] == [
         "intent_understanding_result",
@@ -340,20 +334,14 @@ def test_orchestrator_package_loads_stage_prompt_schema_and_adoption_assets() ->
         "stage_quality_constraints",
         "confidence",
     ]
-    assert loaded.stage_adoption_policies["write"]["adopt_fields"] == [
+    assert loaded.stage_adoption_policies["decision_state_delta"]["adopt_fields"] == [
         "organizer_interpretation",
-        "template_shape_assessment",
-        "target_anchor_plan",
+        "decision_state_delta",
         "confirmed_facts_delta",
+        "open_questions_delta",
         "document_patch",
         "annotations",
         "risks",
-        "confidence",
-    ]
-    assert loaded.stage_adoption_policies["review_after_apply"]["adopt_fields"] == [
-        "target_review",
-        "global_review",
-        "review_annotations",
         "confidence",
     ]
     assert loaded.stage_adoption_policies["next_interaction_planning"]["adopt_fields"] == [
@@ -366,23 +354,15 @@ def test_orchestrator_package_loads_stage_prompt_schema_and_adoption_assets() ->
 def test_orchestrator_runner_host_builds_stage_specific_prompt_bundle() -> None:
     host = OrchestratorRunnerHost()
 
-    write_bundle = host.build_stage_prompt_bundle(
+    decision_delta_bundle = host.build_stage_prompt_bundle(
         "xg-heuristic-orchestrator",
-        stage={"stage_id": "write", "stage_kind": "write"},
-        context={"user_input": "补充系统目标", "working_document": {"blocks": []}},
+        stage={"stage_id": "decision_state_delta", "stage_kind": "decision_state_delta"},
+        context={"user_input": "补充系统目标", "decision_state": {"confirmed_facts": []}},
     )
     intent_bundle = host.build_stage_prompt_bundle(
         "xg-heuristic-orchestrator",
         stage={"stage_id": "intent_understanding", "stage_kind": "intent"},
         context={"user_input": "补充系统目标", "previous_interaction": {"type": "none"}},
-    )
-    review_bundle = host.build_stage_prompt_bundle(
-        "xg-heuristic-orchestrator",
-        stage={"stage_id": "review_after_apply", "stage_kind": "review", "prompt_id": "review_after_apply"},
-        context={
-            "working_document_after_apply": {"blocks": [{"block_id": "blk-0001", "text": "目标正文"}]},
-            "target_review": {"status": "acceptable"},
-        },
     )
     planning_bundle = host.build_stage_prompt_bundle(
         "xg-heuristic-orchestrator",
@@ -394,22 +374,17 @@ def test_orchestrator_runner_host_builds_stage_specific_prompt_bundle() -> None:
     assert intent_bundle["prompt_id"] == "intent_understanding"
     assert "识别用户这一轮真正想做什么" in intent_bundle["stage_prompt_text"]
     assert "intent_understanding_result" in intent_bundle["schema_json"]
-    assert write_bundle["stage_id"] == "write"
-    assert write_bundle["prompt_id"] == "write"
-    assert "只返回 JSON" in write_bundle["base_contract_text"]
-    assert "章节配置上下文" in write_bundle["stage_prompt_text"]
-    assert "document_patch" in write_bundle["schema_json"]
-    assert "target_anchor_plan" in write_bundle["schema_json"]
-    assert "adoption_policy_json" in write_bundle
-    assert review_bundle["stage_id"] == "review_after_apply"
-    assert review_bundle["prompt_id"] == "review_after_apply"
-    assert "应用后的临时正文" in review_bundle["stage_prompt_text"]
-    assert "target_review" in review_bundle["schema_json"]
+    assert decision_delta_bundle["stage_id"] == "decision_state_delta"
+    assert decision_delta_bundle["prompt_id"] == "decision_state_delta"
+    assert "只返回 JSON" in decision_delta_bundle["base_contract_text"]
+    assert "需求分析结构化状态" in decision_delta_bundle["stage_prompt_text"]
+    assert "decision_state_delta" in decision_delta_bundle["schema_json"]
+    assert "adoption_policy_json" in decision_delta_bundle
     assert planning_bundle["stage_id"] == "next_interaction_planning"
     assert planning_bundle["prompt_id"] == "next_interaction_planning"
     assert "下一步交互规划" in planning_bundle["stage_prompt_text"]
     assert "next_interaction_plan" in planning_bundle["schema_json"]
-    assert write_bundle["assembled_prompt"] != review_bundle["assembled_prompt"]
+    assert decision_delta_bundle["assembled_prompt"] != planning_bundle["assembled_prompt"]
 
 
 def test_requirement_analysis_turn_stage_plan_and_reducer_are_typed() -> None:
@@ -444,22 +419,27 @@ def test_requirement_analysis_turn_stage_plan_and_reducer_are_typed() -> None:
     plan = TurnStagePlanner().build_plan(strategy=strategy, context=context, orchestrator=orchestrator)
 
     assert isinstance(plan, TurnStagePlan)
-    assert plan.strategy_id.endswith("intent_write_review_plan")
+    assert plan.strategy_id.endswith("decision_state_loop")
     assert [stage["stage_id"] for stage in plan.stages] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert plan.stages[0]["stage_kind"] == "intent"
     assert plan.stages[0]["requires_provider_call"] is True
-    assert plan.stages[1]["stage_kind"] == "write"
-    assert plan.stages[2]["stage_kind"] == "review"
-    assert plan.stages[2]["requires_provider_call"] is True
-    assert plan.stages[2]["execution_mode"] == "model"
-    assert plan.stages[2]["input_sources"] == ["working_document_after_apply", "working_document_update"]
-    assert plan.stages[3]["stage_kind"] == "next_interaction"
-    assert plan.stages[3]["input_sources"] == ["review_after_apply", "spec_tree", "working_document"]
+    assert plan.stages[1]["stage_kind"] == "decision_state_delta"
+    assert plan.stages[1]["requires_provider_call"] is True
+    assert plan.stages[1]["execution_mode"] == "model"
+    assert plan.stages[1]["input_sources"] == [
+        "intent_understanding_result",
+        "stage_task_definition",
+        "stage_quality_constraints",
+        "decision_state",
+        "spec_tree",
+        "working_document",
+    ]
+    assert plan.stages[2]["stage_kind"] == "next_interaction"
+    assert plan.stages[2]["input_sources"] == ["decision_state", "spec_tree", "working_document"]
 
     reducer = TurnStageReducer()
     audit = reducer.stage_audit(
