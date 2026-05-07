@@ -6477,7 +6477,20 @@ export function ArchiveManagementPage() {
   };
 
   if (loading) return <Card loading />;
-  if (error) return <Alert type="error" showIcon message="知识库列表加载失败" description={error} />;
+  if (error)
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="知识库列表加载失败"
+        description={error}
+        action={
+          <Button type="primary" size="small" onClick={() => void refreshArchives(activeArchiveId)}>
+            重新加载知识库列表
+          </Button>
+        }
+      />
+    );
 
   return (
     <>

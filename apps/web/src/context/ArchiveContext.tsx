@@ -72,6 +72,8 @@ export function ArchiveProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const refreshArchives = useCallback(async (preferredArchiveId?: string | null) => {
+    setLoading(true);
+    setError(null);
     try {
       const response = await getKnowledgeArchives();
       const nextArchives = response.data;

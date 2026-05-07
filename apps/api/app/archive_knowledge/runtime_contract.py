@@ -99,6 +99,27 @@ class RuntimeStageGraph(BaseModel):
     primary_edge_ids: list[str] = Field(default_factory=list)
 
 
+class RuleExecutionRecord(BaseModel):
+    execution_id: str
+    archive_id: str
+    document_id: str
+    stage_id: str
+    rule_id: str
+    rule_version: str = "r1.0"
+    rule_hash: str | None = None
+    snapshot_id: str | None = None
+    input_artifact_refs: list[str] = Field(default_factory=list)
+    input_hash: str | None = None
+    output_artifact_refs: list[str] = Field(default_factory=list)
+    output_hash: str | None = None
+    affected_object_ids: list[str] = Field(default_factory=list)
+    affected_relation_ids: list[str] = Field(default_factory=list)
+    decision: str
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    executed_at: str | None = None
+    source: Literal["runtime_trace", "policy_snapshot", "derived"] = "derived"
+
+
 class RuntimeStageSnapshot(BaseModel):
     stage_id: str
     label: str
@@ -110,6 +131,7 @@ class RuntimeStageSnapshot(BaseModel):
     stage_observer: RuntimeObserverPayload
     node_observers: dict[str, RuntimeObserverPayload] = Field(default_factory=dict)
     edge_observers: dict[str, RuntimeObserverPayload] = Field(default_factory=dict)
+    rule_execution_records: list[RuleExecutionRecord] = Field(default_factory=list)
 
 
 class RuntimePolicySnapshotRule(BaseModel):
@@ -118,6 +140,17 @@ class RuntimePolicySnapshotRule(BaseModel):
     meaning: str = ""
     threshold: str = ""
     action: str
+    rule_id: str | None = None
+    rule_version: str | None = None
+    effect_kind: str | None = None
+    scope_selector: dict[str, Any] = Field(default_factory=dict)
+    input_schema: list[dict[str, Any]] = Field(default_factory=list)
+    output_schema: list[dict[str, Any]] = Field(default_factory=list)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    trace_fields: list[str] = Field(default_factory=list)
+    rule_hash: str | None = None
+    contract_status: str | None = None
+    contract_errors: list[str] = Field(default_factory=list)
 
 
 class RuntimePolicySnapshotStage(BaseModel):
@@ -134,6 +167,11 @@ class RuntimePolicySnapshot(BaseModel):
     snapshot_id: str
     captured_at: str | None = None
     archive_id: str
+    policy_package_id: str | None = None
+    policy_package_name: str | None = None
+    policy_package_version_id: str | None = None
+    policy_package_version_status: str | None = None
+    policy_package_version_hash: str | None = None
     version_label: str
     scope_label: str
     ai_autoadapt_enabled: bool = True
@@ -154,6 +192,7 @@ class DocumentRuntimeContract(BaseModel):
     source_document: dict[str, Any] = Field(default_factory=dict)
     policy_snapshot: RuntimePolicySnapshot | None = None
     stages: list[RuntimeStageSnapshot] = Field(default_factory=list)
+    rule_execution_records: list[RuleExecutionRecord] = Field(default_factory=list)
 
 
 class RuntimeStageDefinition(BaseModel):

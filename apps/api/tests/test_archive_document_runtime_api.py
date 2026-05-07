@@ -160,6 +160,10 @@ def test_archive_document_runtime_endpoint_returns_13_stage_contract(tmp_path: P
     quality_gate = next(stage for stage in payload["stages"] if stage["stage_id"] == "quality_policy_evaluation_governance_gate")
     assert quality_gate["graph"]["nodes"]
     assert quality_gate["graph"]["edges"]
+    assert quality_gate["rule_execution_records"]
+    assert payload["rule_execution_records"]
+    assert payload["rule_execution_records"][0]["input_hash"].startswith("sha256:")
+    assert payload["rule_execution_records"][0]["output_hash"].startswith("sha256:")
 
 
 def test_unified_document_snapshot_covers_all_sections_and_paragraphs() -> None:
@@ -461,6 +465,48 @@ def test_archive_document_runtime_falls_back_to_running_build_state_before_manif
                         "ai_mode": "轻量识别 + 规则兜底",
                         "default_action": "block_return",
                         "rule_count": 3,
+                        "rules": [
+                            {
+                                "key": "asset-1",
+                                "name": "接入格式完整性",
+                                "meaning": "文件必须可读取并命中允许类型。",
+                                "threshold": "mime_type in allowlist && size > 0",
+                                "action": "block_return",
+                                "rule_id": "RL-ASSET-001",
+                                "rule_version": "r2.0",
+                                "effect_kind": "filter",
+                                "rule_hash": "sha256:asset-policy",
+                                "contract_status": "valid",
+                                "input_schema": [
+                                    {
+                                        "field_name": "input_hash",
+                                        "source_artifact": "asset_intake.input",
+                                        "field_type": "string",
+                                    }
+                                ],
+                                "output_schema": [
+                                    {
+                                        "field_name": "affected_object_ids",
+                                        "target_artifact": "asset_intake.output",
+                                        "field_type": "string[]",
+                                    },
+                                    {
+                                        "field_name": "output_hash",
+                                        "target_artifact": "runtime_snapshot",
+                                        "field_type": "string",
+                                    },
+                                ],
+                                "trace_fields": [
+                                    "rule_id",
+                                    "rule_version",
+                                    "stage_id",
+                                    "snapshot_id",
+                                    "input_hash",
+                                    "output_hash",
+                                    "affected_object_ids",
+                                ],
+                            }
+                        ],
                     }
                 ],
             },
@@ -496,6 +542,11 @@ def test_archive_document_runtime_falls_back_to_running_build_state_before_manif
     assert payload["source_document"]["source_file_path"] == "E:/runtime/live.docx"
     assert payload["policy_snapshot"]["version_label"] == "13 阶段抽取蓝图 v2"
     assert payload["policy_snapshot"]["snapshot_id"] == "policy-live-1"
+    asset_intake = next(stage for stage in payload["stages"] if stage["stage_id"] == "asset_intake")
+    assert asset_intake["rule_execution_records"][0]["source"] == "policy_snapshot"
+    assert asset_intake["rule_execution_records"][0]["rule_id"] == "RL-ASSET-001"
+    assert asset_intake["rule_execution_records"][0]["snapshot_id"] == "policy-live-1"
+    assert asset_intake["rule_execution_records"][0]["input_hash"].startswith("sha256:")
 
 
 def test_formal_archive_contributions_persist_parse_stage_snapshots_before_document_contribution(

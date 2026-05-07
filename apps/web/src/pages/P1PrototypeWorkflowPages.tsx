@@ -20,7 +20,7 @@ import { Link } from "react-router-dom";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { useArchiveContext } from "../context/ArchiveContext";
 import { getArchiveDocuments, getArchiveDocumentRuntime, getArchivePublication } from "../lib/archiveKnowledge";
-import { getArchivePolicyConfig } from "../lib/archives";
+import { getArchivePolicyConfig, updateArchivePolicyConfig } from "../lib/archives";
 import type {
   ArchiveDocumentRuntimeContract,
   ArchiveDocumentRuntimeGraphNode,
@@ -29,8 +29,11 @@ import type {
   ArchivePolicyAction,
   ArchivePolicyConfig,
   ArchivePublicationOverview,
+  ArchiveRuleInputFieldContract,
+  ArchiveRuleOutputFieldContract,
   ArchiveStagePolicyConfig,
   ArchiveStagePolicyRule,
+  UpdateArchivePolicyConfigInput,
 } from "../lib/api";
 
 const stageFallback: ArchiveStagePolicyConfig[] = [
@@ -71,6 +74,16 @@ const prototypeStageLabels = [
   "发布候选",
   "治理确认",
   "入仓映射",
+];
+
+const requiredRuleTraceFields = [
+  "rule_id",
+  "rule_version",
+  "stage_id",
+  "snapshot_id",
+  "input_hash",
+  "output_hash",
+  "affected_object_ids",
 ];
 
 function getPrototypeStageLabel(stage: ArchiveStagePolicyConfig, index: number) {
@@ -140,7 +153,7 @@ function usePolicyWorkbench() {
 
   const stages = useMemo(() => normalizePolicyStages(config), [config]);
 
-  return { activeArchive, activeArchiveId, config, stages, loading, error };
+  return { activeArchive, activeArchiveId, config, setConfig, stages, loading, error };
 }
 
 function normalizePolicyStages(config: ArchivePolicyConfig | null) {
@@ -156,6 +169,11 @@ function getStageByIndex(stages: ArchiveStagePolicyConfig[], index: number) {
   return stages[Math.min(index, Math.max(0, stages.length - 1))] ?? stageFallback[index] ?? stageFallback[0];
 }
 
+function getRuleContractDefaultStage(stages: ArchiveStagePolicyConfig[]) {
+  const preferred = getStageByIndex(stages, 5);
+  return preferred.rules.length ? preferred : stages.find((stage) => stage.rules.length > 0) ?? preferred;
+}
+
 function formatAction(action: ArchivePolicyAction) {
   return actionMeta[action]?.label ?? action;
 }
@@ -166,6 +184,145 @@ function actionColor(action: ArchivePolicyAction) {
 
 function countRules(stages: ArchiveStagePolicyConfig[]) {
   return stages.reduce((total, stage) => total + stage.rules.length, 0);
+}
+
+function getRuleId(rule: ArchiveStagePolicyRule) {
+  return rule.rule_id ?? rule.key;
+}
+
+function getRuleVersion(rule: ArchiveStagePolicyRule) {
+  return rule.rule_version ?? "r1.0";
+}
+
+function getRuleEffectKind(rule: ArchiveStagePolicyRule) {
+  return rule.effect_kind ?? "filter";
+}
+
+function getRuleTraceFields(rule: ArchiveStagePolicyRule) {
+  return rule.trace_fields?.length ? rule.trace_fields : requiredRuleTraceFields;
+}
+
+function getRuleInputSchema(rule: ArchiveStagePolicyRule) {
+  return rule.input_schema?.length
+    ? rule.input_schema
+    : [
+        {
+          field_name: "candidate_id",
+          source_artifact: "candidate_knowledge",
+          field_type: "string",
+          required: true,
+          include_in_input_hash: true,
+          validation: "non_empty",
+          example: "CND-001",
+          business_meaning: "候选对象标识",
+        },
+        {
+          field_name: "input_hash",
+          source_artifact: "runtime_snapshot",
+          field_type: "string",
+          required: true,
+          include_in_input_hash: true,
+          validation: "sha256",
+          example: "inp_b34e7d...",
+          business_meaning: "影响面重算定位",
+        },
+      ];
+}
+
+function getRuleOutputSchema(rule: ArchiveStagePolicyRule) {
+  return rule.output_schema?.length
+    ? rule.output_schema
+    : [
+        {
+          field_name: "affected_object_ids",
+          target_artifact: "impact_set",
+          field_type: "string[]",
+          producer: "rule_engine",
+          include_in_output_hash: true,
+          write_to_runtime: true,
+          write_to_audit: true,
+          used_for_impact: true,
+          example: "[OBJ-M-204]",
+          business_meaning: "受影响对象",
+        },
+        {
+          field_name: "output_hash",
+          target_artifact: "runtime_snapshot",
+          field_type: "string",
+          producer: "rule_engine",
+          include_in_output_hash: true,
+          write_to_runtime: true,
+          write_to_audit: true,
+          used_for_impact: false,
+          example: "out_a91e...",
+          business_meaning: "输出摘要",
+        },
+      ];
+}
+
+function toJsonDraft(value: unknown) {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
+function parseJsonDraft<T>(draft: string, label: string) {
+  try {
+    return { value: JSON.parse(draft) as T, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "无法解析 JSON";
+    return { value: null, error: `${label} JSON 格式错误：${message}` };
+  }
+}
+
+function validateRuleContractDraft(
+  inputSchema: ArchiveRuleInputFieldContract[],
+  outputSchema: ArchiveRuleOutputFieldContract[],
+  traceFields: string[],
+) {
+  const inputFields = new Set(inputSchema.map((field) => field.field_name));
+  const outputFields = new Set(outputSchema.map((field) => field.field_name));
+  const traceFieldSet = new Set(traceFields);
+  const errors: string[] = [];
+
+  if (!inputFields.has("input_hash")) errors.push("input_schema 缺少 input_hash");
+  if (!outputFields.has("output_hash")) errors.push("output_schema 缺少 output_hash");
+  if (!outputFields.has("affected_object_ids")) errors.push("output_schema 缺少 affected_object_ids");
+  requiredRuleTraceFields.forEach((field) => {
+    if (!traceFieldSet.has(field)) errors.push(`trace_fields 缺少 ${field}`);
+  });
+
+  return errors;
+}
+
+function bumpRuleVersion(version: string | null | undefined) {
+  const source = version || "r1.0";
+  const match = source.match(/^r(\d+)(?:\.(\d+))?$/);
+  if (!match) return `${source}.1`;
+  const major = Number(match[1]);
+  const minor = Number(match[2] ?? "0") + 1;
+  return `r${major}.${minor}`;
+}
+
+function bumpTrailingPolicyVersion(value: string | null | undefined, fallback: string) {
+  const source = value || fallback;
+  const match = source.match(/v(\d+)(?!.*v\d+)/);
+  if (!match || match.index === undefined) return `${source}-next`;
+  const next = `v${Number(match[1]) + 1}`;
+  return `${source.slice(0, match.index)}${next}${source.slice(match.index + match[0].length)}`;
+}
+
+function buildPolicyConfigPayload(config: ArchivePolicyConfig): UpdateArchivePolicyConfigInput {
+  return {
+    policy_package_id: config.policy_package_id,
+    policy_package_name: config.policy_package_name,
+    policy_package_version_id: config.policy_package_version_id,
+    policy_package_version_status: config.policy_package_version_status,
+    policy_package_version_hash: config.policy_package_version_hash,
+    version_label: config.version_label,
+    scope_label: config.scope_label,
+    ai_autoadapt_enabled: config.ai_autoadapt_enabled,
+    stage_order: config.stage_order,
+    stages: config.stages,
+  };
 }
 
 function PageLinkButton({ to, children }: { to: string; children: string }) {
@@ -453,6 +610,347 @@ export function StagePolicyConfigPage() {
 }
 
 export function RuleContractEditorPage() {
+  const { stages, config, setConfig, error } = usePolicyWorkbench();
+  const defaultStage = getRuleContractDefaultStage(stages);
+  const [selectedStageId, setSelectedStageId] = useState(defaultStage.stage_id);
+  const [selectedRuleKey, setSelectedRuleKey] = useState("");
+  const selectedStage = stages.find((stage) => stage.stage_id === selectedStageId) ?? defaultStage;
+  const selectedRule =
+    selectedStage.rules.find((rule) => rule.key === selectedRuleKey || getRuleId(rule) === selectedRuleKey) ??
+    selectedStage.rules[0] ??
+    buildFallbackStage("rule", "规则", "规则", 8).rules[0];
+  const selectedStageIndex = Math.max(0, stages.findIndex((stage) => stage.stage_id === selectedStage.stage_id));
+  const selectedStageLabel = getPrototypeStageLabel(selectedStage, selectedStageIndex);
+  const inputSchema = getRuleInputSchema(selectedRule);
+  const outputSchema = getRuleOutputSchema(selectedRule);
+  const traceFields = getRuleTraceFields(selectedRule);
+  const [inputSchemaDraft, setInputSchemaDraft] = useState(() => toJsonDraft(inputSchema));
+  const [outputSchemaDraft, setOutputSchemaDraft] = useState(() => toJsonDraft(outputSchema));
+  const [parametersDraft, setParametersDraft] = useState(() => toJsonDraft(selectedRule.parameters ?? {}));
+  const [traceFieldsDraft, setTraceFieldsDraft] = useState<string[]>(traceFields);
+  const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{
+    type: "success" | "info" | "warning" | "error";
+    message: string;
+    description?: string;
+  } | null>(null);
+  const contractErrors = selectedRule.contract_errors ?? [];
+  const inputDraftResult = parseJsonDraft<ArchiveRuleInputFieldContract[]>(inputSchemaDraft, "input_schema");
+  const outputDraftResult = parseJsonDraft<ArchiveRuleOutputFieldContract[]>(outputSchemaDraft, "output_schema");
+  const parameterDraftResult = parseJsonDraft<Record<string, unknown>>(parametersDraft, "parameters");
+  const draftInputSchema = Array.isArray(inputDraftResult.value) ? inputDraftResult.value : inputSchema;
+  const draftOutputSchema = Array.isArray(outputDraftResult.value) ? outputDraftResult.value : outputSchema;
+  const draftContractErrors = [
+    inputDraftResult.error,
+    outputDraftResult.error,
+    parameterDraftResult.error,
+    inputDraftResult.value !== null && !Array.isArray(inputDraftResult.value) ? "input_schema 必须是字段数组" : null,
+    outputDraftResult.value !== null && !Array.isArray(outputDraftResult.value) ? "output_schema 必须是字段数组" : null,
+    parameterDraftResult.value !== null && (Array.isArray(parameterDraftResult.value) || typeof parameterDraftResult.value !== "object")
+      ? "parameters 必须是对象"
+      : null,
+    ...validateRuleContractDraft(draftInputSchema, draftOutputSchema, traceFieldsDraft),
+  ].filter(Boolean) as string[];
+  const contractOk = draftContractErrors.length === 0;
+  const recordPreview = {
+    execution_id: `rex-${selectedStage.stage_id}-${getRuleId(selectedRule)}`,
+    archive_id: config?.archive_id ?? "--",
+    document_id: "DOC-20260506-0172",
+    stage_id: selectedStage.stage_id,
+    rule_id: getRuleId(selectedRule),
+    rule_version: getRuleVersion(selectedRule),
+    rule_hash: selectedRule.rule_hash ?? "--",
+    input_hash: "inp_runtime",
+    output_hash: "out_runtime",
+    affected_object_ids: "[OBJ-M-204, CND-1008]",
+    decision: getRuleEffectKind(selectedRule),
+  };
+
+  async function saveRuleContract(mode: "draft" | "version") {
+    if (!config) {
+      setSaveFeedback({ type: "warning", message: "当前没有可保存的策略包配置", description: "请先选择知识库并等待策略配置加载完成。" });
+      return;
+    }
+    if (draftContractErrors.length > 0 || !Array.isArray(inputDraftResult.value) || !Array.isArray(outputDraftResult.value) || !parameterDraftResult.value) {
+      setSaveFeedback({ type: "error", message: "合同校验未通过，暂不保存", description: draftContractErrors.join("；") });
+      return;
+    }
+
+    const currentStageConfig = config.stages[selectedStage.stage_id];
+    if (!currentStageConfig) {
+      setSaveFeedback({ type: "error", message: "未找到当前阶段配置", description: selectedStage.stage_id });
+      return;
+    }
+    if (!currentStageConfig.rules.some((rule) => rule.key === selectedRule.key || getRuleId(rule) === getRuleId(selectedRule))) {
+      setSaveFeedback({ type: "warning", message: "当前阶段还没有可保存的真实规则", description: "请先在阶段策略配置中新增规则，再编辑字段合同。" });
+      return;
+    }
+
+    const nextRuleVersion = mode === "version" ? bumpRuleVersion(getRuleVersion(selectedRule)) : getRuleVersion(selectedRule);
+    const nextRule: ArchiveStagePolicyRule = {
+      ...selectedRule,
+      rule_version: nextRuleVersion,
+      input_schema: inputDraftResult.value,
+      output_schema: outputDraftResult.value,
+      parameters: parameterDraftResult.value,
+      trace_fields: traceFieldsDraft,
+      contract_status: "valid",
+      contract_errors: [],
+      rule_hash: undefined,
+    };
+    const nextStage: ArchiveStagePolicyConfig = {
+      ...currentStageConfig,
+      rules: currentStageConfig.rules.map((rule) => (rule.key === selectedRule.key || getRuleId(rule) === getRuleId(selectedRule) ? nextRule : rule)),
+    };
+    const nextConfig: ArchivePolicyConfig = {
+      ...config,
+      version_label: mode === "version" ? bumpTrailingPolicyVersion(config.version_label, "13 阶段抽取蓝图 v1") : config.version_label,
+      policy_package_version_id:
+        mode === "version"
+          ? bumpTrailingPolicyVersion(config.policy_package_version_id, `${config.archive_id}:policy:v1`)
+          : config.policy_package_version_id,
+      policy_package_version_status: "draft",
+      policy_package_version_hash: undefined,
+      stages: {
+        ...config.stages,
+        [selectedStage.stage_id]: nextStage,
+      },
+    };
+
+    try {
+      setSaving(true);
+      const response = await updateArchivePolicyConfig(config.archive_id, buildPolicyConfigPayload(nextConfig));
+      setConfig(response.data);
+      setSaveFeedback({
+        type: "success",
+        message: mode === "version" ? "已保存为新策略包版本" : "已保存合同草稿",
+        description: `后端已重新计算策略包 hash：${response.data.policy_package_version_hash ?? "--"}`,
+      });
+    } catch (saveError) {
+      setSaveFeedback({
+        type: "error",
+        message: "保存规则字段合同失败",
+        description: saveError instanceof Error ? saveError.message : "未知错误",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!stages.some((stage) => stage.stage_id === selectedStageId)) {
+      setSelectedStageId(getRuleContractDefaultStage(stages).stage_id);
+    }
+  }, [selectedStageId, stages]);
+
+  useEffect(() => {
+    if (!selectedStage.rules.some((rule) => rule.key === selectedRuleKey || getRuleId(rule) === selectedRuleKey)) {
+      const firstRule = selectedStage.rules[0];
+      setSelectedRuleKey(firstRule ? getRuleId(firstRule) : "");
+    }
+  }, [selectedRuleKey, selectedStage.rules]);
+
+  useEffect(() => {
+    setInputSchemaDraft(toJsonDraft(inputSchema));
+    setOutputSchemaDraft(toJsonDraft(outputSchema));
+    setParametersDraft(toJsonDraft(selectedRule.parameters ?? {}));
+    setTraceFieldsDraft(traceFields);
+    setSaveFeedback(null);
+  }, [selectedStage.stage_id, selectedRule.key, selectedRule.rule_id, selectedRule.rule_version]);
+
+  return (
+    <ValidationWorkspace
+      title="规则字段配置与合同编辑"
+      description="阶段策略配置会冻结到运行快照，本页负责单条规则的字段级输入/输出合同、判断条件、trace fields 与 RuleExecutionRecord 预览。"
+      actions={
+        <Space wrap>
+          <Button
+            onClick={() =>
+              setSaveFeedback({
+                type: draftContractErrors.length ? "error" : "success",
+                message: draftContractErrors.length ? "合同校验未通过" : "合同校验通过",
+                description: draftContractErrors.length ? draftContractErrors.join("；") : "当前字段合同满足 RuleExecutionRecord 最小闭环。",
+              })
+            }
+          >
+            校验合同
+          </Button>
+          <Button loading={saving} onClick={() => void saveRuleContract("draft")}>保存草稿</Button>
+          <Button type="primary" loading={saving} onClick={() => void saveRuleContract("version")}>保存为新版本</Button>
+          <Button
+            onClick={() =>
+              setSaveFeedback({
+                type: "info",
+                message: "RuleExecutionRecord 已进入运行合同",
+                description: "质量门禁阶段会输出真实执行记录；其它阶段当前展示的是按字段合同生成的预览结构。",
+              })
+            }
+          >
+            查看执行记录
+          </Button>
+          <PageLinkButton to="/policies/stages">返回阶段配置</PageLinkButton>
+        </Space>
+      }
+      stats={[
+        { title: "rule_id", value: getRuleId(selectedRule) },
+        { title: "rule_version", value: getRuleVersion(selectedRule) },
+        { title: "effect_kind", value: getRuleEffectKind(selectedRule) },
+      ]}
+    >
+      <Space direction="vertical" size={16} style={{ display: "flex" }}>
+        {error ? <Alert type="warning" showIcon message="当前使用默认合同原型" description={error} /> : null}
+        {saveFeedback ? <Alert type={saveFeedback.type} showIcon closable message={saveFeedback.message} description={saveFeedback.description} onClose={() => setSaveFeedback(null)} /> : null}
+        <Alert
+          type={contractOk ? "success" : "error"}
+          showIcon
+          message={contractOk ? "合同完整性检查通过" : "合同校验未通过"}
+          description={
+            contractOk
+              ? "input_schema、output_schema、input_hash、output_hash、affected_object_ids 与 trace_fields 已具备最小闭环。"
+              : (draftContractErrors.length ? draftContractErrors : contractErrors).join("；")
+          }
+        />
+        <div className="p1-prototype-grid is-wide-right">
+          <Card className="p1-soft-card" title="规则身份与适用范围">
+            <Space direction="vertical" size={12} style={{ display: "flex" }}>
+              <Select
+                style={{ width: "100%" }}
+                value={selectedStage.stage_id}
+                onChange={setSelectedStageId}
+                options={stages.map((stage, index) => ({ value: stage.stage_id, label: getPrototypeStageLabel(stage, index) }))}
+              />
+              <Select
+                style={{ width: "100%" }}
+                value={getRuleId(selectedRule)}
+                onChange={setSelectedRuleKey}
+                options={selectedStage.rules.map((rule) => ({
+                  value: getRuleId(rule),
+                  label: `${rule.name} / ${getRuleId(rule)}`,
+                }))}
+              />
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="规则名称">{selectedRule.name}</Descriptions.Item>
+                <Descriptions.Item label="规则说明">{selectedRule.meaning || "--"}</Descriptions.Item>
+                <Descriptions.Item label="所属策略包">{config?.policy_package_name ?? config?.scope_label ?? "合同通用抽取"}</Descriptions.Item>
+                <Descriptions.Item label="策略包版本">{config?.policy_package_version_id ?? config?.version_label ?? "--"}</Descriptions.Item>
+                <Descriptions.Item label="适用阶段">{selectedStageLabel}</Descriptions.Item>
+                <Descriptions.Item label="阈值 / 条件">{selectedRule.threshold || "--"}</Descriptions.Item>
+                <Descriptions.Item label="默认动作">
+                  <Tag color={actionColor(selectedRule.action)}>{formatAction(selectedRule.action)}</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="规则哈希">{selectedRule.rule_hash ?? "--"}</Descriptions.Item>
+              </Descriptions>
+              <Card size="small" title="scope_selector">
+                <pre className="p1-json-preview">{JSON.stringify(selectedRule.scope_selector ?? {}, null, 2)}</pre>
+              </Card>
+            </Space>
+          </Card>
+
+          <Card className="p1-soft-card" title="输入 / 输出 Schema 编辑">
+            <Space direction="vertical" size={18} style={{ display: "flex" }}>
+              <Typography.Title level={5}>输入字段合同 input_schema</Typography.Title>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="field_name"
+                dataSource={draftInputSchema}
+                columns={[
+                  { title: "字段名", dataIndex: "field_name" },
+                  { title: "来源产物", dataIndex: "source_artifact" },
+                  { title: "类型", dataIndex: "field_type" },
+                  { title: "必填", render: (_value: unknown, record: ArchiveRuleInputFieldContract) => (record.required ? <Tag color="blue">是</Tag> : <Tag>否</Tag>) },
+                  { title: "参与 input_hash", render: (_value: unknown, record: ArchiveRuleInputFieldContract) => (record.include_in_input_hash ? "是" : "否") },
+                  { title: "校验规则", dataIndex: "validation" },
+                  { title: "业务含义", dataIndex: "business_meaning" },
+                  { title: "缺失动作", dataIndex: "missing_action" },
+                ]}
+              />
+              <label className="p1-contract-editor-field">
+                <span>input_schema JSON 草稿</span>
+                <Input.TextArea
+                  rows={8}
+                  value={inputSchemaDraft}
+                  onChange={(event) => setInputSchemaDraft(event.target.value)}
+                />
+              </label>
+              <Typography.Title level={5}>规则参数与判断条件</Typography.Title>
+              <Input.TextArea
+                rows={6}
+                value={parametersDraft}
+                onChange={(event) => setParametersDraft(event.target.value)}
+              />
+              <Typography.Title level={5}>输出字段合同 output_schema</Typography.Title>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="field_name"
+                dataSource={draftOutputSchema}
+                columns={[
+                  { title: "输出字段", dataIndex: "field_name" },
+                  { title: "目标产物", dataIndex: "target_artifact" },
+                  { title: "类型", dataIndex: "field_type" },
+                  { title: "生成方", dataIndex: "producer" },
+                  { title: "写入运行态", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.write_to_runtime ? "是" : "否") },
+                  { title: "写入审计", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.write_to_audit ? "是" : "否") },
+                  { title: "用于影响面", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.used_for_impact ? <Tag color="orange">是</Tag> : "否") },
+                  { title: "业务含义", dataIndex: "business_meaning" },
+                ]}
+              />
+              <label className="p1-contract-editor-field">
+                <span>output_schema JSON 草稿</span>
+                <Input.TextArea
+                  rows={8}
+                  value={outputSchemaDraft}
+                  onChange={(event) => setOutputSchemaDraft(event.target.value)}
+                />
+              </label>
+            </Space>
+          </Card>
+
+          <Card className="p1-soft-card p1-detail-panel" title="执行记录与影响说明">
+            <Space direction="vertical" size={14} style={{ display: "flex" }}>
+              <Typography.Title level={5}>Trace Fields</Typography.Title>
+              <Select
+                mode="tags"
+                style={{ width: "100%" }}
+                value={traceFieldsDraft}
+                onChange={setTraceFieldsDraft}
+                options={requiredRuleTraceFields.map((field) => ({ label: field, value: field }))}
+              />
+              <div className="p1-filter-pill-row">
+                {traceFieldsDraft.map((item) => (
+                  <span key={item} className="p1-filter-pill is-active">{item}</span>
+                ))}
+              </div>
+              <Card size="small" title="RuleExecutionRecord 预览">
+                <Descriptions column={1} size="small">
+                  {Object.entries(recordPreview).map(([key, value]) => (
+                    <Descriptions.Item key={key} label={key}>{String(value)}</Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </Card>
+              <Card size="small" title="影响面预估">
+                <Space direction="vertical" size={8}>
+                  <Tag color="purple">minimum_rebuild_stage_id = {selectedStageIndex + 1}</Tag>
+                  <span>保存为新版本后会生成 ImpactSet，只标记受影响候选与发布候选，不直接覆盖正式入库知识。</span>
+                  <span>运行时会用 input_hash / output_hash / affected_object_ids 定位需要增量重算的对象。</span>
+                </Space>
+              </Card>
+              <Alert
+                type="info"
+                showIcon
+                message="这条主干已经接入策略快照与 runtime 合同"
+                description="抽取启动会冻结策略包版本；质量门禁等阶段会输出 RuleExecutionRecord；后续规则变更影响面可以沿这些字段追踪。"
+              />
+            </Space>
+          </Card>
+        </div>
+      </Space>
+    </ValidationWorkspace>
+  );
+}
+
+export function LegacyRuleContractEditorPage() {
   const { stages, config, error } = usePolicyWorkbench();
   const defaultStage = getStageByIndex(stages, 5);
   const [selectedStageId, setSelectedStageId] = useState(defaultStage.stage_id);

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+import json
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from app.archive_knowledge.runtime_snapshot_service import (
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.archive_knowledge.runtime_contract import (
     DocumentRuntimeContract,
+    RuleExecutionRecord,
     RuntimeAction,
     RuntimeEvent,
     RuntimeGraphEdge,
@@ -131,6 +134,11 @@ class ArchiveDocumentRuntimeService:
             for definition in STAGE_DEFINITIONS
         ]
         current_stage = next((stage for stage in stages if stage.is_current), stages[-1])
+        rule_execution_records = [
+            record
+            for stage in stages
+            for record in stage.rule_execution_records
+        ]
         return DocumentRuntimeContract(
             archive_id=archive_id,
             document_id=document_id,
@@ -143,6 +151,7 @@ class ArchiveDocumentRuntimeService:
             source_document=context["source_document"],
             policy_snapshot=context.get("policy_snapshot"),
             stages=stages,
+            rule_execution_records=rule_execution_records,
         ).model_dump(mode="json")
 
     def _persisted_snapshots_requiring_refresh(
@@ -470,11 +479,116 @@ class ArchiveDocumentRuntimeService:
         if persisted is not None:
             stage = RuntimeStageSnapshot.model_validate(persisted)
             stage.is_current = is_current
-            return stage
+            return self._with_policy_rule_records(stage, definition, context)
         builder = getattr(self, f"_build_{definition.stage_id}_stage")
         stage = builder(definition, context, status)
         stage.is_current = is_current
+        return self._with_policy_rule_records(stage, definition, context)
+
+    def _with_policy_rule_records(
+        self,
+        stage: RuntimeStageSnapshot,
+        definition: RuntimeStageDefinition,
+        context: dict[str, Any],
+    ) -> RuntimeStageSnapshot:
+        if stage.rule_execution_records:
+            return stage
+        records = self._derive_policy_rule_records(stage, definition, context)
+        if records:
+            stage.rule_execution_records = records
         return stage
+
+    def _derive_policy_rule_records(
+        self,
+        stage: RuntimeStageSnapshot,
+        definition: RuntimeStageDefinition,
+        context: dict[str, Any],
+    ) -> list[RuleExecutionRecord]:
+        policy_snapshot = context.get("policy_snapshot")
+        if not isinstance(policy_snapshot, dict):
+            return []
+        policy_stage = next(
+            (
+                item
+                for item in policy_snapshot.get("stages", [])
+                if isinstance(item, dict) and item.get("stage_id") == definition.stage_id
+            ),
+            None,
+        )
+        if not isinstance(policy_stage, dict):
+            return []
+        rules = [rule for rule in policy_stage.get("rules", []) if isinstance(rule, dict)]
+        if not rules:
+            return []
+
+        snapshot_id = str(policy_snapshot.get("snapshot_id") or "")
+        affected_object_ids = stage.graph.primary_node_ids or [node.node_id for node in stage.graph.nodes[:8]]
+        records: list[RuleExecutionRecord] = []
+        for index, rule in enumerate(rules, start=1):
+            rule_id = str(rule.get("rule_id") or rule.get("key") or f"{definition.stage_id}-rule-{index}")
+            rule_version = str(rule.get("rule_version") or "r1.0")
+            input_refs = self._schema_artifact_refs(rule.get("input_schema"), "source_artifact", [f"{definition.stage_id}.input"])
+            output_refs = self._schema_artifact_refs(rule.get("output_schema"), "target_artifact", [f"{definition.stage_id}.output"])
+            input_payload = {
+                "snapshot_id": snapshot_id,
+                "archive_id": context["archive_id"],
+                "document_id": context["document_id"],
+                "stage_id": definition.stage_id,
+                "rule_id": rule_id,
+                "rule_version": rule_version,
+                "input_artifact_refs": input_refs,
+            }
+            output_payload = {
+                "stage_status": stage.status.value,
+                "rule_id": rule_id,
+                "affected_object_ids": affected_object_ids,
+                "output_artifact_refs": output_refs,
+            }
+            records.append(
+                RuleExecutionRecord(
+                    execution_id=f"rex-{context['document_id']}-{definition.stage_id}-{rule_id}",
+                    archive_id=context["archive_id"],
+                    document_id=context["document_id"],
+                    stage_id=definition.stage_id,
+                    rule_id=rule_id,
+                    rule_version=rule_version,
+                    rule_hash=rule.get("rule_hash"),
+                    snapshot_id=snapshot_id or None,
+                    input_artifact_refs=input_refs,
+                    input_hash=self._runtime_hash(input_payload),
+                    output_artifact_refs=output_refs,
+                    output_hash=self._runtime_hash(output_payload),
+                    affected_object_ids=affected_object_ids,
+                    affected_relation_ids=[],
+                    decision="not_started" if stage.status == RuntimeStatus.PENDING else str(rule.get("effect_kind") or rule.get("action") or stage.status.value),
+                    metrics={
+                        "stage_status": stage.status.value,
+                        "threshold": rule.get("threshold"),
+                        "contract_status": rule.get("contract_status"),
+                    },
+                    executed_at=policy_snapshot.get("captured_at"),
+                    source="policy_snapshot",
+                )
+            )
+        return records
+
+    @staticmethod
+    def _runtime_hash(payload: Any) -> str:
+        normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+        return "sha256:" + sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _schema_artifact_refs(schema: Any, key: str, fallback: list[str]) -> list[str]:
+        if not isinstance(schema, list):
+            return fallback
+        refs: list[str] = []
+        for field in schema:
+            if not isinstance(field, dict):
+                continue
+            value = field.get(key)
+            if value is not None and str(value) and str(value) not in refs:
+                refs.append(str(value))
+        return refs or fallback
 
     def _select_current_stage_id(self, statuses: dict[str, RuntimeStatus]) -> str:
         for preferred in (RuntimeStatus.RUNNING, RuntimeStatus.BLOCKED, RuntimeStatus.WARNING):

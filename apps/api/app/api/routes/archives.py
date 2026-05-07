@@ -36,6 +36,17 @@ class ArchiveStagePolicyRulePayload(BaseModel):
     meaning: str
     threshold: str
     action: str
+    rule_id: str | None = None
+    rule_version: str | None = None
+    effect_kind: str | None = None
+    scope_selector: dict[str, object] = Field(default_factory=dict)
+    input_schema: list[dict[str, object]] = Field(default_factory=list)
+    output_schema: list[dict[str, object]] = Field(default_factory=list)
+    parameters: dict[str, object] = Field(default_factory=dict)
+    trace_fields: list[str] = Field(default_factory=list)
+    rule_hash: str | None = None
+    contract_status: str | None = None
+    contract_errors: list[str] = Field(default_factory=list)
 
 
 class ArchiveStagePolicyConfigPayload(BaseModel):
@@ -55,6 +66,11 @@ class ArchiveStagePolicyConfigPayload(BaseModel):
 
 
 class ArchivePolicyConfigPayload(BaseModel):
+    policy_package_id: str | None = None
+    policy_package_name: str | None = None
+    policy_package_version_id: str | None = None
+    policy_package_version_status: str | None = None
+    policy_package_version_hash: str | None = None
     version_label: str
     scope_label: str
     ai_autoadapt_enabled: bool = True
