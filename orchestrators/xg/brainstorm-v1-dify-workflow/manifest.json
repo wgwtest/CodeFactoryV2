@@ -1,0 +1,36 @@
+{
+  "plugin_id": "brainstorm-v1-dify-workflow",
+  "name": "Brainstorm v1 Dify-shaped Workflow Orchestrator",
+  "version": "0.1.0",
+  "stage": "P2",
+  "plugin_type": "dify_workflow",
+  "document_type": "xg",
+  "contract": "xg-observable-orchestrator-contract@1",
+  "mode": "workflow",
+  "entry": "adapter.py",
+  "status": "active",
+  "priority": 25,
+  "package_id": "brainstorm-v1",
+  "aliases": ["xg-brainstorm-v1-dify-workflow", "brainstorm-dify"],
+  "adapter_entry": "dify_workflow",
+  "adapter_module": "adapter",
+  "adapter_class": "BrainstormV1DifyWorkflowAdapter",
+  "description": "以 Dify workflow 节点形态表达 Brainstorm v1 的意图理解、决策状态增量、章节投影和下一轮交互规划。",
+  "capabilities": {
+    "filled_document_text": true,
+    "document_patch": true,
+    "stage_results": false,
+    "stage_audits": false,
+    "provider_logs": false,
+    "decision_trace": true,
+    "review_after_apply": false,
+    "spec_tree_update": false,
+    "streaming_events": true,
+    "decision_state": true
+  },
+  "requires": {
+    "template": true,
+    "knowledge_binding": true,
+    "model_provider": "external_workflow_optional"
+  }
+}

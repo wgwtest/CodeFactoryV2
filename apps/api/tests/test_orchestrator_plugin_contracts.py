@@ -139,12 +139,20 @@ def test_plugin_registry_lists_local_and_dify_plugins() -> None:
     assert "xg-local-heuristic-orchestrator" in plugin_ids
     assert "xg-local-strong-rule-orchestrator" in plugin_ids
     assert "xg-dify-workflow-orchestrator" in plugin_ids
+    assert "brainstorm-v1-dify-workflow" in plugin_ids
 
     dify = registry.require("xg-dify-workflow-orchestrator")
     assert dify.plugin_type == "dify_workflow"
     assert dify.observability_level == "limited"
     assert dify.capabilities["filled_document_text"] is True
     assert dify.capabilities["stage_audits"] is False
+
+    brainstorm_dify = registry.require("brainstorm-v1-dify-workflow")
+    assert brainstorm_dify.plugin_type == "dify_workflow"
+    assert brainstorm_dify.package_id == "brainstorm-v1"
+    assert brainstorm_dify.observability_level == "limited"
+    assert brainstorm_dify.capabilities["decision_trace"] is True
+    assert brainstorm_dify.capabilities["stage_audits"] is False
 
 
 def test_plugin_registry_resolves_manifest_aliases_and_package_ids() -> None:
@@ -221,6 +229,75 @@ def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
 
     assert result.plugin["plugin_id"] == "xg-dify-workflow-orchestrator"
     assert result.plugin["observability_level"] == "limited"
+
+
+def test_brainstorm_v1_dify_workflow_adapter_runs_local_workflow_shape() -> None:
+    registry = OrchestratorPluginRegistry()
+    manifest = registry.require("brainstorm-v1-dify-workflow")
+
+    adapter = load_orchestrator_plugin_adapter(manifest)
+    result = adapter.run(
+        OrchestratorRunRequest(
+            contract_version="xg-observable-orchestrator-contract@1",
+            session={
+                "session_id": "ra-001",
+                "topic": "空域运算软件需求规格探索",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "orchestrator_id": "brainstorm-v1-dify-workflow",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "write_policy": "patch_suggestion_only",
+            },
+            turn={
+                "turn_id": "turn-0001",
+                "turn_index": 1,
+                "user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求",
+                "normalized_input": {
+                    "input_type": "free_text",
+                    "semantic": "这个系统叫空域运算软件，主要解决空域计算分析需求",
+                },
+                "previous_interaction": {"type": "none"},
+                "input_relation": {"relation": "none"},
+            },
+            template={"template_id": "81433号", "format": "structured", "content": "", "parsed_structure": {}},
+            document_context={
+                "state": {},
+                "working_document": {"document_id": "lab-working-document", "blocks": []},
+                "active_spec_node": {
+                    "node_id": "SPEC-REQ-1.1",
+                    "title": "REQ-1.1 编写目的",
+                    "target_section": "1 总则 / 编写目的",
+                    "question": "系统要做什么？",
+                },
+                "spec_tree": [],
+                "confirmed_facts": [],
+                "open_questions": [],
+                "patches": [],
+                "history_summary": "",
+            },
+            execution_options={"expected_output": "both", "observability_required": "limited", "streaming_enabled": False},
+        )
+    )
+
+    assert result.plugin["plugin_id"] == "brainstorm-v1-dify-workflow"
+    assert result.plugin["plugin_type"] == "dify_workflow"
+    assert result.plugin["observability_level"] == "limited"
+    assert "空域运算软件" in result.final_output["filled_document_text"]
+    assert result.state_output["decision_state_delta"]["confirmed_facts"]
+    assert result.state_output["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert result.process_output["decision_trace"]
+    assert result.process_output["stage_audits"] == []
+    assert result.raw_output["raw_workflow_trace"]["workflow_id"] == "brainstorm-v1-dify-shaped-workflow"
+    assert [node["node_id"] for node in result.raw_output["raw_workflow_trace"]["nodes"]] == [
+        "normalize_input",
+        "intent_understanding",
+        "decision_state_delta",
+        "document_projection",
+        "next_interaction_planning",
+        "normalize_output",
+    ]
+    assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
 
 
 def test_local_xg_plugin_wraps_existing_runner_output() -> None:

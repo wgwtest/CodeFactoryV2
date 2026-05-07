@@ -205,6 +205,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     plugin_ids = {item["plugin_id"] for item in items}
     assert {
         "brainstorm-v1",
+        "brainstorm-v1-dify-workflow",
         "xg-local-heuristic-orchestrator",
         "xg-local-strong-rule-orchestrator",
         "xg-dify-workflow-orchestrator",
@@ -230,6 +231,13 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert brainstorm["observability_level"] == "full"
     assert brainstorm["capabilities"]["decision_trace"] is True
     assert brainstorm["package_id"] == "brainstorm-v1"
+
+    brainstorm_dify = next(item for item in items if item["plugin_id"] == "brainstorm-v1-dify-workflow")
+    assert brainstorm_dify["plugin_type"] == "dify_workflow"
+    assert brainstorm_dify["package_id"] == "brainstorm-v1"
+    assert brainstorm_dify["observability_level"] == "limited"
+    assert brainstorm_dify["capabilities"]["decision_trace"] is True
+    assert brainstorm_dify["capabilities"]["stage_audits"] is False
 
     created = client.post(
         "/api/requirement-analysis/sessions",
@@ -660,6 +668,48 @@ def test_requirement_analysis_lab_runs_brainstorm_v1_as_plugin() -> None:
     assert payload["session"]["decision_state"]["confirmed_facts"]
     assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
     assert payload["session"]["provider_logs"][1]["stage_id"] == "decision_state_delta"
+
+
+def test_requirement_analysis_lab_runs_brainstorm_v1_dify_workflow_plugin() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "brainstorm-v1-dify-workflow",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    session = created.json()
+    assert session["orchestrator"]["orchestrator_id"] == "brainstorm-v1-dify-workflow"
+    assert session["orchestrator"]["plugin_id"] == "brainstorm-v1-dify-workflow"
+    assert session["orchestrator"]["plugin_type"] == "dify_workflow"
+    assert session["orchestrator"]["observability_level"] == "limited"
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "brainstorm-v1-dify-workflow"
+    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "limited"
+    assert payload["turn"]["decision_state_delta"]["confirmed_facts"]
+    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert payload["turn"]["stage_audits"] == []
+    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["workflow_id"] == "brainstorm-v1-dify-shaped-workflow"
+    assert payload["session"]["decision_state"]["confirmed_facts"]
+    assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
 
 
 def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:

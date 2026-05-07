@@ -1,0 +1,37 @@
+{
+  "workflow_id": "brainstorm-v1-dify-shaped-workflow",
+  "name": "Brainstorm v1 Dify-shaped Workflow",
+  "description": "本地执行的 Dify 形态工作流；后续可替换为真实 Dify Workflow API 调用。",
+  "nodes": [
+    {
+      "node_id": "normalize_input",
+      "type": "start",
+      "description": "读取用户输入、活动规格节点、模板和会话状态。"
+    },
+    {
+      "node_id": "intent_understanding",
+      "type": "llm",
+      "description": "识别本轮输入和需求规格章节之间的关系。"
+    },
+    {
+      "node_id": "decision_state_delta",
+      "type": "llm",
+      "description": "把本轮讨论沉淀成 Brainstorm v1 决策状态增量。"
+    },
+    {
+      "node_id": "document_projection",
+      "type": "template-transform",
+      "description": "将稳定决策投影为章节正文补丁。"
+    },
+    {
+      "node_id": "next_interaction_planning",
+      "type": "llm",
+      "description": "基于决策状态和活动章节规划下一轮交互。"
+    },
+    {
+      "node_id": "normalize_output",
+      "type": "end",
+      "description": "归一化为 xg-observable-orchestrator-contract@1 输出。"
+    }
+  ]
+}
