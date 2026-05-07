@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 PluginType = Literal["local_package", "dify_workflow", "remote_service"]
@@ -31,6 +31,22 @@ class OrchestratorPluginManifest(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
     requires: dict[str, Any] = Field(default_factory=dict)
     adapter_entry: str
+    adapter_module: str
+    adapter_class: str
+    package_path: str = ""
+    package_id: str | None = None
+    aliases: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def require_local_adapter_entry(self) -> "OrchestratorPluginManifest":
+        missing = []
+        if not self.adapter_module.strip():
+            missing.append("adapter_module")
+        if not self.adapter_class.strip():
+            missing.append("adapter_class")
+        if missing:
+            raise ValueError(f"orchestrator plugin manifest missing local adapter entry: {', '.join(missing)}")
+        return self
 
     @property
     def observability_level(self) -> ObservabilityLevel:
@@ -57,6 +73,11 @@ class OrchestratorPluginManifest(BaseModel):
             "capabilities": dict(self.capabilities),
             "requires": dict(self.requires),
             "adapter_entry": self.adapter_entry,
+            "adapter_module": self.adapter_module,
+            "adapter_class": self.adapter_class,
+            "package_path": self.package_path,
+            "package_id": self.package_id,
+            "aliases": list(self.aliases),
             "observability_level": self.observability_level,
         }
 

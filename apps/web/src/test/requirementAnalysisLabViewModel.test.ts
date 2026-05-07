@@ -3,8 +3,45 @@ import { describe, expect, test } from "vitest";
 import type { RequirementAnalysisSession } from "../lib/api";
 import {
   buildRequirementAnalysisWorkingDocumentViewModel,
+  resolveDefaultRequirementAnalysisOrchestratorId,
   resolveDefaultRequirementAnalysisProviderId,
 } from "../lib/requirementAnalysisLabViewModel";
+
+describe("resolveDefaultRequirementAnalysisOrchestratorId", () => {
+  test("uses the backend default plugin id when it is present", () => {
+    const orchestratorId = resolveDefaultRequirementAnalysisOrchestratorId(
+      [
+        {
+          orchestrator_id: "custom-plugin",
+          plugin_id: "custom-plugin",
+          name: "Custom Plugin",
+          status: "active",
+          description: "Custom plugin",
+        },
+      ],
+      "custom-plugin",
+    );
+
+    expect(orchestratorId).toBe("custom-plugin");
+  });
+
+  test("falls back to the first discovered orchestrator instead of mapping legacy ids in the frontend", () => {
+    const orchestratorId = resolveDefaultRequirementAnalysisOrchestratorId(
+      [
+        {
+          orchestrator_id: "xg-local-heuristic-orchestrator",
+          plugin_id: "xg-local-heuristic-orchestrator",
+          name: "XG Heuristic Orchestrator",
+          status: "active",
+          description: "Discovered plugin",
+        },
+      ],
+      "xg-strong-rule-orchestrator",
+    );
+
+    expect(orchestratorId).toBe("xg-local-heuristic-orchestrator");
+  });
+});
 
 describe("resolveDefaultRequirementAnalysisProviderId", () => {
   test("does not lock the lab startup Provider before provider options are loaded", () => {

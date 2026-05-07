@@ -20,6 +20,9 @@ class RequirementAnalysisApplicationService:
     def list_orchestrators(self) -> dict:
         return self.session_service.list_orchestrators()
 
+    def reload_orchestrators(self) -> dict:
+        return self.session_service.reload_orchestrators()
+
     def list_providers(self) -> dict:
         return self.session_service.list_providers()
 

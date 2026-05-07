@@ -70,7 +70,7 @@ class RequirementAnalysisSession(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     topic: Mapped[str] = mapped_column(String(255))
-    orchestrator_id: Mapped[str] = mapped_column(String(128), default="xg-heuristic-orchestrator")
+    orchestrator_id: Mapped[str] = mapped_column(String(128), default="")
     provider_id: Mapped[str] = mapped_column(String(64), default="mock")
     model: Mapped[str] = mapped_column(String(128), default="mock-requirement-analysis-v1")
     template_id: Mapped[str] = mapped_column(String(128), default="81433号")

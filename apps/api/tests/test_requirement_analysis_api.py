@@ -1,9 +1,15 @@
+import json
+import shutil
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
 from app.requirement_analysis import deepseek_client as requirement_analysis_client_module
 from app.main import create_app
+from app.orchestrators.plugin_contracts import OrchestratorRunResult
+from app.orchestrators.plugin_discovery import OrchestratorPluginDiscovery
 
 
 def find_spec_node(nodes: list[dict], node_id: str) -> dict | None:
@@ -46,6 +52,43 @@ def assert_new_turn_contract(turn: dict) -> None:
         "assistant_message",
     ]:
         assert removed_field not in turn
+
+
+def _write_reload_test_plugin(
+    root: Path,
+    *,
+    plugin_id: str = "xg-reload-test-orchestrator",
+    plugin_name: str = "XG Reload Test Orchestrator",
+) -> Path:
+    plugin_dir = root / "xg" / plugin_id
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": plugin_id,
+                "name": plugin_name,
+                "plugin_type": "dify_workflow",
+                "document_type": "xg",
+                "contract": "xg-observable-orchestrator-contract@1",
+                "status": "active",
+                "priority": 10,
+                "capabilities": {"filled_document_text": True},
+                "requires": {"template": True, "model_provider": "optional"},
+                "adapter_entry": "dify_workflow",
+                "adapter_module": "adapter",
+                "adapter_class": "ReloadTestAdapter",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (plugin_dir / "adapter.py").write_text(
+        "class ReloadTestAdapter:\n"
+        "    def __init__(self, *, manifest, package=None):\n"
+        "        self.manifest = manifest\n",
+        encoding="utf-8",
+    )
+    return plugin_dir
 
 
 def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tmp_path, monkeypatch) -> None:
@@ -144,7 +187,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert config["page"]["title"] == "P2 XG 需求分析组织器 Lab"
     assert config["defaults"] == {
         "topic": "默认运算软件需求规格说明",
-        "orchestrator_id": "xg-heuristic-orchestrator",
+        "orchestrator_id": "xg-local-heuristic-orchestrator",
         "provider_id": "deepseek",
         "model": "provider-default",
         "template_id": "xg-template-81433-default",
@@ -411,6 +454,51 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert recovered_payload["messages"][-1]["turn_id"] == "turn-0002"
 
 
+def test_requirement_analysis_lab_config_default_orchestrator_comes_from_plugin_registry(tmp_path: Path, monkeypatch) -> None:
+    from app.orchestrators import plugin_registry as plugin_registry_module
+
+    _write_reload_test_plugin(
+        tmp_path,
+        plugin_id="xg-registry-default-orchestrator",
+        plugin_name="XG Registry Default Orchestrator",
+    )
+
+    monkeypatch.setattr(
+        plugin_registry_module,
+        "OrchestratorPluginDiscovery",
+        lambda: OrchestratorPluginDiscovery(root=tmp_path),
+    )
+    plugin_registry_module.reload_orchestrator_plugin_registry()
+    client = TestClient(create_app())
+
+    try:
+        lab_config = client.get("/api/requirement-analysis/lab-config")
+
+        assert lab_config.status_code == 200
+        assert lab_config.json()["defaults"]["orchestrator_id"] == "xg-registry-default-orchestrator"
+    finally:
+        plugin_registry_module.get_orchestrator_plugin_registry.cache_clear()
+
+
+def test_requirement_analysis_session_can_default_to_discovered_orchestrator() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+
+
 def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> None:
     client = TestClient(create_app())
 
@@ -557,6 +645,202 @@ def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observab
     assert payload["turn"]["stage_audits"] == []
     assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["fake"] is True
     assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
+
+
+def test_requirement_analysis_lab_runs_dify_through_manifest_adapter_loader(monkeypatch) -> None:
+    from app.requirement_analysis import turn_engine as turn_engine_module
+
+    calls: list[str] = []
+
+    class FakeAdapter:
+        def __init__(self, plugin_id: str) -> None:
+            self.plugin_id = plugin_id
+
+        def run(self, request) -> OrchestratorRunResult:
+            from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
+
+            base_result = OrchestratorRunResult(
+                contract_version=request.contract_version,
+                plugin={
+                    "plugin_id": self.plugin_id,
+                    "plugin_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                final_output={
+                    "filled_document_text": "# 需求规格说明\n\nadapter loader sentinel",
+                    "document_patch": [],
+                    "changed_sections": [],
+                    "completion_status": "partial",
+                    "confidence": "medium",
+                },
+                interaction_output={
+                    "assistant_message": "adapter loader sentinel",
+                    "next_question": "继续补充。",
+                    "quick_options": [],
+                    "suggested_focus": {},
+                },
+                process_output={
+                    "stage_results": [],
+                    "stage_audits": [],
+                    "decision_trace": ["adapter loader was used"],
+                    "provider_logs": [],
+                    "review_after_apply_result": {},
+                    "annotations": [],
+                    "risks": [],
+                },
+                state_output={
+                    "confirmed_facts_delta": ["adapter loader sentinel"],
+                    "open_questions_delta": ["继续补充。"],
+                    "spec_tree_update": {},
+                    "working_document_update": {},
+                    "turn_path_update": {},
+                },
+                raw_output={
+                    "raw_plugin_response": {},
+                    "raw_model_response": {},
+                    "raw_workflow_trace": {"sentinel": True},
+                },
+            )
+            turn_result = PluginTurnResultMaterializer().materialize(request=request, result=base_result)
+            return base_result.model_copy(
+                update={
+                    "raw_output": {
+                    **dict(base_result.raw_output or {}),
+                    "turn_execution_result": turn_result,
+                    },
+                }
+            )
+
+    def fake_loader(manifest, **_kwargs):
+        calls.append(manifest.plugin_id)
+        return FakeAdapter(manifest.plugin_id)
+
+    monkeypatch.setattr(turn_engine_module, "load_orchestrator_plugin_adapter", fake_loader, raising=False)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert calls == ["xg-dify-workflow-orchestrator"]
+    assert payload["turn"]["spec_execution"]["assistant_message"] == "adapter loader sentinel"
+    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["sentinel"] is True
+
+
+def test_requirement_analysis_lab_runs_local_xg_through_manifest_adapter_loader(monkeypatch) -> None:
+    from app.requirement_analysis import turn_engine as turn_engine_module
+
+    original_loader = turn_engine_module.load_orchestrator_plugin_adapter
+    calls: list[str] = []
+
+    def recording_loader(manifest, **kwargs):
+        calls.append(manifest.plugin_id)
+        return original_loader(manifest, **kwargs)
+
+    monkeypatch.setattr(turn_engine_module, "load_orchestrator_plugin_adapter", recording_loader, raising=False)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "这个系统叫空域运算软件"},
+    )
+
+    assert turn.status_code == 200
+    assert calls == ["xg-local-heuristic-orchestrator"]
+
+
+def test_requirement_analysis_orchestrator_reload_reflects_plugin_directory_changes(tmp_path: Path, monkeypatch) -> None:
+    from app.orchestrators import plugin_registry as plugin_registry_module
+
+    plugin_dir = _write_reload_test_plugin(tmp_path)
+    backup_dir = tmp_path / ".backup" / plugin_dir.name
+
+    monkeypatch.setattr(
+        plugin_registry_module,
+        "OrchestratorPluginDiscovery",
+        lambda: OrchestratorPluginDiscovery(root=tmp_path),
+    )
+    plugin_registry_module.reload_orchestrator_plugin_registry()
+    client = TestClient(create_app())
+
+    listed = client.get("/api/requirement-analysis/orchestrators")
+    assert listed.status_code == 200
+    assert {item["plugin_id"] for item in listed.json()["items"]} == {"xg-reload-test-orchestrator"}
+
+    try:
+        created = client.post(
+            "/api/requirement-analysis/sessions",
+            json={
+                "topic": "目录插拔验证",
+                "orchestrator_id": "xg-reload-test-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "write_policy": "patch_suggestion_only",
+            },
+        )
+        assert created.status_code == 200
+
+        backup_dir.parent.mkdir(parents=True)
+        shutil.move(plugin_dir, backup_dir)
+
+        reloaded = client.post("/api/requirement-analysis/orchestrators/reload")
+        assert reloaded.status_code == 200
+        assert reloaded.json()["items"] == []
+
+        rejected = client.post(
+            "/api/requirement-analysis/sessions",
+            json={
+                "topic": "目录插拔验证",
+                "orchestrator_id": "xg-reload-test-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "write_policy": "patch_suggestion_only",
+            },
+        )
+        assert rejected.status_code == 400
+        assert rejected.json()["detail"] == "unsupported orchestrator"
+
+        shutil.move(backup_dir, plugin_dir)
+        restored = client.post("/api/requirement-analysis/orchestrators/reload")
+        assert restored.status_code == 200
+        assert [item["plugin_id"] for item in restored.json()["items"]] == ["xg-reload-test-orchestrator"]
+    finally:
+        plugin_registry_module.get_orchestrator_plugin_registry.cache_clear()
 
 
 def test_requirement_analysis_lab_rejects_unknown_orchestrator() -> None:

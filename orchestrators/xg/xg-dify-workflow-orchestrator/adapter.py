@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest, OrchestratorRunResult
 
 
 class DifyWorkflowOrchestratorPluginAdapter:
     def __init__(self, *, manifest: OrchestratorPluginManifest) -> None:
         self.manifest = manifest
+        self.materializer = PluginTurnResultMaterializer()
 
     def run(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
         semantic = str(request.turn.get("normalized_input", {}).get("semantic") or request.turn.get("user_input") or "")
         template_content = str(request.template.get("content") or "# 需求规格说明\n")
         filled_document_text = f"{template_content.rstrip()}\n\n## 本轮补充\n\n{semantic}\n"
-        return OrchestratorRunResult(
+        result = OrchestratorRunResult(
             contract_version=request.contract_version,
             plugin={
                 "plugin_id": self.manifest.plugin_id,
@@ -56,4 +58,13 @@ class DifyWorkflowOrchestratorPluginAdapter:
                     "run_id": f"fake-{request.turn.get('turn_id', 'turn')}",
                 },
             },
+        )
+        materialized_turn = self.materializer.materialize(request=request, result=result)
+        return result.model_copy(
+            update={
+                "raw_output": {
+                    **dict(result.raw_output or {}),
+                    "turn_execution_result": materialized_turn,
+                }
+            }
         )

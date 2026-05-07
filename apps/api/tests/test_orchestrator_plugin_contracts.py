@@ -4,9 +4,8 @@ from app.orchestrators.plugin_contracts import (
     OrchestratorRunResult,
 )
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
-from app.orchestrators.adapters.local_xg_plugin import LocalXGOrchestratorPluginAdapter
-from app.orchestrators.adapters.dify_workflow_plugin import DifyWorkflowOrchestratorPluginAdapter
 from app.orchestrators.plugin_result_normalizer import OrchestratorPluginResultNormalizer
+from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
 
 
 def test_observable_orchestrator_plugin_manifest_contract() -> None:
@@ -31,6 +30,8 @@ def test_observable_orchestrator_plugin_manifest_contract() -> None:
         },
         requires={"template": True, "model_provider": "optional"},
         adapter_entry="local_xg",
+        adapter_module="adapter",
+        adapter_class="LocalXGOrchestratorPluginAdapter",
     )
 
     assert manifest.plugin_id == "xg-local-heuristic-orchestrator"
@@ -146,10 +147,86 @@ def test_plugin_registry_lists_local_and_dify_plugins() -> None:
     assert dify.capabilities["stage_audits"] is False
 
 
+def test_plugin_registry_resolves_manifest_aliases_and_package_ids() -> None:
+    registry = OrchestratorPluginRegistry()
+
+    heuristic = registry.require("xg-heuristic-orchestrator")
+    strong_rule = registry.require("xg-strong-rule-orchestrator")
+
+    assert heuristic.plugin_id == "xg-local-heuristic-orchestrator"
+    assert heuristic.package_id == "xg-heuristic-orchestrator"
+    assert heuristic.aliases == ("xg-heuristic-orchestrator",)
+    assert registry.local_package_id_for_plugin("xg-local-heuristic-orchestrator") == "xg-heuristic-orchestrator"
+    assert registry.local_package_id_for_plugin("xg-heuristic-orchestrator") == "xg-heuristic-orchestrator"
+    assert strong_rule.plugin_id == "xg-local-strong-rule-orchestrator"
+    assert registry.local_package_id_for_plugin("xg-strong-rule-orchestrator") == "xg-strong-rule-orchestrator"
+
+
+def test_plugin_manifest_requires_local_adapter_entry() -> None:
+    try:
+        OrchestratorPluginManifest(
+            plugin_id="xg-no-entry-orchestrator",
+            name="No Entry",
+            plugin_type="local_package",
+            capabilities={"document_patch": True},
+            requires={"template": True},
+            adapter_entry="local_xg",
+        )
+    except ValueError as exc:
+        assert "adapter_module" in str(exc)
+        assert "adapter_class" in str(exc)
+    else:
+        raise AssertionError("manifest without local adapter entry should fail")
+
+
+def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
+    registry = OrchestratorPluginRegistry()
+    manifest = registry.require("xg-dify-workflow-orchestrator")
+
+    adapter = load_orchestrator_plugin_adapter(manifest)
+    result = adapter.run(
+        OrchestratorRunRequest(
+            contract_version="xg-observable-orchestrator-contract@1",
+            session={
+                "session_id": "ra-001",
+                "topic": "空域运算软件需求规格探索",
+                "template_id": "81433号",
+                "knowledge_package_id": "airspace-domain-demo",
+                "orchestrator_id": "xg-dify-workflow-orchestrator",
+                "provider_id": "mock",
+                "model": "mock-requirement-analysis-v1",
+                "write_policy": "patch_suggestion_only",
+            },
+            turn={
+                "turn_id": "turn-0001",
+                "turn_index": 1,
+                "user_input": "这个系统叫空域运算软件",
+                "normalized_input": {"input_type": "free_text", "semantic": "这个系统叫空域运算软件"},
+                "previous_interaction": {"type": "none"},
+                "input_relation": {"relation": "none"},
+            },
+            template={"template_id": "81433号", "format": "markdown", "content": "# 需求规格说明\n", "parsed_structure": {}},
+            document_context={
+                "working_document": {"document_id": "lab-working-document", "blocks": []},
+                "active_spec_node": {"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
+                "spec_tree": [],
+                "confirmed_facts": [],
+                "open_questions": [],
+                "patches": [],
+                "history_summary": "",
+            },
+            execution_options={"expected_output": "full_document", "observability_required": "limited", "streaming_enabled": False},
+        )
+    )
+
+    assert result.plugin["plugin_id"] == "xg-dify-workflow-orchestrator"
+    assert result.plugin["observability_level"] == "limited"
+
+
 def test_local_xg_plugin_wraps_existing_runner_output() -> None:
     registry = OrchestratorPluginRegistry()
     manifest = registry.require("xg-local-strong-rule-orchestrator")
-    adapter = LocalXGOrchestratorPluginAdapter(manifest=manifest)
+    adapter = load_orchestrator_plugin_adapter(manifest)
     request = OrchestratorRunRequest(
         contract_version="xg-observable-orchestrator-contract@1",
         session={
@@ -196,16 +273,18 @@ def test_local_xg_plugin_wraps_existing_runner_output() -> None:
     assert result.plugin["plugin_id"] == "xg-local-strong-rule-orchestrator"
     assert result.plugin["observability_level"] == "full"
     assert result.final_output["document_patch"][0]["plan_ref"] == "AP-001"
-    assert result.interaction_output["assistant_message"].startswith("强规则组织器")
+    assert "写入临时正文" in result.interaction_output["assistant_message"]
+    assert "强规则组织器要求补齐" in result.interaction_output["next_question"]
     assert result.process_output["stage_audits"]
+    assert result.process_output["provider_logs"]
     assert result.state_output["confirmed_facts_delta"]
-    assert result.raw_output["raw_model_response"]["runner_invoked"] is True
+    assert result.raw_output["turn_execution_result"].turn["raw_model_response"]["runner_invoked"] is True
 
 
 def test_dify_workflow_plugin_returns_limited_observability_result() -> None:
     registry = OrchestratorPluginRegistry()
     manifest = registry.require("xg-dify-workflow-orchestrator")
-    adapter = DifyWorkflowOrchestratorPluginAdapter(manifest=manifest)
+    adapter = load_orchestrator_plugin_adapter(manifest)
     request = OrchestratorRunRequest(
         contract_version="xg-observable-orchestrator-contract@1",
         session={

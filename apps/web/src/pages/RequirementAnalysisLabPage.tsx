@@ -24,6 +24,7 @@ import {
   createRequirementAnalysisTurn,
   deleteRequirementAnalysisTemplate,
   getRequirementAnalysisTemplate,
+  reloadRequirementAnalysisOrchestrators,
   saveRequirementAnalysisTemplate,
 } from "../lib/requirementAnalysis";
 import {
@@ -85,8 +86,9 @@ function formatPluginType(type?: string) {
 }
 
 export function RequirementAnalysisLabPage() {
-  const { labConfig, orchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
+  const { labConfig, orchestratorsEnvelope: bootstrappedOrchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
     useRequirementAnalysisLabBootstrap();
+  const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
@@ -99,6 +101,7 @@ export function RequirementAnalysisLabPage() {
   const [templateDraft, setTemplateDraft] = useState("");
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [reloadingOrchestrators, setReloadingOrchestrators] = useState(false);
   const [topic, setTopic] = useState("");
   const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("config");
   const [session, setSession] = useState<RequirementAnalysisSession | null>(null);
@@ -112,6 +115,10 @@ export function RequirementAnalysisLabPage() {
   useEffect(() => {
     setTemplates(bootstrappedTemplates);
   }, [bootstrappedTemplates]);
+
+  useEffect(() => {
+    setOrchestratorsEnvelope(bootstrappedOrchestratorsEnvelope);
+  }, [bootstrappedOrchestratorsEnvelope]);
 
   useEffect(() => {
     if (!labConfig || !orchestratorsEnvelope) {
@@ -231,6 +238,26 @@ export function RequirementAnalysisLabPage() {
       setError(startError instanceof Error ? startError.message : "启动 XG 需求分析会话失败");
     } finally {
       setActing(false);
+    }
+  }
+
+  async function handleReloadOrchestrators() {
+    try {
+      setReloadingOrchestrators(true);
+      const response = await reloadRequirementAnalysisOrchestrators();
+      const nextEnvelope = response.data;
+      const nextOrchestrators = nextEnvelope.items;
+      const nextSelectedOrchestratorId =
+        nextOrchestrators.find((item) => item.orchestrator_id === selectedOrchestratorId)?.orchestrator_id ??
+        nextOrchestrators[0]?.orchestrator_id ??
+        "";
+      setSelectedOrchestratorId(nextSelectedOrchestratorId);
+      setOrchestratorsEnvelope(nextEnvelope);
+      setError(null);
+    } catch (reloadError) {
+      setError(reloadError instanceof Error ? reloadError.message : "重新扫描组织器失败");
+    } finally {
+      setReloadingOrchestrators(false);
     }
   }
 
@@ -422,6 +449,7 @@ export function RequirementAnalysisLabPage() {
                 onEnterSession={() => setActiveTab("session")}
                 onProviderSelect={setSelectedProviderId}
                 onStart={() => void handleStart()}
+                onReloadOrchestrators={() => void handleReloadOrchestrators()}
                 onOrchestratorSelect={setSelectedOrchestratorId}
                 onTopicChange={setTopic}
                 orchestratorsEnvelope={orchestratorsEnvelope}
@@ -449,6 +477,7 @@ export function RequirementAnalysisLabPage() {
                 selectedOrchestrator={selectedOrchestrator}
                 selectedOrchestratorId={selectedOrchestratorId}
                 selectedProviderId={selectedProviderId}
+                reloadingOrchestrators={reloadingOrchestrators}
                 topic={topic}
               />
             ) : null}
@@ -512,6 +541,7 @@ function ConfigTab({
   onEnterSession,
   onProviderSelect,
   onStart,
+  onReloadOrchestrators,
   onOrchestratorSelect,
   onTopicChange,
   onTemplateDraftChange,
@@ -539,6 +569,7 @@ function ConfigTab({
   selectedOrchestrator,
   selectedOrchestratorId,
   selectedProviderId,
+  reloadingOrchestrators,
   topic,
 }: {
   activeProvider: RequirementAnalysisProvider | null;
@@ -548,6 +579,7 @@ function ConfigTab({
   onEnterSession: () => void;
   onProviderSelect: (providerId: string) => void;
   onStart: () => void;
+  onReloadOrchestrators: () => void;
   onOrchestratorSelect: (orchestratorId: string) => void;
   onTopicChange: (topic: string) => void;
   onTemplateDraftChange: (content: string) => void;
@@ -576,6 +608,7 @@ function ConfigTab({
   selectedOrchestratorId: string;
   selectedProviderId: string;
   topic: string;
+  reloadingOrchestrators?: boolean;
 }) {
   const topicField = labConfig.startup_fields.find((field) => field.field === "topic");
   const templateDirty = Boolean(
@@ -649,6 +682,9 @@ function ConfigTab({
             </div>
             <Button block loading={acting} onClick={onStart} type="primary">
               启动验证
+            </Button>
+            <Button block loading={reloadingOrchestrators} onClick={onReloadOrchestrators}>
+              重新扫描组织器
             </Button>
             <Text className="requirement-analysis-lab-current-config" type="secondary">
               当前 Provider：{activeProvider?.name ?? selectedProviderId}；当前组织器：

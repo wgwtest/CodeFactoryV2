@@ -865,6 +865,114 @@ test("shows limited-observability plugin fallback when Dify turn has no stage au
   expect(screen.getByText(/fake-xg-dify-workflow/)).toBeInTheDocument();
 });
 
+test("reloads orchestrator plugins from backend response without hardcoded plugin names", async () => {
+  const initialOrchestrators = {
+    ...buildOrchestrators(),
+    items: [buildOrchestrators().items[0]],
+  };
+  const reloadedOrchestrators = {
+    ...buildOrchestrators(),
+    items: [
+      {
+        plugin_id: "xg-custom-plugin-orchestrator",
+        orchestrator_id: "xg-custom-plugin-orchestrator",
+        name: "XG Custom Plugin Orchestrator",
+        plugin_type: "dify_workflow",
+        observability_level: "limited",
+        document_type: "xg",
+        contract: "xg-observable-orchestrator-contract@1",
+        status: "active",
+        description: "通过插件目录 reload 后发现的组织器。",
+        entry: null,
+        capabilities: {
+          filled_document_text: true,
+          document_patch: false,
+          stage_results: false,
+          stage_audits: false,
+          provider_logs: false,
+          decision_trace: false,
+          review_after_apply: false,
+          spec_tree_update: false,
+          streaming_events: false,
+        },
+        requires: { template: true },
+        package_path: "orchestrators/xg/xg-custom-plugin-orchestrator",
+      },
+    ],
+  } as const;
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: initialOrchestrators });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-default",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基于 81433 的默认实例模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "软件级需求规格说明模板",
+          description: "基于 81433 的默认实例模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
+        },
+      });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/orchestrators/reload") {
+      return Promise.resolve({ data: reloadedOrchestrators });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("XG Heuristic Orchestrator")).toBeInTheDocument();
+  expect(screen.queryByText("XG Custom Plugin Orchestrator")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "重新扫描组织器" }));
+
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/orchestrators/reload"));
+  expect(await screen.findByText("XG Custom Plugin Orchestrator")).toBeInTheDocument();
+  expect(screen.queryByText("XG Heuristic Orchestrator")).not.toBeInTheDocument();
+  expect(screen.getByText(/当前组织器：XG Custom Plugin Orchestrator/)).toBeInTheDocument();
+});
+
 test("lets provider log audit outputs expand until near one screen before internal scrolling", () => {
   const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
 

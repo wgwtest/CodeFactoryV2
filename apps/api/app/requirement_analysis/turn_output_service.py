@@ -67,7 +67,10 @@ class RequirementAnalysisTurnOutputService:
             ),
             "confirmed_facts_delta": list(model_output.get("confirmed_facts_delta", [])),
             "open_questions_delta": list(model_output.get("open_questions_delta", [])),
-            "document_patch": list(model_output.get("document_patch", [])),
+            "document_patch": RequirementAnalysisTurnOutputService.normalize_document_patch(
+                model_output.get("document_patch"),
+                write_policy=session.write_policy,
+            ),
             "annotations": list(model_output.get("annotations", [])),
             "risks": list(model_output.get("risks", [])),
             "confidence": str(model_output.get("confidence") or "medium"),
@@ -137,3 +140,19 @@ class RequirementAnalysisTurnOutputService:
             "intent": "supplement_requirement",
             "confidence": "medium",
         }
+
+    @staticmethod
+    def normalize_document_patch(value: object, *, write_policy: str) -> list[dict]:
+        if not isinstance(value, list):
+            return []
+        patches = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            patches.append(
+                {
+                    **item,
+                    "write_policy": str(item.get("write_policy") or write_policy),
+                }
+            )
+        return patches

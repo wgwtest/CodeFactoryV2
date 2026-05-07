@@ -53,6 +53,16 @@ def list_requirement_analysis_orchestrators(
     return service.list_orchestrators()
 
 
+@router.post("/orchestrators/reload")
+def reload_requirement_analysis_orchestrators(
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    try:
+        return service.reload_orchestrators()
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.get("/providers")
 def list_requirement_analysis_providers(
     service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),

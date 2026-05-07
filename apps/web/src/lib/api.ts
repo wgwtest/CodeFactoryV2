@@ -2513,7 +2513,7 @@ export type RequirementAnalysisSession = {
 
 export type RequirementAnalysisSessionCreateInput = {
   topic: string;
-  orchestrator_id: string;
+  orchestrator_id?: string;
   provider_id: string;
   model?: string;
   template_id?: string;
