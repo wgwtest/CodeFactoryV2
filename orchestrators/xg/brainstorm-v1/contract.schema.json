@@ -1,0 +1,14 @@
+{
+  "contract": "xg-orchestrator-contract@1",
+  "document_type": "xg",
+  "mode": "policy_interpreted",
+  "required_output_sections": [
+    "previous_interaction",
+    "input_relation",
+    "spec_execution",
+    "post_update_review",
+    "closure_decision",
+    "next_interaction",
+    "decision_trace"
+  ]
+}

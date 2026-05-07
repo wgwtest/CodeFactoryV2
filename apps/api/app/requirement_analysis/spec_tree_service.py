@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.orchestrators.package_loader import get_orchestrator_registry
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
 from app.db.models.requirements import RequirementAuthoringTemplate
 from app.requirement_authoring.models import default_template_payload
 
@@ -98,7 +99,11 @@ class RequirementSpecTreeService:
 
     @staticmethod
     def spec_strategy(orchestrator_id: str) -> dict:
-        loaded = get_orchestrator_registry().require_loaded(orchestrator_id)
+        plugin = get_orchestrator_plugin_registry().require(orchestrator_id)
+        if not plugin.package_id:
+            return {}
+        package_id = get_orchestrator_plugin_registry().local_package_id_for_plugin(orchestrator_id)
+        loaded = get_orchestrator_registry().require_loaded(package_id)
         return dict(loaded.spec_strategy or {})
 
     @staticmethod

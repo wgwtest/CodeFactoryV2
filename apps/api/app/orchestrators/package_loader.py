@@ -72,7 +72,11 @@ class OrchestratorPackageLoader:
     def load_all(self) -> list[LoadedOrchestratorPackage]:
         if not self.root.exists():
             raise RuntimeError(f"orchestrator root does not exist: {self.root}")
-        loaded = [self._load_manifest(manifest_path) for manifest_path in sorted(self.root.glob("*/manifest.json"))]
+        loaded = [
+            self._load_manifest(manifest_path)
+            for manifest_path in sorted(self.root.glob("*/manifest.json"))
+            if self._is_legacy_local_package_manifest(manifest_path)
+        ]
         if not loaded:
             raise RuntimeError(f"no orchestrator packages found under: {self.root}")
         duplicated = self._duplicated_ids([item.package.orchestrator_id for item in loaded])
@@ -85,6 +89,11 @@ class OrchestratorPackageLoader:
             if loaded.package.orchestrator_id == orchestrator_id:
                 return loaded
         raise ValueError("unsupported orchestrator")
+
+    @staticmethod
+    def _is_legacy_local_package_manifest(manifest_path: Path) -> bool:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return str(payload.get("mode") or "") in {"policy_interpreted", "local_runner"}
 
     def _load_manifest(self, manifest_path: Path) -> LoadedOrchestratorPackage:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))

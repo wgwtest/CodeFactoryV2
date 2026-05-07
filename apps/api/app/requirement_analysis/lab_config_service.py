@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from app.orchestrators.plugin_registry import get_orchestrator_plugin_registry
+
 
 class RequirementAnalysisLabConfigService:
     """Builds the frontend Lab configuration owned by the Requirement Analysis backend."""
 
     def get_config(self) -> dict:
+        default_orchestrator_id = get_orchestrator_plugin_registry().default_plugin().plugin_id
         return {
             "page": {
                 "title": "P2 XG 需求分析组织器 Lab",
@@ -12,7 +15,7 @@ class RequirementAnalysisLabConfigService:
             },
             "defaults": {
                 "topic": "默认运算软件需求规格说明",
-                "orchestrator_id": "xg-heuristic-orchestrator",
+                "orchestrator_id": default_orchestrator_id,
                 "provider_id": "deepseek",
                 "model": "provider-default",
                 "template_id": "xg-template-81433-default",
@@ -64,7 +67,7 @@ class RequirementAnalysisLabConfigService:
                     {
                         "path": "provider_request.prompt_bundle.stage_id",
                         "label": "Stage ID",
-                        "description": "当前模型调用所属的轮次阶段标识，用于区分 intent_understanding、write、review_after_apply 与 next_interaction_planning。",
+                        "description": "当前模型调用所属的轮次阶段标识；具体取值由所选组织器插件的阶段计划决定。",
                         "used_when": "每次调用模型 Provider 前使用。",
                     },
                     {
@@ -83,13 +86,13 @@ class RequirementAnalysisLabConfigService:
                         "path": "provider_request.prompt_bundle.stage_task_definition_json",
                         "label": "Stage Task Definition JSON",
                         "description": "本阶段任务定义，用于追溯模型被要求解决什么问题、写入哪些章节和按什么标准接受。",
-                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
+                        "used_when": "当组织器插件为当前阶段提供任务定义时使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.quality_constraints_json",
                         "label": "Quality Constraints JSON",
                         "description": "本阶段质量约束，用于追溯最低写作深度、必须覆盖维度和助手回复要求。",
-                        "used_when": "write、review_after_apply 和 next_interaction_planning 阶段调用模型前使用。",
+                        "used_when": "当组织器插件为当前阶段提供质量约束时使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_json",
@@ -101,7 +104,7 @@ class RequirementAnalysisLabConfigService:
                         "path": "provider_request.prompt_bundle.working_document_after_apply_json",
                         "label": "Working Document After Apply JSON",
                         "description": "Review 阶段使用的应用后正文快照，用于确认回看基于真实落地后的正文。",
-                        "used_when": "review_after_apply 阶段调用模型前使用。",
+                        "used_when": "当组织器插件的阶段需要应用后正文快照时使用。",
                     },
                     {
                         "path": "provider_request.prompt_bundle.working_document_excerpt",
@@ -188,13 +191,11 @@ class RequirementAnalysisLabConfigService:
                 "required_fields": [
                     "previous_interaction",
                     "input_relation",
-                    "intent_understanding_result",
                     "target_document_structure",
                     "stage_task_definition",
                     "stage_quality_constraints",
                     "spec_execution",
                     "post_update_review",
-                    "review_after_apply_result",
                     "next_interaction_plan",
                     "closure_decision",
                     "next_interaction",

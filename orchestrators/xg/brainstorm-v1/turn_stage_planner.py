@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from app.orchestrators.package_loader import OrchestratorPackage
 from app.requirement_analysis.turn_context_builder import TurnContext
-from app.requirement_analysis.turn_strategy_service import XGTurnStrategy
+from .turn_strategy_service import XGTurnStrategy
 
 
 @dataclass(frozen=True)

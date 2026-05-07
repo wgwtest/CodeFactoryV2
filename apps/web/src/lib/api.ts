@@ -2202,8 +2202,11 @@ export type P3DesignLabSession = {
 export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";
 
 export type RequirementAnalysisOrchestrator = {
+  plugin_id?: string;
   orchestrator_id: string;
   name: string;
+  plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+  observability_level?: "full" | "limited" | "none";
   version?: string;
   stage?: string;
   document_type?: string;
@@ -2212,7 +2215,7 @@ export type RequirementAnalysisOrchestrator = {
   status: RequirementAnalysisOrchestratorStatus;
   description: string;
   entry?: string | null;
-  capabilities?: readonly string[];
+  capabilities?: readonly string[] | Record<string, boolean>;
   requires?: Record<string, unknown>;
   package_path?: string;
 };
@@ -2544,6 +2547,11 @@ export type RequirementAnalysisTurn = {
   turn_id: string;
   session_id: string;
   user_input: string;
+  orchestrator_plugin?: {
+    plugin_id: string;
+    plugin_type?: "local_package" | "dify_workflow" | "remote_service";
+    observability_level?: "full" | "limited" | "none";
+  };
   previous_interaction: RequirementAnalysisInteraction;
   normalized_input: {
     input_type: string;
@@ -2554,6 +2562,13 @@ export type RequirementAnalysisTurn = {
   input_relation: RequirementAnalysisInputRelation;
   spec_execution: RequirementAnalysisSpecExecution;
   post_update_review: RequirementAnalysisPostUpdateReview;
+  decision_state_delta?: RequirementAnalysisDecisionState;
+  decision_state_change_summary?: {
+    turn_id: string;
+    added_counts: Record<string, number>;
+    next_focus: string;
+  };
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   closure_decision: RequirementAnalysisClosureAssessment;
   next_interaction: RequirementAnalysisInteraction;
   stage_audits?: RequirementAnalysisTurnStageAudit[];
@@ -2561,7 +2576,38 @@ export type RequirementAnalysisTurn = {
   confidence: string;
   service_steps: RequirementAnalysisServiceStep[];
   raw_model_response: Record<string, unknown>;
+  raw_plugin_response?: Record<string, unknown>;
   created_at: string;
+};
+
+export type RequirementAnalysisDecisionStateItem = {
+  item_id?: string;
+  content: string;
+  source_turn_id?: string | null;
+  target_section?: string;
+  status?: string;
+};
+
+export type RequirementAnalysisDecisionState = {
+  topic?: string;
+  confirmed_facts: RequirementAnalysisDecisionStateItem[];
+  confirmed_decisions: RequirementAnalysisDecisionStateItem[];
+  tentative_assumptions: RequirementAnalysisDecisionStateItem[];
+  open_questions: RequirementAnalysisDecisionStateItem[];
+  rejected_directions: RequirementAnalysisDecisionStateItem[];
+  next_focus: string;
+  chapter_projections: RequirementAnalysisDecisionStateItem[];
+};
+
+export type RequirementAnalysisDecisionStateDocument = {
+  document_id: string;
+  title: string;
+  phase: string;
+  sections: Array<{
+    section_id: string;
+    heading: string;
+    items: RequirementAnalysisDecisionStateItem[];
+  }>;
 };
 
 export type RequirementAnalysisTurnStageAudit = {
@@ -2612,6 +2658,8 @@ export type RequirementAnalysisSession = {
   turns: RequirementAnalysisTurn[];
   confirmed_facts: string[];
   open_questions: string[];
+  decision_state?: RequirementAnalysisDecisionState;
+  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document: RequirementAnalysisWorkingDocument;
   questions: RequirementAnalysisQuestionItem[];
@@ -2630,7 +2678,7 @@ export type RequirementAnalysisSession = {
 
 export type RequirementAnalysisSessionCreateInput = {
   topic: string;
-  orchestrator_id: string;
+  orchestrator_id?: string;
   provider_id: string;
   model?: string;
   template_id?: string;
