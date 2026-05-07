@@ -6,6 +6,7 @@ from app.orchestrators.plugin_contracts import (
 from app.orchestrators.plugin_registry import OrchestratorPluginRegistry
 from app.orchestrators.plugin_result_normalizer import OrchestratorPluginResultNormalizer
 from app.orchestrators.adapters.base import load_orchestrator_plugin_adapter
+from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 
 
 def test_observable_orchestrator_plugin_manifest_contract() -> None:
@@ -187,6 +188,29 @@ def test_plugin_manifest_requires_local_adapter_entry() -> None:
         raise AssertionError("manifest without local adapter entry should fail")
 
 
+def test_policy_interpreted_stage_strategy_must_declare_explicit_runtime_fields() -> None:
+    registry = OrchestratorPluginRegistry()
+    plugin_ids = ("xg-local-heuristic-orchestrator", "brainstorm-v1")
+
+    for plugin_id in plugin_ids:
+        package_id = registry.local_package_id_for_plugin(plugin_id)
+        spec_strategy_path = f"orchestrators/xg/{package_id}/spec_strategy.json"
+        import json
+        from pathlib import Path
+
+        payload = json.loads(Path(spec_strategy_path).read_text(encoding="utf-8"))
+        stages = list((payload.get("turn_strategy") or {}).get("stages") or [])
+        assert stages, f"{plugin_id} must declare turn_strategy.stages"
+        for stage in stages:
+            assert stage.get("stage_id"), f"{plugin_id} stage missing stage_id"
+            assert stage.get("stage_kind"), f"{plugin_id} stage missing stage_kind"
+            assert stage.get("execution_mode"), f"{plugin_id} stage missing execution_mode"
+            assert stage.get("prompt_id"), f"{plugin_id} stage missing prompt_id"
+            assert stage.get("input_sources") is not None, f"{plugin_id} stage missing input_sources"
+            assert stage.get("adopt_fields") is not None, f"{plugin_id} stage missing adopt_fields"
+            assert stage.get("failure_policy"), f"{plugin_id} stage missing failure_policy"
+
+
 def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
     registry = OrchestratorPluginRegistry()
     manifest = registry.require("xg-dify-workflow-orchestrator")
@@ -300,10 +324,11 @@ def test_brainstorm_v1_dify_workflow_adapter_runs_local_workflow_shape() -> None
     assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
 
 
-def test_local_xg_plugin_wraps_existing_runner_output() -> None:
+def test_local_xg_plugin_wraps_existing_runner_output(db_session) -> None:
     registry = OrchestratorPluginRegistry()
     manifest = registry.require("xg-local-strong-rule-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
+    runtime_host = RequirementAnalysisSessionService(db_session).turn_engine.runtime_host
+    adapter = load_orchestrator_plugin_adapter(manifest, runtime_host=runtime_host)
     request = OrchestratorRunRequest(
         contract_version="xg-observable-orchestrator-contract@1",
         session={

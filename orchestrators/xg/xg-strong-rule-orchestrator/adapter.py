@@ -3,15 +3,15 @@ from __future__ import annotations
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest, OrchestratorRunResult
 from app.requirement_analysis.models import RequirementAnalysisTurnCreate
 from app.requirement_analysis.session_snapshot import SessionSnapshot
-from app.requirement_analysis.session_service import RequirementAnalysisSessionService
 
 
 class LocalXGOrchestratorPluginAdapter:
-    def __init__(self, *, manifest: OrchestratorPluginManifest, package=None) -> None:
+    def __init__(self, *, manifest: OrchestratorPluginManifest, package=None, runtime_host=None) -> None:
         self.manifest = manifest
+        self.runtime_host = runtime_host
 
     def run(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
-        runtime = self._runtime(request)
+        runtime = self._runtime()
         turn_result = runtime.run_turn(
             self._session_snapshot(request),
             RequirementAnalysisTurnCreate(user_input=str(request.turn.get("user_input") or "")),
@@ -64,36 +64,21 @@ class LocalXGOrchestratorPluginAdapter:
             },
         )
 
-    @staticmethod
-    def _runtime(request: OrchestratorRunRequest):
-        from app.db.session import SessionLocal
+    def _runtime(self):
         from .local_xg_turn_runtime import LocalXGTurnRuntime
         from .turn_stage_executor import TurnStageExecutor
         from .turn_stage_planner import TurnStagePlanner
         from .turn_stage_reducer import TurnStageReducer
         from .turn_strategy_service import TurnStrategyService
 
-        db = SessionLocal()
-        service = RequirementAnalysisSessionService(db)
-        return LocalXGTurnRuntime(
-            turn_context_builder=service.turn_context_builder,
-            provider_call_service=service.provider_call_service,
-            provider_call_log_service=service.provider_call_log_service,
-            spec_tree_service=service.spec_tree_service,
-            spec_projection_service=service.spec_projection_service,
-            summary_artifact_service=service.summary_artifact_service,
-            turn_audit_service=service.turn_audit_service,
-            turn_output_service=service.turn_output_service,
-            next_interaction_service=service.next_interaction_service,
-            turn_strategy_service=TurnStrategyService(),
-            turn_stage_planner=TurnStagePlanner(),
-            turn_stage_executor=TurnStageExecutor(
-                provider_call_service=service.provider_call_service,
-            ),
-            turn_stage_reducer=TurnStageReducer(),
-            working_document_service=service.working_document_service,
-            working_document_review_service=service.working_document_review_service,
-            turn_decision_service=service.turn_decision_service,
+        if self.runtime_host is None:
+            raise RuntimeError("runtime_host_missing")
+        return self.runtime_host.build_local_xg_turn_runtime(
+            runtime_cls=LocalXGTurnRuntime,
+            turn_strategy_service_cls=TurnStrategyService,
+            turn_stage_planner_cls=TurnStagePlanner,
+            turn_stage_executor_cls=TurnStageExecutor,
+            turn_stage_reducer_cls=TurnStageReducer,
         )
 
     def _session_snapshot(self, request: OrchestratorRunRequest) -> SessionSnapshot:

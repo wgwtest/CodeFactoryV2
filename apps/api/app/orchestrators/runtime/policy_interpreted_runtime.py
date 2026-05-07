@@ -21,14 +21,14 @@ from app.requirement_analysis.turn_output_service import RequirementAnalysisTurn
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
 from .decision_state_service import DecisionStateService
-from .stage_runtime_context_builder import StageRuntimeContextBuilder
-from .turn_stage_executor import TurnStageExecutor, TurnStageResult
-from .turn_stage_planner import TurnStagePlan, TurnStagePlanner
-from .turn_stage_reducer import TurnStageReducer
+from .stage_context import StageRuntimeContextBuilder
+from .stage_executor import TurnStageExecutor, TurnStageResult
+from .stage_plan import TurnStagePlan, TurnStagePlanner
+from .stage_reducer import TurnStageReducer
 from .turn_strategy_service import TurnStrategyService
 
 
-class LocalXGTurnRuntime:
+class PolicyInterpretedRuntime:
     def __init__(
         self,
         *,
@@ -631,7 +631,7 @@ class LocalXGTurnRuntime:
         user_message = str(next_interaction_plan.get("user_message") or "").strip()
         next_question = str(next_interaction_plan.get("next_question") or next_interaction.get("prompt") or "").strip()
         quick_options = list(next_interaction_plan.get("quick_options") or next_interaction.get("options") or [])
-        assistant_message = LocalXGTurnRuntime._assistant_message_after_planning(
+        assistant_message = PolicyInterpretedRuntime._assistant_message_after_planning(
             model_output=model_output,
             planning_user_message=user_message,
             next_question=next_question,
@@ -684,14 +684,14 @@ class LocalXGTurnRuntime:
         if planning_message and "临时正文" in planning_message:
             base_message = planning_message
             if sections and not any(section in base_message for section in sections):
-                base_message = LocalXGTurnRuntime._append_sentence(
+                base_message = PolicyInterpretedRuntime._append_sentence(
                     base_message,
                     f"写入位置：{'、'.join(sections)}。",
                 )
         else:
             base_message = write_summary
         if next_question and next_question not in planning_message:
-            base_message = LocalXGTurnRuntime._append_sentence(
+            base_message = PolicyInterpretedRuntime._append_sentence(
                 base_message,
                 f"建议下一步确认：{next_question}",
             )
@@ -756,8 +756,8 @@ class LocalXGTurnRuntime:
             stage = self._stage_for_result(stage_plan=stage_plan, stage_result=stage_result)
             if not self._should_write_provider_log(stage=stage):
                 continue
-            stage_kind = self._stage_kind(stage_result=stage_result)
-            if stage_kind == "review":
+            stage_kind = self._stage_kind(stage_plan=stage_plan, stage_result=stage_result)
+            if self._stage_outputs_review(stage=stage):
                 model_output = stage_result.model_output
                 provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
                 service_output = {
@@ -769,7 +769,7 @@ class LocalXGTurnRuntime:
                         "global_review": global_review,
                     },
                 }
-            elif stage_kind == "write":
+            elif self._stage_outputs_document_patch(stage=stage):
                 model_output = final_write_model_output
                 provider_normalized_output = final_write_provider_normalized_output
                 service_output = {
@@ -817,14 +817,23 @@ class LocalXGTurnRuntime:
         return execution_mode in {"model", "local_runner"}
 
     @staticmethod
-    def _stage_kind(*, stage_result: TurnStageResult) -> str:
-        if "intent" in stage_result.stage_id:
-            return "intent"
-        if "next_interaction" in stage_result.stage_id or "planning" in stage_result.stage_id:
-            return "next_interaction"
-        if "review" in stage_result.stage_id:
-            return "review"
-        return "write"
+    def _stage_outputs_review(*, stage: dict) -> bool:
+        output_targets = {str(item) for item in list(stage.get("output_targets") or [])}
+        return {"target_review", "global_review", "review_after_apply_result"} & output_targets != set()
+
+    @staticmethod
+    def _stage_outputs_document_patch(*, stage: dict) -> bool:
+        output_targets = {str(item) for item in list(stage.get("output_targets") or [])}
+        return "document_patch" in output_targets
+
+    def _stage_kind(self, *, stage_plan: TurnStagePlan, stage_result: TurnStageResult) -> str:
+        return str(
+            self._stage_for_result(
+                stage_plan=stage_plan,
+                stage_result=stage_result,
+            ).get("stage_kind")
+            or "write"
+        )
 
     @staticmethod
     def _orchestrator(orchestrator_id: str) -> OrchestratorPackage:

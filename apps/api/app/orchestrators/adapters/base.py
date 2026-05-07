@@ -16,13 +16,21 @@ class OrchestratorPluginAdapter(Protocol):
         ...
 
 
-def load_orchestrator_plugin_adapter(manifest: OrchestratorPluginManifest, *, package: Any | None = None) -> OrchestratorPluginAdapter:
+def load_orchestrator_plugin_adapter(
+    manifest: OrchestratorPluginManifest,
+    *,
+    package: Any | None = None,
+    runtime_host: Any | None = None,
+) -> OrchestratorPluginAdapter:
     module = _load_module(manifest)
     adapter_class = getattr(module, manifest.adapter_class)
     try:
-        return adapter_class(manifest=manifest, package=package)
+        return adapter_class(manifest=manifest, package=package, runtime_host=runtime_host)
     except TypeError:
-        return adapter_class(manifest=manifest)
+        try:
+            return adapter_class(manifest=manifest, package=package)
+        except TypeError:
+            return adapter_class(manifest=manifest)
 
 
 def _module_name(adapter_module: str) -> str:

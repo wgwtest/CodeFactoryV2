@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .turn_stage_executor import TurnStageResult
-from .turn_stage_planner import TurnStagePlan
+from .stage_executor import TurnStageResult
+from .stage_plan import TurnStagePlan
 
 
 @dataclass(frozen=True)
@@ -52,12 +52,10 @@ class TurnStageReducer:
         return dict(write_results[0].model_output)
 
     def reduce_decision_state_delta_stage(self, *, plan: TurnStagePlan, stage_results: list[TurnStageResult]) -> dict:
-        decision_results = [
-            result for result in stage_results if self._stage_kind(plan, result.stage_id) == "decision_state_delta"
-        ]
-        if not decision_results:
-            return {}
-        return dict(decision_results[-1].model_output)
+        results = [result for result in stage_results if self._stage_kind(plan, result.stage_id) == "decision_state_delta"]
+        if not results:
+            raise ValueError("turn stage results include no decision_state_delta stage")
+        return dict(results[-1].model_output)
 
     def reduce_review_stage(
         self,
@@ -185,9 +183,9 @@ class TurnStageReducer:
         if stage_kind == "review":
             return f"阶段 {stage_id} 已基于应用后的临时正文生成回看审计。"
         if stage_kind == "decision_state_delta":
-            return f"阶段 {stage_id} 已生成结构化决策状态增量和章节投影。"
+            return f"阶段 {stage_id} 已生成结构化状态增量与正文投影候选。"
         if stage_kind == "next_interaction":
-            return f"阶段 {stage_id} 已基于回看结果生成下一步交互规划。"
+            return f"阶段 {stage_id} 已基于结构化状态生成下一步交互规划。"
         return f"阶段 {stage_id} 已生成理解、事实和正文 patch 候选。"
 
     @staticmethod
