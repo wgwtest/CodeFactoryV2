@@ -110,6 +110,21 @@ def test_requirement_analysis_turn_engine_returns_result_without_writing_session
     assert "session.status =" not in source
 
 
+def test_requirement_analysis_plugin_runtime_passes_full_context_to_review_stage() -> None:
+    manifest = OrchestratorPluginRegistry().require("xg-local-heuristic-orchestrator")
+    adapter = load_orchestrator_plugin_adapter(manifest)
+    plugin_module_prefix = adapter.__class__.__module__.rsplit(".", 1)[0]
+    runtime_module = import_module(f"{plugin_module_prefix}.local_xg_turn_runtime")
+    source = inspect.getsource(runtime_module.LocalXGTurnRuntime)
+
+    assert "stage_input=review_stage_input" not in source
+    assert "review_stage_input = self._review_stage_input" in source
+    assert "stage_input.update(review_stage_input)" in source
+    assert "decision_state=decision_state" in source
+    assert "decision_state_document=decision_state_document" in source
+    assert "review_after_apply_result=review_after_apply_result" in source
+
+
 def test_requirement_analysis_session_service_owns_turn_result_write_boundary() -> None:
     assert hasattr(RequirementAnalysisSessionService, "apply_turn_execution_result")
     assert hasattr(RequirementAnalysisSessionService, "load_snapshot")

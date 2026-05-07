@@ -24,7 +24,7 @@ class RequirementAnalysisTurnAuditService:
             f"投影目标章节为 {projection_spec_node.get('target_section')}。",
             f"本轮输入类型为 {normalized.get('input_type')}，语义摘要为：{normalized.get('semantic')}。",
             f"处理前第一个 open 叶子节点为 {next_open_before_update or '无'}。",
-            "组织器规则：先形成临时正文，再基于正文回看结果更新需求规格完成度树。",
+            "组织器规则：先更新结构化状态，再同步渲染临时正文和完成度树投影。",
         ]
 
     def previous_interaction(self, value: object, *, last_quick_options: list[dict]) -> dict:
@@ -155,7 +155,7 @@ class RequirementAnalysisTurnAuditService:
             str(node.get("target_section") or node.get("node_id"))
             for node in spec_execution.get("affected_spec_nodes", [])
         )
-        trace.append(f"先执行规格补充：{affected_labels or '无'}。")
+        trace.append(f"先执行结构化状态更新并同步规格投影：{affected_labels or '无'}。")
         working_document_update = spec_execution.get("working_document_update") or {}
         after_excerpt = working_document_update.get("after_excerpt") or working_document_update.get("after")
         if after_excerpt:

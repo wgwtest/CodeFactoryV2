@@ -40,6 +40,15 @@ class LocalXGMockStageProvider:
                 stage=stage,
                 stage_input=stage_input,
             )
+        if stage_kind == "decision_state_delta":
+            return self._decision_state_delta_output(
+                session=session,
+                user_input=user_input,
+                normalized=normalized,
+                orchestrator=orchestrator,
+                stage=stage,
+                stage_input=stage_input,
+            )
         if stage_kind == "next_interaction":
             return self._next_interaction_output(
                 session=session,
@@ -225,6 +234,112 @@ class LocalXGMockStageProvider:
             },
             provider_response=provider_response,
             raw_content="mock_model_output",
+        )
+
+    def _decision_state_delta_output(
+        self,
+        *,
+        session: SessionSnapshot,
+        user_input: str,
+        normalized: dict,
+        orchestrator: OrchestratorPackage,
+        stage: dict,
+        stage_input: dict,
+    ) -> ProviderRunResult:
+        semantic = str(normalized.get("semantic") or user_input)
+        context = dict(stage_input.get("turn_context") or {})
+        active_node = dict(context.get("active_spec_node") or {})
+        active_section = str(active_node.get("target_section") or "需求规格说明待确认章节")
+        template_clause_id = str(active_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
+        display_heading = self._display_heading_from_stage_input(
+            stage_input=stage_input,
+            template_clause_id=template_clause_id,
+            fallback=active_section,
+        )
+        provider_response = {
+            "organizer_interpretation": {
+                "summary": f"XG Heuristic Orchestrator 将本轮输入沉淀为 {active_section} 的决策状态增量。",
+                "intent": "heuristic_requirement_decision_state",
+                "confidence": "medium",
+            },
+            "assistant_message": f"我已把本轮讨论沉淀为结构化决策状态，并投影到：{active_section}。",
+            "decision_state_delta": {
+                "confirmed_facts": [
+                    {
+                        "content": semantic,
+                        "target_section": active_section,
+                        "status": "active",
+                    }
+                ]
+                if semantic
+                else [],
+                "confirmed_decisions": [
+                    {
+                        "content": f"本轮优先围绕“{active_section}”补齐需求规格信息。",
+                        "target_section": active_section,
+                        "status": "active",
+                    }
+                ],
+                "tentative_assumptions": [],
+                "open_questions": [
+                    {
+                        "content": str(active_node.get("question") or "请继续补充需求规格说明。"),
+                        "target_section": active_section,
+                        "status": "open",
+                    }
+                ],
+                "rejected_directions": [],
+                "chapter_projections": [
+                    {
+                        "content": display_heading,
+                        "target_section": active_section,
+                        "status": "projected",
+                    }
+                ],
+                "next_focus": str(active_node.get("question") or "继续补充下一项需求规格信息。"),
+            },
+            "template_shape_assessment": {
+                "shape_type": "coarse_grained_extensible",
+                "reason": "XG Heuristic Orchestrator 先维护决策状态，再将稳定内容投影到章节正文。",
+                "allowed_write_modes": ["append_existing_clause", "create_subtopic_under_clause"],
+                "forbidden_write_modes": ["invent_new_template_clause"],
+                "template_revision_recommendations": [],
+            },
+            "target_anchor_plan": [
+                {
+                    "plan_id": "AP-001",
+                    "decision_type": "append_existing_clause",
+                    "template_clause_id": template_clause_id,
+                    "canonical_clause_heading": display_heading,
+                    "display_heading": display_heading,
+                    "reason": "XG Heuristic Orchestrator 使用决策状态章节投影作为正文锚点。",
+                    "confidence": "medium",
+                    "anchor_path": template_clause_id,
+                }
+            ],
+            "confirmed_facts_delta": [semantic] if semantic else [],
+            "open_questions_delta": [str(active_node.get("question") or "请继续补充需求规格说明。")],
+            "document_patch": [
+                {
+                    "plan_ref": "AP-001",
+                    "operation": "append_or_update",
+                    "content": f"围绕“{active_section}”，本轮已确认：{semantic}" if semantic else f"围绕“{active_section}”，本轮已建立需求分析决策状态。",
+                    "write_policy": session.write_policy,
+                }
+            ],
+            "annotations": ["XG Heuristic Orchestrator 输出的是决策状态驱动的章节投影。"],
+            "risks": [],
+            "confidence": "medium",
+        }
+        return self._provider_result(
+            session=session,
+            orchestrator=orchestrator,
+            user_input=user_input,
+            normalized=normalized,
+            stage=stage,
+            stage_input=stage_input,
+            provider_response=provider_response,
+            raw_content="mock_decision_state_delta_output",
         )
 
     def _review_output(

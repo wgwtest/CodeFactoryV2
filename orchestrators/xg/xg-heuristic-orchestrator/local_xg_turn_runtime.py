@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from app.orchestrators.package_loader import OrchestratorPackage
@@ -19,6 +20,7 @@ from app.requirement_analysis.turn_execution_result import TurnExecutionResult
 from app.requirement_analysis.turn_output_service import RequirementAnalysisTurnOutputService
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
+from .decision_state_service import DecisionStateService
 from .stage_runtime_context_builder import StageRuntimeContextBuilder
 from .turn_stage_executor import TurnStageExecutor, TurnStageResult
 from .turn_stage_planner import TurnStagePlan, TurnStagePlanner
@@ -78,6 +80,14 @@ class LocalXGTurnRuntime:
             context.working_document
             or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
         )
+        decision_state_service = DecisionStateService()
+        decision_state = decision_state_service.normalize_state(state.get("decision_state"))
+        if not decision_state.get("topic"):
+            decision_state = decision_state_service.initialize(
+                topic=session.topic,
+                initial_question=str(context.active_spec_node.get("question") or ""),
+                active_spec_node=context.active_spec_node,
+            )
         orchestrator = self._orchestrator(session.orchestrator_id)
 
         strategy = self.turn_strategy_service.load(orchestrator=orchestrator, context=context)
@@ -112,7 +122,8 @@ class LocalXGTurnRuntime:
         stage_task_definition = dict(intent_output.get("stage_task_definition") or {})
         stage_quality_constraints = dict(intent_output.get("stage_quality_constraints") or {})
 
-        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind="write"):
+        write_stage_kind = "decision_state_delta" if self._stages_by_kind(stage_plan=stage_plan, stage_kind="decision_state_delta") else "write"
+        for stage in self._stages_by_kind(stage_plan=stage_plan, stage_kind=write_stage_kind):
             stage_input = self.stage_runtime_context_builder.build(
                 session=session,
                 context=context,
@@ -123,6 +134,7 @@ class LocalXGTurnRuntime:
                 stage_quality_constraints=stage_quality_constraints,
                 working_document=working_document,
             ).to_prompt_context()
+            stage_input["decision_state"] = decision_state
             stage_results.append(
                 self.turn_stage_executor.run(
                     stage=stage,
@@ -132,7 +144,16 @@ class LocalXGTurnRuntime:
                     stage_input=stage_input,
                 )
             )
-        model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
+        if write_stage_kind == "decision_state_delta":
+            model_output = self.turn_stage_reducer.reduce_decision_state_delta_stage(plan=stage_plan, stage_results=stage_results)
+        else:
+            model_output = self.turn_stage_reducer.reduce_write_stage(plan=stage_plan, stage_results=stage_results)
+        decision_state_delta = decision_state_service.normalize_delta(
+            model_output.get("decision_state_delta"),
+            turn_id=turn_id,
+            target_spec_node=context.active_spec_node,
+            next_focus=str(model_output.get("next_question") or ""),
+        )
         model_output = self.turn_output_service.normalize_turn_model_output(model_output, session=session)
         model_output = self.turn_output_service.validate_anchor_plan_refs(
             model_output=model_output,
@@ -147,6 +168,18 @@ class LocalXGTurnRuntime:
             spec_tree=context.spec_tree,
             model_output=model_output,
             fallback_node_id=context.active_spec_node_id,
+        )
+        decision_state_result = decision_state_service.apply_delta(
+            decision_state=decision_state,
+            delta=decision_state_delta,
+            turn_id=turn_id,
+            target_spec_node=projection.projection_spec_node,
+            next_focus=str(model_output.get("next_question") or ""),
+        )
+        decision_state = decision_state_result.decision_state
+        decision_state_document = decision_state_service.render_document(
+            decision_state=decision_state,
+            session_phase="analysis",
         )
         write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
@@ -211,6 +244,8 @@ class LocalXGTurnRuntime:
                 working_document=working_document,
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
+                decision_state=decision_state,
+                decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(review_stage_input)
             stage_results.append(
@@ -219,7 +254,7 @@ class LocalXGTurnRuntime:
                     orchestrator=orchestrator,
                     session=session,
                     context=context,
-                    stage_input=review_stage_input,
+                    stage_input=stage_input,
                 )
             )
         review_reduction = self.turn_stage_reducer.reduce_review_stage(
@@ -280,6 +315,8 @@ class LocalXGTurnRuntime:
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
                 review_after_apply_result=review_after_apply_result,
+                decision_state=decision_state,
+                decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(
                 {
@@ -362,6 +399,8 @@ class LocalXGTurnRuntime:
             final_write_provider_normalized_output=write_provider_normalized_output,
             working_document=working_document,
             working_document_update=working_document_update,
+            decision_state=decision_state,
+            decision_state_document=decision_state_document,
             target_review=target_review,
             global_review=global_review,
             projection_spec_node=projection.projection_spec_node,
@@ -401,6 +440,12 @@ class LocalXGTurnRuntime:
             "target_document_structure": target_document_structure,
             "stage_task_definition": stage_task_definition,
             "stage_quality_constraints": stage_quality_constraints,
+            "decision_state_delta": decision_state_result.decision_state_delta,
+            "decision_state_change_summary": decision_state_result.decision_state_change_summary,
+            "decision_state_document": decision_state_service.render_document(
+                decision_state=decision_state,
+                session_phase="analysis",
+            ),
             "spec_execution": spec_execution,
             "post_update_review": post_update_review,
             "review_after_apply_result": review_after_apply_result,
@@ -417,6 +462,8 @@ class LocalXGTurnRuntime:
                 "plugin": self._plugin_payload(session.orchestrator_id),
                 "raw_output": {
                     "raw_model_response": model_output["raw_model_response"],
+                    "decision_state": decision_state,
+                    "decision_state_delta": decision_state_result.decision_state_delta,
                 },
             },
             "created_at": now,
@@ -471,6 +518,11 @@ class LocalXGTurnRuntime:
                 "messages": messages,
                 "confirmed_facts": confirmed_facts,
                 "open_questions": open_questions,
+                "decision_state": decision_state,
+                "decision_state_document": decision_state_service.render_document(
+                    decision_state=decision_state,
+                    session_phase="analysis",
+                ),
                 "document_patch": model_output["document_patch"],
                 "working_document": working_document,
                 "questions": structured_update["questions"],
@@ -672,6 +724,8 @@ class LocalXGTurnRuntime:
         final_write_provider_normalized_output: dict,
         working_document: dict,
         working_document_update: dict,
+        decision_state: dict,
+        decision_state_document: dict,
         target_review: dict,
         global_review: dict,
         projection_spec_node: dict,
@@ -682,6 +736,8 @@ class LocalXGTurnRuntime:
         logs: list[dict] = []
         prompt_bundle_overrides = {
             "working_document_json": str(working_document),
+            "decision_state_json": json.dumps(decision_state, ensure_ascii=False),
+            "decision_state_document_json": json.dumps(decision_state_document, ensure_ascii=False),
             "working_document_excerpt": working_document_update.get("after_excerpt", ""),
             "review_target_paths": target_review.get("review_target", []),
             "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),

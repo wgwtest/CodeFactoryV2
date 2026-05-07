@@ -62,6 +62,17 @@ function formatRequirementAnalysisMessageRole(role: string) {
   return role;
 }
 
+function formatRequirementAnalysisSessionPhase(phase: string) {
+  const labels: Record<string, string> = {
+    configured: "已完成会话配置",
+    exploration_convergence: "探索与收束阶段",
+    draft_entry_confirmation: "落稿确认阶段",
+    draft_generation: "落稿与成稿阶段",
+    draft_review: "成稿审阅阶段",
+  };
+  return labels[phase] ?? phase;
+}
+
 function buildDefaultRequirementAnalysisTemplateName(topic: string) {
   const normalizedTopic = topic.trim() || "未命名需求规格说明";
   return `${normalizedTopic}模板实例`;
@@ -985,6 +996,7 @@ function SessionTab({
             <>
               <div className="requirement-analysis-lab-session-strip">
                 <Text strong>会话 {session.session_id}</Text>
+                <Tag color="geekblue">阶段 {formatRequirementAnalysisSessionPhase(session.session_phase)}</Tag>
                 <Tag>Provider {session.provider_id}</Tag>
                 <Tag>Model {session.model}</Tag>
                 <Tag>{resolveRequirementAnalysisWritePolicyLabel(session.write_policy, writePolicies)}</Tag>
@@ -1550,33 +1562,48 @@ function DecisionStateDocumentView({ session }: { session: RequirementAnalysisSe
   }
 
   return (
-    <div className="requirement-analysis-lab-decision-state-panel">
+    <div className="requirement-analysis-lab-spec-summary">
       <div className="requirement-analysis-lab-summary-title-row">
-        <Text strong>{document.title || "需求分析结构化状态"}</Text>
-        <Tag color="purple">{document.phase || "未开始"}</Tag>
+        <Text strong>结构化状态 / A4 视图</Text>
+        <Space size={8} wrap>
+          <Tag color="geekblue">{formatRequirementAnalysisSessionPhase(session.session_phase)}</Tag>
+          <Tag color="blue">focus: {session.active_spec_node_id ?? "已完成"}</Tag>
+        </Space>
       </div>
-      <div className="requirement-analysis-lab-decision-state-sections">
-        {sections.map((section) => (
-          <div className="requirement-analysis-lab-decision-state-section" key={section.section_id}>
-            <Text strong>{section.heading}</Text>
-            {section.items.length ? (
-              <div className="requirement-analysis-lab-decision-state-items">
-                {section.items.map((item, index) => (
-                  <div className="requirement-analysis-lab-decision-state-item" key={item.item_id ?? `${section.section_id}-${index}`}>
-                    <Text>{item.content}</Text>
-                    <div className="requirement-analysis-lab-turn-inline">
-                      {item.status ? <Tag color={item.status === "open" ? "gold" : "green"}>{item.status}</Tag> : null}
-                      {item.target_section ? <Tag>{item.target_section}</Tag> : null}
-                      {item.source_turn_id ? <Tag>{item.source_turn_id}</Tag> : null}
-                    </div>
+      <div className="requirement-analysis-lab-working-document">
+        <div className="requirement-analysis-lab-working-document-sheet is-decision-state">
+          <div className="requirement-analysis-lab-working-document-page" data-testid="requirement-analysis-decision-state-page">
+            <div className="requirement-analysis-lab-working-document-page-head">
+              <Text strong>{document.title || "需求分析结构化状态"}</Text>
+              <Text type="secondary">{session.topic}</Text>
+            </div>
+            <div className="requirement-analysis-lab-working-document-body">
+              {sections.map((section) => (
+                <div className="requirement-analysis-lab-working-document-block" key={section.section_id}>
+                  <div className="requirement-analysis-lab-working-document-anchor">
+                    <Text strong>{section.heading}</Text>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <Text type="secondary">当前未形成内容。</Text>
-            )}
+                  {section.items.length ? (
+                    <div className="requirement-analysis-lab-decision-state-list">
+                      {section.items.map((item, index) => (
+                        <div className="requirement-analysis-lab-decision-state-item" key={`${section.section_id}-${item.item_id ?? index}`}>
+                          <Text>{item.content}</Text>
+                          <div className="requirement-analysis-lab-decision-state-item-meta">
+                            {item.target_section ? <Tag>{item.target_section}</Tag> : null}
+                            {item.status ? <Tag color="default">{item.status}</Tag> : null}
+                            {item.source_turn_id ? <Text type="secondary">{item.source_turn_id}</Text> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">当前未形成内容。</Text>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

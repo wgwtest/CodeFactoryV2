@@ -1,0 +1,119 @@
+{
+  "type": "object",
+  "required": [
+    "organizer_interpretation",
+    "assistant_message",
+    "decision_state_delta",
+    "confidence"
+  ],
+  "properties": {
+    "organizer_interpretation": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "intent": { "type": "string" },
+        "confidence": { "type": "string" }
+      }
+    },
+    "assistant_message": { "type": "string" },
+    "decision_state_delta": {
+      "type": "object",
+      "required": [
+        "confirmed_facts",
+        "confirmed_decisions",
+        "tentative_assumptions",
+        "open_questions",
+        "rejected_directions",
+        "chapter_projections",
+        "next_focus"
+      ],
+      "properties": {
+        "confirmed_facts": { "$ref": "#/$defs/decision_state_items" },
+        "confirmed_decisions": { "$ref": "#/$defs/decision_state_items" },
+        "tentative_assumptions": { "$ref": "#/$defs/decision_state_items" },
+        "open_questions": { "$ref": "#/$defs/decision_state_items" },
+        "rejected_directions": { "$ref": "#/$defs/decision_state_items" },
+        "chapter_projections": { "$ref": "#/$defs/decision_state_items" },
+        "next_focus": { "type": "string" }
+      }
+    },
+    "template_shape_assessment": {
+      "type": "object",
+      "properties": {
+        "shape_type": {
+          "type": "string",
+          "enum": [
+            "fine_grained_fixed",
+            "fine_grained_extensible",
+            "coarse_grained_extensible",
+            "coarse_grained_fixed",
+            "editable_template"
+          ]
+        },
+        "reason": { "type": "string" },
+        "allowed_write_modes": { "type": "array", "items": { "type": "string" } },
+        "forbidden_write_modes": { "type": "array", "items": { "type": "string" } },
+        "template_revision_recommendations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "target_anchor_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plan_id", "decision_type", "template_clause_id", "display_heading"],
+        "properties": {
+          "plan_id": { "type": "string" },
+          "decision_type": {
+            "type": "string",
+            "enum": ["append_existing_clause", "revise_existing_anchor", "create_subtopic_under_clause"]
+          },
+          "template_clause_id": { "type": "string" },
+          "canonical_clause_heading": { "type": "string" },
+          "subtopic_action": { "type": "string" },
+          "subtopic_key": { "type": "string" },
+          "subtopic_title": { "type": "string" },
+          "display_heading": { "type": "string" },
+          "template_shape_ref": { "type": "string" },
+          "reason": { "type": "string" },
+          "confidence": { "type": "string" },
+          "anchor_path": { "type": "string" }
+        }
+      }
+    },
+    "confirmed_facts_delta": { "type": "array", "items": { "type": "string" } },
+    "open_questions_delta": { "type": "array", "items": { "type": "string" } },
+    "document_patch": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plan_ref": { "type": "string" },
+          "operation": {
+            "type": "string",
+            "enum": ["append_or_update", "append_to_block", "replace", "replace_range", "delete", "delete_range"]
+          },
+          "content": { "type": "string" },
+          "write_policy": { "type": "string" }
+        }
+      }
+    },
+    "annotations": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "confidence": { "type": "string" }
+  },
+  "$defs": {
+    "decision_state_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "content": { "type": "string" },
+          "target_section": { "type": "string" },
+          "status": { "type": "string" },
+          "source_turn_id": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

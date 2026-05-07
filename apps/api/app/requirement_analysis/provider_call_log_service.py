@@ -49,7 +49,10 @@ class ProviderCallLogService:
         provider_response = dict(raw_model_response.get("provider_response") or {})
         if prompt_bundle_overrides:
             prompt_bundle = dict(provider_request.get("prompt_bundle") or {})
-            prompt_bundle.update(prompt_bundle_overrides)
+            for key, value in prompt_bundle_overrides.items():
+                current_value = prompt_bundle.get(key)
+                if current_value in (None, "", [], {}):
+                    prompt_bundle[key] = value
             provider_request["prompt_bundle"] = prompt_bundle
         if provider_response_overrides:
             provider_response.update(provider_response_overrides)

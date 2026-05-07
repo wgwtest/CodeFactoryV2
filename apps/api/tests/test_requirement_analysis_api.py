@@ -254,6 +254,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert created.status_code == 200
     session = created.json()
     assert session["status"] == "created"
+    assert session["session_phase"] == "exploration_convergence"
     assert session["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
     assert session["orchestrator"]["plugin_id"] == "xg-local-heuristic-orchestrator"
     assert session["orchestrator"]["plugin_type"] == "local_package"
@@ -264,6 +265,11 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert session["stable_contract"]["formal_document"] is True
     assert session["write_policy"] == "patch_suggestion_only"
     assert session["document_patch"] == []
+    assert session["decision_state"]["confirmed_facts"] == []
+    assert session["decision_state"]["confirmed_decisions"] == []
+    assert session["decision_state"]["tentative_assumptions"] == []
+    assert session["decision_state"]["open_questions"] != []
+    assert session["decision_state_document"]["title"] == "需求分析结构化状态"
     assert session["working_document"]["document_id"] == "lab-working-document"
     assert session["working_document"]["title"].startswith("81433号需求规格说明")
     assert "sections" not in session["working_document"]
@@ -306,23 +312,21 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert turn.status_code == 200
     payload = turn.json()
     assert payload["session"]["status"] == "waiting_user"
+    assert payload["session"]["session_phase"] == "exploration_convergence"
     assert payload["turn"]["turn_id"] == "turn-0001"
     assert_new_turn_contract(payload["turn"])
     assert [item["stage_id"] for item in payload["turn"]["stage_audits"]] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert [item["stage_kind"] for item in payload["turn"]["stage_audits"]] == [
         "intent",
-        "write",
-        "review",
+        "decision_state_delta",
         "next_interaction",
     ]
     assert payload["turn"]["intent_understanding_result"]["input_type"] == "first_round_product_concept"
     assert payload["turn"]["stage_task_definition"]["target_sections"] == ["1 总则 / 编写目的"]
-    assert payload["turn"]["review_after_apply_result"]["target_review"]["status"] == "acceptable"
     assert payload["turn"]["next_interaction_plan"]["target_spec_nodes"] == ["SPEC-REQ-2.1"]
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
@@ -338,8 +342,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.1"
     assert any("用户输入是本轮 Turn 起点" in item for item in payload["turn"]["decision_trace"])
     assert payload["turn"]["normalized_input"]["input_type"] == "free_text"
-    assert "本轮已补入临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
-    assert "1.1 编写目的" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
+    assert "建议下一步确认" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "软件定位" in payload["turn"]["next_interaction"]["prompt"]
     assert payload["turn"]["next_interaction"]["type"] == "choice_question"
     assert [option["label"] for option in payload["turn"]["next_interaction"]["options"]] == [
@@ -353,20 +357,22 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["confidence"] == "medium"
     assert [item["stage_id"] for item in payload["session"]["provider_logs"]] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert [item["call_id"] for item in payload["session"]["provider_logs"]] == [
         "requirement-analysis-provider-call-0001",
         "requirement-analysis-provider-call-0002",
         "requirement-analysis-provider-call-0003",
-        "requirement-analysis-provider-call-0004",
     ]
     assert payload["session"]["provider_logs"][0]["stage_type"] == "policy_interpreted"
     assert payload["session"]["provider_logs"][2]["stage_type"] == "policy_interpreted"
-    assert payload["session"]["provider_logs"][2]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "review_after_apply"
-    assert payload["session"]["provider_logs"][3]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "next_interaction_planning"
+    assert payload["session"]["provider_logs"][1]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "decision_state_delta"
+    assert payload["session"]["provider_logs"][2]["audit"]["provider_request"]["mock_context"]["stage"]["prompt_id"] == "next_interaction_planning"
+    assert "软件名称" in payload["session"]["provider_logs"][2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_json"]
+    assert "需求分析结构化状态" in payload["session"]["provider_logs"][2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_document_json"]
+    assert "空域运算软件" in payload["session"]["decision_state"]["confirmed_facts"][0]["content"]
+    assert payload["session"]["decision_state_document"]["sections"][0]["heading"] == "一、已确认事实"
     assert "空域运算软件" in payload["session"]["confirmed_facts"][0]
     assert payload["session"]["document_patch"][0]["plan_ref"] == "AP-001"
     assert "sections" not in payload["session"]["working_document"]
@@ -409,17 +415,15 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert_new_turn_contract(second_payload["turn"])
     assert [item["stage_id"] for item in second_payload["turn"]["stage_audits"]] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
-    assert second_payload["turn"]["post_update_review"]["target_review"]["status"] in {"acceptable", "closed"}
     assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
-    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "软件定位初步确认：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
-    assert second_payload["turn"]["spec_execution"]["document_patch"][0]["content"] == "软件定位为：它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
+    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
+    assert "空域领域的计算分析工具" in second_payload["turn"]["spec_execution"]["document_patch"][0]["content"]
     assert second_payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
         "领域专家直接使用",
@@ -445,8 +449,6 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "requirement-analysis-provider-call-0004",
         "requirement-analysis-provider-call-0005",
         "requirement-analysis-provider-call-0006",
-        "requirement-analysis-provider-call-0007",
-        "requirement-analysis-provider-call-0008",
     ]
     second_spec_leaf = find_spec_node(second_payload["session"]["spec_tree"], "SPEC-REQ-2.1")
     assert second_spec_leaf["status"] == "closed"
@@ -512,6 +514,206 @@ def test_requirement_analysis_session_can_default_to_discovered_orchestrator() -
 
     assert created.status_code == 200
     assert created.json()["orchestrator"]["orchestrator_id"] == "xg-local-heuristic-orchestrator"
+
+
+
+def test_requirement_analysis_decision_state_is_applied_before_next_interaction_planning(monkeypatch) -> None:
+    captured_next_stage_input: dict = {}
+
+    class FakeDeepSeekClient:
+        def __init__(self, *, api_key: str, base_url: str, model: str) -> None:
+            self.model = model
+
+        def run_stage(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict,
+            stage_input: dict | None = None,
+        ) -> dict:
+            stage_input = dict(stage_input or {})
+            stage_id = str(stage["stage_id"])
+            raw = {
+                "provider_id": "deepseek",
+                "model": self.model,
+                "mock": False,
+                "provider_request": {
+                    "messages": [{"role": "user", "content": f"{stage_id} prompt"}],
+                    "prompt_bundle": {
+                        "stage_id": stage_id,
+                        "prompt_id": str(stage.get("prompt_id") or stage_id),
+                        "assembled_prompt": f"{stage_id} prompt",
+                        "schema_json": "{}",
+                    },
+                },
+                "provider_response": {"raw_content": "{}", "parsed_json": {}},
+            }
+            if stage_id == "intent_understanding":
+                output = {
+                    "intent_understanding_result": {
+                        "user_goal_summary": "用户确认态势展示和 GIS 分析工具。",
+                        "input_type": "first_round_product_concept",
+                        "relation_to_previous_interaction": "none",
+                        "option_handling": "not_option",
+                        "matched_option": None,
+                        "supplemental_facts": ["态势展示", "GIS 分析工具"],
+                        "target_section_candidates": ["1 总则 / 编写目的"],
+                        "document_strategy": "explore_decision_state",
+                        "write_task_candidate": "沉淀结构化状态。",
+                        "review_focus_candidate": "检查结构化状态是否推进。",
+                        "ambiguities": [],
+                    },
+                    "target_document_structure": {
+                        "target_sections": ["1 总则 / 编写目的"],
+                        "target_anchor_paths": ["1 总则 / 编写目的"],
+                        "current_major_gaps": ["用户角色仍未明确。"],
+                    },
+                    "stage_task_definition": {
+                        "task_summary": "沉淀态势分析系统的起始结构化状态。",
+                        "target_sections": ["1 总则 / 编写目的"],
+                        "non_goals": [],
+                        "must_output": ["decision_state_delta"],
+                        "review_standard": "结构化状态要包含事实和未闭合问题。",
+                    },
+                    "stage_quality_constraints": {
+                        "minimum_depth": "明确已知事实和下一步问题。",
+                        "must_cover_dimensions": ["事实", "问题"],
+                        "assistant_reply_style": "说明结构化状态变化。",
+                    },
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+            if stage_id == "decision_state_delta":
+                output = {
+                    "organizer_interpretation": {
+                        "summary": "用户提出了态势分析系统的初始能力方向。",
+                        "intent": "first_round_product_concept",
+                        "confidence": "high",
+                    },
+                    "assistant_message": "本轮已沉淀态势展示与 GIS 分析工具方向。",
+                    "decision_state_delta": {
+                        "confirmed_facts": [
+                            {
+                                "content": "系统需要态势展示能力和 GIS 分析工具。",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "active",
+                            }
+                        ],
+                        "confirmed_decisions": [],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "content": "第一版主要服务哪类用户仍未明确。",
+                                "target_section": "3 功能需求 / 用户与角色",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "chapter_projections": [
+                            {
+                                "content": "1.1 编写目的",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "projected",
+                            }
+                        ],
+                        "next_focus": "确认第一版主要用户。",
+                    },
+                    "template_shape_assessment": {
+                        "shape_type": "coarse_grained_extensible",
+                        "reason": "当前仅做探索阶段投影。",
+                        "allowed_write_modes": ["append_existing_clause"],
+                        "forbidden_write_modes": [],
+                        "template_revision_recommendations": [],
+                    },
+                    "target_anchor_plan": [
+                        {
+                            "plan_id": "AP-001",
+                            "decision_type": "append_existing_clause",
+                            "template_clause_id": "REQ-1.1",
+                            "canonical_clause_heading": "1.1 编写目的",
+                            "subtopic_action": "none",
+                            "subtopic_key": "",
+                            "subtopic_title": "",
+                            "display_heading": "1.1 编写目的",
+                            "template_shape_ref": "coarse_grained_extensible",
+                            "reason": "起始输入形成系统目的投影。",
+                            "confidence": "high",
+                            "anchor_path": "REQ-1.1",
+                        }
+                    ],
+                    "confirmed_facts_delta": ["系统需要态势展示能力和 GIS 分析工具。"],
+                    "open_questions_delta": ["第一版主要服务哪类用户仍未明确。"],
+                    "document_patch": [
+                        {
+                            "plan_ref": "AP-001",
+                            "operation": "append_or_update",
+                            "content": "本系统面向态势展示和 GIS 分析工具的需求探索。",
+                            "write_policy": session.write_policy,
+                        }
+                    ],
+                    "annotations": [],
+                    "risks": [],
+                    "confidence": "high",
+                }
+                return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+
+            captured_next_stage_input.update(stage_input)
+            decision_state = dict(stage_input.get("decision_state") or {})
+            assert any(
+                item.get("content") == "系统需要态势展示能力和 GIS 分析工具。"
+                for item in decision_state.get("confirmed_facts", [])
+            )
+            assert any(
+                item.get("content") == "第一版主要服务哪类用户仍未明确。"
+                for item in decision_state.get("open_questions", [])
+            )
+            output = {
+                "next_interaction_plan": {
+                    "planning_strategy": "ask_key_decision",
+                    "user_message": "本轮已沉淀结构化状态，下一步确认主用户。",
+                    "next_question": "第一版最主要服务哪类用户？",
+                    "quick_options": [{"key": "A", "label": "指挥管理人员", "recommended": True}],
+                    "plan_reason": "结构化状态显示用户角色是当前最大未闭合问题。",
+                    "review_acknowledgement": "结构化状态已应用。",
+                    "target_spec_nodes": ["SPEC-REQ-3.1"],
+                },
+                "planning_trace": ["读取本轮应用后的 decision_state 后规划。"],
+                "confidence": "high",
+            }
+            return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
+
+    monkeypatch.setattr(requirement_analysis_client_module.settings, "requirement_analysis_deepseek_api_key", "test-deepseek-key")
+    monkeypatch.setattr(requirement_analysis_client_module, "DeepSeekRequirementAnalysisClient", FakeDeepSeekClient)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "态势分析系统需求规格探索",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "deepseek",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+    session = created.json()
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
+        json={"user_input": "我希望创建一个态势分析系统，要有态势展示和 GIS 分析工具。"},
+    )
+
+    assert turn.status_code == 200
+    payload = turn.json()
+    assert payload["turn"]["next_interaction"]["prompt"] == "第一版最主要服务哪类用户？"
+    assert captured_next_stage_input["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert "系统需要态势展示能力和 GIS 分析工具。" in str(captured_next_stage_input["decision_state_document"])
+
 
 
 def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> None:
@@ -1075,6 +1277,105 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
                         "provider_response": {"raw_content": '{"next_interaction_plan":{"next_question":"下一轮可以确认输入数据来源。"}}', "parsed_json": {}},
                     },
                 }
+            if stage_id == "decision_state_delta":
+                return {
+                    "organizer_interpretation": {
+                        "summary": "用户选择先按计算分析工具理解。",
+                        "intent": "confirm_direction",
+                        "confidence": "high",
+                    },
+                    "assistant_message": "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。",
+                    "decision_state_delta": {
+                        "confirmed_facts": [
+                            {
+                                "content": "DeepSeek 确认系统初步定位为空域计算分析工具",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "active",
+                            }
+                        ],
+                        "confirmed_decisions": [
+                            {
+                                "content": "先按计算分析工具理解。",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "active",
+                            }
+                        ],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "content": "输入数据来源尚未确认。",
+                                "target_section": "3 功能需求 / 输入数据来源",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "chapter_projections": [
+                            {
+                                "content": "2.1 软件定位",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "projected",
+                            }
+                        ],
+                        "next_focus": "下一轮可以确认输入数据来源。",
+                    },
+                    "template_shape_assessment": {
+                        "shape_type": "coarse_grained_extensible",
+                        "reason": "模板允许在既有条款下补写软件定位。",
+                        "allowed_write_modes": ["append_existing_clause"],
+                        "forbidden_write_modes": [],
+                        "template_revision_recommendations": [],
+                    },
+                    "target_anchor_plan": [
+                        {
+                            "plan_id": "AP-001",
+                            "decision_type": "append_existing_clause",
+                            "template_clause_id": "REQ-2.1",
+                            "canonical_clause_heading": "2.1 软件定位",
+                            "subtopic_action": "none",
+                            "subtopic_key": "",
+                            "subtopic_title": "",
+                            "display_heading": "2.1 软件定位",
+                            "template_shape_ref": "coarse_grained_extensible",
+                            "reason": "用户选择了计算分析工具定位。",
+                            "confidence": "high",
+                            "anchor_path": "REQ-2.1",
+                        }
+                    ],
+                    "confirmed_facts_delta": ["DeepSeek 确认系统初步定位为空域计算分析工具"],
+                    "open_questions_delta": ["输入数据来源尚未确认。"],
+                    "document_patch": [
+                        {
+                            "plan_ref": "AP-001",
+                            "operation": "append_or_update",
+                            "content": "本系统支持空域计算分析任务的需求澄清。",
+                            "write_policy": session.write_policy,
+                        }
+                    ],
+                    "annotations": ["DeepSeek Provider 返回结构化 Turn 输出。"],
+                    "risks": [],
+                    "confidence": "medium",
+                    "raw_model_response": {
+                        "provider_id": "deepseek",
+                        "mock": False,
+                        "provider_request": {
+                            "messages": [
+                                {"role": "system", "content": "system prompt"},
+                                {"role": "user", "content": "assembled prompt"},
+                            ],
+                            "prompt_bundle": prompt_bundle,
+                        },
+                        "provider_response": {
+                            "raw_content": '{"decision_state_delta":{"confirmed_facts":[{"content":"DeepSeek 确认系统初步定位为空域计算分析工具"}]}}',
+                            "parsed_json": {
+                                "decision_state_delta": {
+                                    "confirmed_facts": [
+                                        {"content": "DeepSeek 确认系统初步定位为空域计算分析工具"}
+                                    ]
+                                }
+                            },
+                        },
+                    },
+                }
             return {
                 "organizer_interpretation": {
                     "summary": "用户选择先按计算分析工具理解。",
@@ -1185,8 +1486,7 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert payload["turn"]["next_interaction"]["prompt"] == "下一轮可以确认输入数据来源。"
     assert [log["stage_id"] for log in payload["session"]["provider_logs"]] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert payload["session"]["provider_logs"][0]["provider_id"] == "deepseek"
@@ -1203,12 +1503,9 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
     assert "review_target_paths" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "recent_revision_fragments" in provider_log["audit"]["provider_request"]["prompt_bundle"]
     assert "review_goal" in provider_log["audit"]["provider_request"]["prompt_bundle"]
-    assert "DeepSeek 已确认" in provider_log["audit"]["provider_response"]["raw_content"]
-    assert provider_log["audit"]["provider_normalized_output"]["assistant_message"] == (
-        "DeepSeek 已确认：本轮把系统定位更新为计算分析工具。"
-    )
+    assert provider_log["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "decision_state_delta"
+    assert provider_log["audit"]["provider_normalized_output"]["decision_state_delta"]["confirmed_facts"]
     assert provider_log["audit"]["service_output"]["assistant_message"].startswith("本轮已把软件定位写入临时正文")
-    assert "写入位置：2.1 软件定位" in provider_log["audit"]["service_output"]["assistant_message"]
     assert provider_log["audit"]["service_output"]["target_anchor_plan"][0]["template_clause_id"] == "REQ-2.1"
     assert provider_log["audit"]["service_output"]["document_patch"][0]["plan_ref"] == "AP-001"
     assert captured == {
@@ -1226,7 +1523,7 @@ def test_requirement_analysis_lab_uses_deepseek_provider_when_configured(monkeyp
         }
 
 
-def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) -> None:
+def test_requirement_analysis_lab_records_decision_state_provider_logs(monkeypatch) -> None:
     calls: list[dict] = []
 
     class FakeDeepSeekClient:
@@ -1302,29 +1599,76 @@ def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) 
                     "confidence": "high",
                 }
                 return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
-            if stage["stage_kind"] == "review":
+            if stage["stage_kind"] == "decision_state_delta":
                 output = {
-                    "target_review": {
-                        "status": "acceptable",
-                        "review_target": ["1 总则 / 编写目的"],
-                        "reason": "模型基于应用后的临时正文确认目标范围已覆盖。",
-                        "covered_points": ["系统名称", "编写目的"],
-                        "missing_aspects": [],
-                        "evidence_block_ids": ["blk-0001"],
-                        "evidence_fragment_ids": ["frag-0001"],
+                    "organizer_interpretation": {
+                        "summary": "用户确认系统名称和编写目的。",
+                        "intent": "supplement_requirement",
+                        "confidence": "high",
                     },
-                    "global_review": {
-                        "status": "move_next_node",
-                        "summary": "模型建议推进到软件定位节点。",
-                        "remaining_gaps": [],
+                    "assistant_message": "本轮已沉淀系统名称和编写目的。",
+                    "decision_state_delta": {
+                        "confirmed_facts": [
+                            {
+                                "content": "系统名称和编写目的已确认。",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "active",
+                            }
+                        ],
+                        "confirmed_decisions": [],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "content": "下一轮确认软件定位。",
+                                "target_section": "2 项目概述 / 软件定位",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "chapter_projections": [
+                            {
+                                "content": "1.1 编写目的",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "projected",
+                            }
+                        ],
+                        "next_focus": "下一轮确认软件定位。",
                     },
-                    "compliance_result": "pass",
-                    "written_fact_summary": ["系统名称", "编写目的"],
-                    "blocking_findings": [],
-                    "blocking_reasons": [],
-                    "planning_evidence": ["blk-0001", "frag-0001"],
-                    "rewrite_advice": [],
-                    "review_annotations": ["模型 Review 读取了应用后的临时正文。"],
+                    "template_shape_assessment": {
+                        "shape_type": "coarse_grained_extensible",
+                        "reason": "模板允许在既有条款下补写编写目的。",
+                        "allowed_write_modes": ["append_existing_clause"],
+                        "forbidden_write_modes": [],
+                        "template_revision_recommendations": [],
+                    },
+                    "target_anchor_plan": [
+                        {
+                            "plan_id": "AP-001",
+                            "decision_type": "append_existing_clause",
+                            "template_clause_id": "REQ-1.1",
+                            "canonical_clause_heading": "1.1 编写目的",
+                            "subtopic_action": "none",
+                            "subtopic_key": "",
+                            "subtopic_title": "",
+                            "display_heading": "1.1 编写目的",
+                            "template_shape_ref": "coarse_grained_extensible",
+                            "reason": "用户确认系统名称和编写目的。",
+                            "confidence": "high",
+                            "anchor_path": "REQ-1.1",
+                        }
+                    ],
+                    "confirmed_facts_delta": ["系统名称和编写目的已确认。"],
+                    "open_questions_delta": ["下一轮确认软件定位。"],
+                    "document_patch": [
+                        {
+                            "plan_ref": "AP-001",
+                            "operation": "append_or_update",
+                            "content": "本需求规格说明用于定义默认运算软件的建设目标和需求边界。",
+                            "write_policy": session.write_policy,
+                        }
+                    ],
+                    "annotations": [],
+                    "risks": [],
                     "confidence": "high",
                 }
                 return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
@@ -1335,11 +1679,11 @@ def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) 
                         "user_message": "模型规划：编写目的已补齐，下一步确认软件定位。",
                         "next_question": "建议下一步确认软件定位。",
                         "quick_options": [{"key": "A", "label": "计算分析工具", "recommended": True}],
-                        "plan_reason": "Review 已通过，完成度树下一 open 节点为软件定位。",
-                        "review_acknowledgement": "编写目的已覆盖。",
+                        "plan_reason": "结构化状态显示软件定位仍需确认。",
+                        "review_acknowledgement": "结构化状态已应用。",
                         "target_spec_nodes": ["SPEC-REQ-2.1"],
                     },
-                    "planning_trace": ["模型规划阶段已执行。"],
+                    "planning_trace": ["模型规划阶段已读取 decision_state。"],
                     "confidence": "high",
                 }
                 return {**output, "raw_model_response": {**raw, "provider_normalized_output": output}}
@@ -1424,30 +1768,25 @@ def test_requirement_analysis_lab_records_four_stage_provider_logs(monkeypatch) 
     provider_logs = payload["session"]["provider_logs"]
     assert [log["stage_id"] for log in provider_logs] == [
         "intent_understanding",
-        "write",
-        "review_after_apply",
+        "decision_state_delta",
         "next_interaction_planning",
     ]
     assert [log["call_id"] for log in provider_logs] == [
         "requirement-analysis-provider-call-0001",
         "requirement-analysis-provider-call-0002",
         "requirement-analysis-provider-call-0003",
-        "requirement-analysis-provider-call-0004",
     ]
     assert provider_logs[0]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "intent_understanding"
-    assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "write"
-    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "review_after_apply"
-    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["prompt_id"] == "review_after_apply"
-    assert provider_logs[3]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "next_interaction_planning"
-    assert provider_logs[2]["audit"]["provider_normalized_output"]["target_review"]["status"] == "acceptable"
-    assert provider_logs[2]["audit"]["service_output"]["target_review"]["status"] == "acceptable"
-    assert provider_logs[2]["audit"]["service_output"]["target_review"]["review_target"] == ["1 总则 / 编写目的"]
-    assert payload["turn"]["post_update_review"]["target_review"]["review_target"] == ["1 总则 / 编写目的"]
-    assert payload["turn"]["post_update_review"]["target_review"]["reason"] == "模型基于应用后的临时正文确认目标范围已覆盖。"
+    assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "decision_state_delta"
+    assert provider_logs[1]["audit"]["provider_request"]["prompt_bundle"]["prompt_id"] == "decision_state_delta"
+    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["stage_id"] == "next_interaction_planning"
+    assert provider_logs[1]["audit"]["provider_normalized_output"]["decision_state_delta"]["confirmed_facts"][0]["content"] == "系统名称和编写目的已确认。"
+    assert provider_logs[2]["audit"]["provider_request"]["prompt_bundle"]["decision_state_json"]
+    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
     assert payload["turn"]["next_interaction_plan"]["next_question"] == "建议下一步确认软件定位。"
-    assert calls[2]["stage"]["prompt_id"] == "review_after_apply"
-    assert calls[2]["stage_input"]["working_document_after_apply"]["blocks"][0]["block_id"] == "blk-0001"
-    assert calls[3]["stage"]["prompt_id"] == "next_interaction_planning"
+    assert calls[1]["stage"]["prompt_id"] == "decision_state_delta"
+    assert calls[2]["stage"]["prompt_id"] == "next_interaction_planning"
+    assert calls[2]["stage_input"]["decision_state"]["confirmed_facts"]
 
 
 def test_requirement_analysis_lab_projects_provider_patch_to_matching_spec_node_without_confirming_first_open_question(

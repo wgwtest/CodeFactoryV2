@@ -864,6 +864,10 @@
   gap: 24px;
 }
 
+.requirement-analysis-lab-working-document-sheet.is-decision-state {
+  grid-template-columns: minmax(0, 920px);
+}
+
 .requirement-analysis-lab-working-document-page {
   width: 100%;
   min-height: 1120px;
@@ -946,6 +950,26 @@
   line-height: 1.92;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.requirement-analysis-lab-decision-state-list {
+  display: grid;
+  gap: 10px;
+}
+
+.requirement-analysis-lab-decision-state-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #dde5e1;
+  background: #fbfdfc;
+}
+
+.requirement-analysis-lab-decision-state-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .requirement-analysis-lab-revision-highlight {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from app.orchestrators.package_loader import OrchestratorPackage
@@ -176,6 +177,10 @@ class LocalXGTurnRuntime:
             next_focus=str(model_output.get("next_question") or ""),
         )
         decision_state = decision_state_result.decision_state
+        decision_state_document = decision_state_service.render_document(
+            decision_state=decision_state,
+            session_phase="analysis",
+        )
         write_provider_normalized_output = self.provider_call_log_service.provider_normalized_output(model_output)
 
         next_open_before_update = self.spec_tree_service.first_open_spec_node_id(context.spec_tree)
@@ -239,6 +244,8 @@ class LocalXGTurnRuntime:
                 working_document=working_document,
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
+                decision_state=decision_state,
+                decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(review_stage_input)
             stage_results.append(
@@ -247,7 +254,7 @@ class LocalXGTurnRuntime:
                     orchestrator=orchestrator,
                     session=session,
                     context=context,
-                    stage_input=review_stage_input,
+                    stage_input=stage_input,
                 )
             )
         review_reduction = self.turn_stage_reducer.reduce_review_stage(
@@ -308,6 +315,8 @@ class LocalXGTurnRuntime:
                 working_document_after_apply=review_stage_input["working_document_after_apply"],
                 working_document_update=working_document_update,
                 review_after_apply_result=review_after_apply_result,
+                decision_state=decision_state,
+                decision_state_document=decision_state_document,
             ).to_prompt_context()
             stage_input.update(
                 {
@@ -390,6 +399,8 @@ class LocalXGTurnRuntime:
             final_write_provider_normalized_output=write_provider_normalized_output,
             working_document=working_document,
             working_document_update=working_document_update,
+            decision_state=decision_state,
+            decision_state_document=decision_state_document,
             target_review=target_review,
             global_review=global_review,
             projection_spec_node=projection.projection_spec_node,
@@ -713,6 +724,8 @@ class LocalXGTurnRuntime:
         final_write_provider_normalized_output: dict,
         working_document: dict,
         working_document_update: dict,
+        decision_state: dict,
+        decision_state_document: dict,
         target_review: dict,
         global_review: dict,
         projection_spec_node: dict,
@@ -723,6 +736,8 @@ class LocalXGTurnRuntime:
         logs: list[dict] = []
         prompt_bundle_overrides = {
             "working_document_json": str(working_document),
+            "decision_state_json": json.dumps(decision_state, ensure_ascii=False),
+            "decision_state_document_json": json.dumps(decision_state_document, ensure_ascii=False),
             "working_document_excerpt": working_document_update.get("after_excerpt", ""),
             "review_target_paths": target_review.get("review_target", []),
             "recent_revision_fragments": working_document_update.get("applied_fragment_ids", []),
