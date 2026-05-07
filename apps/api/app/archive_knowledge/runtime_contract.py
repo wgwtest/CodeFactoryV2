@@ -108,6 +108,9 @@ class RuleExecutionRecord(BaseModel):
     rule_version: str = "r1.0"
     rule_hash: str | None = None
     snapshot_id: str | None = None
+    policy_snapshot_id: str | None = None
+    policy_package_id: str | None = None
+    policy_version: str | None = None
     input_artifact_refs: list[str] = Field(default_factory=list)
     input_hash: str | None = None
     output_artifact_refs: list[str] = Field(default_factory=list)
@@ -148,6 +151,7 @@ class RuntimePolicySnapshotRule(BaseModel):
     output_schema: list[dict[str, Any]] = Field(default_factory=list)
     parameters: dict[str, Any] = Field(default_factory=dict)
     trace_fields: list[str] = Field(default_factory=list)
+    action_mapping: dict[str, Any] = Field(default_factory=dict)
     rule_hash: str | None = None
     contract_status: str | None = None
     contract_errors: list[str] = Field(default_factory=list)
@@ -165,6 +169,7 @@ class RuntimePolicySnapshotStage(BaseModel):
 
 class RuntimePolicySnapshot(BaseModel):
     snapshot_id: str
+    policy_snapshot_id: str | None = None
     captured_at: str | None = None
     archive_id: str
     policy_package_id: str | None = None
@@ -172,6 +177,13 @@ class RuntimePolicySnapshot(BaseModel):
     policy_package_version_id: str | None = None
     policy_package_version_status: str | None = None
     policy_package_version_hash: str | None = None
+    policy_contract_version: str | None = None
+    policy_package_version_created_at: str | None = None
+    previous_policy_package_version_id: str | None = None
+    policy_package_versions: list[dict[str, Any]] = Field(default_factory=list)
+    policy_contract_status: str | None = None
+    policy_contract_errors: list[dict[str, Any]] = Field(default_factory=list)
+    policy_version: str | None = None
     version_label: str
     scope_label: str
     ai_autoadapt_enabled: bool = True
@@ -186,11 +198,20 @@ class DocumentRuntimeContract(BaseModel):
     document_title: str
     current_stage_id: str
     current_stage_label: str
+    current_stage_status: RuntimeStatus | None = None
+    current_stage_message: str | None = None
     status: RuntimeStatus
     runtime_mode: Literal["persisted", "hybrid", "derived", "legacy_fallback"] = "derived"
     persisted_stage_ids: list[str] = Field(default_factory=list)
     source_document: dict[str, Any] = Field(default_factory=dict)
     policy_snapshot: RuntimePolicySnapshot | None = None
+    policy_package_id: str | None = None
+    policy_version: str | None = None
+    policy_snapshot_id: str | None = None
+    stage_statuses: dict[str, str] = Field(default_factory=dict)
+    rule_hits: list[dict[str, Any]] = Field(default_factory=list)
+    quality_gate: dict[str, Any] = Field(default_factory=dict)
+    publication_candidate_status: dict[str, Any] = Field(default_factory=dict)
     stages: list[RuntimeStageSnapshot] = Field(default_factory=list)
     rule_execution_records: list[RuleExecutionRecord] = Field(default_factory=list)
 

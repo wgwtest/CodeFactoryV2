@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Col, Descriptions, Empty, Input, List, Progress, Row, Space, Table, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 
@@ -147,6 +147,10 @@ export function DocumentsPage() {
     event: documentDetail?.knowledge_items.filter((item) => item.item_type === "event") ?? [],
     process: documentDetail?.knowledge_items.filter((item) => item.item_type === "process") ?? [],
   };
+  const buildStateDocumentsById = useMemo(
+    () => new Map((activeArchive?.build_state?.documents ?? []).map((item) => [item.document_id, item])),
+    [activeArchive?.build_state?.documents],
+  );
   const currentMutationDocument = documentMutation
     ? documents.find((item) => item.id === documentMutation.documentId) ?? null
     : null;
@@ -210,17 +214,28 @@ export function DocumentsPage() {
 
   return (
     <ValidationWorkspace
-      title="知识库文档"
+      title="知识库文档清单与文档选择"
       description={
         <>
-          当前页面只聚焦知识库主链文档，用于查看当前 archive 的正式文档清单，并执行单文档正式并入或移出。
+          管理当前知识库文档，区分纳入状态、抽取状态、策略快照、发布候选和规则重算风险。
           {activeArchive ? ` 当前知识库：${activeArchive.name}。` : ""}
         </>
       }
       actions={
-        <Link to="/documents/intake">
-          <Button>前往接入解析验证</Button>
-        </Link>
+        <Space wrap>
+          <Link to="/documents/intake">
+            <Button>前往接入解析验证</Button>
+          </Link>
+          <Link to="/policies">
+            <Button>选择 / 更换策略</Button>
+          </Link>
+          <Link to="/policies/impact">
+            <Button>查看重算影响面</Button>
+          </Link>
+          <Link to="/archives">
+            <Button type="primary">进入实时抽取工作台</Button>
+          </Link>
+        </Space>
       }
     >
       <Space direction="vertical" size={24} style={{ display: "flex" }}>
@@ -335,6 +350,22 @@ export function DocumentsPage() {
                       <Tag>PPTX</Tag>
                     </Space>
                   </div>
+                  <div className="p1-filter-group">
+                    <span className="p1-filter-title">绑定策略包</span>
+                    <div className="p1-filter-pill-row">
+                      <span className="p1-filter-pill is-active">全部</span>
+                      <span className="p1-filter-pill">合同通用抽取</span>
+                      <span className="p1-filter-pill">需求文档结构抽取</span>
+                    </div>
+                  </div>
+                  <div className="p1-filter-group">
+                    <span className="p1-filter-title">规则变更状态</span>
+                    <div className="p1-filter-pill-row">
+                      <span className="p1-filter-pill is-active">全部</span>
+                      <span className="p1-filter-pill">存在 stale 对象</span>
+                      <span className="p1-filter-pill">已生成发布候选</span>
+                    </div>
+                  </div>
                 </div>
               </Card>
               <Card className="p1-soft-card" title="上传文档">
@@ -397,18 +428,35 @@ export function DocumentsPage() {
                     {
                       title: "当前抽取阶段",
                       width: 150,
-                      render: (_: unknown, record: ArchiveKnowledgeDocument) =>
-                        record.included_in_archive !== false ? (
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => {
+                        const runtimeDocument = buildStateDocumentsById.get(record.id);
+                        const isRunning = runtimeDocument?.state === "running";
+                        const stageLabel =
+                          isRunning && activeArchive?.build_state?.current_stage_label
+                            ? activeArchive.build_state.current_stage_label
+                            : record.included_in_archive !== false
+                              ? "已完成"
+                              : "未启动";
+                        const percent = record.included_in_archive !== false ? 100 : isRunning ? 42 : 0;
+                        return (
                           <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                            <Typography.Text>已完成</Typography.Text>
-                            <Progress percent={100} size="small" showInfo={false} />
+                            <Typography.Text type={isRunning ? "warning" : record.included_in_archive !== false ? undefined : "secondary"}>
+                              {stageLabel}
+                            </Typography.Text>
+                            <Progress percent={percent} size="small" showInfo={false} />
                           </Space>
-                        ) : (
-                          <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                            <Typography.Text type="secondary">未启动</Typography.Text>
-                            <Progress percent={0} size="small" showInfo={false} />
-                          </Space>
-                        ),
+                        );
+                      },
+                    },
+                    {
+                      title: "绑定策略包",
+                      width: 150,
+                      render: () => activeArchive?.build_state?.policy_snapshot?.scope_label ?? "合同通用抽取",
+                    },
+                    {
+                      title: "策略快照",
+                      width: 130,
+                      render: () => activeArchive?.build_state?.policy_snapshot?.version_label ?? "未冻结",
                     },
                     {
                       title: "输入状态",
@@ -435,8 +483,14 @@ export function DocumentsPage() {
                       ),
                     },
                     {
+                      title: "发布候选状态",
+                      width: 140,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) =>
+                        record.included_in_archive !== false ? <Tag color="purple">候选 / 待治理</Tag> : <Tag>未生成</Tag>,
+                    },
+                    {
                       title: "操作",
-                      width: 180,
+                      width: 220,
                       render: (_: unknown, record: ArchiveKnowledgeDocument) => {
                         const isIncluded = record.included_in_archive !== false;
                         const isMutating = documentMutation?.documentId === record.id;
@@ -445,6 +499,9 @@ export function DocumentsPage() {
                             <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
                               查看
                             </Button>
+                            <Link to="/archives">
+                              <Button type="link">进入实时抽取</Button>
+                            </Link>
                             <Button
                               type="link"
                               onClick={() => void runArchiveDocumentMutation(record, isIncluded ? "remove" : "include")}
@@ -484,17 +541,47 @@ export function DocumentsPage() {
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="来源">{documentDetail.document.source_archive}</Descriptions.Item>
                     <Descriptions.Item label="字符数">{documentDetail.document.character_count.toLocaleString("zh-CN")}</Descriptions.Item>
+                    <Descriptions.Item label="推荐策略">合同通用抽取 / PDF-DOCX 稳定模板</Descriptions.Item>
+                    <Descriptions.Item label="已绑定策略">
+                      {activeArchive?.build_state?.policy_snapshot?.scope_label ?? "合同通用抽取"} ·{" "}
+                      {activeArchive?.build_state?.policy_snapshot?.version_label ?? "未冻结"}
+                    </Descriptions.Item>
                     <Descriptions.Item label="候选知识">{documentDetail.document.knowledge_item_count}</Descriptions.Item>
                     <Descriptions.Item label="实体 / 事件 / 流程">
                       {documentDetail.document.entity_count} / {documentDetail.document.event_count} / {documentDetail.document.process_count}
                     </Descriptions.Item>
                   </Descriptions>
+                  <div className="p1-stage-track">
+                    {Array.from({ length: 13 }, (_, index) => (
+                      <div
+                        key={index}
+                        className={`p1-stage-step${documentDetail.document.included_in_archive !== false ? " is-done" : index === 0 ? " is-current" : " is-pending"}`}
+                      >
+                        <span className="p1-stage-index">{index + 1}</span>
+                        <span className="p1-stage-label">{index < 4 ? "接入解析" : index < 10 ? "知识生成" : "发布前置"}</span>
+                      </div>
+                    ))}
+                  </div>
                   <Alert
                     type="warning"
                     showIcon
                     message="规则版本落后于当前策略"
                     description="若策略已升级，可从策略差异页生成影响面并启动增量重算。"
                   />
+                  <Space wrap>
+                    <Link to="/archives">
+                      <Button type="primary">进入实时抽取</Button>
+                    </Link>
+                    <Link to="/policies">
+                      <Button>选择 / 更换策略</Button>
+                    </Link>
+                    <Link to="/policies/diff">
+                      <Button>复制策略后重跑</Button>
+                    </Link>
+                    <Link to="/runtime/publication">
+                      <Button>查看发布候选</Button>
+                    </Link>
+                  </Space>
                   {knowledgeSections.map((section) => (
                     <DocumentKnowledgeSection
                       key={section.key}

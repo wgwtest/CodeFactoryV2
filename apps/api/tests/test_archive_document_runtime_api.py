@@ -164,6 +164,24 @@ def test_archive_document_runtime_endpoint_returns_13_stage_contract(tmp_path: P
     assert payload["rule_execution_records"]
     assert payload["rule_execution_records"][0]["input_hash"].startswith("sha256:")
     assert payload["rule_execution_records"][0]["output_hash"].startswith("sha256:")
+    required_record_fields = {
+        "execution_id",
+        "archive_id",
+        "document_id",
+        "stage_id",
+        "rule_id",
+        "rule_version",
+        "rule_hash",
+        "input_artifact_refs",
+        "output_artifact_refs",
+        "input_hash",
+        "output_hash",
+        "affected_object_ids",
+        "decision",
+        "metrics",
+        "executed_at",
+    }
+    assert required_record_fields.issubset(payload["rule_execution_records"][0])
 
 
 def test_unified_document_snapshot_covers_all_sections_and_paragraphs() -> None:
@@ -545,8 +563,15 @@ def test_archive_document_runtime_falls_back_to_running_build_state_before_manif
     asset_intake = next(stage for stage in payload["stages"] if stage["stage_id"] == "asset_intake")
     assert asset_intake["rule_execution_records"][0]["source"] == "policy_snapshot"
     assert asset_intake["rule_execution_records"][0]["rule_id"] == "RL-ASSET-001"
+    assert asset_intake["rule_execution_records"][0]["rule_version"] == "r2.0"
+    assert asset_intake["rule_execution_records"][0]["rule_hash"] == "sha256:asset-policy"
     assert asset_intake["rule_execution_records"][0]["snapshot_id"] == "policy-live-1"
     assert asset_intake["rule_execution_records"][0]["input_hash"].startswith("sha256:")
+    assert asset_intake["rule_execution_records"][0]["output_hash"].startswith("sha256:")
+    assert asset_intake["rule_execution_records"][0]["input_artifact_refs"] == ["asset_intake.input"]
+    assert "asset_intake.output" in asset_intake["rule_execution_records"][0]["output_artifact_refs"]
+    assert asset_intake["rule_execution_records"][0]["affected_object_ids"]
+    assert asset_intake["rule_execution_records"][0]["executed_at"] == "2026-04-22T10:00:00+00:00"
 
 
 def test_formal_archive_contributions_persist_parse_stage_snapshots_before_document_contribution(
@@ -946,6 +971,13 @@ def test_quality_gate_policy_snapshot_changes_gate_decision(monkeypatch) -> None
     assert candidate_set.node_id == snapshot.graph.primary_node_ids[0]
     assert any(edge.source == candidate_set.node_id and edge.relation == "evaluated_by" for edge in snapshot.graph.edges)
     assert any(edge.target == candidate_set.node_id and edge.relation == "feeds_candidate_set" for edge in snapshot.graph.edges)
+    gate_support_record = next(record for record in snapshot.rule_execution_records if record.rule_id == "gate-support")
+    assert gate_support_record.rule_version == "r1.0"
+    assert gate_support_record.rule_hash and gate_support_record.rule_hash.startswith("sha256:")
+    assert gate_support_record.input_artifact_refs
+    assert gate_support_record.output_artifact_refs
+    assert gate_support_record.affected_object_ids == ["entity-1"]
+    assert gate_support_record.executed_at == "2026-04-23T10:00:00+00:00"
 
 
 def test_quality_gate_does_not_route_to_manual_review_for_warning_policy() -> None:

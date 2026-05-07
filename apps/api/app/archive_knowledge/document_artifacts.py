@@ -16,6 +16,7 @@ from app.knowledge_builder import (
 from app.archive_knowledge.quality_gate_policy import (
     build_quality_gate_runtime_trace as evaluate_quality_gate_policy,
 )
+from app.archive_knowledge.runtime_policy_contract import attach_policy_contract_trace
 
 ITEM_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("entities", "entity"),
@@ -104,6 +105,13 @@ def build_document_contribution(
         policy_snapshot=policy_snapshot,
     )
     contribution["extraction"]["runtime_trace"] = runtime_trace
+    attach_policy_contract_trace(
+        archive_id=str((policy_snapshot or {}).get("archive_id") or "archive"),
+        document_id=document_id,
+        document_title=document.title,
+        contribution=contribution,
+        policy_snapshot=policy_snapshot,
+    )
     return contribution
 
 

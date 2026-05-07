@@ -45,8 +45,18 @@ def build_quality_gate_runtime_trace(
         "output_count": 1,
         "decision_summary": "evaluate canonical knowledge candidates against executable quality gate policy",
         "ai_summary": stage_policy.get("ai_mode") or "quality policy gate decision",
+        "executed_at": (policy_snapshot or {}).get("captured_at"),
         "policy": {
             "snapshot_id": (policy_snapshot or {}).get("snapshot_id"),
+            "policy_snapshot_id": (policy_snapshot or {}).get("policy_snapshot_id")
+            or (policy_snapshot or {}).get("snapshot_id"),
+            "captured_at": (policy_snapshot or {}).get("captured_at"),
+            "policy_package_id": (policy_snapshot or {}).get("policy_package_id"),
+            "policy_package_version_id": (policy_snapshot or {}).get("policy_package_version_id"),
+            "policy_package_version_hash": (policy_snapshot or {}).get("policy_package_version_hash"),
+            "policy_version": (policy_snapshot or {}).get("policy_version")
+            or (policy_snapshot or {}).get("policy_package_version_id")
+            or (policy_snapshot or {}).get("version_label"),
             "version_label": (policy_snapshot or {}).get("version_label"),
             "stage_id": QUALITY_GATE_STAGE_ID,
             "stage_label": stage_policy.get("label"),
@@ -174,10 +184,25 @@ def _rule_hit(
     passed = outcome in {"passed", "not_evaluated"}
     return {
         "key": str(rule.get("key") or "quality-rule"),
+        "rule_id": str(rule.get("rule_id") or rule.get("key") or "quality-rule"),
+        "rule_version": str(rule.get("rule_version") or "r1.0"),
+        "rule_hash": rule.get("rule_hash"),
+        "effect_kind": rule.get("effect_kind"),
         "label": str(rule.get("name") or rule.get("key") or "quality rule"),
         "meaning": str(rule.get("meaning") or ""),
         "threshold": str(rule.get("threshold") or ""),
         "action": action,
+        "action_mapping": rule.get("action_mapping") if isinstance(rule.get("action_mapping"), dict) else {},
+        "input_artifact_refs": _schema_artifact_refs(
+            rule.get("input_schema"),
+            "source_artifact",
+            ["canonical_knowledge_items", "quality_metrics", "policy_snapshot"],
+        ),
+        "output_artifact_refs": _schema_artifact_refs(
+            rule.get("output_schema"),
+            "target_artifact",
+            ["rule_hit_set", "quality_gate_decision"],
+        ),
         "metric_key": metric_key,
         "operator": operator,
         "actual": actual,
@@ -186,6 +211,19 @@ def _rule_hit(
         "passed": passed,
         "detail": detail,
     }
+
+
+def _schema_artifact_refs(schema: Any, key: str, fallback: list[str]) -> list[str]:
+    if not isinstance(schema, list):
+        return fallback
+    refs: list[str] = []
+    for field in schema:
+        if not isinstance(field, dict):
+            continue
+        ref = str(field.get(key) or "").strip()
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs or fallback
 
 
 def _select_gate_decision(rule_hits: list[dict[str, Any]]) -> dict[str, Any]:

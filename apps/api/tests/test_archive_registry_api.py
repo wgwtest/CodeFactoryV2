@@ -324,6 +324,105 @@ def test_archive_registry_exposes_current_chunk_progress_in_build_state(tmp_path
     assert payload[0]["build_state"]["warnings"][0]["file_type"] == "xls"
 
 
+def test_archive_registry_marks_orphaned_extracting_state_as_failed(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    _write_archive(
+        tmp_path / "20161116-nas-knowledge.json",
+        document_title="Legacy NAS",
+        entity_name="国家空域系统",
+        entity_count=1,
+    )
+
+    app = create_app()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+    registry_service.mark_extracting("20161116-nas")
+    build_state_path = tmp_path / "20161116-nas-document-build-state.json"
+    build_state_path.write_text(
+        json.dumps(
+            {
+                "archive_id": "20161116-nas",
+                "archive_name": "默认 NAS 知识库",
+                "mode": "formal",
+                "status": "running",
+                "started_at": "2026-04-16T10:00:00+00:00",
+                "updated_at": "2026-04-16T10:05:00+00:00",
+                "expected_document_count": 2,
+                "completed_document_ids": ["doc-1"],
+                "pending_document_ids": ["doc-2"],
+                "failed_document_id": None,
+                "failed_message": None,
+                "current_document_id": "doc-2",
+                "current_document_title": "Pending Doc",
+                "current_document_path": "Pending Doc.docx",
+                "current_chunk": None,
+                "current_stage_id": "parser_execution",
+                "current_stage_label": "解析执行",
+                "current_stage_status": "running",
+                "current_stage_message": "Parser is running.",
+                "documents": [
+                    {"document_id": "doc-1", "path": "Legacy NAS.docx", "title": "Legacy NAS", "file_type": "docx", "state": "completed"},
+                    {"document_id": "doc-2", "path": "Pending Doc.docx", "title": "Pending Doc", "file_type": "docx", "state": "running"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    coordinator = ArchiveExtractionCoordinator()
+    assert coordinator.try_start("20161116-nas") is True
+    app.dependency_overrides[get_archive_registry_service] = lambda: registry_service
+    app.dependency_overrides[get_archive_extraction_coordinator] = lambda: coordinator
+    client = TestClient(app)
+
+    response = client.get("/api/archives")
+
+    assert response.status_code == 200
+    payload = response.json()[0]
+    assert payload["status"] == "error"
+    assert "已中断" in payload["last_error"]
+    assert payload["build_state"]["status"] == "failed"
+    assert payload["build_state"]["failed_document_id"] == "doc-2"
+    assert payload["build_state"]["current_stage_status"] == "failed"
+
+
+def test_archive_registry_uses_started_at_when_running_state_has_no_update_time(tmp_path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    registry_service = ArchiveRegistryService(
+        tmp_path,
+        default_archive_id="20161116-nas",
+        default_archive_name="默认 NAS 知识库",
+        default_source_dir=source_dir,
+        default_extract_root=tmp_path / "legacy-extract",
+        extract_root_parent=tmp_path / ".extract",
+    )
+    (tmp_path / "20161116-nas-document-build-state.json").write_text(
+        json.dumps(
+            {
+                "archive_id": "20161116-nas",
+                "archive_name": "默认 NAS 知识库",
+                "status": "running",
+                "started_at": "2026-04-16T10:00:00+00:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert registry_service._running_build_state_is_stale(
+        "20161116-nas",
+        now="2026-04-16T11:00:01+00:00",
+    )
+
+
 def test_archive_extract_rejects_parallel_requests(tmp_path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()

@@ -4,10 +4,16 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.archive_knowledge.policy_config import build_default_archive_policy_config, normalize_archive_policy_config
+from app.archive_knowledge.policy_config import (
+    apply_policy_package_versioning,
+    build_default_archive_policy_config,
+    normalize_archive_policy_config,
+)
 
 
 class ArchiveRegistryService:
+    stale_extracting_after_seconds = 3600
+
     def __init__(
         self,
         output_root: str | Path,
@@ -29,6 +35,27 @@ class ArchiveRegistryService:
     def list_archives(self) -> list[dict]:
         state = self._load_state()
         return [self._serialize_archive(entry, state["active_archive_id"]) for entry in state["archives"]]
+
+    def reconcile_orphaned_extractions(self, *, active_archive_id: str | None) -> None:
+        state = self._load_state()
+        now = self._now()
+        message = "上次抽取运行已中断或服务已重启，运行状态已自动标记为失败，请重新启动抽取。"
+        changed = False
+
+        for entry in state["archives"]:
+            archive_id = entry.get("archive_id")
+            if entry.get("status") != "extracting":
+                continue
+            if archive_id == active_archive_id and not self._running_build_state_is_stale(str(archive_id), now=now):
+                continue
+            entry["status"] = "error"
+            entry["last_error"] = message
+            entry["updated_at"] = now
+            self._mark_running_build_state_failed(str(archive_id), message=message, updated_at=now)
+            changed = True
+
+        if changed:
+            self._save_state(state)
 
     def get_archive(self, archive_id: str) -> dict | None:
         state = self._load_state()
@@ -132,10 +159,15 @@ class ArchiveRegistryService:
         if entry is None:
             return None
 
-        normalized = normalize_archive_policy_config(archive_id, config)
-        normalized["updated_at"] = self._now()
+        now = self._now()
+        normalized = apply_policy_package_versioning(
+            archive_id,
+            entry.get("policy_config"),
+            config,
+            updated_at=now,
+        )
         entry["policy_config"] = normalized
-        entry["updated_at"] = self._now()
+        entry["updated_at"] = now
         self._save_state(state)
         return normalize_archive_policy_config(archive_id, entry.get("policy_config"))
 
@@ -271,6 +303,46 @@ class ArchiveRegistryService:
                 for item in payload.get("documents", [])
             ],
         }
+
+    def _mark_running_build_state_failed(self, archive_id: str, *, message: str, updated_at: str) -> None:
+        path = self.output_root / f"{archive_id}-document-build-state.json"
+        if not path.exists():
+            return
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("status") != "running":
+            return
+        payload["status"] = "failed"
+        payload["updated_at"] = updated_at
+        payload["failed_document_id"] = payload.get("current_document_id")
+        payload["failed_message"] = message
+        payload["current_stage_status"] = "failed"
+        payload["current_stage_message"] = message
+        for document in payload.get("documents", []):
+            if document.get("document_id") == payload.get("current_document_id"):
+                document["state"] = "failed"
+                break
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _running_build_state_is_stale(self, archive_id: str, *, now: str) -> bool:
+        path = self.output_root / f"{archive_id}-document-build-state.json"
+        if not path.exists():
+            return False
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("status") != "running":
+            return False
+        updated_at = payload.get("updated_at") or payload.get("started_at")
+        if not updated_at:
+            return False
+        try:
+            updated = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+            current = datetime.fromisoformat(now.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        return (current - updated).total_seconds() > self.stale_extracting_after_seconds
 
     def _normalize_directory(self, value: str | Path, *, field_name: str) -> Path:
         path = Path(value).expanduser().resolve()

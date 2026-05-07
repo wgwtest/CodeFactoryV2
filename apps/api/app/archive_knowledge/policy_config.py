@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import md5, sha256
 import json
+import re
 from typing import Any
 
 POLICY_ACTIONS = [
@@ -22,6 +23,46 @@ POLICY_EFFECT_KINDS = [
     "block",
     "publish_candidate",
 ]
+
+POLICY_CONTRACT_VERSION = "p1.policy_contract.v1"
+
+EFFECT_KIND_SEMANTICS: dict[str, dict[str, Any]] = {
+    "filter": {
+        "runtime_decision": "filter_candidates",
+        "impact_strategy": "track matched and rejected candidate objects",
+        "writes": ["decision", "affected_object_ids", "output_hash"],
+    },
+    "score": {
+        "runtime_decision": "score_candidates",
+        "impact_strategy": "track scored objects for threshold recompute",
+        "writes": ["decision", "decision_reason", "affected_object_ids", "output_hash"],
+    },
+    "normalize": {
+        "runtime_decision": "normalize_fields",
+        "impact_strategy": "track normalized objects and downstream consumers",
+        "writes": ["decision", "decision_reason", "affected_object_ids", "output_hash"],
+    },
+    "merge": {
+        "runtime_decision": "merge_objects",
+        "impact_strategy": "track merged object and discarded candidates",
+        "writes": ["merged_object_id", "discarded_candidate_ids", "affected_object_ids", "output_hash"],
+    },
+    "split": {
+        "runtime_decision": "split_objects",
+        "impact_strategy": "track parent object and generated child objects",
+        "writes": ["decision", "affected_object_ids", "output_hash"],
+    },
+    "block": {
+        "runtime_decision": "block_return",
+        "impact_strategy": "track blocked objects and blocking reason",
+        "writes": ["blocked_reason", "affected_object_ids", "output_hash"],
+    },
+    "publish_candidate": {
+        "runtime_decision": "prepare_publication_candidate",
+        "impact_strategy": "track machine publication candidates before governance confirmation",
+        "writes": ["publication_candidate_ids", "affected_object_ids", "output_hash"],
+    },
+}
 
 REQUIRED_TRACE_FIELDS = [
     "rule_id",
@@ -50,6 +91,30 @@ DEFAULT_STAGE_ORDER = [
 ]
 
 QUALITY_GATE_STAGE_ID = "quality_policy_evaluation_governance_gate"
+
+RULE_STRUCTURAL_FIELDS = [
+    "threshold",
+    "action",
+    "effect_kind",
+    "scope_selector",
+    "input_schema",
+    "output_schema",
+    "parameters",
+    "trace_fields",
+    "action_mapping",
+]
+
+STAGE_STRUCTURAL_FIELDS = [
+    "enabled",
+    "default_action",
+    "inputs",
+    "outputs",
+    "observability",
+    "rules",
+]
+
+RULE_VERSION_RE = re.compile(r"^r(?P<major>\d+)\.(?P<minor>\d+)$")
+PACKAGE_VERSION_RE = re.compile(r"^(?P<prefix>.*:policy:v)(?P<number>\d+)$")
 
 
 def _short_hash(payload: Any) -> str:
@@ -280,22 +345,108 @@ def _default_parameters(rule_key: str, threshold: str) -> dict[str, Any]:
     }
 
 
+def _default_action_mapping(effect_kind: str, action: str, output_schema: list[dict[str, Any]]) -> dict[str, Any]:
+    semantics = EFFECT_KIND_SEMANTICS.get(effect_kind, EFFECT_KIND_SEMANTICS["filter"])
+    output_fields = [
+        str(field.get("field_name"))
+        for field in output_schema
+        if isinstance(field, dict) and field.get("field_name")
+    ]
+    return {
+        "effect_kind": effect_kind,
+        "on_match": action,
+        "on_miss": "auto_pass",
+        "runtime_decision": semantics["runtime_decision"],
+        "impact_strategy": semantics["impact_strategy"],
+        "writes": [field for field in semantics["writes"] if field in output_fields],
+        "audit_event_kind": "rule_execution_record",
+    }
+
+
+def _normalize_trace_fields(raw_rule: dict[str, Any]) -> list[str]:
+    if "trace_fields" not in raw_rule:
+        return REQUIRED_TRACE_FIELDS[:]
+    return _normalize_text_list(raw_rule.get("trace_fields"), [])
+
+
+def _schema_field_errors(schema: Any, *, schema_name: str, required_keys: tuple[str, ...]) -> list[str]:
+    if not isinstance(schema, list) or not schema:
+        return [f"missing {schema_name}"]
+
+    errors: list[str] = []
+    for index, field in enumerate(schema):
+        if not isinstance(field, dict):
+            errors.append(f"invalid {schema_name}[{index}]")
+            continue
+        for key in required_keys:
+            if not str(field.get(key) or "").strip():
+                errors.append(f"missing {schema_name}[{index}].{key}")
+    return errors
+
+
 def _contract_errors(rule: dict[str, Any]) -> list[str]:
     input_fields = {str(field.get("field_name")) for field in rule.get("input_schema", []) if isinstance(field, dict)}
     output_fields = {str(field.get("field_name")) for field in rule.get("output_schema", []) if isinstance(field, dict)}
     trace_fields = {str(field) for field in rule.get("trace_fields", [])}
+    parameters = rule.get("parameters")
+    action_mapping = rule.get("action_mapping")
     errors: list[str] = []
 
+    errors.extend(
+        _schema_field_errors(
+            rule.get("input_schema"),
+            schema_name="input_schema",
+            required_keys=("field_name", "source_artifact", "field_type"),
+        )
+    )
+    errors.extend(
+        _schema_field_errors(
+            rule.get("output_schema"),
+            schema_name="output_schema",
+            required_keys=("field_name", "target_artifact", "field_type"),
+        )
+    )
     for field_name in ("input_hash",):
         if field_name not in input_fields:
             errors.append(f"missing input_schema.{field_name}")
     for field_name in ("output_hash", "affected_object_ids"):
         if field_name not in output_fields:
             errors.append(f"missing output_schema.{field_name}")
+    if not isinstance(parameters, dict) or not isinstance(parameters.get("conditions"), list) or not parameters.get("conditions"):
+        errors.append("missing parameters.conditions")
+    if not isinstance(action_mapping, dict):
+        errors.append("missing action_mapping")
+    else:
+        for field_name in ("effect_kind", "on_match", "runtime_decision", "impact_strategy"):
+            if not str(action_mapping.get(field_name) or "").strip():
+                errors.append(f"missing action_mapping.{field_name}")
     for field_name in REQUIRED_TRACE_FIELDS:
         if field_name not in trace_fields:
             errors.append(f"missing trace_fields.{field_name}")
     return errors
+
+
+def _rule_hash_payload(rule: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rule_id": rule.get("rule_id"),
+        "rule_version": rule.get("rule_version"),
+        "effect_kind": rule.get("effect_kind"),
+        "scope_selector": rule.get("scope_selector"),
+        "input_schema": rule.get("input_schema"),
+        "output_schema": rule.get("output_schema"),
+        "parameters": rule.get("parameters"),
+        "trace_fields": rule.get("trace_fields"),
+        "action_mapping": rule.get("action_mapping"),
+        "action": rule.get("action"),
+        "threshold": rule.get("threshold"),
+    }
+
+
+def _refresh_rule_contract_metadata(rule: dict[str, Any]) -> dict[str, Any]:
+    rule["rule_hash"] = _short_hash(_rule_hash_payload(rule))
+    rule["contract_errors"] = _contract_errors(rule)
+    rule["contract_status"] = "valid" if not rule["contract_errors"] else "invalid"
+    return rule
 
 
 def _enrich_rule_contract(
@@ -311,6 +462,12 @@ def _enrich_rule_contract(
     if effect_kind not in POLICY_EFFECT_KINDS:
         effect_kind = _infer_effect_kind(stage_id, key, action)
 
+    output_schema = raw_rule.get("output_schema") if isinstance(raw_rule.get("output_schema"), list) else _default_output_schema(effect_kind)
+    if "action_mapping" in raw_rule:
+        action_mapping = raw_rule.get("action_mapping") if isinstance(raw_rule.get("action_mapping"), dict) else {}
+    else:
+        action_mapping = _default_action_mapping(effect_kind, action, output_schema)
+
     enriched: dict[str, Any] = {
         "key": key,
         "rule_id": str(raw_rule.get("rule_id") or key),
@@ -322,28 +479,14 @@ def _enrich_rule_contract(
         "effect_kind": effect_kind,
         "scope_selector": raw_rule.get("scope_selector") if isinstance(raw_rule.get("scope_selector"), dict) else _default_scope_selector(stage_id, key),
         "input_schema": raw_rule.get("input_schema") if isinstance(raw_rule.get("input_schema"), list) else _default_input_schema(stage_id, key, str(raw_rule.get("threshold") or "")),
-        "output_schema": raw_rule.get("output_schema") if isinstance(raw_rule.get("output_schema"), list) else _default_output_schema(effect_kind),
+        "output_schema": output_schema,
         "parameters": raw_rule.get("parameters") if isinstance(raw_rule.get("parameters"), dict) else _default_parameters(key, str(raw_rule.get("threshold") or "")),
-        "trace_fields": _normalize_text_list(raw_rule.get("trace_fields"), REQUIRED_TRACE_FIELDS[:]),
-    }
-    hash_payload = {
-        "rule_id": enriched["rule_id"],
-        "rule_version": enriched["rule_version"],
-        "effect_kind": enriched["effect_kind"],
-        "scope_selector": enriched["scope_selector"],
-        "input_schema": enriched["input_schema"],
-        "output_schema": enriched["output_schema"],
-        "parameters": enriched["parameters"],
-        "trace_fields": enriched["trace_fields"],
-        "action": enriched["action"],
-        "threshold": enriched["threshold"],
+        "trace_fields": _normalize_trace_fields(raw_rule),
+        "action_mapping": action_mapping,
     }
     # The server owns the digest so clients cannot accidentally keep a stale hash
     # after editing the rule contract.
-    enriched["rule_hash"] = _short_hash(hash_payload)
-    enriched["contract_errors"] = _contract_errors(enriched)
-    enriched["contract_status"] = "valid" if not enriched["contract_errors"] else "invalid"
-    return enriched
+    return _refresh_rule_contract_metadata(enriched)
 
 
 def _enrich_stage_rules(stage_id: str, rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -371,6 +514,240 @@ def _policy_package_hash(config: dict[str, Any]) -> str:
             "stages": config.get("stages"),
         }
     )
+
+
+def _policy_contract_errors(config: dict[str, Any]) -> list[dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    stages = config.get("stages", {})
+    if not isinstance(stages, dict):
+        return [{"stage_id": None, "rule_id": None, "errors": ["missing stages"]}]
+
+    for stage_id in config.get("stage_order", DEFAULT_STAGE_ORDER):
+        stage = stages.get(stage_id)
+        if not isinstance(stage, dict):
+            errors.append({"stage_id": stage_id, "rule_id": None, "errors": ["missing stage"]})
+            continue
+        for rule in stage.get("rules", []):
+            if not isinstance(rule, dict):
+                errors.append({"stage_id": stage_id, "rule_id": None, "errors": ["invalid rule"]})
+                continue
+            rule_errors = rule.get("contract_errors")
+            if rule_errors:
+                errors.append(
+                    {
+                        "stage_id": stage_id,
+                        "rule_id": rule.get("rule_id") or rule.get("key"),
+                        "errors": list(rule_errors),
+                    }
+                )
+    return errors
+
+
+def _current_policy_version_entry(config: dict[str, Any], *, archived_at: str | None = None) -> dict[str, Any]:
+    return {
+        "version_id": config.get("policy_package_version_id"),
+        "version_label": config.get("version_label"),
+        "version_hash": config.get("policy_package_version_hash"),
+        "status": "archived" if archived_at else config.get("policy_package_version_status"),
+        "created_at": config.get("policy_package_version_created_at") or config.get("updated_at"),
+        "archived_at": archived_at,
+        "previous_version_id": config.get("previous_policy_package_version_id"),
+        "structural_hash": _policy_structure_hash(config),
+    }
+
+
+def _normalize_policy_package_versions(raw_versions: Any, current_entry: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_versions, list):
+        for raw_entry in raw_versions:
+            if not isinstance(raw_entry, dict):
+                continue
+            version_id = str(raw_entry.get("version_id") or raw_entry.get("policy_package_version_id") or "")
+            if not version_id:
+                continue
+            entries[version_id] = {
+                "version_id": version_id,
+                "version_label": raw_entry.get("version_label"),
+                "version_hash": raw_entry.get("version_hash") or raw_entry.get("policy_package_version_hash"),
+                "status": raw_entry.get("status") or raw_entry.get("policy_package_version_status") or "archived",
+                "created_at": raw_entry.get("created_at"),
+                "archived_at": raw_entry.get("archived_at"),
+                "previous_version_id": raw_entry.get("previous_version_id"),
+                "structural_hash": raw_entry.get("structural_hash"),
+            }
+
+    current_version_id = str(current_entry.get("version_id") or "")
+    if current_version_id:
+        entries[current_version_id] = current_entry
+    return list(entries.values())
+
+
+def _finalize_policy_config(config: dict[str, Any], *, raw_versions: Any = None) -> dict[str, Any]:
+    _refresh_policy_rule_contracts(config)
+    config["policy_package_version_hash"] = _policy_package_hash(config)
+    config["policy_contract_errors"] = _policy_contract_errors(config)
+    config["policy_contract_status"] = "valid" if not config["policy_contract_errors"] else "invalid"
+    config["policy_package_versions"] = _normalize_policy_package_versions(
+        raw_versions if raw_versions is not None else config.get("policy_package_versions"),
+        _current_policy_version_entry(config),
+    )
+    return config
+
+
+def _refresh_policy_rule_contracts(config: dict[str, Any]) -> None:
+    stages = config.get("stages", {})
+    if not isinstance(stages, dict):
+        return
+    for stage in stages.values():
+        if not isinstance(stage, dict):
+            continue
+        for rule in stage.get("rules", []):
+            if isinstance(rule, dict):
+                _refresh_rule_contract_metadata(rule)
+
+
+def _rule_identity(rule: dict[str, Any]) -> str:
+    return str(rule.get("rule_id") or rule.get("key") or "")
+
+
+def _rule_structural_payload(rule: dict[str, Any]) -> dict[str, Any]:
+    return {field: rule.get(field) for field in RULE_STRUCTURAL_FIELDS}
+
+
+def _policy_structure_payload(config: dict[str, Any]) -> dict[str, Any]:
+    stages = config.get("stages", {})
+    stage_payload: dict[str, Any] = {}
+    if isinstance(stages, dict):
+        for stage_id in config.get("stage_order", DEFAULT_STAGE_ORDER):
+            stage = stages.get(stage_id)
+            if not isinstance(stage, dict):
+                continue
+            stage_payload[stage_id] = {
+                field: stage.get(field)
+                for field in STAGE_STRUCTURAL_FIELDS
+                if field != "rules"
+            }
+            stage_payload[stage_id]["rules"] = [
+                {
+                    "key": rule.get("key"),
+                    "rule_id": rule.get("rule_id"),
+                    "structure": _rule_structural_payload(rule),
+                }
+                for rule in stage.get("rules", [])
+                if isinstance(rule, dict)
+            ]
+
+    return {
+        "policy_package_id": config.get("policy_package_id"),
+        "stage_order": config.get("stage_order"),
+        "stages": stage_payload,
+    }
+
+
+def _policy_structure_hash(config: dict[str, Any]) -> str:
+    return _short_hash(_policy_structure_payload(config))
+
+
+def _next_policy_package_version_id(archive_id: str, previous_config: dict[str, Any], proposed_config: dict[str, Any]) -> str:
+    version_ids = [
+        str(previous_config.get("policy_package_version_id") or ""),
+        str(proposed_config.get("policy_package_version_id") or ""),
+    ]
+    version_ids.extend(
+        str(entry.get("version_id") or "")
+        for entry in previous_config.get("policy_package_versions", [])
+        if isinstance(entry, dict)
+    )
+    numbers = [
+        int(match.group("number"))
+        for version_id in version_ids
+        if (match := PACKAGE_VERSION_RE.match(version_id))
+    ]
+    return f"{archive_id}:policy:v{(max(numbers) if numbers else 1) + 1}"
+
+
+def _next_version_label(label: str, version_id: str) -> str:
+    version_suffix = version_id.rsplit(":", 1)[-1]
+    if not version_suffix:
+        return label
+    if re.search(r"\bv\d+$", label):
+        return re.sub(r"\bv\d+$", version_suffix, label)
+    return f"{label} {version_suffix}"
+
+
+def _increment_rule_version(rule_version: str) -> str:
+    match = RULE_VERSION_RE.match(rule_version)
+    if not match:
+        return f"{rule_version}.1" if rule_version else "r1.1"
+    return f"r{match.group('major')}.{int(match.group('minor')) + 1}"
+
+
+def _bump_changed_rule_versions(previous_config: dict[str, Any], proposed_config: dict[str, Any]) -> None:
+    previous_rules: dict[tuple[str, str], dict[str, Any]] = {}
+    for stage_id, stage in previous_config.get("stages", {}).items():
+        if not isinstance(stage, dict):
+            continue
+        for rule in stage.get("rules", []):
+            if isinstance(rule, dict):
+                previous_rules[(str(stage_id), _rule_identity(rule))] = rule
+
+    for stage_id, stage in proposed_config.get("stages", {}).items():
+        if not isinstance(stage, dict):
+            continue
+        for rule in stage.get("rules", []):
+            if not isinstance(rule, dict):
+                continue
+            previous_rule = previous_rules.get((str(stage_id), _rule_identity(rule)))
+            if not previous_rule:
+                continue
+            if _rule_structural_payload(previous_rule) == _rule_structural_payload(rule):
+                continue
+            previous_version = str(previous_rule.get("rule_version") or "r1.0")
+            if str(rule.get("rule_version") or "") == previous_version:
+                rule["rule_version"] = _increment_rule_version(previous_version)
+            _refresh_rule_contract_metadata(rule)
+
+
+def apply_policy_package_versioning(
+    archive_id: str,
+    previous_config: dict[str, Any] | None,
+    proposed_config: dict[str, Any],
+    *,
+    updated_at: str,
+) -> dict[str, Any]:
+    proposed = normalize_archive_policy_config(archive_id, proposed_config)
+    if previous_config is None:
+        proposed["updated_at"] = updated_at
+        proposed["policy_package_version_created_at"] = proposed.get("policy_package_version_created_at") or updated_at
+        return _finalize_policy_config(proposed, raw_versions=proposed.get("policy_package_versions"))
+
+    previous = normalize_archive_policy_config(archive_id, previous_config)
+    structural_changed = _policy_structure_hash(previous) != _policy_structure_hash(proposed)
+    if structural_changed:
+        previous_version_id = str(previous.get("policy_package_version_id") or "")
+        proposed_version_id = str(proposed.get("policy_package_version_id") or "")
+        proposed["previous_policy_package_version_id"] = previous_version_id or None
+        if proposed_version_id == previous_version_id:
+            proposed["policy_package_version_id"] = _next_policy_package_version_id(archive_id, previous, proposed)
+            proposed["version_label"] = _next_version_label(str(proposed.get("version_label") or ""), proposed["policy_package_version_id"])
+        _bump_changed_rule_versions(previous, proposed)
+        proposed["policy_package_version_created_at"] = updated_at
+    else:
+        proposed["previous_policy_package_version_id"] = (
+            proposed.get("previous_policy_package_version_id")
+            or previous.get("previous_policy_package_version_id")
+        )
+        proposed["policy_package_version_created_at"] = (
+            proposed.get("policy_package_version_created_at")
+            or previous.get("policy_package_version_created_at")
+            or updated_at
+        )
+
+    proposed["updated_at"] = updated_at
+    raw_versions = list(previous.get("policy_package_versions", []))
+    if structural_changed:
+        raw_versions.append(_current_policy_version_entry(previous, archived_at=updated_at))
+    return _finalize_policy_config(proposed, raw_versions=raw_versions)
 
 
 def _rule(key: str, name: str, meaning: str, threshold: str, action: str) -> dict[str, str]:
@@ -660,11 +1037,17 @@ def build_default_archive_policy_config(archive_id: str) -> dict[str, Any]:
 
     config = {
         "archive_id": archive_id,
+        "policy_contract_version": POLICY_CONTRACT_VERSION,
         "policy_package_id": f"{archive_id}:default-policy-package",
         "policy_package_name": "合同通用抽取",
         "policy_package_version_id": f"{archive_id}:policy:v1",
         "policy_package_version_status": "published",
         "policy_package_version_hash": None,
+        "policy_package_version_created_at": None,
+        "previous_policy_package_version_id": None,
+        "policy_package_versions": [],
+        "policy_contract_status": "valid",
+        "policy_contract_errors": [],
         "version_label": "13 阶段抽取蓝图 v1",
         "scope_label": "单文档抽取过程",
         "ai_autoadapt_enabled": True,
@@ -672,8 +1055,7 @@ def build_default_archive_policy_config(archive_id: str) -> dict[str, Any]:
         "stage_order": DEFAULT_STAGE_ORDER[:],
         "stages": stages,
     }
-    config["policy_package_version_hash"] = _policy_package_hash(config)
-    return config
+    return _finalize_policy_config(config)
 
 
 def _normalize_action(value: Any, *, fallback: str) -> str:
@@ -751,6 +1133,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
 
     config["version_label"] = str(raw_config.get("version_label") or config["version_label"])
     config["scope_label"] = str(raw_config.get("scope_label") or config["scope_label"])
+    config["policy_contract_version"] = str(raw_config.get("policy_contract_version") or config["policy_contract_version"])
     config["policy_package_id"] = str(raw_config.get("policy_package_id") or config["policy_package_id"])
     config["policy_package_name"] = str(raw_config.get("policy_package_name") or config["policy_package_name"])
     config["policy_package_version_id"] = str(
@@ -759,6 +1142,8 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
     config["policy_package_version_status"] = str(
         raw_config.get("policy_package_version_status") or config["policy_package_version_status"]
     )
+    config["policy_package_version_created_at"] = raw_config.get("policy_package_version_created_at")
+    config["previous_policy_package_version_id"] = raw_config.get("previous_policy_package_version_id")
     config["ai_autoadapt_enabled"] = bool(raw_config.get("ai_autoadapt_enabled", config["ai_autoadapt_enabled"]))
     config["updated_at"] = raw_config.get("updated_at")
 
@@ -769,8 +1154,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
 
     raw_stages = raw_config.get("stages", {})
     if not isinstance(raw_stages, dict):
-        config["policy_package_version_hash"] = _policy_package_hash(config)
-        return config
+        return _finalize_policy_config(config, raw_versions=raw_config.get("policy_package_versions"))
 
     for stage_id in DEFAULT_STAGE_ORDER:
         stage_default = deepcopy(STAGE_POLICY_DEFAULTS[stage_id])
@@ -800,8 +1184,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
             stage_default = _normalize_quality_gate_stage(stage_default)
         config["stages"][stage_id] = stage_default
 
-    config["policy_package_version_hash"] = _policy_package_hash(config)
-    return config
+    return _finalize_policy_config(config, raw_versions=raw_config.get("policy_package_versions"))
 
 
 def build_policy_run_snapshot(
@@ -811,13 +1194,25 @@ def build_policy_run_snapshot(
     captured_at: str | None,
 ) -> dict[str, Any]:
     normalized = normalize_archive_policy_config(archive_id, policy_config)
+    policy_version = str(
+        normalized.get("policy_package_version_id")
+        or normalized.get("version_label")
+        or "unknown-policy-version"
+    )
     snapshot_payload = {
         "archive_id": archive_id,
+        "policy_contract_version": normalized["policy_contract_version"],
         "policy_package_id": normalized["policy_package_id"],
         "policy_package_name": normalized["policy_package_name"],
         "policy_package_version_id": normalized["policy_package_version_id"],
         "policy_package_version_status": normalized["policy_package_version_status"],
         "policy_package_version_hash": normalized["policy_package_version_hash"],
+        "policy_package_version_created_at": normalized.get("policy_package_version_created_at"),
+        "previous_policy_package_version_id": normalized.get("previous_policy_package_version_id"),
+        "policy_package_versions": deepcopy(normalized.get("policy_package_versions", [])),
+        "policy_contract_status": normalized.get("policy_contract_status"),
+        "policy_contract_errors": deepcopy(normalized.get("policy_contract_errors", [])),
+        "policy_version": policy_version,
         "version_label": normalized["version_label"],
         "scope_label": normalized["scope_label"],
         "ai_autoadapt_enabled": normalized["ai_autoadapt_enabled"],
@@ -841,6 +1236,7 @@ def build_policy_run_snapshot(
     snapshot_id = md5(snapshot_json.encode("utf-8")).hexdigest()[:12]
     return {
         "snapshot_id": snapshot_id,
+        "policy_snapshot_id": snapshot_id,
         "captured_at": captured_at,
         **snapshot_payload,
     }

@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, test, vi } from "vitest";
 
 import { ArchiveManagementPage } from "../pages/ArchiveManagementPage";
-import { RuleContractEditorPage } from "../pages/P1PrototypeWorkflowPages";
+import { RuleContractEditorPage, StagePolicyConfigPage, StrategyDiffPage } from "../pages/P1PrototypeWorkflowPages";
 import type { ArchivePolicyConfig, KnowledgeArchive } from "../lib/api";
 
 const refreshArchivesMock = vi.fn();
@@ -311,7 +311,11 @@ beforeEach(() => {
 });
 
 test("loads policy config from backend and shows editable stage form", async () => {
-  render(<ArchiveManagementPage />);
+  render(
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <ArchiveManagementPage />
+    </MemoryRouter>,
+  );
 
   fireEvent.click(await screen.findByRole("button", { name: "策略与配置" }));
 
@@ -324,7 +328,11 @@ test("loads policy config from backend and shows editable stage form", async () 
 });
 
 test("saves edited policy config back to backend contract", async () => {
-  render(<ArchiveManagementPage />);
+  render(
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <ArchiveManagementPage />
+    </MemoryRouter>,
+  );
 
   fireEvent.click(await screen.findByRole("button", { name: "策略与配置" }));
   expect(await screen.findByRole("heading", { name: "策略与配置工作台" })).toBeInTheDocument();
@@ -389,4 +397,29 @@ test("saves rule field contract as a new policy package version", async () => {
       }),
     );
   });
+});
+
+test("stage policy page links rules into contract editor and diff flow", async () => {
+  render(
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <StagePolicyConfigPage />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "阶段策略配置" })).toBeInTheDocument();
+  expect(screen.getByText("保存后需要计算影响面")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "编辑 I/O 合同" })[0]).toHaveAttribute("href", "/policies/rule-contract");
+  expect(screen.getAllByRole("link", { name: "比较版本" })[0]).toHaveAttribute("href", "/policies/diff");
+});
+
+test("strategy diff page leads to impact recompute workflow", async () => {
+  render(
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <StrategyDiffPage />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "策略版本与规则差异" })).toBeInTheDocument();
+  expect(screen.getByText("版本比较不会自动重算已有知识")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "生成影响面" })).toHaveAttribute("href", "/policies/impact");
 });

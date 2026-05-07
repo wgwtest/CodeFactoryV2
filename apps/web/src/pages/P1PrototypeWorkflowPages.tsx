@@ -6,6 +6,8 @@ import {
   Descriptions,
   Empty,
   Input,
+  List,
+  Modal,
   Progress,
   Radio,
   Segmented,
@@ -20,7 +22,7 @@ import { Link } from "react-router-dom";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { useArchiveContext } from "../context/ArchiveContext";
 import { getArchiveDocuments, getArchiveDocumentRuntime, getArchivePublication } from "../lib/archiveKnowledge";
-import { getArchivePolicyConfig, updateArchivePolicyConfig } from "../lib/archives";
+import { getArchivePolicyConfig, listArchiveIncrementalRebuildTasks, updateArchivePolicyConfig } from "../lib/archives";
 import type {
   ArchiveDocumentRuntimeContract,
   ArchiveDocumentRuntimeGraphNode,
@@ -28,6 +30,7 @@ import type {
   ArchiveKnowledgeDocument,
   ArchivePolicyAction,
   ArchivePolicyConfig,
+  ArchiveIncrementalRebuildTask,
   ArchivePublicationOverview,
   ArchiveRuleInputFieldContract,
   ArchiveRuleOutputFieldContract,
@@ -174,6 +177,10 @@ function getRuleContractDefaultStage(stages: ArchiveStagePolicyConfig[]) {
   return preferred.rules.length ? preferred : stages.find((stage) => stage.rules.length > 0) ?? preferred;
 }
 
+function getStagePolicyDefaultStage(stages: ArchiveStagePolicyConfig[]) {
+  return stages.find((stage) => stage.rules.length > 0) ?? getStageByIndex(stages, 5);
+}
+
 function formatAction(action: ArchivePolicyAction) {
   return actionMeta[action]?.label ?? action;
 }
@@ -196,6 +203,10 @@ function getRuleVersion(rule: ArchiveStagePolicyRule) {
 
 function getRuleEffectKind(rule: ArchiveStagePolicyRule) {
   return rule.effect_kind ?? "filter";
+}
+
+function isStructuralEffectKind(effectKind: string | null | undefined) {
+  return ["merge", "split", "block", "publish_candidate"].includes(effectKind ?? "");
 }
 
 function getRuleTraceFields(rule: ArchiveStagePolicyRule) {
@@ -375,6 +386,16 @@ function RuleTable({ rules }: { rules: ArchiveStagePolicyRule[] }) {
         { title: "适用条件 / 阈值", dataIndex: "threshold" },
         { title: "动作", render: (_, record: ArchiveStagePolicyRule) => <Tag color={actionColor(record.action)}>{formatAction(record.action)}</Tag> },
         { title: "含义", dataIndex: "meaning" },
+        {
+          title: "操作",
+          render: (_, record: ArchiveStagePolicyRule) => (
+            <Space size={4} wrap>
+              <Button type="link" size="small" href="/policies/rule-contract">编辑 I/O 合同</Button>
+              <Button type="link" size="small" href="/policies/diff">比较版本</Button>
+              <Button type="link" size="small" title={`查看${record.name}命中历史`}>查看命中历史</Button>
+            </Space>
+          ),
+        },
       ]}
     />
   );
@@ -382,6 +403,7 @@ function RuleTable({ rules }: { rules: ArchiveStagePolicyRule[] }) {
 
 export function StrategyLibraryPage() {
   const { activeArchive, config, stages, loading, error } = usePolicyWorkbench();
+  const [usePolicyOpen, setUsePolicyOpen] = useState(false);
   const totalRules = countRules(stages);
   const currentPackage = config?.scope_label ?? "合同通用抽取";
   const templates = [
@@ -400,6 +422,7 @@ export function StrategyLibraryPage() {
           <Button type="primary">新建策略包</Button>
           <Button>从现有策略复制</Button>
           <Button>导入策略模板</Button>
+          <PageLinkButton to="/policies/diff">查看策略差异</PageLinkButton>
           <PageLinkButton to="/policies/stages">进入阶段配置</PageLinkButton>
         </Space>
       }
@@ -483,13 +506,40 @@ export function StrategyLibraryPage() {
                 ))}
               </div>
               <Space wrap>
-                <Link to="/policies/stages"><Button type="primary">使用此策略</Button></Link>
+                <Button type="primary" onClick={() => setUsePolicyOpen(true)}>使用此策略</Button>
+                <Button>复制改造</Button>
+                <Button>设为知识库默认策略</Button>
                 <Link to="/policies/diff"><Button>查看版本差异</Button></Link>
                 <Link to="/policies/impact"><Button>生成影响面</Button></Link>
               </Space>
             </Space>
           </Card>
         </div>
+        <Modal
+          open={usePolicyOpen}
+          title="使用策略包并准备冻结运行快照"
+          okText="确认选择"
+          cancelText="取消"
+          onCancel={() => setUsePolicyOpen(false)}
+          onOk={() => setUsePolicyOpen(false)}
+          destroyOnHidden
+        >
+          <Space direction="vertical" size={14} style={{ display: "flex" }}>
+            <Alert
+              type="info"
+              showIcon
+              message="策略选择只影响后续抽取任务"
+              description="历史运行仍绑定旧快照；真正启动抽取时会再次确认策略包版本并冻结 snapshot_id。"
+            />
+            <Descriptions bordered size="small" column={1}>
+              <Descriptions.Item label="目标知识库">{activeArchive?.name ?? "未选择"}</Descriptions.Item>
+              <Descriptions.Item label="策略包">{currentPackage}</Descriptions.Item>
+              <Descriptions.Item label="策略包版本">{config?.version_label ?? "v3.12"}</Descriptions.Item>
+              <Descriptions.Item label="文档范围">当前知识库全部待抽取文档 / 可在启动前调整</Descriptions.Item>
+              <Descriptions.Item label="API 状态">策略库枚举接口暂缺，当前使用 policy-config 真实配置 + 模板 mock fallback</Descriptions.Item>
+            </Descriptions>
+          </Space>
+        </Modal>
       </Space>
     </ValidationWorkspace>
   );
@@ -497,15 +547,18 @@ export function StrategyLibraryPage() {
 
 export function StagePolicyConfigPage() {
   const { config, stages, loading, error } = usePolicyWorkbench();
-  const initialStage = getStageByIndex(stages, 5).stage_id;
+  const initialStage = getStagePolicyDefaultStage(stages).stage_id;
   const [selectedStageId, setSelectedStageId] = useState(initialStage);
-  const selectedStage = stages.find((stage) => stage.stage_id === selectedStageId) ?? getStageByIndex(stages, 5);
+  const selectedStage = stages.find((stage) => stage.stage_id === selectedStageId) ?? getStagePolicyDefaultStage(stages);
   const selectedStageIndex = Math.max(0, stages.findIndex((stage) => stage.stage_id === selectedStage.stage_id));
   const selectedStageLabel = getPrototypeStageLabel(selectedStage, selectedStageIndex);
+  const selectedStageRules = selectedStage.rules.length
+    ? selectedStage.rules
+    : buildFallbackStage(selectedStage.stage_id, selectedStage.label, selectedStage.group, selectedStageIndex + 1).rules;
 
   useEffect(() => {
     if (!stages.some((stage) => stage.stage_id === selectedStageId)) {
-      setSelectedStageId(getStageByIndex(stages, 5).stage_id);
+      setSelectedStageId(getStagePolicyDefaultStage(stages).stage_id);
     }
   }, [selectedStageId, stages]);
 
@@ -576,7 +629,7 @@ export function StagePolicyConfigPage() {
                   <Select mode="tags" style={{ width: "100%" }} defaultValue={selectedStage.observability} />
                 </label>
               </div>
-              <RuleTable rules={selectedStage.rules} />
+              <RuleTable rules={selectedStageRules} />
             </Space>
           </Card>
 
@@ -665,6 +718,27 @@ export function RuleContractEditorPage() {
     affected_object_ids: "[OBJ-M-204, CND-1008]",
     decision: getRuleEffectKind(selectedRule),
   };
+  const structuralEffect = isStructuralEffectKind(getRuleEffectKind(selectedRule));
+  const conditionBlocks = [
+    { key: "semantic_similarity", label: "相似度阈值", expression: "semantic_similarity >= 0.92", output: "merged_object_id" },
+    { key: "confidence_score", label: "置信度阈值", expression: "confidence_score >= 0.75", output: "decision_reason" },
+    { key: "anchor_overlap_count", label: "锚点重叠", expression: "anchor_overlap_count >= 1", output: "affected_object_ids" },
+    { key: "object_type", label: "对象类型约束", expression: "object_type in 合同主体、金额条款、义务条款", output: "stale_mark" },
+  ];
+  const executionRows = Array.from({ length: 5 }, (_, index) => ({
+    key: `exec-${index + 1}`,
+    input: 18 - index * 2,
+    hit: 9 - index,
+    output: 7 - Math.floor(index / 2),
+    failed: index === 4 ? 1 : 0,
+    time: `2026-05-06 10:${26 + index}:1${index}`,
+    snapshot: `SNAP-20260506-${172 + index}`,
+  }));
+  const versionRows = [
+    { key: "r6.2", version: "r6.2", change: "新增 anchor_ids 输入字段", action: "归并", impact: "候选对象定位更精确" },
+    { key: "r6.3", version: "r6.3", change: "semantic_similarity 从 0.90 调整到 0.92", action: "过滤", impact: "减少误归并" },
+    { key: "r6.4", version: getRuleVersion(selectedRule), change: "输出 affected_object_ids 与 output_hash", action: getRuleEffectKind(selectedRule), impact: "可进入影响面重算" },
+  ];
 
   async function saveRuleContract(mode: "draft" | "version") {
     if (!config) {
@@ -801,6 +875,20 @@ export function RuleContractEditorPage() {
         {error ? <Alert type="warning" showIcon message="当前使用默认合同原型" description={error} /> : null}
         {saveFeedback ? <Alert type={saveFeedback.type} showIcon closable message={saveFeedback.message} description={saveFeedback.description} onClose={() => setSaveFeedback(null)} /> : null}
         <Alert
+          type="info"
+          showIcon
+          message="阶段策略配置负责编排规则，本页负责单条规则的字段级可运行合同。"
+          description="已有抽取运行继续使用历史规则快照，新版本只影响后续选择该版本的抽取或增量重算。"
+        />
+        {structuralEffect ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="结构性规则变更会触发影响面计算，保存新版本后不会直接覆盖已有知识。"
+            description="正式入库知识不会被规则变更静默覆盖；结构性变更只生成修订候选并等待治理确认。"
+          />
+        ) : null}
+        <Alert
           type={contractOk ? "success" : "error"}
           showIcon
           message={contractOk ? "合同完整性检查通过" : "合同校验未通过"}
@@ -846,9 +934,20 @@ export function RuleContractEditorPage() {
             </Space>
           </Card>
 
-          <Card className="p1-soft-card" title="输入 / 输出 Schema 编辑">
+          <Card className="p1-soft-card" title="字段级合同工程台">
             <Space direction="vertical" size={18} style={{ display: "flex" }}>
-              <Typography.Title level={5}>输入字段合同 input_schema</Typography.Title>
+              <div className="p1-card-heading">
+                <div>
+                  <Typography.Title level={5}>输入字段合同 input_schema</Typography.Title>
+                  <Typography.Text type="secondary">字段名、来源产物、必填、hash、校验和缺失动作同步进入运行合同。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Button size="small">新增字段</Button>
+                  <Button size="small">导入字段模板</Button>
+                  <Button size="small">从上游产物选择字段</Button>
+                  <Button size="small">批量设置 hash 字段</Button>
+                </Space>
+              </div>
               <Table
                 size="small"
                 pagination={false}
@@ -861,6 +960,7 @@ export function RuleContractEditorPage() {
                   { title: "必填", render: (_value: unknown, record: ArchiveRuleInputFieldContract) => (record.required ? <Tag color="blue">是</Tag> : <Tag>否</Tag>) },
                   { title: "参与 input_hash", render: (_value: unknown, record: ArchiveRuleInputFieldContract) => (record.include_in_input_hash ? "是" : "否") },
                   { title: "校验规则", dataIndex: "validation" },
+                  { title: "示例值", dataIndex: "example" },
                   { title: "业务含义", dataIndex: "business_meaning" },
                   { title: "缺失动作", dataIndex: "missing_action" },
                 ]}
@@ -873,12 +973,38 @@ export function RuleContractEditorPage() {
                   onChange={(event) => setInputSchemaDraft(event.target.value)}
                 />
               </label>
-              <Typography.Title level={5}>规则参数与判断条件</Typography.Title>
-              <Input.TextArea
-                rows={6}
-                value={parametersDraft}
-                onChange={(event) => setParametersDraft(event.target.value)}
-              />
+              <div className="p1-contract-condition-grid">
+                <Card size="small" title="规则参数与判断条件">
+                  <Space direction="vertical" size={10} style={{ display: "flex" }}>
+                    <Segmented options={["全部满足", "任一满足", "自定义表达式"]} defaultValue="全部满足" />
+                    {conditionBlocks.map((condition) => (
+                      <button key={condition.key} type="button" className="p1-condition-block">
+                        <span>{condition.label}</span>
+                        <strong>{condition.expression}</strong>
+                        <small>读取 {condition.key} → 影响 {condition.output}</small>
+                      </button>
+                    ))}
+                    <Alert type="info" showIcon message="AI 自动适配：允许 AI 推荐阈值，保存前仍以固定合同为准。" />
+                    <label className="p1-contract-editor-field">
+                      <span>parameters JSON 草稿</span>
+                      <Input.TextArea
+                        rows={5}
+                        value={parametersDraft}
+                        onChange={(event) => setParametersDraft(event.target.value)}
+                      />
+                    </label>
+                  </Space>
+                </Card>
+                <Card size="small" title="动作映射">
+                  <div className="p1-contract-action-map">
+                    <span>输入候选集合</span>
+                    <strong>{getRuleEffectKind(selectedRule)}</strong>
+                    <span>规则条件命中</span>
+                    <strong>归并 / 过滤 / 拆分 / 阻断 / 发布候选</strong>
+                    <span>输出对象集合</span>
+                  </div>
+                </Card>
+              </div>
               <Typography.Title level={5}>输出字段合同 output_schema</Typography.Title>
               <Table
                 size="small"
@@ -893,6 +1019,7 @@ export function RuleContractEditorPage() {
                   { title: "写入运行态", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.write_to_runtime ? "是" : "否") },
                   { title: "写入审计", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.write_to_audit ? "是" : "否") },
                   { title: "用于影响面", render: (_value: unknown, record: ArchiveRuleOutputFieldContract) => (record.used_for_impact ? <Tag color="orange">是</Tag> : "否") },
+                  { title: "示例输出", dataIndex: "example" },
                   { title: "业务含义", dataIndex: "business_meaning" },
                 ]}
               />
@@ -922,19 +1049,49 @@ export function RuleContractEditorPage() {
                   <span key={item} className="p1-filter-pill is-active">{item}</span>
                 ))}
               </div>
+              <Card size="small" title="合同完整性检查">
+                <div className="p1-contract-check-list">
+                  {[
+                    ["input_schema 完整", draftInputSchema.length > 0],
+                    ["output_schema 完整", draftOutputSchema.length > 0],
+                    ["input_hash 已配置", draftInputSchema.some((field) => field.field_name === "input_hash")],
+                    ["output_hash 已配置", draftOutputSchema.some((field) => field.field_name === "output_hash")],
+                    ["affected_object_ids 已配置", draftOutputSchema.some((field) => field.field_name === "affected_object_ids")],
+                    ["trace_fields 已配置", requiredRuleTraceFields.every((field) => traceFieldsDraft.includes(field))],
+                  ].map(([label, passed]) => (
+                    <span key={String(label)} className={passed ? "is-pass" : "is-fail"}>
+                      {String(label)}
+                    </span>
+                  ))}
+                </div>
+              </Card>
               <Card size="small" title="RuleExecutionRecord 预览">
                 <Descriptions column={1} size="small">
                   {Object.entries(recordPreview).map(([key, value]) => (
                     <Descriptions.Item key={key} label={key}>{String(value)}</Descriptions.Item>
                   ))}
                 </Descriptions>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="没有 RuleExecutionRecord 的规则输出不得进入发布候选。"
+                  style={{ marginTop: 12 }}
+                />
               </Card>
               <Card size="small" title="影响面预估">
                 <Space direction="vertical" size={8}>
                   <Tag color="purple">minimum_rebuild_stage_id = {selectedStageIndex + 1}</Tag>
+                  {["候选知识", "关系", "质量门禁", "发布候选快照"].map((item) => <Tag key={item} color="orange">{item}</Tag>)}
                   <span>保存为新版本后会生成 ImpactSet，只标记受影响候选与发布候选，不直接覆盖正式入库知识。</span>
                   <span>运行时会用 input_hash / output_hash / affected_object_ids 定位需要增量重算的对象。</span>
                 </Space>
+              </Card>
+              <Card size="small" title="示例输入 -> 示例输出">
+                <div className="p1-sample-io">
+                  <pre>{JSON.stringify({ candidate_id: "CND-1008", semantic_similarity: 0.94, confidence_score: 0.81 }, null, 2)}</pre>
+                  <span>→</span>
+                  <pre>{JSON.stringify({ decision: "命中", affected_object_ids: ["OBJ-M-204"], output_hash: "out_a91e" }, null, 2)}</pre>
+                </div>
               </Card>
               <Alert
                 type="info"
@@ -943,6 +1100,38 @@ export function RuleContractEditorPage() {
                 description="抽取启动会冻结策略包版本；质量门禁等阶段会输出 RuleExecutionRecord；后续规则变更影响面可以沿这些字段追踪。"
               />
             </Space>
+          </Card>
+        </div>
+        <div className="p1-config-two-column">
+          <Card className="p1-soft-card" title="最近执行样本">
+            <Table
+              rowKey="key"
+              size="small"
+              pagination={false}
+              dataSource={executionRows}
+              columns={[
+                { title: "输入对象数", dataIndex: "input" },
+                { title: "命中数", dataIndex: "hit" },
+                { title: "输出对象数", dataIndex: "output" },
+                { title: "失败数", dataIndex: "failed" },
+                { title: "执行时间", dataIndex: "time" },
+                { title: "运行快照 ID", dataIndex: "snapshot" },
+              ]}
+            />
+          </Card>
+          <Card className="p1-soft-card" title="版本变更记录">
+            <Table
+              rowKey="key"
+              size="small"
+              pagination={false}
+              dataSource={versionRows}
+              columns={[
+                { title: "版本", dataIndex: "version" },
+                { title: "阈值 / 字段变化", dataIndex: "change" },
+                { title: "动作", dataIndex: "action" },
+                { title: "影响", dataIndex: "impact" },
+              ]}
+            />
           </Card>
         </div>
       </Space>
@@ -1098,63 +1287,181 @@ export function StrategyDiffPage() {
         { title: "影响阶段", value: `${changedStages.length} / 13` },
       ]}
     >
-      <div className="p1-prototype-grid is-wide-right">
-        <Card className="p1-soft-card" title="13 阶段导航">
-          <StageRail stages={stages} selectedStageId={changedStages[0]?.stage_id ?? stages[0]?.stage_id} onSelect={() => undefined} />
-        </Card>
-        <Card className="p1-soft-card" title="差异摘要">
-          <Space direction="vertical" size={16} style={{ display: "flex" }}>
-            <div className="p1-stat-strip">
-              <div className="p1-stat-card"><span>新增规则数</span><strong>12</strong></div>
-              <div className="p1-stat-card"><span>修改规则数</span><strong>18</strong></div>
-              <div className="p1-stat-card"><span>停用规则数</span><strong>5</strong></div>
-              <div className="p1-stat-card"><span>结构性变化</span><strong>2</strong></div>
-            </div>
-            <Alert type="info" showIcon message="影响等级：中高" description="主要集中在规则清洗、实体抽取、候选合并与质量校验。" />
-            <div className="p1-stage-track">
-              {stages.slice(0, 13).map((stage, index) => (
-                <div key={stage.stage_id} className={`p1-stage-step${changedStages.some((item) => item.stage_id === stage.stage_id) ? " is-current" : " is-done"}`}>
-                  <span className="p1-stage-index">{index + 1}</span>
-                  <span className="p1-stage-label">{getPrototypeStageLabel(stage, index)}</span>
+      <Space direction="vertical" size={16} style={{ display: "flex" }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="版本比较不会自动重算已有知识"
+          description="当前使用 policy-config 真实策略数据生成语义差异；专用策略 diff API 暂缺，因此差异计数为 mock fallback。生成 ImpactSet 后才进入增量重算。"
+        />
+        <div className="p1-prototype-grid is-wide-right">
+          <Card className="p1-soft-card" title="版本 A / 版本 B">
+            <div className="p1-version-timeline">
+              {[
+                ["基准版本", "v3.11", "历史运行快照"],
+                ["目标版本", config?.version_label ?? "v3.12", "当前策略配置"],
+                ["比较时间", "2026-05-06 10:42", "前端生成"],
+                ["适用知识类型", config?.scope_label ?? "合同条款", "策略包范围"],
+              ].map(([title, value, desc]) => (
+                <div key={title} className="p1-version-card">
+                  <span>{title}</span>
+                  <strong>{value}</strong>
+                  <small>{desc}</small>
                 </div>
               ))}
             </div>
-            <Table
-              rowKey="key"
-              size="small"
-              pagination={{ pageSize: 8 }}
-              dataSource={diffRows}
-              columns={[
-                { title: "阶段", dataIndex: "stage" },
-                { title: "规则名称", dataIndex: "rule" },
-                { title: "旧版本", dataIndex: "oldVersion" },
-                { title: "新版本", dataIndex: "newVersion" },
-                { title: "变更类型", dataIndex: "type" },
-                { title: "输入合同变化", dataIndex: "input" },
-                { title: "输出合同变化", dataIndex: "output" },
-                { title: "预计影响", dataIndex: "impact" },
-              ]}
-            />
-          </Space>
-        </Card>
-        <Card className="p1-soft-card p1-detail-panel" title="差异解释窗">
-          <Space direction="vertical" size={14} style={{ display: "flex" }}>
-            <Alert type="warning" showIcon message="当前命中规则：重复候选归并规则" description="结构性变化会影响候选知识、发布候选与质量门禁判断。" />
-            <Descriptions column={1} size="small">
-              <Descriptions.Item label="误删风险">candidate_id、semantic_similarity、anchor_ids 变化可能影响归并结果。</Descriptions.Item>
-              <Descriptions.Item label="产生输出">merged_object_id、affected_object_ids、decision_reason</Descriptions.Item>
-              <Descriptions.Item label="是否需要影响面重算">是</Descriptions.Item>
-            </Descriptions>
-            <Alert type="info" showIcon message="进入影响面与增量重算确认后，才会计算并刷新受影响知识。" />
-          </Space>
-        </Card>
-      </div>
+            <StageRail stages={stages} selectedStageId={changedStages[0]?.stage_id ?? stages[0]?.stage_id} onSelect={() => undefined} />
+          </Card>
+          <Card className="p1-soft-card" title="差异摘要">
+            <Space direction="vertical" size={16} style={{ display: "flex" }}>
+              <div className="p1-stat-strip">
+                <div className="p1-stat-card"><span>新增规则数</span><strong>12</strong></div>
+                <div className="p1-stat-card"><span>修改规则数</span><strong>18</strong></div>
+                <div className="p1-stat-card"><span>停用规则数</span><strong>5</strong></div>
+                <div className="p1-stat-card"><span>动作变化数</span><strong>7</strong></div>
+                <div className="p1-stat-card"><span>阈值变化数</span><strong>11</strong></div>
+                <div className="p1-stat-card"><span>结构性变化</span><strong>2</strong></div>
+              </div>
+              <Alert type="info" showIcon message="影响等级：中高" description="主要集中在规则清洗、实体抽取、候选合并与质量校验。" />
+              <div className="p1-stage-track">
+                {stages.slice(0, 13).map((stage, index) => (
+                  <div key={stage.stage_id} className={`p1-stage-step${changedStages.some((item) => item.stage_id === stage.stage_id) ? " is-current" : " is-done"}`}>
+                    <span className="p1-stage-index">{index + 1}</span>
+                    <span className="p1-stage-label">{getPrototypeStageLabel(stage, index)}</span>
+                  </div>
+                ))}
+              </div>
+              <Table
+                rowKey="key"
+                size="small"
+                pagination={{ pageSize: 8 }}
+                dataSource={diffRows}
+                columns={[
+                  { title: "阶段", dataIndex: "stage" },
+                  { title: "规则名称", dataIndex: "rule" },
+                  { title: "旧版本", dataIndex: "oldVersion" },
+                  { title: "新版本", dataIndex: "newVersion" },
+                  { title: "变更类型", dataIndex: "type" },
+                  { title: "输入合同变化", dataIndex: "input" },
+                  { title: "输出合同变化", dataIndex: "output" },
+                  { title: "动作变化", render: () => <Tag color="orange">可能变化</Tag> },
+                  { title: "预计影响", dataIndex: "impact" },
+                ]}
+              />
+            </Space>
+          </Card>
+          <Card className="p1-soft-card p1-detail-panel" title="差异解释窗">
+            <Space direction="vertical" size={14} style={{ display: "flex" }}>
+              <Alert type="warning" showIcon message="当前命中规则：重复候选归并规则" description="结构性变化会影响候选知识、发布候选与质量门禁判断。" />
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="读取输入">candidate_id、semantic_similarity、anchor_ids、input_hash</Descriptions.Item>
+                <Descriptions.Item label="产生输出">merged_object_id、affected_object_ids、decision_reason、output_hash</Descriptions.Item>
+                <Descriptions.Item label="知识影响">候选可能被保留 / 替换 / 拆分 / 阻断</Descriptions.Item>
+                <Descriptions.Item label="是否需要影响面重算">是</Descriptions.Item>
+              </Descriptions>
+              <Alert type="info" showIcon message="进入影响面与增量重算确认后，才会计算并刷新受影响知识。" />
+            </Space>
+          </Card>
+        </div>
+      </Space>
     </ValidationWorkspace>
   );
 }
 
 export function RuleImpactRecomputePage() {
-  const { config } = usePolicyWorkbench();
+  const { activeArchiveId, config, stages } = usePolicyWorkbench();
+  const [tasks, setTasks] = useState<ArchiveIncrementalRebuildTask[]>([]);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeArchiveId) {
+      setTasks([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    listArchiveIncrementalRebuildTasks(activeArchiveId)
+      .then((response) => {
+        if (cancelled) return;
+        const ordered = [...response.data].sort((left, right) => {
+          const leftTime = new Date(left.created_at).getTime() || 0;
+          const rightTime = new Date(right.created_at).getTime() || 0;
+          return rightTime - leftTime;
+        });
+        setTasks(ordered);
+        setTasksError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setTasks([]);
+        setTasksError(error instanceof Error ? error.message : "增量重算任务读取失败");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArchiveId]);
+
+  const latestTask = config?.incremental_rebuild_task ?? tasks[0] ?? null;
+  const activeImpact = config?.impact_set ?? latestTask?.impact_set ?? null;
+  const isBackendImpact = Boolean(activeImpact);
+  const stageLabelById = new Map(stages.map((stage, index) => [stage.stage_id, getPrototypeStageLabel(stage, index)]));
+  const minimumStageIndex = activeImpact?.minimum_rebuild_stage_id
+    ? Math.max(0, stages.findIndex((stage) => stage.stage_id === activeImpact.minimum_rebuild_stage_id))
+    : 5;
+  const affectedStageIds = activeImpact?.affected_stage_ids?.length
+    ? activeImpact.affected_stage_ids
+    : ["rule_cleaning", "entity_extraction", "concept_candidate_review", "quality_gate"];
+  const impactRows = activeImpact
+    ? [
+        ["changed_rule_ids", String(activeImpact.changed_rule_ids.length), activeImpact.changed_rule_ids.slice(0, 3).join(", ") || "无规则变更"],
+        ["affected_stage_ids", String(activeImpact.affected_stage_ids.length), activeImpact.affected_stage_ids.map((stageId) => stageLabelById.get(stageId) ?? stageId).slice(0, 4).join("、")],
+        ["affected_document_ids", String(activeImpact.affected_document_ids.length), activeImpact.affected_document_ids.slice(0, 3).join(", ") || "暂无文档"],
+        ["affected_chunk_ids", String(activeImpact.affected_chunk_ids.length), activeImpact.affected_chunk_ids.slice(0, 3).join(", ") || "暂无分片"],
+        ["affected_candidate_ids", String(activeImpact.affected_candidate_ids.length), activeImpact.affected_candidate_ids.slice(0, 3).join(", ") || "暂无候选"],
+        ["affected_relation_ids", String(activeImpact.affected_relation_ids.length), activeImpact.affected_relation_ids.slice(0, 3).join(", ") || "暂无关系"],
+        ["affected_publication_snapshot_ids", String(activeImpact.affected_publication_snapshot_ids.length), activeImpact.affected_publication_snapshot_ids.slice(0, 3).join(", ") || "暂无发布快照"],
+      ]
+    : [
+        ["changed_rule_ids", "6", "RL-CLEAN-006, RL-MERGE-021"],
+        ["affected_stage_ids", "4", "规则清洗、实体抽取、候选合并、质量校验"],
+        ["affected_document_ids", "128", "DOC-2026-0182, DOC-2026-0244"],
+        ["affected_chunk_ids", "2,431", "CK-44102, CK-44198"],
+        ["affected_candidate_ids", "684", "stale 候选"],
+        ["affected_relation_ids", "219", "待重新推断关系"],
+        ["affected_publication_snapshot_ids", "32", "待重新确认"],
+      ];
+  const recomputeRows = affectedStageIds.map((stageId, index) => {
+    const pendingBase =
+      activeImpact?.affected_candidate_ids.length ||
+      activeImpact?.affected_document_ids.length ||
+      [684, 503, 228, 156][index] ||
+      0;
+    return {
+      stage: stageLabelById.get(stageId) ?? stageId,
+      pending: Math.max(0, Math.ceil(pendingBase / Math.max(1, index + 1))),
+      running: latestTask?.status === "running" && index === 0 ? 1 : 0,
+      done: latestTask?.status === "completed" ? Math.max(0, Math.ceil(pendingBase / Math.max(1, index + 2))) : 0,
+      failed: latestTask?.status === "failed" && index === 0 ? 1 : 0,
+    };
+  });
+  const eventItems = activeImpact
+    ? [
+        `影响面计算完成：${activeImpact.affected_candidate_ids.length} 个候选、${activeImpact.affected_relation_ids.length} 条关系被标记为 stale`,
+        `阶段重算计划生成：minimum_rebuild_stage_id = ${activeImpact.minimum_rebuild_stage_id ?? "--"}`,
+        `规则变更：${activeImpact.changed_rule_ids.join(", ") || "无"}`,
+        `增量任务：${latestTask?.task_id ?? "--"} / ${latestTask?.status ?? "queued"}`,
+        `正式入库写入：${latestTask?.writes_official_knowledge ? "会写入" : "不会写入，仅生成候选或待确认结果"}`,
+      ]
+    : [
+        "影响面计算完成：684 个候选、219 条关系被标记为 stale",
+        "阶段重算开始：minimum_rebuild_stage_id = 6，复用 1-5 阶段历史快照",
+        "规则执行：RL-CLEAN-006 输出 affected_object_ids 与 output_hash",
+        "候选替换：合同金额条款 -> 合同总金额条款，生成修订候选",
+        "发布候选快照更新：32 个候选等待治理重新确认",
+      ];
 
   return (
     <ValidationWorkspace
@@ -1168,23 +1475,26 @@ export function RuleImpactRecomputePage() {
         </Space>
       }
       stats={[
-        { title: "变更批次 ID", value: "CHG-20260506-IR-018" },
+        { title: "变更批次 ID", value: activeImpact?.impact_id ?? "CHG-20260506-IR-018" },
         { title: "新策略包版本", value: config?.version_label ?? "v3.12" },
-        { title: "最早重算阶段", value: "规则清洗" },
+        { title: "最早重算阶段", value: activeImpact?.minimum_rebuild_stage_id ? stageLabelById.get(activeImpact.minimum_rebuild_stage_id) ?? activeImpact.minimum_rebuild_stage_id : "规则清洗" },
       ]}
     >
       <Space direction="vertical" size={16} style={{ display: "flex" }}>
+        <Alert
+          type={isBackendImpact ? "success" : "warning"}
+          showIcon
+          message={isBackendImpact ? "已读取后端 ImpactSet / 增量重算任务" : "暂无后端增量重算任务，当前为明确标识的 mock fallback"}
+          description={
+            isBackendImpact
+              ? `任务 ${latestTask?.task_id ?? "--"}，状态 ${latestTask?.status ?? "queued"}；writes_official_knowledge=${latestTask?.writes_official_knowledge ? "true" : "false"}。`
+              : `页面仍使用真实 policy-config 展示新策略版本；影响对象数量、重算进度和事件流为前端占位。${tasksError ? `任务接口状态：${tasksError}` : ""}`
+          }
+        />
         <Alert type="info" showIcon message="比较缓存和规则变更不会直接改写已有知识，只有在影响面计算与增量重算后，才会生成新的修订候选。" />
         <div className="p1-prototype-grid">
           <Card className="p1-soft-card" title="ImpactSet 面板">
-            {[
-              ["changed_rule_ids", "6", "RL-CLEAN-006, RL-MERGE-021"],
-              ["affected_stage_ids", "4", "规则清洗、实体抽取、候选合并、质量校验"],
-              ["affected_document_ids", "128", "DOC-2026-0182, DOC-2026-0244"],
-              ["affected_chunk_ids", "2,431", "CK-44102, CK-44198"],
-              ["affected_candidate_ids", "684", "stale 候选"],
-              ["affected_publication_snapshot_ids", "32", "待重新确认"],
-            ].map(([title, value, desc]) => (
+            {impactRows.map(([title, value, desc]) => (
               <div key={title} className="p1-impact-row">
                 <span>{title}</span>
                 <strong>{value}</strong>
@@ -1195,17 +1505,34 @@ export function RuleImpactRecomputePage() {
           <Card className="p1-soft-card" title="重算计划图">
             <Space direction="vertical" size={18} style={{ display: "flex" }}>
               <div className="p1-recompute-plan">
-                {[1, 2, 3, 4, 5].map((item) => <span key={item}>{item}</span>)}
-                {[6, 7, 8, 9, 10, 11, 12].map((item) => <span key={item} className="is-active">{item}</span>)}
-                <span>13</span>
+                {Array.from({ length: 13 }, (_, index) => (
+                  <span key={index + 1} className={index >= minimumStageIndex && index < 12 ? "is-active" : undefined}>{index + 1}</span>
+                ))}
               </div>
-              <Alert type="warning" showIcon message="minimum_rebuild_stage_id = 6" description="复用 1-5 阶段历史快照，从第 6 阶段开始对 stale 对象增量重算。" />
+              <Alert
+                type="warning"
+                showIcon
+                message={`minimum_rebuild_stage_id = ${activeImpact?.minimum_rebuild_stage_id ?? "rule_cleaning"}`}
+                description="复用该阶段之前的历史快照，从最早受影响阶段开始对 stale 对象增量重算。"
+              />
               <div className="p1-stat-strip">
-                <div className="p1-stat-card"><span>规则清洗待处理</span><strong>684</strong></div>
-                <div className="p1-stat-card"><span>实体抽取待处理</span><strong>503</strong></div>
-                <div className="p1-stat-card"><span>候选合并待处理</span><strong>228</strong></div>
-                <div className="p1-stat-card"><span>质量校验待处理</span><strong>156</strong></div>
+                {recomputeRows.slice(0, 4).map((row) => (
+                  <div className="p1-stat-card" key={row.stage}><span>{row.stage}待处理</span><strong>{row.pending}</strong></div>
+                ))}
               </div>
+              <Table
+                rowKey="stage"
+                size="small"
+                pagination={false}
+                dataSource={recomputeRows}
+                columns={[
+                  { title: "阶段", dataIndex: "stage" },
+                  { title: "待处理", dataIndex: "pending" },
+                  { title: "运行中", dataIndex: "running" },
+                  { title: "完成", dataIndex: "done" },
+                  { title: "失败", dataIndex: "failed" },
+                ]}
+              />
               <div className="p1-mini-flow">
                 <Tag color="orange">stale 候选</Tag>
                 <span>→</span>
@@ -1230,6 +1557,13 @@ export function RuleImpactRecomputePage() {
             </Space>
           </Card>
         </div>
+        <Card className="p1-soft-card" title="实时事件流">
+          <List
+            size="small"
+            dataSource={eventItems}
+            renderItem={(item) => <List.Item><Tag color={isBackendImpact ? "success" : "processing"}>{isBackendImpact ? "后端任务" : "mock fallback"}</Tag>{item}</List.Item>}
+          />
+        </Card>
       </Space>
     </ValidationWorkspace>
   );

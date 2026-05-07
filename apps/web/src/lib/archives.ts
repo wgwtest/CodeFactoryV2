@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type {
   ArchivePolicyConfig,
+  ArchiveIncrementalRebuildTask,
   ArchiveDocumentFormalizeResult,
   ArchiveDocumentImportResult,
   CreateKnowledgeArchiveInput,
@@ -30,6 +31,14 @@ export function getArchivePolicyConfig(archiveId: string) {
 
 export function updateArchivePolicyConfig(archiveId: string, payload: UpdateArchivePolicyConfigInput) {
   return api.put<ArchivePolicyConfig>(`/archives/${archiveId}/policy-config`, payload);
+}
+
+export function listArchiveIncrementalRebuildTasks(archiveId: string) {
+  return api.get<ArchiveIncrementalRebuildTask[]>(`/archives/${archiveId}/incremental-rebuild-tasks`);
+}
+
+export function getArchiveIncrementalRebuildTask(archiveId: string, taskId: string) {
+  return api.get<ArchiveIncrementalRebuildTask>(`/archives/${archiveId}/incremental-rebuild-tasks/${taskId}`);
 }
 
 export function formalizeArchiveDocument(archiveId: string, documentId: string) {

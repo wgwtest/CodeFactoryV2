@@ -78,6 +78,12 @@ class ArchiveDocumentRuntimeService:
             build_state=build_state,
             publication=publication,
         )
+        context["policy_snapshot"] = self._normalize_policy_snapshot(
+            context.get("policy_snapshot"),
+            archive_id=archive_id,
+            persisted_stage_ids=persisted_stage_ids,
+            document_id=document_id,
+        )
         if (
             contribution
             and not used_legacy_source
@@ -123,7 +129,11 @@ class ArchiveDocumentRuntimeService:
                             self.runtime_repository.list_stage_snapshot_ids(archive_id, document_id)
                         )
         stage_statuses = self._infer_stage_statuses(context)
-        current_stage_id = self._select_current_stage_id(stage_statuses)
+        current_stage_id = (
+            context["current_stage_id"]
+            if context.get("current_stage_id") in {definition.stage_id for definition in STAGE_DEFINITIONS}
+            else self._select_current_stage_id(stage_statuses)
+        )
         stages = [
             self._build_stage(
                 definition,
@@ -139,17 +149,32 @@ class ArchiveDocumentRuntimeService:
             for stage in stages
             for record in stage.rule_execution_records
         ]
+        policy_refs = self._policy_refs(context.get("policy_snapshot"))
+        quality_gate_summary = self._build_quality_gate_summary(
+            stages,
+            context,
+            rule_execution_records,
+        )
         return DocumentRuntimeContract(
             archive_id=archive_id,
             document_id=document_id,
             document_title=context["document_title"],
             current_stage_id=current_stage.stage_id,
-            current_stage_label=current_stage.label,
+            current_stage_label=context.get("current_stage_label") or current_stage.label,
+            current_stage_status=current_stage.status,
+            current_stage_message=context.get("current_stage_message"),
             status=current_stage.status,
             runtime_mode=self._select_runtime_mode(used_legacy_source, persisted_stage_ids),
             persisted_stage_ids=persisted_stage_ids,
             source_document=context["source_document"],
             policy_snapshot=context.get("policy_snapshot"),
+            policy_package_id=policy_refs.get("policy_package_id"),
+            policy_version=policy_refs.get("policy_version"),
+            policy_snapshot_id=policy_refs.get("policy_snapshot_id"),
+            stage_statuses={stage.stage_id: stage.status.value for stage in stages},
+            rule_hits=quality_gate_summary.get("rule_hits", []),
+            quality_gate=quality_gate_summary,
+            publication_candidate_status=self._build_publication_candidate_status(stages),
             stages=stages,
             rule_execution_records=rule_execution_records,
         ).model_dump(mode="json")
@@ -389,6 +414,104 @@ class ArchiveDocumentRuntimeService:
             return "hybrid"
         return "derived"
 
+    def _normalize_policy_snapshot(
+        self,
+        policy_snapshot: Any,
+        *,
+        archive_id: str,
+        persisted_stage_ids: list[str],
+        document_id: str,
+    ) -> dict[str, Any] | None:
+        if isinstance(policy_snapshot, dict):
+            normalized = dict(policy_snapshot)
+        else:
+            normalized = self._derive_policy_snapshot_from_stage_refs(
+                archive_id=archive_id,
+                document_id=document_id,
+                persisted_stage_ids=persisted_stage_ids,
+            )
+            if normalized is None:
+                return None
+
+        snapshot_id = normalized.get("policy_snapshot_id") or normalized.get("snapshot_id")
+        policy_version = (
+            normalized.get("policy_version")
+            or normalized.get("policy_package_version_id")
+            or normalized.get("version_label")
+        )
+        if snapshot_id:
+            normalized["snapshot_id"] = str(normalized.get("snapshot_id") or snapshot_id)
+            normalized["policy_snapshot_id"] = str(snapshot_id)
+        if policy_version:
+            normalized["policy_version"] = str(policy_version)
+        return normalized
+
+    def _derive_policy_snapshot_from_stage_refs(
+        self,
+        *,
+        archive_id: str,
+        document_id: str,
+        persisted_stage_ids: list[str],
+    ) -> dict[str, Any] | None:
+        for stage_id in persisted_stage_ids:
+            snapshot = self.runtime_repository.load_stage_snapshot(archive_id, document_id, stage_id)
+            if not isinstance(snapshot, dict):
+                continue
+            policy_snapshot_id = snapshot.get("policy_snapshot_id")
+            policy_package_id = snapshot.get("policy_package_id")
+            policy_version = snapshot.get("policy_version")
+            if not (policy_snapshot_id or policy_package_id or policy_version):
+                continue
+            return {
+                "snapshot_id": str(policy_snapshot_id or "unknown-policy-snapshot"),
+                "policy_snapshot_id": str(policy_snapshot_id or "unknown-policy-snapshot"),
+                "archive_id": archive_id,
+                "policy_package_id": str(policy_package_id) if policy_package_id else None,
+                "policy_version": str(policy_version or "unknown-policy-version"),
+                "version_label": str(policy_version or "unknown-policy-version"),
+                "scope_label": "persisted runtime snapshot",
+                "stage_order": [],
+                "stages": [],
+            }
+        return None
+
+    @staticmethod
+    def _policy_refs(policy_snapshot: Any) -> dict[str, str | None]:
+        if not isinstance(policy_snapshot, dict):
+            return {"policy_package_id": None, "policy_version": None, "policy_snapshot_id": None}
+        return {
+            "policy_package_id": (
+                str(policy_snapshot.get("policy_package_id"))
+                if policy_snapshot.get("policy_package_id")
+                else None
+            ),
+            "policy_version": (
+                str(
+                    policy_snapshot.get("policy_version")
+                    or policy_snapshot.get("policy_package_version_id")
+                    or policy_snapshot.get("version_label")
+                )
+                if (
+                    policy_snapshot.get("policy_version")
+                    or policy_snapshot.get("policy_package_version_id")
+                    or policy_snapshot.get("version_label")
+                )
+                else None
+            ),
+            "policy_snapshot_id": (
+                str(policy_snapshot.get("policy_snapshot_id") or policy_snapshot.get("snapshot_id"))
+                if (policy_snapshot.get("policy_snapshot_id") or policy_snapshot.get("snapshot_id"))
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _runtime_status_from_value(value: Any, fallback: RuntimeStatus) -> RuntimeStatus:
+        try:
+            return RuntimeStatus(str(value))
+        except (TypeError, ValueError):
+            return fallback
+
     def _infer_stage_statuses(self, context: dict[str, Any]) -> dict[str, RuntimeStatus]:
         statuses = {definition.stage_id: RuntimeStatus.PENDING for definition in STAGE_DEFINITIONS}
         source = context["source_document"]
@@ -434,7 +557,10 @@ class ArchiveDocumentRuntimeService:
                         if statuses[definition.stage_id] == RuntimeStatus.PENDING:
                             statuses[definition.stage_id] = RuntimeStatus.COMPLETED
                     elif definition.stage_id == active_stage_id:
-                        statuses[definition.stage_id] = RuntimeStatus.RUNNING
+                        statuses[definition.stage_id] = self._runtime_status_from_value(
+                            context.get("current_stage_status"),
+                            RuntimeStatus.RUNNING,
+                        )
                     else:
                         statuses[definition.stage_id] = RuntimeStatus.PENDING
                 return statuses
@@ -479,11 +605,27 @@ class ArchiveDocumentRuntimeService:
         if persisted is not None:
             stage = RuntimeStageSnapshot.model_validate(persisted)
             stage.is_current = is_current
+            stage = self._apply_current_stage_status(stage, context, is_current=is_current)
             return self._with_policy_rule_records(stage, definition, context)
         builder = getattr(self, f"_build_{definition.stage_id}_stage")
         stage = builder(definition, context, status)
         stage.is_current = is_current
+        stage = self._apply_current_stage_status(stage, context, is_current=is_current)
         return self._with_policy_rule_records(stage, definition, context)
+
+    def _apply_current_stage_status(
+        self,
+        stage: RuntimeStageSnapshot,
+        context: dict[str, Any],
+        *,
+        is_current: bool,
+    ) -> RuntimeStageSnapshot:
+        if not is_current or not context.get("is_current_build_document"):
+            return stage
+        stage_status = self._runtime_status_from_value(context.get("current_stage_status"), stage.status)
+        stage.status = stage_status
+        stage.stage_observer.status = stage_status
+        return stage
 
     def _with_policy_rule_records(
         self,
@@ -521,7 +663,8 @@ class ArchiveDocumentRuntimeService:
         if not rules:
             return []
 
-        snapshot_id = str(policy_snapshot.get("snapshot_id") or "")
+        policy_refs = self._policy_refs(policy_snapshot)
+        snapshot_id = str(policy_refs.get("policy_snapshot_id") or policy_snapshot.get("snapshot_id") or "")
         affected_object_ids = stage.graph.primary_node_ids or [node.node_id for node in stage.graph.nodes[:8]]
         records: list[RuleExecutionRecord] = []
         for index, rule in enumerate(rules, start=1):
@@ -554,6 +697,9 @@ class ArchiveDocumentRuntimeService:
                     rule_version=rule_version,
                     rule_hash=rule.get("rule_hash"),
                     snapshot_id=snapshot_id or None,
+                    policy_snapshot_id=snapshot_id or None,
+                    policy_package_id=policy_refs.get("policy_package_id"),
+                    policy_version=policy_refs.get("policy_version"),
                     input_artifact_refs=input_refs,
                     input_hash=self._runtime_hash(input_payload),
                     output_artifact_refs=output_refs,
@@ -589,6 +735,164 @@ class ArchiveDocumentRuntimeService:
             if value is not None and str(value) and str(value) not in refs:
                 refs.append(str(value))
         return refs or fallback
+
+    def _build_quality_gate_summary(
+        self,
+        stages: list[RuntimeStageSnapshot],
+        context: dict[str, Any],
+        rule_execution_records: list[RuleExecutionRecord],
+    ) -> dict[str, Any]:
+        stage = next(
+            (
+                item
+                for item in stages
+                if item.stage_id == "quality_policy_evaluation_governance_gate"
+            ),
+            None,
+        )
+        policy_refs = self._policy_refs(context.get("policy_snapshot"))
+        if stage is None:
+            return {
+                "stage_id": "quality_policy_evaluation_governance_gate",
+                "stage_status": RuntimeStatus.UNAVAILABLE.value,
+                "policy": policy_refs,
+                "metrics": {},
+                "rule_hits": [],
+                "decision": {},
+                "rule_execution_records": [],
+            }
+
+        fields = self._observer_payload_fields(stage.stage_observer)
+        rule_hits = self._rule_hits_from_quality_gate_stage(stage)
+        gate_node = next(
+            (
+                node
+                for node in stage.graph.nodes
+                if node.node_type == "gate_decision"
+            ),
+            None,
+        )
+        decision = {
+            "status": fields.get("decision") or (gate_node.attributes.get("decision") if gate_node else stage.status.value),
+            "reason": fields.get("reason") or (gate_node.attributes.get("reason") if gate_node else None),
+            "next_action": gate_node.attributes.get("next_action") if gate_node else None,
+            "failed_rule_count": fields.get("failed_rule_count")
+            or (gate_node.metrics.get("failed_rule_count") if gate_node else None),
+        }
+        metrics = {}
+        if gate_node:
+            metrics.update(gate_node.metrics)
+        metrics.update(
+            {
+                key: value
+                for key, value in fields.items()
+                if key
+                in {
+                    "knowledge_item_count",
+                    "evidence_count",
+                    "supporting_documents",
+                    "pending_review_count",
+                    "rejected_count",
+                    "approved_count",
+                    "hard_conflict",
+                    "risk_score",
+                    "failed_rule_count",
+                }
+            }
+        )
+        policy = {
+            **policy_refs,
+            "stage_id": stage.stage_id,
+            "stage_label": stage.label,
+            "rule_count": len(rule_hits),
+            "default_action": fields.get("default_action"),
+        }
+        stage_records = [
+            record.model_dump(mode="json")
+            for record in rule_execution_records
+            if record.stage_id == stage.stage_id
+        ]
+        return {
+            "stage_id": stage.stage_id,
+            "stage_label": stage.label,
+            "stage_status": stage.status.value,
+            "policy": policy,
+            "metrics": metrics,
+            "rule_hits": rule_hits,
+            "decision": decision,
+            "rule_execution_records": stage_records,
+        }
+
+    @staticmethod
+    def _observer_payload_fields(observer: RuntimeObserverPayload) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        for section in observer.sections:
+            for field in section.fields:
+                fields[field.key] = field.value
+        return fields
+
+    @staticmethod
+    def _rule_hits_from_quality_gate_stage(stage: RuntimeStageSnapshot) -> list[dict[str, Any]]:
+        hits: list[dict[str, Any]] = []
+        for node in stage.graph.nodes:
+            if node.node_type != "rule_hit":
+                continue
+            attrs = node.attributes
+            metrics = node.metrics
+            hits.append(
+                {
+                    "node_id": node.node_id,
+                    "rule_key": attrs.get("rule_key"),
+                    "rule_id": attrs.get("rule_id") or attrs.get("rule_key"),
+                    "rule_version": attrs.get("rule_version"),
+                    "rule_hash": attrs.get("rule_hash"),
+                    "snapshot_id": attrs.get("snapshot_id"),
+                    "input_hash": attrs.get("input_hash"),
+                    "output_hash": attrs.get("output_hash"),
+                    "label": node.label,
+                    "status": node.status.value,
+                    "threshold": attrs.get("threshold"),
+                    "action": attrs.get("action"),
+                    "outcome": attrs.get("outcome"),
+                    "actual": metrics.get("actual"),
+                    "passed": bool(metrics.get("passed")),
+                    "detail": attrs.get("detail"),
+                    "affected_object_ids": attrs.get("affected_object_ids", []),
+                }
+            )
+        return hits
+
+    def _build_publication_candidate_status(
+        self,
+        stages: list[RuntimeStageSnapshot],
+    ) -> dict[str, Any]:
+        stage = next((item for item in stages if item.stage_id == "indexes_snapshots_apis"), None)
+        if stage is None:
+            return {}
+        fields = self._observer_payload_fields(stage.stage_observer)
+        candidate_node = next(
+            (
+                node
+                for node in stage.graph.nodes
+                if node.node_type == "publication_candidate_snapshot"
+            ),
+            None,
+        )
+        return {
+            "stage_id": stage.stage_id,
+            "stage_status": stage.status.value,
+            "gate_decision": fields.get("gate_decision"),
+            "machine_candidate_status": fields.get("machine_candidate_status"),
+            "governance_confirmation_status": fields.get("governance_confirmation_status"),
+            "formal_entry_status": fields.get("formal_entry_status"),
+            "version_label": fields.get("version_label"),
+            "candidate_count": fields.get("candidate_count"),
+            "pending_review_count": fields.get("pending_review_count"),
+            "approved_count": fields.get("approved_count"),
+            "rejected_count": fields.get("rejected_count"),
+            "candidate_snapshot_id": candidate_node.node_id if candidate_node else None,
+            "candidate_snapshot_attributes": candidate_node.attributes if candidate_node else {},
+        }
 
     def _select_current_stage_id(self, statuses: dict[str, RuntimeStatus]) -> str:
         for preferred in (RuntimeStatus.RUNNING, RuntimeStatus.BLOCKED, RuntimeStatus.WARNING):

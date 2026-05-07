@@ -418,6 +418,97 @@
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
+.p1-contract-condition-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+}
+
+.p1-condition-block {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff, #f8fbff);
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.p1-condition-block:hover {
+  border-color: rgba(37, 99, 235, 0.55);
+  background: #eff6ff;
+}
+
+.p1-condition-block strong {
+  color: #0f172a;
+}
+
+.p1-condition-block small {
+  color: #64748b;
+}
+
+.p1-contract-action-map {
+  display: grid;
+  gap: 10px;
+}
+
+.p1-contract-action-map span,
+.p1-contract-action-map strong {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #fff;
+}
+
+.p1-contract-action-map strong {
+  border-color: rgba(124, 58, 237, 0.3);
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.p1-contract-check-list {
+  display: grid;
+  gap: 8px;
+}
+
+.p1-contract-check-list span {
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.p1-contract-check-list .is-pass {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.p1-contract-check-list .is-fail {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.p1-sample-io {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.p1-sample-io pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 11px;
+}
+
 .p1-stack {
   display: flex;
   flex-direction: column;
@@ -585,6 +676,20 @@
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 12px;
   background: #fff;
+}
+
+.p1-version-card span,
+.p1-version-card small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.p1-version-card strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: #0f172a;
+  font-size: 17px;
 }
 
 .p1-graph-browser {
@@ -962,6 +1067,7 @@
   .p1-graph-browser,
   .p1-strategy-asset-card,
   .p1-config-two-column,
+  .p1-contract-condition-grid,
   .p1-decision-options,
   .p1-quality-rule-map,
   .p1-publication-steps,
@@ -997,7 +1103,8 @@
   }
 
   .p1-flow-preview,
-  .p1-version-timeline {
+  .p1-version-timeline,
+  .p1-sample-io {
     grid-template-columns: 1fr;
   }
 

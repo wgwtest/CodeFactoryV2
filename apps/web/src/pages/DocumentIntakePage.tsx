@@ -129,7 +129,14 @@ export function DocumentIntakePage() {
           description="若要纳入知识库，将进入 13 阶段抽取主链；解析结果会先转成统一文档对象，再进入策略驱动抽取。"
         />
 
-        {intakeError ? <Alert type="error" message="接入文档暂不可用" description={intakeError} showIcon /> : null}
+        {intakeError ? (
+          <Alert
+            type="error"
+            message="接入文档真实 API 暂不可用"
+            description={`${intakeError}；当前页面不伪装真实解析完成，只保留上传入口、解析预检空状态和策略选择说明。`}
+            showIcon
+          />
+        ) : null}
 
         <Row gutter={[16, 16]} align="stretch">
           <Col xs={24} xl={5}>
@@ -249,6 +256,9 @@ export function DocumentIntakePage() {
                     <Descriptions.Item label="推荐策略包">合同通用抽取</Descriptions.Item>
                     <Descriptions.Item label="推荐原因">PDF / DOCX 结构稳定，适合结构化抽取</Descriptions.Item>
                     <Descriptions.Item label="可用版本">v3.12</Descriptions.Item>
+                    <Descriptions.Item label="数据来源">
+                      {activeParseRun ? "真实解析结果 + 前端策略推荐" : "等待真实解析 API 返回"}
+                    </Descriptions.Item>
                   </Descriptions>
                 </div>
                 <Space wrap>
@@ -261,25 +271,36 @@ export function DocumentIntakePage() {
         </Row>
 
         <Card className="p1-soft-card" title="解析结果 -> 统一文档对象">
-          <div className="p1-flow-preview">
-            <div className="p1-flow-box">
-              <Typography.Text strong>解析结果</Typography.Text>
-              <Typography.Title level={3}>{totalSegments}</Typography.Title>
-              <Typography.Text type="secondary">结构化片段</Typography.Text>
+          <Space direction="vertical" size={16} style={{ display: "flex" }}>
+            <div className="p1-flow-preview">
+              <div className="p1-flow-box">
+                <Typography.Text strong>解析结果</Typography.Text>
+                <Typography.Title level={3}>{totalSegments}</Typography.Title>
+                <Typography.Text type="secondary">结构化片段</Typography.Text>
+              </div>
+              <div className="p1-flow-arrow">→</div>
+              <div className="p1-flow-box">
+                <Typography.Text strong>统一文档对象</Typography.Text>
+                <Typography.Title level={3}>{activeSegments.length || totalSegments}</Typography.Title>
+                <Typography.Text type="secondary">block / section / anchor</Typography.Text>
+              </div>
+              <div className="p1-flow-arrow">→</div>
+              <div className="p1-flow-box">
+                <Typography.Text strong>可送入知识库抽取</Typography.Text>
+                <Typography.Title level={3}>13</Typography.Title>
+                <Typography.Text type="secondary">阶段主链</Typography.Text>
+              </div>
             </div>
-            <div className="p1-flow-arrow">→</div>
-            <div className="p1-flow-box">
-              <Typography.Text strong>统一文档对象</Typography.Text>
-              <Typography.Title level={3}>{activeSegments.length || totalSegments}</Typography.Title>
-              <Typography.Text type="secondary">block / section / anchor</Typography.Text>
-            </div>
-            <div className="p1-flow-arrow">→</div>
-            <div className="p1-flow-box">
-              <Typography.Text strong>可送入知识库抽取</Typography.Text>
-              <Typography.Title level={3}>13</Typography.Title>
-              <Typography.Text type="secondary">阶段主链</Typography.Text>
-            </div>
-          </div>
+            <Space wrap>
+              <Button>生成统一文档预览</Button>
+              <Link to="/documents">
+                <Button type="primary">送入知识库抽取</Button>
+              </Link>
+              <Link to="/policies">
+                <Button>手动选择策略包</Button>
+              </Link>
+            </Space>
+          </Space>
         </Card>
 
         <ValidationDrawer

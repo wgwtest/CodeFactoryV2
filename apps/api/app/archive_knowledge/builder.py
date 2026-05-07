@@ -22,6 +22,7 @@ from app.archive_knowledge.runtime_contract import RuntimeStatus, STAGE_DEFINITI
 from app.archive_knowledge.runtime_parser_execution import (
     parsed_document_from_source_document,
 )
+from app.archive_knowledge.policy_config import build_policy_run_snapshot
 from app.archive_knowledge.rebuild import reconcile_curated_payload
 from app.extraction.service import ExtractionService
 from app.knowledge_builder import (
@@ -217,6 +218,12 @@ def build_archive_knowledge(
     source_dir = source_dir.expanduser().resolve()
     extract_root = extract_root.expanduser().resolve()
     output_root = output_root.expanduser().resolve()
+    if formal_extraction_mode and policy_snapshot is None:
+        policy_snapshot = build_policy_run_snapshot(
+            archive_id,
+            None,
+            captured_at=datetime.now(UTC).isoformat(),
+        )
 
     if not source_dir.exists() or not source_dir.is_dir():
         raise ValueError(f"源目录不存在或不可读取: {source_dir}")
@@ -660,7 +667,7 @@ def _build_formal_archive_contributions(
     warnings: list[dict] | None = None,
     policy_snapshot: dict | None = None,
 ) -> list[dict]:
-    started_at = datetime.now(UTC).isoformat()
+    started_at = (policy_snapshot or {}).get("captured_at") or datetime.now(UTC).isoformat()
     completed_document_ids: list[str] = []
     skipped_document_ids: list[str] = []
     pending_document_ids = [_document_id(document.path) for document in documents]

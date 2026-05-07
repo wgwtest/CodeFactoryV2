@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from logging import getLogger
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -14,9 +15,9 @@ from app.archive_knowledge.extraction import ArchiveExtractionService
 from app.archive_knowledge.policy_config import (
     DEFAULT_STAGE_ORDER,
     build_policy_run_snapshot,
-    normalize_archive_policy_config,
 )
 from app.archive_knowledge.registry import ArchiveRegistryService
+from app.archive_knowledge.runtime_incremental_rebuild import ArchiveRuntimeIncrementalRebuildService
 from app.config import settings
 
 router = APIRouter(prefix="/archives", tags=["archives"])
@@ -44,6 +45,7 @@ class ArchiveStagePolicyRulePayload(BaseModel):
     output_schema: list[dict[str, object]] = Field(default_factory=list)
     parameters: dict[str, object] = Field(default_factory=dict)
     trace_fields: list[str] = Field(default_factory=list)
+    action_mapping: dict[str, object] = Field(default_factory=dict)
     rule_hash: str | None = None
     contract_status: str | None = None
     contract_errors: list[str] = Field(default_factory=list)
@@ -66,11 +68,17 @@ class ArchiveStagePolicyConfigPayload(BaseModel):
 
 
 class ArchivePolicyConfigPayload(BaseModel):
+    policy_contract_version: str | None = None
     policy_package_id: str | None = None
     policy_package_name: str | None = None
     policy_package_version_id: str | None = None
     policy_package_version_status: str | None = None
     policy_package_version_hash: str | None = None
+    policy_package_version_created_at: str | None = None
+    previous_policy_package_version_id: str | None = None
+    policy_package_versions: list[dict[str, Any]] = Field(default_factory=list)
+    policy_contract_status: str | None = None
+    policy_contract_errors: list[dict[str, Any]] = Field(default_factory=list)
     version_label: str
     scope_label: str
     ai_autoadapt_enabled: bool = True
@@ -81,6 +89,8 @@ class ArchivePolicyConfigPayload(BaseModel):
 class ArchivePolicyConfigResponse(ArchivePolicyConfigPayload):
     archive_id: str
     updated_at: str | None = None
+    impact_set: dict[str, Any] | None = None
+    incremental_rebuild_task: dict[str, Any] | None = None
 
 
 def get_archive_registry_service() -> ArchiveRegistryService:
@@ -171,12 +181,21 @@ def _run_archive_extract(
 
 
 @router.get("")
-def list_archives(service: ArchiveRegistryService = Depends(get_archive_registry_service)):
+def list_archives(
+    service: ArchiveRegistryService = Depends(get_archive_registry_service),
+    extraction_coordinator: ArchiveExtractionCoordinator = Depends(get_archive_extraction_coordinator),
+):
+    service.reconcile_orphaned_extractions(active_archive_id=extraction_coordinator.current_archive_id)
     return service.list_archives()
 
 
 @router.get("/{archive_id}")
-def get_archive_detail(archive_id: str, service: ArchiveRegistryService = Depends(get_archive_registry_service)):
+def get_archive_detail(
+    archive_id: str,
+    service: ArchiveRegistryService = Depends(get_archive_registry_service),
+    extraction_coordinator: ArchiveExtractionCoordinator = Depends(get_archive_extraction_coordinator),
+):
+    service.reconcile_orphaned_extractions(active_archive_id=extraction_coordinator.current_archive_id)
     archive = service.get_archive(archive_id)
     if archive is None:
         raise HTTPException(status_code=404, detail="Archive not found")
@@ -200,10 +219,44 @@ def update_archive_policy_config(
     payload: ArchivePolicyConfigPayload,
     service: ArchiveRegistryService = Depends(get_archive_registry_service),
 ):
-    config = service.update_policy_config(archive_id, normalize_archive_policy_config(archive_id, payload.model_dump()))
+    previous_config = service.get_policy_config(archive_id)
+    if previous_config is None:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    config = service.update_policy_config(archive_id, payload.model_dump(exclude_unset=True))
     if config is None:
         raise HTTPException(status_code=404, detail="Archive not found")
-    return config
+    impact_plan = ArchiveRuntimeIncrementalRebuildService(service.output_root).plan_policy_change(
+        archive_id,
+        previous_config=previous_config,
+        next_config=config,
+    )
+    if impact_plan is None:
+        return config
+    return {**config, **impact_plan}
+
+
+@router.get("/{archive_id}/incremental-rebuild-tasks")
+def list_archive_incremental_rebuild_tasks(
+    archive_id: str,
+    service: ArchiveRegistryService = Depends(get_archive_registry_service),
+):
+    if service.get_archive(archive_id) is None:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    return ArchiveRuntimeIncrementalRebuildService(service.output_root).list_incremental_rebuild_tasks(archive_id)
+
+
+@router.get("/{archive_id}/incremental-rebuild-tasks/{task_id}")
+def get_archive_incremental_rebuild_task(
+    archive_id: str,
+    task_id: str,
+    service: ArchiveRegistryService = Depends(get_archive_registry_service),
+):
+    if service.get_archive(archive_id) is None:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    task = ArchiveRuntimeIncrementalRebuildService(service.output_root).load_incremental_rebuild_task(archive_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Incremental rebuild task not found")
+    return task
 
 
 @router.post("")

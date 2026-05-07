@@ -242,6 +242,68 @@ export type ArchiveStagePolicyConfig = {
   observability: string[];
 };
 
+export type ArchivePolicyPackageVersion = {
+  version_id?: string | null;
+  version_label?: string | null;
+  version_hash?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  archived_at?: string | null;
+  previous_version_id?: string | null;
+  structural_hash?: string | null;
+};
+
+export type ArchivePolicyRuleChange = {
+  stage_id: string;
+  rule_id: string;
+  change_type: string;
+  previous_rule_hash?: string | null;
+  next_rule_hash?: string | null;
+  previous_rule_version?: string | null;
+  next_rule_version?: string | null;
+};
+
+export type ArchivePolicyImpactSet = {
+  impact_id: string;
+  archive_id: string;
+  changed_rule_ids: string[];
+  changed_stage_ids: string[];
+  affected_docs?: string[];
+  affected_document_ids: string[];
+  affected_stages?: string[];
+  affected_stage_ids: string[];
+  affected_chunks?: string[];
+  affected_chunk_ids: string[];
+  affected_candidates?: string[];
+  affected_candidate_ids: string[];
+  affected_relations?: string[];
+  affected_relation_ids: string[];
+  affected_publication_snapshots?: string[];
+  affected_publication_snapshot_ids: string[];
+  minimum_rebuild_stage_id?: string | null;
+  source_policy_snapshot_id?: string | null;
+  target_policy_snapshot_id?: string | null;
+  rule_changes: ArchivePolicyRuleChange[];
+  generated_at: string;
+};
+
+export type ArchiveIncrementalRebuildTask = {
+  task_id: string;
+  archive_id: string;
+  status: string;
+  mode: string;
+  minimum_rebuild_stage_id?: string | null;
+  start_stage_id?: string | null;
+  affected_document_ids: string[];
+  affected_stage_ids: string[];
+  impact_set: ArchivePolicyImpactSet;
+  writes_official_knowledge: boolean;
+  output_policy: string;
+  allowed_outputs: string[];
+  created_at: string;
+  candidate_artifact_path?: string | null;
+};
+
 export type ArchivePolicyConfig = {
   archive_id: string;
   policy_package_id?: string | null;
@@ -249,6 +311,13 @@ export type ArchivePolicyConfig = {
   policy_package_version_id?: string | null;
   policy_package_version_status?: string | null;
   policy_package_version_hash?: string | null;
+  policy_package_version_created_at?: string | null;
+  previous_policy_package_version_id?: string | null;
+  policy_package_versions?: ArchivePolicyPackageVersion[];
+  policy_contract_status?: string | null;
+  policy_contract_errors?: Record<string, unknown>[];
+  impact_set?: ArchivePolicyImpactSet | null;
+  incremental_rebuild_task?: ArchiveIncrementalRebuildTask | null;
   version_label: string;
   scope_label: string;
   ai_autoadapt_enabled: boolean;
@@ -263,6 +332,9 @@ export type UpdateArchivePolicyConfigInput = {
   policy_package_version_id?: string | null;
   policy_package_version_status?: string | null;
   policy_package_version_hash?: string | null;
+  policy_package_version_created_at?: string | null;
+  previous_policy_package_version_id?: string | null;
+  policy_package_versions?: ArchivePolicyPackageVersion[];
   version_label: string;
   scope_label: string;
   ai_autoadapt_enabled: boolean;

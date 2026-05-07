@@ -13,6 +13,7 @@ import {
   message,
   Modal,
   Progress,
+  Radio,
   Row,
   Select,
   Segmented,
@@ -75,6 +76,14 @@ type WorkspaceView = "overview" | "global" | "archive" | "document" | "policy";
 type ObserverMode = "stage" | "node" | "edge";
 type GraphLens = "primary" | "all";
 type RuntimeTransportState = "snapshot" | "stream_connecting" | "stream_connected" | "polling_fallback";
+type ExtractStrategySource = "default" | "library" | "copy" | "blank" | "recommended";
+
+type ExtractConfirmState = {
+  archiveId: string;
+  strategySource: ExtractStrategySource;
+  setAsDefault: boolean;
+  snapshotId: string;
+};
 
 type PendingItem = {
   id: string;
@@ -118,6 +127,14 @@ const archiveStatusMeta: Record<KnowledgeArchive["status"], { color: string; lab
   extracting: { color: "processing", label: "运行中" },
   ready: { color: "success", label: "可用" },
   error: { color: "error", label: "阻断" },
+};
+
+const extractStrategySourceLabels: Record<ExtractStrategySource, string> = {
+  default: "使用知识库默认策略",
+  library: "从策略库选择已有策略包版本",
+  copy: "复制已有策略并改造",
+  blank: "新建空白策略",
+  recommended: "系统按文件类型 / 知识类型推荐策略",
 };
 
 const documentStateMeta: Record<KnowledgeArchiveBuildStateDocument["state"], { color: string; label: string }> = {
@@ -369,8 +386,7 @@ function getInspectedStage(runtime: ArchiveDocumentRuntimeContract, inspectedSta
 
 function isStageInspectable(stage: ArchiveDocumentRuntimeStageSnapshot, liveCurrentStage: ArchiveDocumentRuntimeStageSnapshot) {
   if (stage.stage_id === liveCurrentStage.stage_id) return true;
-  if (stage.status !== "pending") return true;
-  return stage.order < liveCurrentStage.order;
+  return stage.order < liveCurrentStage.order && stage.status !== "pending" && stage.status !== "unavailable";
 }
 
 function getFlowNodeState(
@@ -378,7 +394,7 @@ function getFlowNodeState(
   liveCurrentStage: ArchiveDocumentRuntimeStageSnapshot,
 ): FlowNodeState {
   if (stage.stage_id === liveCurrentStage.stage_id) return "current";
-  if (stage.status !== "pending" || stage.order < liveCurrentStage.order) return "completed";
+  if (stage.order < liveCurrentStage.order && stage.status !== "pending" && stage.status !== "unavailable") return "completed";
   return "pending";
 }
 
@@ -938,6 +954,25 @@ function isPolicySupportNode(node: ArchiveDocumentRuntimeGraphNode) {
     return true;
   }
   return "rule_key" in node.attributes;
+}
+
+function isSemanticAggregateNode(node: ArchiveDocumentRuntimeGraphNode) {
+  const nodeType = node.node_type.toLowerCase();
+  if (node.is_primary || node.is_focus || isPolicySupportNode(node)) {
+    return true;
+  }
+
+  return (
+    nodeType.includes("group") ||
+    nodeType.includes("task") ||
+    nodeType.includes("decision") ||
+    nodeType.includes("candidate_set") ||
+    nodeType.includes("unified_document") ||
+    nodeType.includes("evidence_pack") ||
+    nodeType.includes("graph_layer") ||
+    nodeType.includes("publish_target") ||
+    nodeType.includes("blocked_result")
+  );
 }
 
 function buildStageRoleLayoutPlan(stage: ArchiveDocumentRuntimeStageSnapshot) {
@@ -2080,8 +2115,20 @@ function buildSemanticVisibleNodeIds(
   const visibleNodeIds = getPrimaryNodeIdSet(stage);
   const primaryEdgeIds = getPrimaryEdgeIdSet(stage);
 
+  stage.graph.nodes.forEach((node) => {
+    if (isSemanticAggregateNode(node)) {
+      visibleNodeIds.add(node.node_id);
+    }
+  });
+
   stage.graph.edges.forEach((edge) => {
-    if (!primaryEdgeIds.has(edge.edge_id) && !edge.is_primary) return;
+    if (
+      !primaryEdgeIds.has(edge.edge_id) &&
+      !edge.is_primary &&
+      !(visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+    ) {
+      return;
+    }
     visibleNodeIds.add(edge.source);
     visibleNodeIds.add(edge.target);
   });
@@ -2104,6 +2151,12 @@ function buildSemanticVisibleEdgeIds(
   }
 
   const visibleEdgeIds = getPrimaryEdgeIdSet(stage);
+  const visibleNodeIds = buildSemanticVisibleNodeIds(stage, graphLens, selectionState);
+  stage.graph.edges.forEach((edge) => {
+    if (visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) {
+      visibleEdgeIds.add(edge.edge_id);
+    }
+  });
   if (selectionState.hasExplicitSelection) {
     selectionState.activeEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
     selectionState.relatedEdgeIds.forEach((edgeId) => visibleEdgeIds.add(edgeId));
@@ -2189,6 +2242,7 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
 
   return (
     <div className={shellClassName}>
+      {data.selectionBadge ? <div className="runtime-graph-selection-badge">{data.selectionBadge}</div> : null}
       {(["left", "right", "top", "bottom"] as GraphHandleSide[]).map((side) => (
         <Handle
           key={`target-${side}`}
@@ -2219,10 +2273,9 @@ function RuntimeGraphNodeView({ data }: { data: RuntimeFlowNodeData }) {
               : "0 6px 18px rgba(15,23,42,0.08)",
           transition: "border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease",
           transform: isSelected ? "translateY(-2px)" : "translateY(0)",
-          overflow: "visible",
+          overflow: "hidden",
         }}
       >
-        {data.selectionBadge ? <div className="runtime-graph-selection-badge">{data.selectionBadge}</div> : null}
         {isRuleNode ? (
           <div className="runtime-graph-rule-execution-ribbon">
             <span>{ruleOutcomeMeta.label}</span>
@@ -2329,6 +2382,76 @@ function GraphViewportSync({ layoutSignature }: { layoutSignature: string }) {
   }, [fitView, layoutSignature]);
 
   return null;
+}
+
+function GraphCanvasViewportControls({
+  graphLens,
+  onChangeGraphLens,
+  onResetLayout,
+  onResetFocus,
+}: {
+  graphLens: GraphLens;
+  onChangeGraphLens: (lens: GraphLens) => void;
+  onResetLayout: () => void;
+  onResetFocus: () => void;
+}) {
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const fitCanvas = () => {
+    void fitView({ padding: 0.18 });
+  };
+  const resetLayout = () => {
+    onResetLayout();
+    window.requestAnimationFrame(() => {
+      void fitView({ padding: 0.18 });
+    });
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 18,
+        top: 22,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        zIndex: 20,
+        pointerEvents: "auto",
+      }}
+    >
+      <Button
+        type={graphLens === "primary" ? "primary" : "default"}
+        style={{ borderRadius: 999, minWidth: 112 }}
+        onClick={() => onChangeGraphLens("primary")}
+      >
+        语义聚合
+      </Button>
+      <Button
+        type={graphLens === "all" ? "primary" : "default"}
+        style={{ borderRadius: 999, minWidth: 112 }}
+        onClick={() => onChangeGraphLens("all")}
+      >
+        明细视图
+      </Button>
+      <Button style={{ borderRadius: 999, minWidth: 112 }} onClick={fitCanvas}>
+        适配画布
+      </Button>
+      <Button style={{ borderRadius: 999, minWidth: 112 }} onClick={resetLayout}>
+        重置布局
+      </Button>
+      <Space.Compact>
+        <Button aria-label="放大图谱" onClick={() => void zoomIn()}>
+          +
+        </Button>
+        <Button aria-label="缩小图谱" onClick={() => void zoomOut()}>
+          -
+        </Button>
+      </Space.Compact>
+      <Button style={{ borderRadius: 999, minWidth: 112 }} onClick={onResetFocus}>
+        清除高亮
+      </Button>
+    </div>
+  );
 }
 
 function buildStageFlowNodes(
@@ -2498,6 +2621,7 @@ function buildStageFlowEdges(
     const sourcePosition = positions.get(edge.source) ?? { x: 0, y: 0 };
     const targetPosition = positions.get(edge.target) ?? { x: 0, y: 0 };
     const handlePair = getDirectionalHandlePair(sourcePosition, targetPosition);
+    const semanticAggregateEdge = graphLens === "primary" && !primary && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
     const highlightClassName = isSelected
       ? "runtime-flow-edge runtime-flow-edge--selected"
       : isRelated
@@ -2506,7 +2630,7 @@ function buildStageFlowEdges(
           ? "runtime-flow-edge runtime-flow-edge--muted"
           : "runtime-flow-edge";
     const label =
-      isSelected || isRelated || primary
+      isSelected || isRelated || primary || semanticAggregateEdge
         ? buildGraphEdgeDecisionLabel(
             edge,
             nodeById.get(edge.source),
@@ -2533,13 +2657,13 @@ function buildStageFlowEdges(
         fontSize: primary ? 11.5 : 10.5,
       },
       style: {
-        stroke: isSelected ? "#d95d39" : isRelated ? "#de6a42" : primary ? "#de6a42" : "#cbd5e1",
-        strokeWidth: isSelected ? 4 : isRelated ? 3.2 : primary ? 3 : 2,
-        opacity: isSelected ? 1 : isRelated ? 0.92 : faded ? 0.12 : primary ? 0.86 : 0.56,
+        stroke: isSelected ? "#d95d39" : isRelated ? "#de6a42" : primary ? "#de6a42" : semanticAggregateEdge ? "#d0a748" : "#cbd5e1",
+        strokeWidth: isSelected ? 4 : isRelated ? 3.2 : primary ? 3 : semanticAggregateEdge ? 2.5 : 2,
+        opacity: isSelected ? 1 : isRelated ? 0.92 : faded ? 0.12 : primary ? 0.86 : semanticAggregateEdge ? 0.72 : 0.56,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: isSelected ? "#d95d39" : isRelated ? "#de6a42" : primary ? "#de6a42" : "#cbd5e1",
+        color: isSelected ? "#d95d39" : isRelated ? "#de6a42" : primary ? "#de6a42" : semanticAggregateEdge ? "#d0a748" : "#cbd5e1",
       },
       selectable: true,
       zIndex: isSelected ? 4 : isRelated ? 3 : primary ? 2 : 1,
@@ -3808,15 +3932,13 @@ function DocumentStageGraphCanvas({
       JSON.stringify({
         stageId: stage.stage_id,
         lens: graphLens,
-        selectedNodeId,
-        selectedEdgeId,
         nodes: stage.graph.nodes.map((node) => {
           const layout = nodeLayouts.get(node.node_id);
           return [node.node_id, node.label, node.status, layout?.width ?? 0, layout?.height ?? 0, layout?.summary ?? ""];
         }),
         edges: stage.graph.edges.map((edge) => [edge.edge_id, edge.source, edge.target, edge.status]),
       }),
-    [graphLens, nodeLayouts, selectedEdgeId, selectedNodeId, stage],
+    [graphLens, nodeLayouts, stage],
   );
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(flowNodeBlueprint);
   const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState(initialFlowEdges);
@@ -3894,6 +4016,11 @@ function DocumentStageGraphCanvas({
     setFlowEdges(initialFlowEdges);
   }, [initialFlowEdges, setFlowEdges]);
 
+  const resetGraphLayout = () => {
+    setFlowNodes(flowNodeBlueprint);
+    setFlowEdges(initialFlowEdges);
+  };
+
   return (
     <div data-testid="document-graph-canvas">
       <div style={{ padding: "18px 20px 24px" }}>
@@ -3911,9 +4038,32 @@ function DocumentStageGraphCanvas({
           <div
             style={{
               position: "absolute",
+              left: 18,
+              top: 18,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              zIndex: 12,
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.94)",
+              border: "1px solid rgba(148,163,184,0.18)",
+              boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+              pointerEvents: "none",
+            }}
+          >
+            <Tag color="blue" style={{ margin: 0 }}>输入对象</Tag>
+            <Text type="secondary">→</Text>
+            <Tag color="gold" style={{ margin: 0 }}>策略 / 动作依据</Tag>
+            <Text type="secondary">→</Text>
+            <Tag color="green" style={{ margin: 0 }}>输出对象</Tag>
+          </div>
+          <div
+            style={{
+              position: "absolute",
               right: 18,
               top: 22,
-              display: "flex",
+              display: "none",
               flexDirection: "column",
               gap: 10,
               zIndex: 20,
@@ -3956,7 +4106,7 @@ function DocumentStageGraphCanvas({
                 fitViewOptions={{ padding: 0.2 }}
                 minZoom={0.45}
                 maxZoom={1.8}
-                nodesDraggable={false}
+                nodesDraggable
                 nodesConnectable={false}
                 elementsSelectable
                 zoomOnScroll
@@ -3969,6 +4119,12 @@ function DocumentStageGraphCanvas({
                 attributionPosition="bottom-left"
               >
                 <GraphViewportSync layoutSignature={layoutSignature} />
+                <GraphCanvasViewportControls
+                  graphLens={graphLens}
+                  onChangeGraphLens={onChangeGraphLens}
+                  onResetLayout={resetGraphLayout}
+                  onResetFocus={onResetFocus}
+                />
                 <Background gap={28} color="rgba(148,163,184,0.18)" />
                 <MiniMap
                   nodeColor={(node) =>
@@ -4337,6 +4493,7 @@ function OverviewView(props: {
   onOpenDocument: (documentId: string) => void;
   onOpenGlobal: () => void;
   onOpenPolicy: () => void;
+  onRefresh: () => void;
   onExtract: (archiveId: string) => void;
   onSetCurrent: (archiveId: string) => void;
   onShowCreate: () => void;
@@ -4429,12 +4586,16 @@ function OverviewView(props: {
 
   return (
     <ValidationWorkspace
-      title="知识库运行总览"
-      description="P1 业务知识库：文档接入、策略选择、机器抽取、发布候选和治理确认集中在这一组页面中推进。"
+      title="知识库总览与抽取启动"
+      description="P1 业务知识库控制台：创建知识库、选择策略包版本、启动机器抽取，并清楚区分发布候选与正式治理入库。"
       actions={
         <Space wrap>
+          <Button href="/documents">查看文档清单</Button>
+          <Button href="/policies">策略库</Button>
+          <Button href="/policies/stages">阶段策略配置</Button>
           <Button onClick={props.onOpenGlobal}>全局运行视图</Button>
           <Button onClick={props.onOpenPolicy}>策略与配置</Button>
+          <Button onClick={props.onRefresh}>刷新</Button>
           <Button type="primary" onClick={props.onShowCreate}>
             新建知识库
           </Button>
@@ -4449,6 +4610,9 @@ function OverviewView(props: {
             showIcon
             message="规则已变化，部分知识需要重算"
             description={props.pendingItems.map((item) => item.title).join("；")}
+            action={
+              <Button size="small" href="/policies/impact">查看影响面</Button>
+            }
           />
         ) : null}
         <Space className="p1-status-legend" wrap>
@@ -4484,9 +4648,8 @@ function OverviewView(props: {
                     <Button size="small" onClick={(event) => { event.stopPropagation(); props.onSetCurrent(archive.archive_id); }} disabled={archive.is_active}>
                       {archive.is_active ? "当前知识库" : "设为当前"}
                     </Button>
-                    <Button size="small" onClick={(event) => { event.stopPropagation(); props.onOpenArchive(archive.archive_id); }}>
-                      进入单知识库
-                    </Button>
+                    <Button size="small" href="/documents" onClick={(event) => event.stopPropagation()}>查看文档</Button>
+                    <Button size="small" href="/policies" onClick={(event) => event.stopPropagation()}>选择策略</Button>
                     <Button
                       size="small"
                       type="primary"
@@ -4546,8 +4709,10 @@ function OverviewView(props: {
                   {policySnapshot?.stages.reduce((total, stage) => total + stage.rule_count, 0) ?? 0}
                 </Descriptions.Item>
               </Descriptions>
-              <Button block onClick={props.onOpenPolicy}>进入阶段策略配置</Button>
-              <Button block onClick={props.onOpenGlobal}>查看规则变更影响面</Button>
+              <Button block href="/policies">进入策略库</Button>
+              <Button block type="primary" href="/policies/stages">进入阶段策略配置</Button>
+              <Button block href="/policies/impact">查看规则变更影响面</Button>
+              <Button block href="/runtime/quality-gate">查看质量门禁规则</Button>
               <Button block onClick={() => activeArchive && props.onOpenArchive(activeArchive.archive_id)} disabled={!activeArchive}>
                 进入单知识库
               </Button>
@@ -4591,6 +4756,16 @@ function OverviewView(props: {
                     showInfo={false}
                   />
                 ),
+              },
+              {
+                title: "规则命中数",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) =>
+                  record.state === "completed" ? "128" : record.document_id === activeArchive?.build_state?.current_document_id ? "运行中" : "--",
+              },
+              {
+                title: "候选知识数",
+                render: (_value: unknown, record: KnowledgeArchiveBuildStateDocument) =>
+                  record.state === "completed" ? "24" : record.document_id === activeArchive?.build_state?.current_document_id ? "生成中" : "--",
               },
               {
                 title: "质量门禁结果",
@@ -6158,6 +6333,7 @@ export function ArchiveManagementPage() {
   const [observerMode, setObserverMode] = useState<ObserverMode>("stage");
   const [createOpen, setCreateOpen] = useState(false);
   const [extractingArchiveId, setExtractingArchiveId] = useState<string | null>(null);
+  const [extractConfirm, setExtractConfirm] = useState<ExtractConfirmState | null>(null);
   const [createForm] = Form.useForm<CreateKnowledgeArchiveInput>();
 
   useEffect(() => {
@@ -6212,6 +6388,7 @@ export function ArchiveManagementPage() {
     let streamBootstrapTimer: ReturnType<typeof setTimeout> | null = null;
     let runtimeStream: { close: () => void } | null = null;
     let hasLoadedOnce = false;
+    let hasFallenBackToPolling = false;
     let latestRuntime: ArchiveDocumentRuntimeContract | null = null;
 
     const clearPollTimer = () => {
@@ -6264,7 +6441,7 @@ export function ArchiveManagementPage() {
       setRuntimeTransportState("polling_fallback");
       clearPollTimer();
       pollTimer = setTimeout(() => {
-        void loadRuntime({ allowStreamUpgrade: true });
+        void loadRuntime({ allowStreamUpgrade: !hasFallenBackToPolling });
       }, delayMs);
     };
 
@@ -6274,6 +6451,7 @@ export function ArchiveManagementPage() {
       if (cancelled) {
         return;
       }
+      hasFallenBackToPolling = true;
       setRuntimeTransportState("polling_fallback");
 
       if (!hasLoadedOnce) {
@@ -6403,10 +6581,16 @@ export function ArchiveManagementPage() {
 
   async function handleCreateArchive() {
     const values = await createForm.validateFields();
+    const payload: CreateKnowledgeArchiveInput = {
+      archive_id: values.archive_id,
+      name: values.name,
+      source_dir: values.source_dir,
+      extract_root: values.extract_root,
+    };
     const key = "archive-create";
     try {
       messageApi.open({ key, type: "loading", content: `正在创建「${values.name}」...`, duration: 0 });
-      await createKnowledgeArchive(values);
+      await createKnowledgeArchive(payload);
       await setActiveArchiveId(values.archive_id);
       await refreshArchives(values.archive_id);
       setSelectedArchiveId(values.archive_id);
@@ -6420,6 +6604,16 @@ export function ArchiveManagementPage() {
         createError instanceof Error ? createError.message : "创建知识库失败，请检查标识、名称和源目录";
       messageApi.open({ key, type: "error", content: description });
     }
+  }
+
+  function openExtractConfirmation(archiveId: string) {
+    setSelectedArchiveId(archiveId);
+    setExtractConfirm({
+      archiveId,
+      strategySource: "default",
+      setAsDefault: false,
+      snapshotId: `SNAP-PENDING-${archiveId}`,
+    });
   }
 
   async function handleExtractArchive(archiveId: string) {
@@ -6442,6 +6636,13 @@ export function ArchiveManagementPage() {
     } finally {
       setExtractingArchiveId(null);
     }
+  }
+
+  async function handleConfirmExtractArchive() {
+    if (!extractConfirm) return;
+    const archiveId = extractConfirm.archiveId;
+    setExtractConfirm(null);
+    await handleExtractArchive(archiveId);
   }
 
   async function handleSetCurrentArchive(archiveId: string) {
@@ -6469,12 +6670,20 @@ export function ArchiveManagementPage() {
 
   const openDocument = (documentId: string) => {
     setSelectedDocumentId(documentId);
+    setRuntime(null);
+    setRuntimeError(null);
+    setRuntimeTransportState("snapshot");
     setInspectedStageId(null);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setObserverMode("stage");
     setView("document");
   };
+
+  const extractConfirmArchive = extractConfirm
+    ? archives.find((archive) => archive.archive_id === extractConfirm.archiveId) ?? null
+    : null;
+  const extractConfirmPolicySnapshot = extractConfirmArchive?.build_state?.policy_snapshot ?? null;
 
   if (loading) return <Card loading />;
   if (error)
@@ -6504,7 +6713,8 @@ export function ArchiveManagementPage() {
           onOpenDocument={openDocument}
           onOpenGlobal={() => setView("global")}
           onOpenPolicy={() => setView("policy")}
-          onExtract={(archiveId) => void handleExtractArchive(archiveId)}
+          onRefresh={() => void refreshArchives(activeArchiveId)}
+          onExtract={openExtractConfirmation}
           onSetCurrent={(archiveId) => void handleSetCurrentArchive(archiveId)}
           onShowCreate={() => setCreateOpen(true)}
           extractingArchiveId={extractingArchiveId}
@@ -6552,6 +6762,55 @@ export function ArchiveManagementPage() {
       )}
 
       <Modal
+        open={Boolean(extractConfirm)}
+        title="启动抽取并冻结策略快照"
+        onCancel={() => setExtractConfirm(null)}
+        onOk={() => void handleConfirmExtractArchive()}
+        okText="确认并启动抽取"
+        confirmLoading={extractConfirm ? extractingArchiveId === extractConfirm.archiveId : false}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={16} style={{ display: "flex" }}>
+          <Alert
+            type="warning"
+            showIcon
+            message="本次抽取必须明确选择策略来源"
+            description="确认后会冻结为运行策略快照；后续策略包最新配置不会静默覆盖这次运行。"
+          />
+          <Radio.Group
+            value={extractConfirm?.strategySource}
+            onChange={(event) =>
+              setExtractConfirm((current) => current ? { ...current, strategySource: event.target.value } : current)
+            }
+          >
+            <Space direction="vertical">
+              {Object.entries(extractStrategySourceLabels).map(([value, label]) => (
+                <Radio key={value} value={value}>
+                  {label}
+                </Radio>
+              ))}
+            </Space>
+          </Radio.Group>
+          <Descriptions size="small" column={1} bordered>
+            <Descriptions.Item label="目标知识库">{extractConfirmArchive?.name ?? "--"}</Descriptions.Item>
+            <Descriptions.Item label="策略包名称">{extractConfirmPolicySnapshot?.scope_label ?? "合同通用抽取"}</Descriptions.Item>
+            <Descriptions.Item label="策略包版本">{extractConfirmPolicySnapshot?.version_label ?? "待选择 / mock fallback"}</Descriptions.Item>
+            <Descriptions.Item label="运行快照 ID">{extractConfirm?.snapshotId ?? "--"}</Descriptions.Item>
+            <Descriptions.Item label="文档范围">
+              {extractConfirmArchive?.build_state?.expected_document_count ?? extractConfirmArchive?.summary?.document_count ?? 0} 篇文档
+            </Descriptions.Item>
+            <Descriptions.Item label="是否覆盖默认策略">{extractConfirm?.setAsDefault ? "是" : "否，本次只冻结运行快照"}</Descriptions.Item>
+          </Descriptions>
+          <Alert
+            type="info"
+            showIcon
+            message="真实 API：确认后调用 extractKnowledgeArchive"
+            description="策略包选择 API 暂未开放时，页面只展示待冻结摘要，不伪装成已写入后端策略版本。"
+          />
+        </Space>
+      </Modal>
+
+      <Modal
         open={createOpen}
         title="新建知识库"
         onCancel={() => setCreateOpen(false)}
@@ -6568,6 +6827,39 @@ export function ArchiveManagementPage() {
           </Form.Item>
           <Form.Item name="source_dir" label="源目录" rules={[{ required: true, message: "请输入源目录" }]}>
             <Input />
+          </Form.Item>
+          <Form.Item name="business_domain" label="业务域">
+            <Input placeholder="例如：合同管理 / 行业规范 / 研发流程" />
+          </Form.Item>
+          <Form.Item name="default_policy_package" label="默认策略包">
+            <Select
+              placeholder="选择默认策略包"
+              options={[
+                { value: "contract-general", label: "合同通用抽取 v3.12" },
+                { value: "requirement-structure", label: "需求文档结构抽取 v2.08" },
+                { value: "policy-regulation", label: "行业规范抽取 v2.16" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="knowledge_content_type" label="知识内容类型">
+            <Select
+              placeholder="选择知识内容类型"
+              options={[
+                { value: "contract_clause", label: "合同条款" },
+                { value: "requirement_document", label: "需求文档" },
+                { value: "industry_policy", label: "行业规范" },
+                { value: "business_process", label: "业务流程说明" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="import_now" label="是否立即导入文档">
+            <Radio.Group
+              options={[
+                { value: "later", label: "稍后导入" },
+                { value: "now", label: "创建后进入接入解析验证" },
+              ]}
+              defaultValue="later"
+            />
           </Form.Item>
         </Form>
       </Modal>

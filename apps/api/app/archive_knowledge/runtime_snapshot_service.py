@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from app.archive_knowledge.runtime_parser_execution import (
 )
 from app.archive_knowledge.runtime_parser_router import build_parser_router_snapshot
 from app.archive_knowledge.runtime_contract import RuntimeStatus
+from app.archive_knowledge.runtime_policy_contract import attach_policy_contract_to_stage_payload
 from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapshot
 from app.archive_knowledge.runtime_relation_review_family_normalization import (
     build_relation_review_family_normalization_snapshot,
@@ -41,7 +43,7 @@ from app.archive_knowledge.runtime_unified_document_object import (
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.parsing.service import ParsingService
 
-RUNTIME_SNAPSHOT_CONTRACT_VERSION = 5
+RUNTIME_SNAPSHOT_CONTRACT_VERSION = 6
 
 
 class DocumentRuntimeSnapshotService:
@@ -646,12 +648,58 @@ class DocumentRuntimeSnapshotService:
     def _save_stage_snapshot(self, archive_id: str, document_id: str, snapshot) -> None:
         payload = snapshot.model_dump(mode="json")
         payload["snapshot_contract_version"] = RUNTIME_SNAPSHOT_CONTRACT_VERSION
+        policy_snapshot = self._load_frozen_policy_snapshot(archive_id)
+        if policy_snapshot is not None:
+            self._attach_policy_snapshot_refs(payload, policy_snapshot)
+            attach_policy_contract_to_stage_payload(
+                payload,
+                archive_id=archive_id,
+                document_id=document_id,
+                contribution=self._load_document_contribution(archive_id, document_id),
+                policy_snapshot=policy_snapshot,
+            )
         self.runtime_repository.save_stage_snapshot(
             archive_id,
             document_id,
             snapshot.stage_id,
             payload,
         )
+
+    def _load_frozen_policy_snapshot(self, archive_id: str) -> dict[str, Any] | None:
+        path = self.output_root / f"{archive_id}-document-build-state.json"
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        policy_snapshot = payload.get("policy_snapshot")
+        return policy_snapshot if isinstance(policy_snapshot, dict) else None
+
+    def _load_document_contribution(self, archive_id: str, document_id: str) -> dict[str, Any] | None:
+        path = self.output_root / f"{archive_id}-document-artifacts" / f"{document_id}.json"
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @staticmethod
+    def _attach_policy_snapshot_refs(payload: dict[str, Any], policy_snapshot: dict[str, Any]) -> None:
+        policy_snapshot_id = policy_snapshot.get("policy_snapshot_id") or policy_snapshot.get("snapshot_id")
+        policy_version = (
+            policy_snapshot.get("policy_version")
+            or policy_snapshot.get("policy_package_version_id")
+            or policy_snapshot.get("version_label")
+        )
+        if policy_snapshot_id:
+            payload["policy_snapshot_id"] = str(policy_snapshot_id)
+        if policy_snapshot.get("policy_package_id"):
+            payload["policy_package_id"] = str(policy_snapshot.get("policy_package_id"))
+        if policy_version:
+            payload["policy_version"] = str(policy_version)
 
     @staticmethod
     def _load_parsed_document_from_source_file(source_file_path: str | None):

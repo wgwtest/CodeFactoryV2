@@ -937,7 +937,19 @@ def _build_rule_execution_records(
     trace: dict[str, Any],
 ) -> list[dict[str, Any]]:
     policy = trace.get("policy") if isinstance(trace.get("policy"), dict) else {}
-    snapshot_id = str(policy.get("snapshot_id") or trace.get("snapshot_id") or "")
+    snapshot_id = str(
+        policy.get("policy_snapshot_id")
+        or policy.get("snapshot_id")
+        or trace.get("policy_snapshot_id")
+        or trace.get("snapshot_id")
+        or ""
+    )
+    policy_package_id = policy.get("policy_package_id")
+    policy_version = (
+        policy.get("policy_version")
+        or policy.get("policy_package_version_id")
+        or policy.get("version_label")
+    )
     default_affected_ids = [
         str(item.get("id"))
         for item in knowledge_items[:8]
@@ -985,6 +997,9 @@ def _build_rule_execution_records(
                 "rule_version": rule_version,
                 "rule_hash": str(rule_hit.get("rule_hash") or _stable_runtime_hash({"rule_id": rule_id, "rule_version": rule_version, "threshold": rule_hit.get("threshold")})),
                 "snapshot_id": snapshot_id or None,
+                "policy_snapshot_id": snapshot_id or None,
+                "policy_package_id": str(policy_package_id) if policy_package_id else None,
+                "policy_version": str(policy_version) if policy_version else None,
                 "input_artifact_refs": input_artifact_refs,
                 "input_hash": str(rule_hit.get("input_hash") or _stable_runtime_hash(input_payload)),
                 "output_artifact_refs": output_artifact_refs,
@@ -998,7 +1013,7 @@ def _build_rule_execution_records(
                     "outcome": rule_hit.get("outcome"),
                     "passed": bool(rule_hit.get("passed")),
                 },
-                "executed_at": rule_hit.get("executed_at") or trace.get("executed_at"),
+                "executed_at": rule_hit.get("executed_at") or trace.get("executed_at") or policy.get("captured_at"),
                 "source": "runtime_trace" if trace.get("rule_hits") else "derived",
             }
         )
