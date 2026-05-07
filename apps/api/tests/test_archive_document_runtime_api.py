@@ -42,7 +42,10 @@ from app.archive_knowledge.runtime_quality_gate import build_quality_gate_snapsh
 from app.archive_knowledge.runtime_unified_document_object import build_unified_document_object_snapshot
 from app.archive_knowledge.policy_config import build_default_archive_policy_config, build_policy_run_snapshot
 from app.archive_knowledge.runtime_repository import DocumentRuntimeRepository
-from app.archive_knowledge.runtime_snapshot_service import RUNTIME_SNAPSHOT_CONTRACT_VERSION
+from app.archive_knowledge.runtime_snapshot_service import (
+    DocumentRuntimeSnapshotService,
+    RUNTIME_SNAPSHOT_CONTRACT_VERSION,
+)
 from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.extraction.service import ExtractionService
@@ -182,6 +185,61 @@ def test_archive_document_runtime_endpoint_returns_13_stage_contract(tmp_path: P
         "executed_at",
     }
     assert required_record_fields.issubset(payload["rule_execution_records"][0])
+
+
+def test_persisted_stage_snapshot_embeds_policy_contract_rule_records(tmp_path: Path) -> None:
+    archive_id = "nas-a"
+    document_id = "doc-1"
+    contribution = _sample_contribution(document_id)
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.upsert(archive_id, contribution, included_in_archive=True)
+    policy_snapshot = build_policy_run_snapshot(
+        archive_id,
+        build_default_archive_policy_config(archive_id),
+        captured_at="2026-05-07T00:00:00+00:00",
+    )
+    repository.save_build_state(
+        archive_id,
+        {
+            "archive_id": archive_id,
+            "archive_name": "NAS",
+            "status": "running",
+            "policy_snapshot": policy_snapshot,
+        },
+    )
+
+    DocumentRuntimeSnapshotService(tmp_path).persist_document_runtime_snapshots(
+        archive_id=archive_id,
+        archive_name="NAS",
+        document_source=contribution["document"],
+        contribution=contribution,
+        parsed_document=_sample_parsed_document(),
+    )
+
+    snapshot = DocumentRuntimeRepository(tmp_path).load_stage_snapshot(
+        archive_id,
+        document_id,
+        "evidence_pack",
+    )
+    policy_stage = next(
+        stage
+        for stage in policy_snapshot["stages"]
+        if stage["stage_id"] == "evidence_pack"
+    )
+
+    assert snapshot is not None
+    assert snapshot["snapshot_contract_version"] == RUNTIME_SNAPSHOT_CONTRACT_VERSION
+    assert len(snapshot["rule_execution_records"]) == len(policy_stage["rules"])
+    assert {
+        record["rule_id"]
+        for record in snapshot["rule_execution_records"]
+    } == {rule["rule_id"] for rule in policy_stage["rules"]}
+    assert all(record["input_hash"].startswith("sha256:") for record in snapshot["rule_execution_records"])
+    assert all(record["output_hash"].startswith("sha256:") for record in snapshot["rule_execution_records"])
+    assert any(
+        section["section_id"] == "policy-contract-execution"
+        for section in snapshot["stage_observer"]["sections"]
+    )
 
 
 def test_unified_document_snapshot_covers_all_sections_and_paragraphs() -> None:
