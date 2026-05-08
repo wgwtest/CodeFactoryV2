@@ -80,7 +80,7 @@ function MainShell() {
   const { activeArchiveId, archives, loading, setActiveArchiveId } = useArchiveContext();
   const location = useLocation();
   const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
-  const defaultRoute = envDefaultRoute && mainShellRoutes.has(envDefaultRoute) ? envDefaultRoute : "/documents";
+  const defaultRoute = envDefaultRoute && mainShellRoutes.has(envDefaultRoute) ? envDefaultRoute : "/archives";
   const selectedMenuKey =
     location.pathname === "/"
       ? defaultRoute
@@ -146,10 +146,9 @@ function MainShell() {
 
 export default function App() {
   const location = useLocation();
-  const envDefaultRoute = import.meta.env.VITE_DEFAULT_ROUTE;
 
-  if (location.pathname === "/" && envDefaultRoute && !mainShellRoutes.has(envDefaultRoute)) {
-    return <Navigate to={envDefaultRoute} replace />;
+  if (location.pathname === "/") {
+    return <Navigate to="/portal" replace />;
   }
 
   if (location.pathname.startsWith("/portal-data")) {

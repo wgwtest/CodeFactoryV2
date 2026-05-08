@@ -712,6 +712,58 @@ function mockRequirementAnalysisLabApis() {
       return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
     }
 
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-default",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基于 81433 的默认实例模板。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/templates/xg-template-81433-default") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-default",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "软件级需求规格说明模板",
+          description: "基于 81433 的默认实例模板。",
+          status: "active",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
+        },
+      });
+    }
+
     throw new Error(`unexpected url: ${url}`);
   });
 }
@@ -743,12 +795,8 @@ function parseEnvFile(filePath: string) {
 
 function getRepositoryDefaultRoute() {
   const repoRoot = resolve(process.cwd(), "../..");
-  const repoEnv = {
-    ...parseEnvFile(resolve(repoRoot, ".env")),
-    ...parseEnvFile(resolve(repoRoot, ".env.local")),
-    ...process.env,
-  };
-  return repoEnv.VITE_DEFAULT_ROUTE ?? "/documents";
+  const repoEnv = parseEnvFile(resolve(repoRoot, ".env.example"));
+  return repoEnv.VITE_DEFAULT_ROUTE ?? "/portal";
 }
 
 test("renders documents page on /documents route", async () => {
@@ -776,42 +824,9 @@ test("renders intake validation page on /documents/intake route", async () => {
   expect(await screen.findByText("这是独立的接入验证链")).toBeInTheDocument();
 });
 
-test("redirects / to the main default page", async () => {
-  const defaultRoute = getRepositoryDefaultRoute();
-
-  switch (defaultRoute) {
-    case "/documents":
-      mockDocumentsApis();
-      break;
-    case "/documents/intake":
-      mockDocumentIntakeApis();
-      break;
-    case "/requirements":
-      mockRequirementsApis();
-      break;
-    case "/modeling":
-      mockModelingApis();
-      break;
-    case "/portal":
-      mockPortalApis();
-      break;
-    case "/build":
-      mockSoftwareBuildApis();
-      break;
-    case "/xx-p3":
-      mockP3WorkspaceApis();
-      break;
-    case "/xx-p4":
-      mockP4WorkspaceApis();
-      break;
-    case "/xx-p2-sim":
-      break;
-    case "/xx-p1-sim":
-      mockXXP1SimApis();
-      break;
-    default:
-      throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
-  }
+test("redirects / to the P6 portal regardless of legacy default route env", async () => {
+  expect(getRepositoryDefaultRoute()).toBe("/portal");
+  mockPortalApis();
 
   render(
     <MemoryRouter initialEntries={["/"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -819,56 +834,8 @@ test("redirects / to the main default page", async () => {
     </MemoryRouter>,
   );
 
-  switch (defaultRoute) {
-    case "/documents":
-      expect(await screen.findByText("当前知识库文档")).toBeInTheDocument();
-      expect(screen.getByText("知识仓库")).toBeInTheDocument();
-      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
-      break;
-    case "/documents/intake":
-      expect(await screen.findByText("这是独立的接入验证链")).toBeInTheDocument();
-      expect(screen.getByText("知识仓库")).toBeInTheDocument();
-      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
-      break;
-    case "/requirements":
-      expect(await screen.findByRole("heading", { name: "应用需求建模" })).toBeInTheDocument();
-      expect(screen.getByText("知识仓库")).toBeInTheDocument();
-      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
-      break;
-    case "/modeling":
-      expect(await screen.findByText("应用需求建模器")).toBeInTheDocument();
-      expect(screen.getByText("知识仓库")).toBeInTheDocument();
-      expect(screen.queryByText("软件设计编制与模块工单下发系统")).not.toBeInTheDocument();
-      break;
-    case "/portal":
-      expect(await screen.findByText("图例")).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    case "/build":
-      expect(await screen.findByText("软件构建系统")).toBeInTheDocument();
-      expect(screen.getByText("P5 交付主单")).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    case "/xx-p3":
-      expect(await screen.findByText("软件设计编制与模块工单下发系统")).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    case "/xx-p4":
-      expect(await screen.findByText("XX-P4")).toBeInTheDocument();
-      expect(await screen.findByText("工具中台 / Tool Hub")).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    case "/xx-p2-sim":
-      expect(await screen.findByText("P3 上游模拟输入台")).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    case "/xx-p1-sim":
-      expect(await screen.findByRole("heading", { name: "XX-P1-Sim" })).toBeInTheDocument();
-      expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
-      break;
-    default:
-      throw new Error(`unsupported default route for AppRoutes.test.tsx: ${defaultRoute}`);
-  }
+  expect(await screen.findByText("图例")).toBeInTheDocument();
+  expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
 
 test("renders XX-P3 route outside the main shell", async () => {

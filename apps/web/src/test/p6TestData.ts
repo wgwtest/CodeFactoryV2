@@ -160,9 +160,15 @@ export function buildPlatformRoutes() {
       entry_available: true,
     },
     stage_routes: {
-      P1: { route_id: "stage-p1", label: "业务知识库", path: "/graph", description: "P1 稳定模块入口", entry_available: true },
-      P2: { route_id: "stage-p2", label: "需求分析系统", path: "/requirements", description: "P2 稳定模块入口", entry_available: true },
-      P3: { route_id: "stage-p3", label: "软件设计系统", path: "/modeling", description: "P3 稳定模块入口", entry_available: true },
+      P1: { route_id: "stage-p1", label: "业务知识库", path: "/archives", description: "P1 稳定模块入口", entry_available: true },
+      P2: {
+        route_id: "stage-p2",
+        label: "需求分析系统",
+        path: "/p2-requirement-analysis-lab",
+        description: "P2 稳定模块入口",
+        entry_available: true,
+      },
+      P3: { route_id: "stage-p3", label: "软件设计系统", path: "/p3-design-lab", description: "P3 稳定模块入口", entry_available: true },
       P4: { route_id: "stage-p4", label: "工具仓库", path: "/xx-p4", description: "P4 稳定模块入口", entry_available: true },
       P5: { route_id: "stage-p5", label: "软件构建系统", path: "/build", description: "P5 稳定模块入口", entry_available: true },
     },
@@ -509,7 +515,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
       node_kind: "module",
       title: "业务知识库",
       stage_id: "P1",
-      route: "/graph",
+      route: "/archives",
       projection_mode: "auto",
       summary: "知识供给稳定对外发布。",
       primary_status: "knowledge_asset_running",
@@ -555,7 +561,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
       node_kind: "module",
       title: "需求分析系统",
       stage_id: "P2",
-      route: "/requirements",
+      route: "/p2-requirement-analysis-lab",
       projection_mode: "auto",
       summary: "需求建模累计资产稳定增长。",
       primary_status: "requirement_modeling_running",
@@ -592,7 +598,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
       node_kind: "module",
       title: "软件设计系统",
       stage_id: "P3",
-      route: "/modeling",
+      route: "/p3-design-lab",
       projection_mode: "auto",
       summary: isReviewPressure ? "总体设计承载正常，但评审压力升高。" : "设计资产累计产出正常。",
       primary_status: isReviewPressure ? "review_pressure" : "software_design_running",
@@ -898,11 +904,11 @@ export function buildObservationProjectionEnvelope(scenarioId: string) {
         stage_id: card.stage_id,
         label: `进入 ${card.stage_name}`,
         route: card.stage_id === "P1"
-          ? "/graph"
+          ? "/archives"
           : card.stage_id === "P2"
-            ? "/requirements"
+            ? "/p2-requirement-analysis-lab"
             : card.stage_id === "P3"
-              ? "/modeling"
+              ? "/p3-design-lab"
               : card.stage_id === "P4"
                 ? "/xx-p4"
                 : "/build",

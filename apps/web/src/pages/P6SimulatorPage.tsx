@@ -35,7 +35,7 @@ const scenarioSeeds: StageContractSeed[] = [
     stageId: "P1",
     stageName: "业务知识库",
     summary: "知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人",
-    route: "/graph",
+    route: "/archives",
     primaryStatus: "knowledge_asset_running",
     overall: [
       ["knowledge_repository_count", "知识库", 12, "个", "累计资产"],
@@ -66,7 +66,7 @@ const scenarioSeeds: StageContractSeed[] = [
     stageId: "P2",
     stageName: "需求分析系统",
     summary: "支持软件 24 个，需求规格 86 份，业务对象 430 个",
-    route: "/requirements",
+    route: "/p2-requirement-analysis-lab",
     primaryStatus: "requirement_modeling_running",
     overall: [
       ["supported_software_count", "支持软件", 24, "个", "累计承载"],
@@ -97,7 +97,7 @@ const scenarioSeeds: StageContractSeed[] = [
     stageId: "P3",
     stageName: "软件设计系统",
     summary: "支持软件 36 个，设计基线 112 份，工单包 268 包",
-    route: "/modeling",
+    route: "/p3-design-lab",
     primaryStatus: "software_design_running",
     overall: [
       ["supported_software_count", "支持软件", 36, "个", "累计承载"],

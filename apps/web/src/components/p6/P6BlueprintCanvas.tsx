@@ -75,6 +75,10 @@ type P6BlueprintCanvasProps = {
   onRetry: () => void;
 };
 
+function resolveP6StageRoute(node: P6PortalViewNode, routes: P6PlatformRoutes) {
+  return node.kind === "module" ? (routes.stage_routes[node.stage]?.path ?? node.route ?? "/portal") : undefined;
+}
+
 const defaultCamera: CameraState = {
   x: 0,
   y: 0,
@@ -696,7 +700,7 @@ export function P6BlueprintCanvas({
           {nodes.map((node) => (
             <P6BlueprintNode
               key={node.id}
-              node={node}
+              node={node.kind === "module" ? { ...node, route: resolveP6StageRoute(node, routes) } : node}
               position={layout[node.id]}
               active={selectedNodeId === node.id}
               emphasized={emphasizedNodeIds.has(node.id)}
@@ -707,7 +711,7 @@ export function P6BlueprintCanvas({
               }}
               onDoubleClick={() => {
                 if (node.kind === "module") {
-                  navigate(routes.stage_routes[node.stage]?.path ?? node.route ?? "/portal");
+                  navigate(resolveP6StageRoute(node, routes) ?? "/portal");
                 }
               }}
               onMouseEnter={() => setHoveredNodeId(node.id)}

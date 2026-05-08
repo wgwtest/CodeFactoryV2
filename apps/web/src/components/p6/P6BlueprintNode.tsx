@@ -136,6 +136,7 @@ export function P6BlueprintNode({
       data-projection-mode={node.projectionMode}
       data-card-template={resolvedCard.templateId}
       data-binding-preset={resolvedCard.bindingPresetId ?? "participant"}
+      data-route={node.kind === "module" ? (node.route ?? "") : ""}
       aria-label={node.title}
       className={className}
       style={{
