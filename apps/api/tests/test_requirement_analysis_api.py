@@ -863,18 +863,8 @@ def test_requirement_analysis_lab_runs_brainstorm_v1_dify_workflow_plugin() -> N
         json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
     )
 
-    assert turn.status_code == 200
-    payload = turn.json()
-    assert_new_turn_contract(payload["turn"])
-    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "brainstorm-v1-dify-workflow"
-    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "limited"
-    assert payload["turn"]["decision_state_delta"]["confirmed_facts"]
-    assert payload["turn"]["decision_state_document"]["title"] == "需求分析结构化状态"
-    assert payload["turn"]["stage_audits"] == []
-    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["workflow_id"] == "brainstorm-v1-dify-shaped-workflow"
-    assert payload["session"]["decision_state"]["confirmed_facts"]
-    assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
-    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
+    assert turn.status_code == 400
+    assert "DIFY_API_KEY" in turn.json()["detail"]
 
 
 def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:

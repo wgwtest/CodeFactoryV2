@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
 from app.orchestrators.plugin_contracts import OrchestratorPluginManifest, OrchestratorRunRequest, OrchestratorRunResult
@@ -27,23 +30,13 @@ class BrainstormV1DifyWorkflowAdapter:
         self.workflow = self._load_workflow()
 
     def run(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
-        context = self._workflow_context(request)
-        node_outputs: dict[str, dict] = {}
-        trace_nodes: list[dict] = []
-        for node in list(self.workflow.get("nodes") or []):
-            node_id = str(node.get("node_id") or "")
-            output = self._run_node(node_id=node_id, context=context, node_outputs=node_outputs)
-            node_outputs[node_id] = output
-            trace_nodes.append(
-                {
-                    "node_id": node_id,
-                    "type": str(node.get("type") or ""),
-                    "status": "completed",
-                    "summary": str(output.get("summary") or node.get("description") or ""),
-                }
-            )
+        self._require_remote_configuration()
+        return self._run_remote_dify(request)
 
-        normalized = node_outputs["normalize_output"]
+    def _run_remote_dify(self, request: OrchestratorRunRequest) -> OrchestratorRunResult:
+        context = self._workflow_context(request)
+        remote_trace = self._call_remote_dify(request)
+        normalized = self._normalize_remote_result(context=context, trace=remote_trace)
         result = OrchestratorRunResult(
             contract_version=request.contract_version,
             plugin={
@@ -54,9 +47,9 @@ class BrainstormV1DifyWorkflowAdapter:
             final_output={
                 "filled_document_text": normalized["filled_document_text"],
                 "document_patch": normalized["document_patch"],
-                "changed_sections": [context["active_section"]] if context["active_section"] else [],
-                "completion_status": "partial",
-                "confidence": "medium",
+                "changed_sections": list(normalized["changed_sections"] or []),
+                "completion_status": str(normalized["completion_status"] or "partial"),
+                "confidence": str(normalized["confidence"] or "medium"),
             },
             interaction_output={
                 "assistant_message": normalized["assistant_message"],
@@ -77,25 +70,19 @@ class BrainstormV1DifyWorkflowAdapter:
                 "risks": normalized["risks"],
             },
             state_output={
-                "confirmed_facts_delta": [item["content"] for item in normalized["decision_state_delta"]["confirmed_facts"]],
-                "open_questions_delta": [item["content"] for item in normalized["decision_state_delta"]["open_questions"]],
-                "decision_state_delta": normalized["decision_state_delta"],
-                "decision_state_change_summary": normalized["decision_state_change_summary"],
-                "decision_state_document": normalized["decision_state_document"],
+                "confirmed_facts_delta": list(normalized["confirmed_facts_delta"] or []),
+                "open_questions_delta": list(normalized["open_questions_delta"] or []),
+                "decision_state_delta": dict(normalized["decision_state_delta"] or {}),
+                "decision_state_change_summary": dict(normalized["decision_state_change_summary"] or {}),
+                "decision_state_document": dict(normalized["decision_state_document"] or {}),
                 "spec_tree_update": {},
                 "working_document_update": {},
                 "turn_path_update": {},
             },
             raw_output={
-                "raw_plugin_response": {"workflow_outputs": node_outputs},
+                "raw_plugin_response": {"remote_payload": dict(remote_trace["payload"] or {})},
                 "raw_model_response": {},
-                "raw_workflow_trace": {
-                    "fake": False,
-                    "local": True,
-                    "workflow_id": str(self.workflow.get("workflow_id") or "brainstorm-v1-dify-shaped-workflow"),
-                    "run_id": f"local-{context['turn_id']}",
-                    "nodes": trace_nodes,
-                },
+                "raw_workflow_trace": dict(normalized["raw_workflow_trace"] or {}),
             },
         )
         materialized_turn = self._materialized_turn(request=request, result=result, normalized=normalized)
@@ -108,177 +95,127 @@ class BrainstormV1DifyWorkflowAdapter:
             }
         )
 
-    def _run_node(self, *, node_id: str, context: dict, node_outputs: dict[str, dict]) -> dict:
-        if node_id == "normalize_input":
-            return {
-                "summary": "已规范化用户输入和活动章节。",
-                "semantic": context["semantic"],
-                "active_section": context["active_section"],
-            }
-        if node_id == "intent_understanding":
-            return self._intent_understanding(context)
-        if node_id == "decision_state_delta":
-            return self._decision_state_delta(context)
-        if node_id == "document_projection":
-            return self._document_projection(context, node_outputs["decision_state_delta"])
-        if node_id == "next_interaction_planning":
-            return self._next_interaction_planning(context, node_outputs["decision_state_delta"])
-        if node_id == "normalize_output":
-            return self._normalize_output(context=context, node_outputs=node_outputs)
-        raise ValueError(f"unsupported workflow node: {node_id}")
+    @staticmethod
+    def _require_remote_configuration() -> None:
+        if not os.environ.get("DIFY_API_KEY", "").strip():
+            raise ValueError("DIFY_API_KEY is not configured for brainstorm-v1-dify-workflow")
 
-    def _intent_understanding(self, context: dict) -> dict:
-        semantic = context["semantic"]
-        active_section = context["active_section"]
+    def _call_remote_dify(self, request: OrchestratorRunRequest) -> dict:
+        base_url = os.environ.get("DIFY_BASE_URL", "http://localhost").rstrip("/")
+        api_key = os.environ.get("DIFY_API_KEY", "").strip()
+        response_mode = os.environ.get("DIFY_RESPONSE_MODE", "blocking").strip() or "blocking"
+        timeout_seconds = float(os.environ.get("DIFY_TIMEOUT_SECONDS", "120").strip() or "120")
+
+        payload = {
+            "inputs": self._remote_inputs(request),
+            "response_mode": response_mode,
+            "user": "codefactoryv2",
+        }
+        try:
+            response = httpx.post(
+                f"{base_url}/v1/workflows/run",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=timeout_seconds,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            remote_payload = response.json()
+        except httpx.HTTPError as exc:
+            raise ValueError(f"remote dify workflow request failed: {exc}") from exc
+        except ValueError as exc:
+            raise ValueError("remote dify workflow returned non-JSON response") from exc
+        outputs = dict(dict(remote_payload.get("data") or {}).get("outputs") or {})
+        result_json = outputs.get("result_json")
+        if not isinstance(result_json, str) or not result_json.strip():
+            raise ValueError("remote dify workflow did not return data.outputs.result_json")
         return {
-            "summary": f"识别到本轮输入可沉淀为“{active_section}”的需求规格信息。",
-            "intent_understanding_result": {
-                "user_goal_summary": semantic,
-                "input_type": "first_round_product_concept" if context["turn_index"] == 1 else "free_supplement",
-                "relation_to_previous_interaction": str(context["input_relation"].get("relation") or "none"),
-                "document_strategy": "decision_state_then_section_projection",
-                "target_section_candidates": [active_section],
-                "ambiguities": [],
+            "payload": remote_payload,
+            "result_json": result_json,
+            "workflow_trace": {
+                "remote": True,
+                "local": False,
+                "workflow_id": str(
+                    os.environ.get("DIFY_PUBLISHED_WORKFLOW_ID")
+                    or os.environ.get("DIFY_WORKFLOW_ID")
+                    or self.workflow.get("workflow_id")
+                    or ""
+                ),
+                "workflow_run_id": str(
+                    remote_payload.get("workflow_run_id")
+                    or dict(remote_payload.get("data") or {}).get("id")
+                    or ""
+                ),
+                "status": str(dict(remote_payload.get("data") or {}).get("status") or ""),
+                "response_mode": response_mode,
             },
-            "stage_task_definition": {
-                "task_summary": f"围绕“{active_section}”维护决策状态并形成章节投影。",
-                "target_sections": [active_section],
-                "must_output": ["decision_state_delta", "document_patch", "next_interaction_plan"],
-            },
         }
 
-    def _decision_state_delta(self, context: dict) -> dict:
-        semantic = context["semantic"]
-        active_section = context["active_section"]
-        question = context["active_question"]
-        delta = {
-            "confirmed_facts": [
-                self._state_item(
-                    item_id="DS-F-001",
-                    content=semantic,
-                    source_turn_id=context["turn_id"],
-                    target_section=active_section,
-                )
-            ]
-            if semantic
-            else [],
-            "confirmed_decisions": [
-                self._state_item(
-                    item_id="DS-D-001",
-                    content=f"本轮优先围绕“{active_section}”补齐需求规格信息。",
-                    source_turn_id=context["turn_id"],
-                    target_section=active_section,
-                )
-            ],
-            "tentative_assumptions": [],
-            "open_questions": [
-                self._state_item(
-                    item_id="DS-Q-001",
-                    content=question,
-                    source_turn_id=context["turn_id"],
-                    target_section=active_section,
-                    status="open",
-                )
-            ],
-            "rejected_directions": [],
-            "chapter_projections": [
-                self._state_item(
-                    item_id="DS-P-001",
-                    content=active_section,
-                    source_turn_id=context["turn_id"],
-                    target_section=active_section,
-                    status="projected",
-                )
-            ],
-            "next_focus": question,
-        }
-        return {
-            "summary": "已生成 Brainstorm v1 决策状态增量。",
-            "decision_state_delta": delta,
-        }
+    def _normalize_remote_result(self, *, context: dict, trace: dict) -> dict:
+        try:
+            parsed = json.loads(str(trace["result_json"]))
+        except json.JSONDecodeError as exc:
+            raise ValueError("remote dify result_json is not valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("remote dify result_json is not a JSON object")
 
-    def _document_projection(self, context: dict, decision_output: dict) -> dict:
-        semantic = context["semantic"]
-        active_section = context["active_section"]
-        anchor_path = context["anchor_path"]
-        content = (
-            f"围绕“{active_section}”，本轮已确认：{semantic}"
-            if semantic
-            else f"围绕“{active_section}”，本轮已建立需求分析决策状态。"
-        )
-        document_patch = [
-            {
-                "plan_ref": "BRAINSTORM-DIFY-AP-001",
-                "operation": "append_or_update",
-                "content": content,
-                "write_policy": context["write_policy"],
-            }
-        ]
-        target_anchor_plan = [
-            {
-                "plan_id": "BRAINSTORM-DIFY-AP-001",
-                "decision_type": "append_existing_clause",
-                "template_clause_id": anchor_path,
-                "canonical_clause_heading": active_section,
-                "display_heading": active_section,
-                "anchor_path": anchor_path,
-                "reason": "Dify-shaped workflow 使用 Brainstorm 决策状态章节投影作为正文锚点。",
-                "confidence": "medium",
-            }
-        ]
-        return {
-            "summary": "已把决策状态投影为章节正文补丁。",
-            "document_patch": document_patch,
-            "target_anchor_plan": target_anchor_plan,
-            "filled_document_text": content,
-            "decision_state_delta": dict(decision_output["decision_state_delta"]),
-        }
-
-    def _next_interaction_planning(self, context: dict, decision_output: dict) -> dict:
-        question = str(dict(decision_output["decision_state_delta"]).get("next_focus") or context["active_question"])
-        return {
-            "summary": "已基于决策状态规划下一轮问题。",
-            "next_interaction_plan": {
-                "planning_strategy": "decision_state_loop",
-                "user_message": f"本轮已沉淀为决策状态并投影到临时正文。建议下一步确认：{question}",
-                "next_question": question,
-                "quick_options": [],
-                "plan_reason": "继续沿 Brainstorm v1 的决策状态闭环补齐需求规格说明。",
-                "target_spec_nodes": [context["active_spec_node_id"]] if context["active_spec_node_id"] else [],
-            },
-            "planning_trace": ["Dify-shaped workflow 读取决策状态增量和当前活动章节生成下一轮问题。"],
-        }
-
-    def _normalize_output(self, *, context: dict, node_outputs: dict[str, dict]) -> dict:
-        decision_delta = dict(node_outputs["decision_state_delta"]["decision_state_delta"])
-        projection = dict(node_outputs["document_projection"])
-        planning = dict(node_outputs["next_interaction_planning"]["next_interaction_plan"])
-        decision_state, summary = self._apply_decision_delta(
+        decision_state_delta = dict(parsed.get("decision_state_delta") or {})
+        decision_state, change_summary = self._apply_decision_delta(
             current_state=context["decision_state"],
-            delta=decision_delta,
-            next_focus=str(decision_delta.get("next_focus") or planning.get("next_question") or ""),
+            delta=decision_state_delta,
+            next_focus=str(decision_state_delta.get("next_focus") or parsed.get("next_question") or ""),
         )
-        decision_state_document = self._render_decision_state_document(decision_state)
         return {
-            "summary": "已归一化为组织器插件输出合同。",
-            "assistant_message": f"我已把本轮讨论沉淀为结构化决策状态，并投影到：{context['active_section']}。",
-            "next_question": str(planning.get("next_question") or context["active_question"]),
-            "quick_options": list(planning.get("quick_options") or []),
-            "filled_document_text": str(projection.get("filled_document_text") or ""),
-            "document_patch": list(projection.get("document_patch") or []),
-            "target_anchor_plan": list(projection.get("target_anchor_plan") or []),
-            "decision_state_delta": decision_delta,
+            "assistant_message": str(parsed.get("assistant_message") or ""),
+            "next_question": str(parsed.get("next_question") or context["active_question"]),
+            "quick_options": list(parsed.get("quick_options") or []),
+            "filled_document_text": str(parsed.get("filled_document_text") or ""),
+            "document_patch": list(parsed.get("document_patch") or []),
+            "changed_sections": list(parsed.get("changed_sections") or ([context["active_section"]] if context["active_section"] else [])),
+            "completion_status": str(parsed.get("completion_status") or "partial"),
+            "confidence": str(parsed.get("confidence") or "medium"),
+            "confirmed_facts_delta": list(parsed.get("confirmed_facts_delta") or []),
+            "open_questions_delta": list(parsed.get("open_questions_delta") or []),
+            "decision_state_delta": decision_state_delta,
             "decision_state": decision_state,
-            "decision_state_change_summary": summary,
-            "decision_state_document": decision_state_document,
-            "decision_trace": [
-                {"step": "intent_understanding", "decision": node_outputs["intent_understanding"]["summary"]},
-                {"step": "decision_state_delta", "decision": "将用户输入沉淀为 confirmed_facts 与 chapter_projections。"},
-                {"step": "document_projection", "decision": "使用章节投影生成 document_patch。"},
-                {"step": "next_interaction_planning", "decision": str(planning.get("plan_reason") or "")},
-            ],
-            "annotations": ["该插件为本地 Dify-shaped workflow，不要求安装 Dify；可在后续替换为真实 Dify Workflow API。"],
-            "risks": [],
+            "decision_state_change_summary": change_summary,
+            "decision_state_document": dict(parsed.get("decision_state_document") or {}) or self._render_decision_state_document(decision_state),
+            "decision_trace": list(parsed.get("decision_trace") or []),
+            "annotations": list(parsed.get("annotations") or []),
+            "risks": list(parsed.get("risks") or []),
+            "raw_workflow_trace": {
+                **dict(parsed.get("raw_workflow_trace") or {}),
+                **dict(trace.get("workflow_trace") or {}),
+            },
+        }
+
+    def _remote_inputs(self, request: OrchestratorRunRequest) -> dict:
+        session = dict(request.session or {})
+        turn = dict(request.turn or {})
+        template = dict(request.template or {})
+        document_context = dict(request.document_context or {})
+        state = dict(document_context.get("state") or {})
+        return {
+            "user_input": str(turn.get("user_input") or ""),
+            "normalized_input_json": json.dumps(dict(turn.get("normalized_input") or {}), ensure_ascii=False),
+            "topic": str(session.get("topic") or ""),
+            "template_id": str(session.get("template_id") or template.get("template_id") or ""),
+            "template_content": str(template.get("content") or ""),
+            "template_structure_json": json.dumps(dict(template.get("parsed_structure") or {}), ensure_ascii=False),
+            "active_spec_node_json": json.dumps(dict(document_context.get("active_spec_node") or {}), ensure_ascii=False),
+            "spec_tree_json": json.dumps(list(document_context.get("spec_tree") or []), ensure_ascii=False),
+            "working_document_json": json.dumps(dict(document_context.get("working_document") or {}), ensure_ascii=False),
+            "decision_state_json": json.dumps(dict(state.get("decision_state") or {}), ensure_ascii=False),
+            "previous_interaction_json": json.dumps(dict(turn.get("previous_interaction") or {}), ensure_ascii=False),
+            "input_relation_json": json.dumps(dict(turn.get("input_relation") or {}), ensure_ascii=False),
+            "confirmed_facts_json": json.dumps(list(document_context.get("confirmed_facts") or []), ensure_ascii=False),
+            "open_questions_json": json.dumps(list(document_context.get("open_questions") or []), ensure_ascii=False),
+            "history_summary": str(document_context.get("history_summary") or ""),
+            "write_policy": str(session.get("write_policy") or "patch_suggestion_only"),
+            "expected_output": str(dict(request.execution_options or {}).get("expected_output") or "both"),
         }
 
     def _materialized_turn(
@@ -329,23 +266,6 @@ class BrainstormV1DifyWorkflowAdapter:
             "active_section": active_section,
             "active_question": str(active_spec_node.get("question") or "请继续补充需求规格说明。"),
             "anchor_path": active_spec_node_id.removeprefix("SPEC-") or "REQ-1.1",
-        }
-
-    @staticmethod
-    def _state_item(
-        *,
-        item_id: str,
-        content: str,
-        source_turn_id: str,
-        target_section: str,
-        status: str = "active",
-    ) -> dict:
-        return {
-            "item_id": item_id,
-            "content": content,
-            "source_turn_id": source_turn_id,
-            "target_section": target_section,
-            "status": status,
         }
 
     def _apply_decision_delta(self, *, current_state: dict, delta: dict, next_focus: str) -> tuple[dict, dict]:

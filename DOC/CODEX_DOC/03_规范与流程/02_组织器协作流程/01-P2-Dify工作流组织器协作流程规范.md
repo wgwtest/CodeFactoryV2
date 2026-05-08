@@ -15,7 +15,7 @@
 
 ## 1. 协作模式
 
-当前工程不直接编辑 Dify 工作台里的 workflow。当前工程负责定义合同、字段、示例、adapter 和本地 fallback；Dify 工作终端负责按规范创建、配置、发布真实 workflow。
+当前工程不直接编辑 Dify 工作台里的 workflow。当前工程负责定义合同、字段、示例、adapter 和错误处理；Dify 工作终端负责按规范创建、配置、发布真实 workflow。
 
 协作链路如下：
 
@@ -36,7 +36,7 @@ P2 页面
 - 定义 Dify workflow 输入变量和输出 JSON 字段。
 - 提供每个 Dify 型组织器的专项搭建规范。
 - 提供插件 manifest、adapter 和测试。
-- 在没有真实 Dify 配置时提供本地 Dify-shaped workflow 或明确错误。
+- 在没有真实 Dify 配置时返回明确错误。
 - 校验 Dify 返回结果并归一化为 `OrchestratorRunResult`。
 
 当前工程不负责：
@@ -71,21 +71,20 @@ Dify 组织器相关文档分三层：
 
 ## 5. 开发阶段
 
-### 5.1 阶段一：本地 Dify-shaped workflow
+### 5.1 阶段一：Dify-shaped 合同样板
 
 目标：
 
 - 固定插件合同。
 - 固定字段映射。
 - 固定页面挂载路径。
-- 不依赖真实 Dify 环境。
+- 形成真实 Dify workflow 的结构说明。
 
 交付物：
 
 - 插件目录。
 - `manifest.json`。
 - `workflow.json`。
-- 本地 adapter。
 - 后端测试。
 
 ### 5.2 阶段二：Dify 工作台搭建
@@ -110,7 +109,7 @@ Dify 组织器相关文档分三层：
 - adapter 调用真实 Dify Workflow API。
 - 校验 blocking 模式。
 - 保留 run id 或 trace。
-- 失败时给出明确错误或 fallback 标记。
+- 失败时给出明确错误。
 
 交付物：
 
@@ -139,7 +138,7 @@ Dify 组织器相关文档分三层：
 1. 确定组织器目标和差异策略。
 2. 编写或更新专项搭建规范。
 3. 新增插件目录和 manifest。
-4. 编写本地 Dify-shaped `workflow.json`。
+4. 编写 Dify-shaped `workflow.json` 作为结构说明。
 5. 编写 adapter 与测试。
 6. 在 Dify 工作台按专项规范搭建 workflow。
 7. 联调真实 API。
@@ -163,7 +162,7 @@ Dify 型组织器完成协作闭环，至少满足：
 - 正式文档中有公共合同、Dify 字段规范和专项搭建规范。
 - 插件目录可被发现。
 - 页面可选择该组织器。
-- 本地 fallback 或本地 Dify-shaped workflow 测试通过。
+- 缺少 Dify 配置时返回明确错误。
 - 真实 Dify workflow 已发布。
 - adapter 能调用真实 API 并处理成功、失败、超时和结构错误。
 - 输出能进入 `P2` 页面、临时正文、状态区和过程区。

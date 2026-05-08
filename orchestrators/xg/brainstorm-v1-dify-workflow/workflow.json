@@ -1,7 +1,7 @@
 {
   "workflow_id": "brainstorm-v1-dify-shaped-workflow",
   "name": "Brainstorm v1 Dify-shaped Workflow",
-  "description": "本地执行的 Dify 形态工作流；后续可替换为真实 Dify Workflow API 调用。",
+  "description": "真实 Dify Workflow 的结构说明；adapter 只调用 Dify Workflow API，不执行本地 fallback。",
   "nodes": [
     {
       "node_id": "normalize_input",

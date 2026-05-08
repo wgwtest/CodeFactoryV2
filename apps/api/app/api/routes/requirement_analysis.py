@@ -166,7 +166,10 @@ def create_requirement_analysis_turn(
     payload: RequirementAnalysisTurnCreate,
     service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
 ):
-    turn = service.add_turn(session_id, payload)
+    try:
+        turn = service.add_turn(session_id, payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
     if turn is None:
         raise _not_found("Requirement Analysis session not found")
     return turn
