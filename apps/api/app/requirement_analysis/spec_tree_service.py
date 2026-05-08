@@ -28,9 +28,15 @@ class RequirementSpecTreeService:
     def __init__(self, session) -> None:
         self.session = session
 
-    def new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
-        template_payload = self.resolve_template_payload(template_id)
-        template_code = self.template_code_from_id(template_id)
+    def new_spec_tree(
+        self,
+        template_id: str = "81433号",
+        *,
+        orchestrator_id: str,
+        template_payload: dict | None = None,
+    ) -> list[dict]:
+        template_payload = template_payload or self.resolve_template_payload(template_id)
+        template_code = str(template_payload.get("template_code") or self.template_code_from_id(template_id))
         spec_strategy = self.spec_strategy(orchestrator_id)
         root = {
             "node_id": "SPEC-ROOT",

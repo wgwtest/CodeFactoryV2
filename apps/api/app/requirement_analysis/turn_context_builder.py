@@ -33,6 +33,7 @@ class TurnContext:
     facts: list[dict]
     patches: list[dict]
     last_quick_options: list[dict]
+    template_runtime: dict | None = None
 
 
 class TurnContextBuilder:
@@ -94,4 +95,5 @@ class TurnContextBuilder:
             facts=list(state.get("facts", [])),
             patches=list(state.get("patches", [])),
             last_quick_options=last_quick_options,
+            template_runtime=dict(state.get("template_runtime") or {}),
         )

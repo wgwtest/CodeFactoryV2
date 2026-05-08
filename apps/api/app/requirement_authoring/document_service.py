@@ -173,12 +173,38 @@ class RequirementDocumentService:
         return {
             "application_name": "",
             "domain_scope": "",
+            "application_scope": "",
+            "terms_glossary": "",
+            "business_goals": "",
+            "expected_value": "",
+            "main_scenarios": "",
+            "usage_modes": "",
+            "in_scope": "",
+            "out_of_scope": "",
             "target_users": "",
             "main_process": "",
             "normal_flow": "",
+            "situational_display": "",
+            "gis_analysis_tools": "",
+            "deployment_analysis": "",
+            "result_outputs": "",
+            "collaboration_mode": "",
             "exception_flow": "",
+            "fallback_rules": "",
+            "input_data_sources": "",
+            "input_data_mode": "",
+            "output_data_products": "",
+            "external_interfaces": "",
+            "performance_requirements": "",
+            "reliability_requirements": "",
+            "security_requirements": "",
+            "permission_model": "",
+            "deployment_environment": "",
+            "accuracy_constraints": "",
+            "quality_constraints": "",
+            "acceptance_scenarios": "",
             "acceptance_criteria": "",
-            "non_functional": "",
+            "open_decision_items": "",
         }
 
     def build_semantic_state(self, fields: dict[str, str], template: RequirementAuthoringTemplate) -> dict:
@@ -207,4 +233,3 @@ class RequirementDocumentService:
     @staticmethod
     def now() -> str:
         return datetime.now(UTC).isoformat()
-

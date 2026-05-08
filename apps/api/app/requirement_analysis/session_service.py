@@ -20,6 +20,7 @@ from app.requirement_analysis.session_snapshot import SessionSnapshot
 from app.requirement_analysis.spec_projection_service import SpecProjectionService
 from app.requirement_analysis.spec_tree_service import RequirementSpecTreeService
 from app.requirement_analysis.summary_artifact_service import RequirementAnalysisSummaryArtifactService
+from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_analysis.turn_audit_service import RequirementAnalysisTurnAuditService
 from app.requirement_analysis.turn_context_builder import TurnContextBuilder
 from app.requirement_analysis.turn_decision_service import TurnDecisionService
@@ -39,6 +40,7 @@ class RequirementAnalysisSessionService:
         self.process_artifact_service = ProcessArtifactService()
         self.decision_state_service = DecisionStateService()
         self.spec_tree_service = RequirementSpecTreeService(session)
+        self.template_service = RequirementAnalysisTemplateService()
         self.provider_call_service = RequirementAnalysisProviderCallService(
             spec_tree_service=self.spec_tree_service,
             process_artifact_service=self.process_artifact_service,
@@ -116,14 +118,17 @@ class RequirementAnalysisSessionService:
 
         now = self._now()
         model = self._resolve_model(payload.provider_id, payload.model)
+        template_runtime = self._resolve_template_runtime(payload.template_id)
         spec_tree = self._new_spec_tree(
             payload.template_id,
             orchestrator_id=orchestrator.orchestrator_id if orchestrator is not None else orchestrator_id,
+            template_payload=template_runtime,
         )
         active_spec_node_id = self._first_open_spec_node_id(spec_tree)
         working_document = self.working_document_service.initialize(
             topic=payload.topic.strip() or "未命名 Requirement Analysis 课题",
             template_id=payload.template_id,
+            template_runtime=template_runtime,
         )
         initial_question = self.summary_artifact_service.suggestion_content_for_node(
             self.spec_tree_service.find_spec_node(spec_tree, active_spec_node_id or "")
@@ -141,6 +146,7 @@ class RequirementAnalysisSessionService:
                 decision_state=decision_state,
                 session_phase="exploration_convergence",
             ),
+            "template_runtime": self._template_runtime_for_state(template_runtime),
             "draft_snapshot": None,
             "messages": [
                 {
@@ -242,7 +248,11 @@ class RequirementAnalysisSessionService:
         state = dict(session.payload or {})
         spec_tree = list(
             state.get("spec_tree")
-            or self._new_spec_tree(session.template_id, orchestrator_id=session.orchestrator_id)
+            or self._new_spec_tree(
+                session.template_id,
+                orchestrator_id=session.orchestrator_id,
+                template_payload=dict(state.get("template_runtime") or {}),
+            )
         )
         return {
             "session_id": session.id,
@@ -274,7 +284,11 @@ class RequirementAnalysisSessionService:
             "document_patch": list(state.get("document_patch", [])),
             "working_document": dict(
                 state.get("working_document")
-                or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+                or self.working_document_service.initialize(
+                    topic=session.topic,
+                    template_id=session.template_id,
+                    template_runtime=dict(state.get("template_runtime") or {}),
+                )
             ),
             "questions": list(state.get("questions", [])),
             "facts": list(state.get("facts", [])),
@@ -334,8 +348,57 @@ class RequirementAnalysisSessionService:
             return settings.requirement_analysis_deepseek_model
         return model or "mock-requirement-analysis-v1"
 
-    def _new_spec_tree(self, template_id: str = "81433号", *, orchestrator_id: str) -> list[dict]:
-        return self.spec_tree_service.new_spec_tree(template_id, orchestrator_id=orchestrator_id)
+    def _new_spec_tree(
+        self,
+        template_id: str = "81433号",
+        *,
+        orchestrator_id: str,
+        template_payload: dict | None = None,
+    ) -> list[dict]:
+        return self.spec_tree_service.new_spec_tree(
+            template_id,
+            orchestrator_id=orchestrator_id,
+            template_payload=template_payload,
+        )
+
+    def _resolve_template_runtime(self, template_id: str) -> dict:
+        runtime = self.template_service.resolve_runtime_payload(template_id)
+        if runtime is None:
+            if template_id in {"81433号", "82259号"}:
+                runtime = self._legacy_template_runtime(template_id)
+            else:
+                raise ValueError("Requirement Analysis template instance not found")
+        blocking = [
+            item
+            for item in list(runtime.get("parse_diagnostics") or [])
+            if isinstance(item, dict) and str(item.get("severity") or "") == "error"
+        ]
+        if blocking:
+            raise ValueError("Requirement Analysis template instance structure is invalid")
+        return runtime
+
+    def _legacy_template_runtime(self, template_id: str) -> dict:
+        payload = self.spec_tree_service.resolve_template_payload(template_id)
+        return {
+            "template_id": template_id,
+            "template_code": self.spec_tree_service.template_code_from_id(template_id),
+            "base_template_id": template_id,
+            "base_template_name": f"{self.spec_tree_service.template_code_from_id(template_id)}号需求规格模板",
+            "name": f"{template_id}需求规格模板",
+            "description": "兼容旧入口的内置模板运行时对象。",
+            "format": "structured",
+            "content": "",
+            "sections": list(payload.get("sections") or []),
+            "parse_diagnostics": [],
+        }
+
+    @staticmethod
+    def _template_runtime_for_state(template_runtime: dict) -> dict:
+        return {
+            key: value
+            for key, value in dict(template_runtime).items()
+            if key != "content"
+        }
 
     def _first_open_spec_node_id(self, nodes: list[dict]) -> str | None:
         return self.spec_tree_service.first_open_spec_node_id(nodes)

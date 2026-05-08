@@ -11,12 +11,31 @@ def test_requirement_authoring_modules_preserve_document_contract() -> None:
     fields = {
         "application_name": "空域运算软件",
         "domain_scope": "空域计算分析",
+        "application_scope": "空域计算分析任务链",
+        "business_goals": "支撑空域计算分析的任务闭环。",
+        "main_scenarios": "导入数据、执行计算、查看结果。",
+        "usage_modes": "专家单人分析并提交结果。",
+        "in_scope": "数据导入、计算分析、结果输出。",
+        "out_of_scope": "不包含自动优化推荐。",
         "target_users": "领域专家",
         "main_process": "导入数据后计算分析",
         "normal_flow": "导入数据、执行计算、生成结果。",
+        "situational_display": "展示计算任务状态、输入数据和结果摘要。",
+        "gis_analysis_tools": "支持基础空间查询和结果定位。",
+        "deployment_analysis": "支持部署点位影响范围辅助分析。",
+        "result_outputs": "输出计算结果表和分析图件。",
+        "collaboration_mode": "支持结果提交和专家复核。",
         "exception_flow": "缺数据时阻断并提示。",
+        "input_data_sources": "任务数据、基础地理数据和配置参数。",
+        "input_data_mode": "人工导入和本地文件读取。",
+        "performance_requirements": "常规查询 2 秒内返回。",
+        "reliability_requirements": "关键计算失败时保留错误记录。",
+        "security_requirements": "按用户身份控制访问。",
+        "permission_model": "领域专家可编辑，审核人员可复核。",
+        "deployment_environment": "内网环境部署。",
+        "accuracy_constraints": "辅助研判级精度。",
+        "acceptance_scenarios": "完成一次从数据导入到结果输出的任务链。",
         "acceptance_criteria": "核心流程可闭环验收。",
-        "non_functional": "关键计算结果可追溯。",
     }
 
     document = RequirementDocumentRenderer().render_document(template_payload, fields)
@@ -29,7 +48,7 @@ def test_requirement_authoring_modules_preserve_document_contract() -> None:
 
     check_result = RequirementGapChecker().run(template_payload, fields)
     assert check_result["blocking_count"] == 0
-    assert check_result["passed_count"] == 8
+    assert check_result["passed_count"] == 21
 
     frozen_package = RequirementFreezeService().build_frozen_package(
         standard_document=document,
@@ -40,6 +59,8 @@ def test_requirement_authoring_modules_preserve_document_contract() -> None:
     )
     assert frozen_package["p3_consumable"] is True
     assert frozen_package["structured_spec"]["application"]["name"] == "空域运算软件"
+    assert frozen_package["structured_spec"]["application"]["goals"] == "支撑空域计算分析的任务闭环。"
+    assert frozen_package["structured_spec"]["capabilities"]["gis_analysis_tools"] == "支持基础空间查询和结果定位。"
     assert frozen_package["structured_spec"]["processes"][0]["source_archive_id"] == "20161116-nas"
 
 

@@ -26,4 +26,4 @@ def test_requirement_analysis_session_service_preserves_requirement_analysis_flo
     assert turn["turn"]["turn_id"] == "turn-0001"
     assert turn["session"]["status"] == "waiting_user"
     assert turn["session"]["questions"][0]["status"] == "confirmed"
-    assert turn["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+    assert turn["session"]["active_spec_node_id"] == "SPEC-REQ-1.2"

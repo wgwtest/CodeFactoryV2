@@ -26,6 +26,7 @@ import {
   getRequirementAnalysisTemplate,
   reloadRequirementAnalysisOrchestrators,
   saveRequirementAnalysisTemplate,
+  saveRequirementAnalysisTemplateAsBase,
 } from "../lib/requirementAnalysis";
 import {
   getRequirementAnalysisProviderLogFieldNote,
@@ -111,6 +112,7 @@ export function RequirementAnalysisLabPage() {
     useRequirementAnalysisLabBootstrap();
   const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
+  const [baseTemplates, setBaseTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -141,6 +143,10 @@ export function RequirementAnalysisLabPage() {
   }, [bootstrappedTemplates]);
 
   useEffect(() => {
+    setBaseTemplates(templateBases);
+  }, [templateBases]);
+
+  useEffect(() => {
     setOrchestratorsEnvelope(bootstrappedOrchestratorsEnvelope);
   }, [bootstrappedOrchestratorsEnvelope]);
 
@@ -163,16 +169,20 @@ export function RequirementAnalysisLabPage() {
       if (templates.some((template) => template.template_id === configuredTemplateId)) {
         return configuredTemplateId;
       }
-      return templates[0]?.template_id ?? configuredTemplateId;
+      return templates[0]?.template_id ?? "";
     };
     setSelectedTemplateId(resolveTemplateId);
     setStartupTemplateId(resolveTemplateId);
-    setSelectedBaseTemplateId((current) => current || templateBases[0]?.template_id || "81433号");
+    setSelectedBaseTemplateId((current) => current || baseTemplates[0]?.template_id || "81433号");
     setNewTemplateName((current) => current || buildDefaultRequirementAnalysisTemplateName(topic || labConfig.defaults.topic));
-  }, [labConfig, orchestratorsEnvelope, providers, templates, templateBases, topic]);
+  }, [labConfig, orchestratorsEnvelope, providers, templates, baseTemplates, topic]);
 
   useEffect(() => {
     if (!selectedTemplateId) {
+      setTemplateDetail(null);
+      setTemplateNameDraft("");
+      setTemplateDescriptionDraft("");
+      setTemplateDraft("");
       return;
     }
     let cancelled = false;
@@ -234,6 +244,11 @@ export function RequirementAnalysisLabPage() {
 
   async function handleStart() {
     setActiveTab("session");
+    const resolvedTemplateId = startupTemplateId || selectedTemplateId || templates[0]?.template_id || bootstrappedTemplates[0]?.template_id || "";
+    if (!resolvedTemplateId) {
+      setError("当前没有可启动的模板实例，请先基于基础模板新建一个自定义模板实例。");
+      return;
+    }
     const resolvedProviderId =
       activeProvider?.status === "active"
         ? selectedProviderId
@@ -253,7 +268,7 @@ export function RequirementAnalysisLabPage() {
         orchestrator_id: selectedOrchestratorId,
         provider_id: resolvedProviderId,
         model: labConfig?.defaults.model ?? "",
-        template_id: startupTemplateId || selectedTemplateId || labConfig?.defaults.template_id,
+        template_id: resolvedTemplateId,
         knowledge_package_id: labConfig?.defaults.knowledge_package_id,
         write_policy: labConfig?.defaults.write_policy,
       });
@@ -311,6 +326,22 @@ export function RequirementAnalysisLabPage() {
     }
   }
 
+  async function handleSaveTemplateAsBase() {
+    if (!selectedTemplateId) {
+      return;
+    }
+    try {
+      setTemplateSaving(true);
+      const response = await saveRequirementAnalysisTemplateAsBase(selectedTemplateId);
+      setBaseTemplates((current) => [...current.filter((template) => template.template_id !== response.data.template_id), response.data]);
+      setError(null);
+    } catch (saveAsBaseError) {
+      setError(saveAsBaseError instanceof Error ? saveAsBaseError.message : "保存为基础模板失败");
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   function handleTemplateSelect(templateId: string) {
     if (selectedTemplateId && selectedTemplateId !== templateId) {
       previousTemplateSelectionRef.current = selectedTemplateId;
@@ -319,7 +350,7 @@ export function RequirementAnalysisLabPage() {
   }
 
   function handleOpenCreateTemplate() {
-    const fallbackBaseTemplateId = templateDetail?.base_template_id ?? selectedBaseTemplateId ?? templateBases[0]?.template_id ?? "81433号";
+    const fallbackBaseTemplateId = templateDetail?.base_template_id ?? selectedBaseTemplateId ?? baseTemplates[0]?.template_id ?? "81433号";
     setSelectedBaseTemplateId(fallbackBaseTemplateId);
     setNewTemplateName(buildDefaultRequirementAnalysisTemplateName(topic));
     setNewTemplateDescription(buildDefaultRequirementAnalysisTemplateDescription(fallbackBaseTemplateId));
@@ -344,7 +375,7 @@ export function RequirementAnalysisLabPage() {
 
   async function handleCreateTemplate() {
     const name = newTemplateName.trim() || `${topic || "未命名需求"}模板实例`;
-    const baseTemplateId = selectedBaseTemplateId || templateBases[0]?.template_id || "81433号";
+    const baseTemplateId = selectedBaseTemplateId || baseTemplates[0]?.template_id || "81433号";
     try {
       setTemplateSaving(true);
       const response = await createRequirementAnalysisTemplate(
@@ -510,7 +541,7 @@ export function RequirementAnalysisLabPage() {
                 orchestratorsEnvelope={orchestratorsEnvelope}
                 providers={providerOptions}
                 templates={templates}
-                templateBases={templateBases}
+                templateBases={baseTemplates}
                 selectedTemplateId={selectedTemplateId}
                 startupTemplateId={startupTemplateId}
                 selectedBaseTemplateId={selectedBaseTemplateId}
@@ -530,6 +561,7 @@ export function RequirementAnalysisLabPage() {
                 onNewTemplateDescriptionChange={setNewTemplateDescription}
                 onTemplateDraftChange={setTemplateDraft}
                 onSaveTemplate={() => void handleSaveTemplate()}
+                onSaveTemplateAsBase={() => void handleSaveTemplateAsBase()}
                 onOpenCreateTemplate={handleOpenCreateTemplate}
                 onCloseCreateTemplate={handleCloseCreateTemplate}
                 onCreateTemplate={() => void handleCreateTemplate()}
@@ -615,6 +647,7 @@ function ConfigTab({
   onTemplateSelect,
   onStartupTemplateSelect,
   onSaveTemplate,
+  onSaveTemplateAsBase,
   onOpenCreateTemplate,
   onCloseCreateTemplate,
   onCreateTemplate,
@@ -660,6 +693,7 @@ function ConfigTab({
   onTemplateSelect: (templateId: string) => void;
   onStartupTemplateSelect: (templateId: string) => void;
   onSaveTemplate: () => void;
+  onSaveTemplateAsBase: () => void;
   onOpenCreateTemplate: () => void;
   onCloseCreateTemplate: () => void;
   onCreateTemplate: () => void;
@@ -745,6 +779,7 @@ function ConfigTab({
                   label: `${template.name} (${template.template_id})`,
                   value: template.template_id,
                 }))}
+                disabled={!templates.length}
                 placeholder="选择本次启动验证要使用的模板实例"
                 value={startupTemplateId || undefined}
                 onChange={onStartupTemplateSelect}
@@ -780,6 +815,9 @@ function ConfigTab({
               {selectedOrchestrator?.name ?? selectedOrchestratorId}；启动模板：
               {templates.find((template) => template.template_id === startupTemplateId)?.name ?? startupTemplateId}
             </Text>
+            {!templates.length ? (
+              <Alert className="requirement-analysis-lab-session-created" message="当前没有可启动的模板实例，请先新建实例。" showIcon type="warning" />
+            ) : null}
             {currentSession ? (
               <Alert
                 action={
@@ -853,6 +891,9 @@ function ConfigTab({
                       type="primary"
                     >
                       保存模板
+                    </Button>
+                    <Button disabled={!selectedTemplateId || templateLoading} loading={templateSaving} onClick={onSaveTemplateAsBase}>
+                      保存为基础模板
                     </Button>
                   </Space>
                 </div>

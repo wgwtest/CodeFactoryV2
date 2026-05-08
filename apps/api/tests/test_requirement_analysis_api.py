@@ -92,13 +92,13 @@ def _write_reload_test_plugin(
 
 
 def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tmp_path, monkeypatch) -> None:
-    template_root = tmp_path / "templates"
-    template_root.mkdir()
-    instance_root = tmp_path / "instances"
-    (template_root / "01-81433-软件级需求规格模板.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
-    (template_root / "02-82259-平台级规格模板.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
-    monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", template_root)
-    monkeypatch.setattr(RequirementAnalysisTemplateService, "INSTANCE_ROOT", instance_root)
+    asset_root = tmp_path / "template-assets"
+    base_template_root = asset_root / "基础模板"
+    custom_template_root = asset_root / "自定义模板"
+    base_template_root.mkdir(parents=True)
+    (base_template_root / "01-81433-软件级需求规格模板.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
+    (base_template_root / "02-82259-平台级规格模板.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
+    monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", asset_root)
 
     client = TestClient(create_app())
 
@@ -123,13 +123,10 @@ def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tm
 
     listed = client.get("/api/requirement-analysis/templates")
     assert listed.status_code == 200
-    assert listed.json()["items"][0]["template_id"] == "xg-template-81433-default"
-    assert listed.json()["items"][0]["base_template_id"] == "81433号"
-    assert listed.json()["items"][0]["template_code"] == "81433"
-    assert (instance_root / "manifest.json").exists()
-    assert (instance_root / "xg-template-81433-default.md").read_text(encoding="utf-8").startswith(
-        "# 81433 软件级需求规格模板"
-    )
+    assert listed.json()["items"] == []
+    assert (custom_template_root / "manifest.json").exists()
+    assert not (custom_template_root / "xg-template-81433-default.md").exists()
+    assert not (custom_template_root / "xg-template-82259-default.md").exists()
 
     created = client.post(
         "/api/requirement-analysis/templates",
@@ -166,16 +163,163 @@ def test_requirement_analysis_lab_template_assets_can_be_managed_as_instances(tm
     assert saved.status_code == 200
     assert saved.json()["name"] == "态势分析系统需求规格模板 V2"
     assert saved.json()["content"].endswith("## 1. 修改后的范围\n")
-    assert (instance_root / f"{created_template_id}.md").read_text(encoding="utf-8").endswith("## 1. 修改后的范围\n")
-    assert (template_root / "01-81433-软件级需求规格模板.md").read_text(encoding="utf-8").endswith("## 1. 范围\n")
+    assert (custom_template_root / f"{created_template_id}.md").read_text(encoding="utf-8").endswith("## 1. 修改后的范围\n")
+    assert (base_template_root / "01-81433-软件级需求规格模板.md").read_text(encoding="utf-8").endswith("## 1. 范围\n")
 
     deleted = client.delete(f"/api/requirement-analysis/templates/{created_template_id}")
     assert deleted.status_code == 200
     assert deleted.json() == {"deleted": True, "template_id": created_template_id}
-    assert not (instance_root / f"{created_template_id}.md").exists()
+    assert not (custom_template_root / f"{created_template_id}.md").exists()
 
     missing = client.get("/api/requirement-analysis/templates/unknown")
     assert missing.status_code == 404
+
+
+def test_requirement_analysis_lab_custom_template_can_be_promoted_to_readonly_base(tmp_path, monkeypatch) -> None:
+    asset_root = tmp_path / "template-assets"
+    base_template_root = asset_root / "基础模板"
+    custom_template_root = asset_root / "自定义模板"
+    base_template_root.mkdir(parents=True)
+    (base_template_root / "01-81433-软件级需求规格模板.md").write_text("# 81433 软件级需求规格模板\n\n## 1. 范围\n", encoding="utf-8")
+    (base_template_root / "02-82259-平台级规格模板.md").write_text("# 82259 平台级规格模板\n\n## 1. 边界\n", encoding="utf-8")
+    monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", asset_root)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/templates",
+        json={
+            "base_template_id": "81433号",
+            "name": "态势分析系统需求规格模板",
+            "description": "基于 81433 扩充的项目实例模板。",
+        },
+    )
+    assert created.status_code == 200
+    template_id = created.json()["template_id"]
+    saved = client.put(
+        f"/api/requirement-analysis/templates/{template_id}",
+        json={
+            "name": "态势分析系统需求规格模板",
+            "description": "已沉淀为可复用基础依据。",
+            "content": "# 态势分析系统需求规格基础模板\n\n## 1. 总则\n",
+        },
+    )
+    assert saved.status_code == 200
+
+    promoted = client.post(f"/api/requirement-analysis/templates/{template_id}/save-as-base")
+    assert promoted.status_code == 200
+    promoted_payload = promoted.json()
+    assert promoted_payload["template_id"].startswith("custom-")
+    assert promoted_payload["template_code"].startswith("CUSTOM-")
+    assert promoted_payload["name"] == "态势分析系统需求规格模板"
+    assert promoted_payload["description"] == "基础模板依据，只读，不作为 Lab 会话直接编辑对象。"
+    assert promoted_payload["status"] == "available"
+    assert (base_template_root / "03-态势分析系统需求规格模板.md").read_text(encoding="utf-8") == "# 态势分析系统需求规格基础模板\n\n## 1. 总则\n"
+
+    listed = client.get("/api/requirement-analysis/template-bases")
+    assert listed.status_code == 200
+    assert [item["name"] for item in listed.json()["items"]] == [
+        "软件级需求规格说明模板",
+        "平台级需求规格说明模板",
+        "态势分析系统需求规格模板",
+    ]
+    assert [item["name"] for item in client.get("/api/requirement-analysis/templates").json()["items"]] == ["态势分析系统需求规格模板"]
+
+    cannot_save_base = client.put(
+        "/api/requirement-analysis/templates/81433号",
+        json={"content": "# 不应写入基础模板\n", "name": "错误覆盖", "description": "错误覆盖"},
+    )
+    assert cannot_save_base.status_code == 404
+
+    cannot_delete_base = client.delete("/api/requirement-analysis/templates/81433号")
+    assert cannot_delete_base.status_code == 404
+
+
+def test_requirement_analysis_lab_session_uses_selected_template_instance_runtime_payload(tmp_path, monkeypatch) -> None:
+    asset_root = tmp_path / "template-assets"
+    base_template_root = asset_root / "基础模板"
+    custom_template_root = asset_root / "自定义模板"
+    base_template_root.mkdir(parents=True)
+    custom_template_root.mkdir(parents=True)
+    (base_template_root / "01-81433-软件级需求规格模板.md").write_text(
+        "# 81433 软件级需求规格模板\n\n## 1 总则\n\n### 1.1 编写目的\n",
+        encoding="utf-8",
+    )
+    (base_template_root / "02-82259-平台级规格模板.md").write_text(
+        "# 82259 平台级规格模板\n\n## 1 总则\n\n### 1.1 平台定位\n",
+        encoding="utf-8",
+    )
+    (custom_template_root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "template_id": "xg-template-81433-custom-runtime",
+                        "template_code": "81433",
+                        "base_template_id": "81433号",
+                        "base_template_name": "软件级需求规格说明模板",
+                        "name": "运行时自定义模板实例",
+                        "description": "带有独特 9.9 条款的模板实例。",
+                        "status": "available",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (custom_template_root / "xg-template-81433-custom-runtime.md").write_text(
+        "# 81433 软件级需求规格说明模板（运行时实例）\n\n"
+        "## 1 总则\n\n"
+        "### 1.1 编写目的\n\n"
+        "## 9 自定义验收\n\n"
+        "### 9.9 自定义验收观察点\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(RequirementAnalysisTemplateService, "TEMPLATE_ROOT", asset_root)
+
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "运行时模板实例驱动验证",
+            "orchestrator_id": "xg-heuristic-orchestrator",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "xg-template-81433-custom-runtime",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["template_id"] == "xg-template-81433-custom-runtime"
+    assert payload["working_document"]["template_id"] == "xg-template-81433-custom-runtime"
+    assert payload["working_document"]["template_name"] == "运行时自定义模板实例"
+    assert find_spec_node(payload["spec_tree"], "SPEC-REQ-9.9") == {
+        "node_id": "SPEC-REQ-9.9",
+        "title": "REQ-9.9 自定义验收观察点",
+        "target_section": "9 自定义验收 / 自定义验收观察点",
+        "node_type": "clause",
+        "question": "组织器策略问题：请补齐自定义验收观察点。",
+        "status": "open",
+        "answer_summary": "",
+        "completion_reason": "",
+        "children": [],
+    }
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{payload['session_id']}/turns",
+        json={"user_input": "这个系统主要面向空域分析场景。"},
+    )
+    assert turn.status_code == 200
+    provider_logs = turn.json()["session"]["provider_logs"]
+    prompt_bundle = provider_logs[-1]["audit"]["provider_request"]["prompt_bundle"]
+    assert "xg-template-81433-custom-runtime" in prompt_bundle["context_json"]
+    assert "REQ-9.9" in prompt_bundle["context_json"]
 
 
 def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
@@ -190,7 +334,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "orchestrator_id": "xg-local-heuristic-orchestrator",
         "provider_id": "deepseek",
         "model": "provider-default",
-        "template_id": "xg-template-81433-default",
+        "template_id": "xg-template-81433-默认运算软件需求规格说明模板实例-v1-0",
         "knowledge_package_id": "airspace-domain-demo",
         "write_policy": "patch_suggestion_only",
     }
@@ -288,8 +432,9 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "1 总则",
         "2 项目概述",
         "3 功能需求",
-        "4 非功能需求",
-        "5 验收准则",
+        "4 数据与接口需求",
+        "5 非功能需求",
+        "6 验收准则",
     ]
     assert find_spec_node(session["spec_tree"], "SPEC-REQ-3.1") == {
         "node_id": "SPEC-REQ-3.1",
@@ -326,7 +471,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     ]
     assert payload["turn"]["intent_understanding_result"]["input_type"] == "first_round_product_concept"
     assert payload["turn"]["stage_task_definition"]["target_sections"] == ["1 总则 / 编写目的"]
-    assert payload["turn"]["next_interaction_plan"]["target_spec_nodes"] == ["SPEC-REQ-2.1"]
+    assert payload["turn"]["next_interaction_plan"]["target_spec_nodes"] == ["SPEC-REQ-1.2"]
     assert payload["turn"]["previous_interaction"]["type"] == "none"
     assert payload["turn"]["input_relation"]["relation"] == "none"
     assert payload["turn"]["closure_decision"]["status"] == "closed"
@@ -343,12 +488,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["turn"]["normalized_input"]["input_type"] == "free_text"
     assert "临时正文" in payload["turn"]["spec_execution"]["assistant_message"]
     assert "建议下一步确认" in payload["turn"]["spec_execution"]["assistant_message"]
-    assert "软件定位" in payload["turn"]["next_interaction"]["prompt"]
+    assert payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请确认本文档适用的软件范围、第一阶段边界、主要用户和明确不纳入范围。"
     assert payload["turn"]["next_interaction"]["type"] == "choice_question"
     assert [option["label"] for option in payload["turn"]["next_interaction"]["options"]] == [
-        "计算分析工具",
-        "协同规划平台",
-        "二者兼有但先做分析",
+        "先限定第一阶段范围",
+        "先确认目标用户",
+        "先说明不纳入范围",
     ]
     assert payload["turn"]["spec_execution"]["target_anchor_plan"][0]["template_clause_id"] == "REQ-1.1"
     assert payload["turn"]["spec_execution"]["document_patch"][0]["plan_ref"] == "AP-001"
@@ -393,7 +538,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert payload["session"]["patches"][0]["source_fact_ids"] == ["F-001"]
     assert payload["session"]["patches"][0]["source_question_ids"] == ["Q-001"]
     assert payload["session"]["next_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
-    assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-2.1"
+    assert payload["session"]["active_spec_node_id"] == "SPEC-REQ-1.2"
     first_spec_leaf = find_spec_node(payload["session"]["spec_tree"], "SPEC-REQ-1.1")
     assert first_spec_leaf["status"] == "closed"
     assert "空域运算软件" in first_spec_leaf["answer_summary"]
@@ -406,7 +551,7 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
 
     second_turn = client.post(
         f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
-        json={"user_input": "它是面向空域领域的计算分析工具，第一阶段不做协同规划。"},
+        json={"user_input": "它适用于空域计算分析任务，第一阶段面向领域专家，不做协同规划。"},
     )
     assert second_turn.status_code == 200
     second_payload = second_turn.json()
@@ -420,14 +565,14 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["turn"]["previous_interaction"]["interaction_id"] == payload["turn"]["next_interaction"]["interaction_id"]
     assert second_payload["turn"]["input_relation"]["relation"] == "answered"
     assert second_payload["turn"]["spec_execution"]["working_document_update"]["applied_block_ids"] == ["blk-0002"]
-    assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-2.1"
-    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "它是面向空域领域的计算分析工具，第一阶段不做协同规划。"
-    assert "空域领域的计算分析工具" in second_payload["turn"]["spec_execution"]["document_patch"][0]["content"]
-    assert second_payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请说明主要用户角色、职责、协作者和管理员边界。"
+    assert second_payload["turn"]["spec_execution"]["affected_spec_nodes"][0]["node_id"] == "SPEC-REQ-1.2"
+    assert second_payload["turn"]["spec_execution"]["confirmed_facts"][0] == "它适用于空域计算分析任务，第一阶段面向领域专家，不做协同规划。"
+    assert "1 总则 / 适用范围" in second_payload["turn"]["spec_execution"]["document_patch"][0]["content"]
+    assert second_payload["turn"]["next_interaction"]["prompt"] == "组织器策略问题：请确认本文档需要定义哪些核心术语、缩略语或领域专有概念。"
     assert [option["label"] for option in second_payload["turn"]["next_interaction"]["options"]] == [
-        "领域专家直接使用",
-        "管理员配置后专家使用",
-        "多角色协同使用",
+        "先列核心术语",
+        "先保持待补充",
+        "先说明无特殊术语",
     ]
     assert second_payload["session"]["questions"][0]["question_id"] == "Q-001"
     assert second_payload["session"]["questions"][0]["resolution_fact_ids"] == ["F-001"]
@@ -435,12 +580,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert second_payload["session"]["questions"][1]["status"] == "confirmed"
     assert second_payload["session"]["questions"][1]["resolution_fact_ids"] == ["F-002"]
     assert second_payload["session"]["facts"][1]["fact_id"] == "F-002"
-    assert "空域领域" in second_payload["session"]["facts"][1]["content"]
+    assert "适用于空域计算分析任务" in second_payload["session"]["facts"][1]["content"]
     assert second_payload["session"]["facts"][1]["source_question_ids"] == ["Q-002"]
     assert second_payload["session"]["patches"][1]["patch_id"] == "P-002"
-    assert second_payload["session"]["patches"][1]["target_section"] == "2.1 软件定位"
+    assert second_payload["session"]["patches"][1]["target_section"] == "1.2 适用范围"
     assert second_payload["session"]["patches"][1]["source_question_ids"] == ["Q-002"]
-    assert second_payload["session"]["active_spec_node_id"] == "SPEC-REQ-3.1"
+    assert second_payload["session"]["active_spec_node_id"] == "SPEC-REQ-1.3"
     assert [item["call_id"] for item in second_payload["session"]["provider_logs"]] == [
         "requirement-analysis-provider-call-0001",
         "requirement-analysis-provider-call-0002",
@@ -449,12 +594,12 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "requirement-analysis-provider-call-0005",
         "requirement-analysis-provider-call-0006",
     ]
-    second_spec_leaf = find_spec_node(second_payload["session"]["spec_tree"], "SPEC-REQ-2.1")
+    second_spec_leaf = find_spec_node(second_payload["session"]["spec_tree"], "SPEC-REQ-1.2")
     assert second_spec_leaf["status"] == "closed"
-    assert "空域领域" in second_spec_leaf["answer_summary"]
+    assert "适用于空域计算分析任务" in second_spec_leaf["answer_summary"]
     assert second_payload["session"]["turn_path"][1]["turn_id"] == "turn-0002"
-    assert second_payload["session"]["turn_path"][1]["node_id"] == "SPEC-REQ-2.1"
-    assert second_payload["session"]["turn_path"][1]["affected_node_ids"] == ["SPEC-REQ-2.1"]
+    assert second_payload["session"]["turn_path"][1]["node_id"] == "SPEC-REQ-1.2"
+    assert second_payload["session"]["turn_path"][1]["affected_node_ids"] == ["SPEC-REQ-1.2"]
     assert second_payload["session"]["next_interaction"]["interaction_id"] == second_payload["turn"]["next_interaction"]["interaction_id"]
 
     recovered = client.get(f"/api/requirement-analysis/sessions/{session['session_id']}")
@@ -740,26 +885,26 @@ def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> No
     assert first_turn.status_code == 200
     first_payload = first_turn.json()
     assert [option["label"] for option in first_payload["turn"]["next_interaction"]["options"]] == [
-        "计算分析工具",
-        "协同规划平台",
-        "二者兼有但先做分析",
+        "先限定第一阶段范围",
+        "先确认目标用户",
+        "先说明不纳入范围",
     ]
 
     second_turn = client.post(
         f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
-        json={"user_input": "A，计算分析工具"},
+        json={"user_input": "A，第一阶段限定为空域计算分析"},
     )
     assert second_turn.status_code == 200
     second_payload = second_turn.json()
     assert_new_turn_contract(second_payload["turn"])
     relation = second_payload["turn"]["input_relation"]
     assert relation["relation"] == "selected_option"
-    assert "上轮选项 A：计算分析工具" in relation["reason"]
+    assert "上轮选项 A：先限定第一阶段范围" in relation["reason"]
     assert second_payload["turn"]["normalized_input"] == {
         "input_type": "quick_option_answer",
         "matched_option": "A",
-        "matched_option_label": "计算分析工具",
-        "semantic": "计算分析工具",
+        "matched_option_label": "先限定第一阶段范围",
+        "semantic": "第一阶段限定为空域计算分析",
     }
 
     third_turn = client.post(
@@ -771,8 +916,8 @@ def test_requirement_analysis_lab_accepts_selected_previous_quick_option() -> No
     assert_new_turn_contract(third_payload["turn"])
     third_relation = third_payload["turn"]["input_relation"]
     assert third_relation["relation"] == "selected_option"
-    assert "上轮选项 A：领域专家直接使用" in third_relation["reason"]
-    assert third_payload["turn"]["normalized_input"]["semantic"] == "领域专家直接使用"
+    assert "上轮选项 A：先列核心术语" in third_relation["reason"]
+    assert third_payload["turn"]["normalized_input"]["semantic"] == "先列核心术语"
 
 
 def test_requirement_analysis_lab_rejects_removed_xg_strong_rule_orchestrator() -> None:

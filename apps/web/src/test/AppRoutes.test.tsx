@@ -628,7 +628,7 @@ function mockRequirementAnalysisLabApis() {
             orchestrator_id: "xg-heuristic-orchestrator",
             provider_id: "mock",
             model: "mock-requirement-analysis-v1",
-            template_id: "81433号",
+            template_id: "xg-template-81433-attitude-analysis",
             knowledge_package_id: "airspace-domain-demo",
             write_policy: "patch_suggestion_only",
           },
@@ -725,6 +725,15 @@ function mockRequirementAnalysisLabApis() {
               description: "基于 81433 的默认实例模板。",
               status: "active",
             },
+            {
+              template_id: "xg-template-81433-attitude-analysis",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "态势分析系统需求规格模板",
+              description: "基于 81433 扩充的 Lab 模板实例。",
+              status: "available",
+            },
           ],
         },
       });
@@ -760,6 +769,22 @@ function mockRequirementAnalysisLabApis() {
           status: "active",
           format: "markdown",
           content: "# 81433 软件级需求规格模板\n\n## 1. 文档定位\n",
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-attitude-analysis",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "态势分析系统需求规格模板",
+          description: "基于 81433 扩充的 Lab 模板实例。",
+          status: "available",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
         },
       });
     }

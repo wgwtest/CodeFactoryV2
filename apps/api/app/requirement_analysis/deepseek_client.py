@@ -131,6 +131,7 @@ class DeepSeekRequirementAnalysisClient:
             "turn_context": {
                 "topic": getattr(session, "topic", ""),
                 "template_id": getattr(session, "template_id", ""),
+                "template_runtime": dict(state.get("template_runtime") or {}),
                 "knowledge_package_id": getattr(session, "knowledge_package_id", ""),
                 "write_policy": getattr(session, "write_policy", ""),
                 "previous_interaction": state.get("next_interaction"),

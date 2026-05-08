@@ -69,6 +69,7 @@ def test_chapter_configuration_context_is_available_to_write_prompt(db_session) 
         session_id="session-1",
         topic="默认运算软件需求规格说明",
         template_id="81433号",
+        template_runtime={"template_id": "81433号", "sections": []},
         knowledge_package_id="airspace-domain-demo",
         orchestrator_id="xg-heuristic-orchestrator",
         provider_id="mock",
@@ -119,6 +120,7 @@ def test_chapter_configuration_context_is_available_to_write_prompt(db_session) 
     assert chapter_context["template_id"] == "81433号"
     assert chapter_context["canonical_clause_map"]["REQ-1.1"]["heading"] == "1.1 编写目的"
     assert chapter_context["template_clauses"][0]["template_clause_id"] == "REQ-1.1"
+    assert runtime_context["template_runtime"]["template_id"] == "81433号"
     assert "chapter_configuration_context_json" in prompt_bundle
     assert "ChapterConfigurationContext" in prompt_bundle["assembled_prompt"]
     assert "REQ-1.1" in prompt_bundle["chapter_configuration_context_json"]
@@ -672,9 +674,9 @@ def test_requirement_analysis_update_services_return_typed_contracts(db_session)
     )
     assert isinstance(spec_update, SpecTreeUpdateResult)
     assert spec_update.closed_node_ids == ["SPEC-REQ-1.1"]
-    assert spec_update.active_spec_node_id == "SPEC-REQ-2.1"
-    assert spec_update.next_spec_node["node_id"] == "SPEC-REQ-2.1"
-    assert spec_update.to_dict()["active_spec_node_id"] == "SPEC-REQ-2.1"
+    assert spec_update.active_spec_node_id == "SPEC-REQ-1.2"
+    assert spec_update.next_spec_node["node_id"] == "SPEC-REQ-1.2"
+    assert spec_update.to_dict()["active_spec_node_id"] == "SPEC-REQ-1.2"
 
     artifact_update = RequirementAnalysisSummaryArtifactService().build_structured_summary_update(
         model_output={

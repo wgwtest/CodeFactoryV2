@@ -530,6 +530,7 @@ class LocalXGMockStageProvider:
                 "template_id": session.template_id,
                 "knowledge_package_id": session.knowledge_package_id,
                 "write_policy": session.write_policy,
+                "template_runtime": dict((session.payload or {}).get("template_runtime") or {}),
                 "user_input": user_input,
                 "normalized_input": normalized,
                 "stage": stage_payload,

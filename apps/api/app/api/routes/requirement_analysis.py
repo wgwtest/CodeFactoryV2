@@ -138,6 +138,17 @@ def delete_requirement_analysis_template(
     return result
 
 
+@router.post("/templates/{template_id}/save-as-base")
+def save_requirement_analysis_template_as_base(
+    template_id: str,
+    service: RequirementAnalysisApplicationService = Depends(get_requirement_analysis_service),
+):
+    result = service.save_template_as_base(template_id)
+    if result is None:
+        raise _not_found("Requirement Analysis template not found")
+    return result
+
+
 @router.post("/sessions")
 def create_requirement_analysis_session(
     payload: RequirementAnalysisSessionCreate,

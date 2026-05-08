@@ -173,7 +173,7 @@ test("renders P2 expert workbench with CLI question mode, form mode, live docume
   expect(screen.getByText("配置接口下发的专家工作台副标题。")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("P1 知识绑定")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "文档模板：81433号" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "文档模板：81433号" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "领域知识：未选择" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "新建文档" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "打开文档" })).toBeEnabled();
