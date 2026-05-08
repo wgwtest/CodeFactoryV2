@@ -30,6 +30,7 @@ class StageRuntimeContext:
     review_after_apply_result: dict
     recent_revision_fragments: list[str]
     review_target_paths: list[str]
+    template_runtime: dict
 
     def to_prompt_context(self) -> dict:
         return {
@@ -52,6 +53,7 @@ class StageRuntimeContext:
             "review_after_apply_result": self.review_after_apply_result,
             "recent_revision_fragments": list(self.recent_revision_fragments),
             "review_target_paths": list(self.review_target_paths),
+            "template_runtime": self.template_runtime,
         }
 
 
@@ -117,7 +119,11 @@ class StageRuntimeContextBuilder:
             working_document
             or context.working_document
             or state.get("working_document")
-            or self.working_document_service.initialize(topic=session.topic, template_id=session.template_id)
+            or self.working_document_service.initialize(
+                topic=session.topic,
+                template_id=session.template_id,
+                template_runtime=dict(state.get("template_runtime") or {}),
+            )
         )
         review_paths = self._review_target_paths(
             target_document_structure=target_document_structure or {},
@@ -149,6 +155,7 @@ class StageRuntimeContextBuilder:
             review_after_apply_result=dict(review_after_apply_result or {}),
             recent_revision_fragments=self._recent_revision_fragments(working_doc),
             review_target_paths=review_paths,
+            template_runtime=dict(context.template_runtime or state.get("template_runtime") or {}),
         )
 
     @staticmethod
@@ -174,6 +181,7 @@ class StageRuntimeContextBuilder:
             "questions": context.questions,
             "facts": context.facts,
             "patches": context.patches,
+            "template_runtime": dict(context.template_runtime or (session.payload or {}).get("template_runtime") or {}),
             "decision_state": dict((session.payload or {}).get("decision_state") or {}),
             "session_phase": str((session.payload or {}).get("session_phase") or "exploration_convergence"),
         }

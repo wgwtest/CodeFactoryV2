@@ -60,6 +60,9 @@ class RequirementAnalysisApplicationService:
     def delete_template(self, template_id: str) -> dict | None:
         return self.template_service.delete_template(template_id)
 
+    def save_template_as_base(self, template_id: str) -> dict | None:
+        return self.template_service.save_template_as_base(template_id)
+
     def create_session(self, payload: RequirementAnalysisSessionCreate) -> dict:
         return self.session_service.create_session(payload)
 

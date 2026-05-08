@@ -32,11 +32,16 @@ class PatchTextResult:
 
 
 class WorkingDocumentService:
-    def initialize(self, *, topic: str, template_id: str) -> dict:
+    def initialize(self, *, topic: str, template_id: str, template_runtime: dict | None = None) -> dict:
+        template_runtime = dict(template_runtime or {})
+        template_name = str(template_runtime.get("name") or "").strip() if template_id.startswith("xg-template-") else ""
         return {
             "document_id": "lab-working-document",
-            "title": f"{template_id}需求规格说明（Lab 临时正文）",
+            "title": f"{template_name or template_id}需求规格说明（Lab 临时正文）",
             "template_id": template_id,
+            "template_name": template_name,
+            "template_code": str(template_runtime.get("template_code") or ""),
+            "base_template_id": str(template_runtime.get("base_template_id") or ""),
             "topic": topic,
             "blocks": [],
             "revision_fragments": [],

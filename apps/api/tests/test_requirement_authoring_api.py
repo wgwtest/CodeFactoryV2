@@ -54,7 +54,7 @@ def test_requirement_authoring_document_lifecycle() -> None:
     assert replied.status_code == 200
     updated = replied.json()
     assert updated["semantic_state"]["fields"]["exception_flow"] == "包含超时提醒和人工确认，不扩展复杂补偿链路。"
-    assert "超时提醒" in updated["document"]["sections"][2]["clauses"][2]["content"]
+    assert "超时提醒" in updated["document"]["sections"][2]["clauses"][6]["content"]
     assert updated["conversation"][-1]["role"] == "assistant"
     assert "可以直接回" in updated["conversation"][-1]["content"]
 
@@ -63,7 +63,7 @@ def test_requirement_authoring_document_lifecycle() -> None:
         json={"fields": {"acceptance_criteria": "关键流程可追溯，超时提醒可验证。"}},
     )
     assert form_updated.status_code == 200
-    assert "关键流程可追溯" in form_updated.json()["document"]["sections"][4]["clauses"][0]["content"]
+    assert "关键流程可追溯" in form_updated.json()["document"]["sections"][5]["clauses"][1]["content"]
 
     renamed = client.patch(
         f"/api/requirement-authoring/documents/{document['document_id']}/form-fields",
@@ -114,7 +114,7 @@ def test_requirement_authoring_document_lifecycle() -> None:
         },
     )
     assert restored_context.status_code == 200
-    assert "关键流程可追溯" in saved.json()["document"]["sections"][4]["clauses"][0]["content"]
+    assert "关键流程可追溯" in saved.json()["document"]["sections"][5]["clauses"][1]["content"]
     assert saved.json()["conversation"][-1]["role"] == "assistant"
 
     checked = client.post(f"/api/requirement-authoring/documents/{document['document_id']}/check")
@@ -131,9 +131,28 @@ def test_requirement_authoring_document_lifecycle() -> None:
                 "application_name": "空域协同规划软件",
                 "domain_scope": "国家空域管理",
                 "target_users": "运行协调员、体系架构师",
+                "application_scope": "空域协同规划任务链",
+                "business_goals": "支撑协同规划和冲突处置闭环。",
+                "main_scenarios": "规划任务创建、冲突识别、协同确认和处置复核。",
+                "usage_modes": "运行协调员主用，体系架构师复核配置。",
+                "in_scope": "规划任务、冲突识别、协同确认和处置记录。",
+                "out_of_scope": "不包含自动生成最优处置方案。",
                 "main_process": "协同规划与冲突处置",
                 "normal_flow": "创建规划、识别冲突、协同确认、形成处置记录。",
-                "non_functional": "关键告警 2 分钟内反馈。",
+                "situational_display": "展示规划任务、冲突状态和处置进展。",
+                "gis_analysis_tools": "支持基础地图定位、空间查询和冲突区域查看。",
+                "deployment_analysis": "支持规划方案影响范围辅助分析。",
+                "result_outputs": "输出处置记录、冲突清单和简化报告。",
+                "collaboration_mode": "支持运行协调员提交、体系架构师复核。",
+                "input_data_sources": "空域基础数据、规划任务、冲突规则和处置记录。",
+                "input_data_mode": "人工录入和文件导入结合。",
+                "performance_requirements": "关键告警 2 分钟内反馈。",
+                "reliability_requirements": "关键状态变更需留痕。",
+                "security_requirements": "按用户身份和任务范围授权。",
+                "permission_model": "运行协调员可编辑，体系架构师可复核，其他用户只读。",
+                "deployment_environment": "内网环境部署。",
+                "accuracy_constraints": "辅助规划级精度，不承诺工程测绘精度。",
+                "acceptance_scenarios": "完成规划任务创建、冲突识别、协同确认和处置记录导出。",
             }
         },
     )

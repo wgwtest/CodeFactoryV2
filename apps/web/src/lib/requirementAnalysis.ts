@@ -58,6 +58,10 @@ export function deleteRequirementAnalysisTemplate(templateId: string) {
   return api.delete<{ deleted: boolean; template_id: string }>(`/requirement-analysis/templates/${templateId}`);
 }
 
+export function saveRequirementAnalysisTemplateAsBase(templateId: string) {
+  return api.post<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}/save-as-base`);
+}
+
 export function createRequirementAnalysisSession(payload: RequirementAnalysisSessionCreateInput) {
   return api.post<RequirementAnalysisSession>("/requirement-analysis/sessions", payload);
 }

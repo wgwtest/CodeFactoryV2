@@ -31,6 +31,13 @@ class RequirementFreezeService:
                     for item in fields.get("target_users", "").replace("、", ",").split(",")
                     if item.strip()
                 ],
+                "scope": fields.get("application_scope", ""),
+                "goals": fields.get("business_goals", ""),
+                "expected_value": fields.get("expected_value", ""),
+                "main_scenarios": fields.get("main_scenarios", ""),
+                "usage_modes": fields.get("usage_modes", ""),
+                "scope_in": fields.get("in_scope", ""),
+                "scope_out": fields.get("out_of_scope", ""),
             },
             "objects": [],
             "processes": [
@@ -46,14 +53,58 @@ class RequirementFreezeService:
                     "source_item_id": None,
                 }
             ],
-            "rules": [{"id": "rule-exception-flow", "name": "异常流程", "description": fields.get("exception_flow", "")}],
+            "capabilities": {
+                "situational_display": fields.get("situational_display", ""),
+                "gis_analysis_tools": fields.get("gis_analysis_tools", ""),
+                "deployment_analysis": fields.get("deployment_analysis", ""),
+                "result_outputs": fields.get("result_outputs", ""),
+                "collaboration_mode": fields.get("collaboration_mode", ""),
+            },
+            "data": {
+                "input_sources": fields.get("input_data_sources", ""),
+                "input_mode": fields.get("input_data_mode", ""),
+                "output_products": fields.get("output_data_products", ""),
+            },
+            "interfaces": {"external": fields.get("external_interfaces", "")},
+            "security": {
+                "requirements": fields.get("security_requirements", ""),
+                "permission_model": fields.get("permission_model", ""),
+            },
+            "deployment": {"environment": fields.get("deployment_environment", "")},
+            "quality": {
+                "accuracy": fields.get("accuracy_constraints", ""),
+                "constraints": fields.get("quality_constraints", ""),
+            },
+            "acceptance": {
+                "scenarios": fields.get("acceptance_scenarios", ""),
+                "criteria": fields.get("acceptance_criteria", ""),
+                "open_items": fields.get("open_decision_items", ""),
+            },
+            "rules": [
+                {
+                    "id": "rule-exception-flow",
+                    "name": "异常流程",
+                    "description": fields.get("exception_flow", ""),
+                },
+                {
+                    "id": "rule-fallback",
+                    "name": "补偿策略",
+                    "description": fields.get("fallback_rules", ""),
+                },
+            ],
             "metrics": [{"id": "metric-acceptance", "name": "验收准则", "description": fields.get("acceptance_criteria", "")}],
             "non_functional_constraints": [
                 {
                     "id": "constraint-performance",
                     "name": "性能与可靠性",
                     "category": "quality",
-                    "description": fields.get("non_functional", ""),
+                    "description": fields.get("performance_requirements", "") or fields.get("non_functional", ""),
+                },
+                {
+                    "id": "constraint-reliability",
+                    "name": "可靠性",
+                    "category": "quality",
+                    "description": fields.get("reliability_requirements", ""),
                 }
             ],
         }

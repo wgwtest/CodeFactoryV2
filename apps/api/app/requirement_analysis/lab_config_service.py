@@ -18,7 +18,7 @@ class RequirementAnalysisLabConfigService:
                 "orchestrator_id": default_orchestrator_id,
                 "provider_id": "deepseek",
                 "model": "provider-default",
-                "template_id": "xg-template-81433-default",
+                "template_id": "xg-template-81433-默认运算软件需求规格说明模板实例-v1-0",
                 "knowledge_package_id": "airspace-domain-demo",
                 "write_policy": "patch_suggestion_only",
             },

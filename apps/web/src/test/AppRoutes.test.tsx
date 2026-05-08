@@ -628,7 +628,7 @@ function mockRequirementAnalysisLabApis() {
             orchestrator_id: "xg-heuristic-orchestrator",
             provider_id: "mock",
             model: "mock-requirement-analysis-v1",
-            template_id: "81433号",
+            template_id: "xg-template-81433-attitude-analysis",
             knowledge_package_id: "airspace-domain-demo",
             write_policy: "patch_suggestion_only",
           },
@@ -710,6 +710,56 @@ function mockRequirementAnalysisLabApis() {
 
     if (url === "/requirement-analysis/providers") {
       return Promise.resolve({ data: { items: [{ provider_id: "mock", name: "Mock Provider", status: "active" }] } });
+    }
+
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "xg-template-81433-attitude-analysis",
+              template_code: "81433",
+              base_template_id: "81433号",
+              base_template_name: "软件级需求规格说明模板",
+              name: "态势分析系统需求规格模板",
+              description: "基于 81433 扩充的 Lab 模板实例。",
+              status: "available",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({
+        data: {
+          template_id: "xg-template-81433-attitude-analysis",
+          template_code: "81433",
+          base_template_id: "81433号",
+          base_template_name: "软件级需求规格说明模板",
+          name: "态势分析系统需求规格模板",
+          description: "基于 81433 扩充的 Lab 模板实例。",
+          status: "available",
+          format: "markdown",
+          content: "# 81433 软件级需求规格模板\n",
+        },
+      });
     }
 
     throw new Error(`unexpected url: ${url}`);
