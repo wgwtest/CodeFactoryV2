@@ -2,36 +2,87 @@
   "workflow_id": "brainstorm-v1-dify-shaped-workflow",
   "name": "Brainstorm v1 Dify-shaped Workflow",
   "description": "真实 Dify Workflow 的结构说明；adapter 只调用 Dify Workflow API，不执行本地 fallback。",
+  "dify_app_id": "e5444ba7-7134-4f0d-9258-fbd5f162e4f1",
+  "published_workflow_id": "3e6c884d-fb5e-4977-a5b2-fb01bd5f3367",
+  "last_refactor_date": "2026-05-08",
+  "output_contract": "xg-observable-orchestrator-contract@1",
   "nodes": [
     {
       "node_id": "normalize_input",
-      "type": "start",
-      "description": "读取用户输入、活动规格节点、模板和会话状态。"
+      "type": "start/code",
+      "description": "读取用户输入、活动规格节点、模板和会话状态；派生上一问、上一组选项、已知事实、未闭合问题摘要和 draft_requested。"
     },
     {
       "node_id": "intent_understanding",
       "type": "llm",
-      "description": "识别本轮输入和需求规格章节之间的关系。"
+      "description": "识别本轮输入与上一轮问题、活动章节、成稿请求之间的关系。"
     },
     {
       "node_id": "decision_state_delta",
       "type": "llm",
-      "description": "把本轮讨论沉淀成 Brainstorm v1 决策状态增量。"
+      "description": "生成候选 Brainstorm v1 决策状态增量；最终合同字段由后续 Code 节点收敛。"
+    },
+    {
+      "node_id": "branch_draft_or_continue",
+      "type": "code-branch",
+      "description": "当用户输入包含“停止追问 / 输出草案 / 先成稿 / 不要继续问”等触发词时进入 draft_compose；否则继续章节投影。"
     },
     {
       "node_id": "document_projection",
-      "type": "template-transform",
-      "description": "将稳定决策投影为章节正文补丁。"
+      "type": "code",
+      "description": "按事实语义映射章节，生成 document_patch，并补齐 target_section 与 anchor_path。"
+    },
+    {
+      "node_id": "draft_compose",
+      "type": "code",
+      "description": "在收束分支中基于已确认事实生成章节化草案，并把未闭合问题保留为待确认事项。"
     },
     {
       "node_id": "next_interaction_planning",
       "type": "llm",
-      "description": "基于决策状态和活动章节规划下一轮交互。"
+      "description": "生成候选下一轮交互；最终 next_question 与 quick_options 由 normalize_output 校验。"
     },
     {
       "node_id": "normalize_output",
-      "type": "end",
-      "description": "归一化为 xg-observable-orchestrator-contract@1 输出。"
+      "type": "code/end",
+      "description": "归一化为 xg-observable-orchestrator-contract@1 输出；保证 quick_options 为对象数组，document_patch 带 target_section/anchor_path，decision_state_delta 固定 7 个字段。"
+    }
+  ],
+  "section_projection_rules": [
+    {
+      "fact_type": "软件名称、领域、编写目的",
+      "target_section": "1 总则 / 编写目的",
+      "anchor_path": "REQ-1.1"
+    },
+    {
+      "fact_type": "软件定位、边界、不做范围",
+      "target_section": "2 项目概述 / 软件定位",
+      "anchor_path": "REQ-2.1"
+    },
+    {
+      "fact_type": "用户角色、下游使用者、职责",
+      "target_section": "3 功能需求 / 用户与角色",
+      "anchor_path": "REQ-3.1"
+    },
+    {
+      "fact_type": "流程、数据接入、分析工具",
+      "target_section": "3 功能需求 / 核心业务流程",
+      "anchor_path": "REQ-3.2"
+    },
+    {
+      "fact_type": "异常、失败、补偿",
+      "target_section": "3 功能需求 / 异常与补偿",
+      "anchor_path": "REQ-3.3"
+    },
+    {
+      "fact_type": "性能、安全、部署、可靠性",
+      "target_section": "4 非功能需求 / 性能与可靠性",
+      "anchor_path": "REQ-4.1"
+    },
+    {
+      "fact_type": "验收链路、验收标准",
+      "target_section": "5 验收准则 / 验收准则",
+      "anchor_path": "REQ-5.1"
     }
   ]
 }

@@ -6,6 +6,8 @@
 
 **日期：** 2026-05-07
 
+**最近整改：** 2026-05-08，已发布到 Dify workflow `3e6c884d-fb5e-4977-a5b2-fb01bd5f3367`。
+
 **关联插件：**
 
 ```text
@@ -36,12 +38,14 @@ brainstorm-v1-dify-workflow
 
 | 顺序 | 节点 ID | Dify 节点类型 | 职责 |
 | --- | --- | --- | --- |
-| 1 | `normalize_input` | Start / Code | 读取输入变量，解析 JSON 上下文 |
-| 2 | `intent_understanding` | LLM | 判断用户输入、当前章节、上一轮问题之间的关系 |
-| 3 | `decision_state_delta` | LLM | 生成 Brainstorm v1 决策状态增量 |
-| 4 | `document_projection` | LLM / Code | 将决策状态投影为章节正文补丁 |
-| 5 | `next_interaction_planning` | LLM | 规划下一轮问题和快捷选项 |
-| 6 | `normalize_output` | Code / End | 组装最终 JSON 输出 |
+| 1 | `normalize_input` | Start / Code | 读取输入变量，解析 JSON 上下文，派生上一问、上一组选项、已知事实、未闭合问题摘要和 `draft_requested` |
+| 2 | `intent_understanding` | LLM | 判断用户输入、当前章节、上一轮问题、成稿请求之间的关系 |
+| 3 | `decision_state_delta` | LLM | 生成 Brainstorm v1 候选决策状态增量 |
+| 4 | `branch_draft_or_continue` | Code branch | 用户要求停止追问或输出草案时进入草案分支，否则继续章节投影 |
+| 5 | `document_projection` | Code | 按事实语义映射章节，生成正文补丁并补齐 `target_section`、`anchor_path` |
+| 6 | `draft_compose` | Code | 在收束分支中生成章节化草案，保留未闭合问题 |
+| 7 | `next_interaction_planning` | LLM | 规划候选下一轮问题和快捷选项 |
+| 8 | `normalize_output` | Code / End | 组装最终 JSON，并校验 quick options、patch、decision state 合同 |
 
 节点 ID 应尽量保持上述命名，便于 adapter trace、测试和文档对齐。
 
@@ -60,6 +64,16 @@ brainstorm-v1-dify-workflow
 | `previous_interaction_json` | 判断本轮是否回答上一轮问题 |
 | `input_relation_json` | 影响意图理解和追问策略 |
 | `write_policy` | 写入策略，必须带入 `document_patch` |
+
+`normalize_input` 必须从这些输入中派生：
+
+| 派生字段 | 用途 |
+| --- | --- |
+| `last_question` | 判断是否回答上一问，避免旧问题机械重复 |
+| `last_options` | 支持用户只输入 `A/B/C/D` 时吸收上一轮选项事实 |
+| `known_facts` | 草案生成和重复问题收束依据 |
+| `open_question_summaries` | 问题关闭、暂挂、草案缺口保留依据 |
+| `draft_requested` | 识别“停止追问 / 输出草案 / 先成稿 / 不要继续问”等收束意图 |
 
 ## 4. 节点输出要求
 
@@ -145,7 +159,9 @@ brainstorm-v1-dify-workflow
       "plan_ref": "BRAINSTORM-DIFY-AP-001",
       "operation": "append_or_update",
       "content": "",
-      "write_policy": "patch_suggestion_only"
+      "write_policy": "patch_suggestion_only",
+      "target_section": "3 功能需求 / 用户与角色",
+      "anchor_path": "REQ-3.1"
     }
   ],
   "filled_document_text": ""
@@ -155,11 +171,41 @@ brainstorm-v1-dify-workflow
 约束：
 
 - 不新增模板不存在的章节编号。
-- 优先使用 `active_spec_node_json` 中的章节作为锚点。
+- 不再把所有事实强行写入当前活动章节；必须优先按事实语义映射目标章节。
+- 每条 `document_patch` 必须包含 `content`，并尽量包含 `target_section` 与 `anchor_path`。
 - `document_patch.content` 必须是可进入需求规格说明的正文片段，不是对话解释。
 - `assistant_message` 不应混入 `document_patch.content`。
 
-### 4.4 next_interaction_planning
+章节映射规则：
+
+| 事实类型 | 目标章节 | 锚点 |
+| --- | --- | --- |
+| 软件名称、领域、编写目的 | `1 总则 / 编写目的` | `REQ-1.1` |
+| 软件定位、边界、不做范围 | `2 项目概述 / 软件定位` | `REQ-2.1` |
+| 用户角色、下游使用者、职责 | `3 功能需求 / 用户与角色` | `REQ-3.1` |
+| 流程、数据接入、分析工具 | `3 功能需求 / 核心业务流程` | `REQ-3.2` |
+| 异常、失败、补偿 | `3 功能需求 / 异常与补偿` | `REQ-3.3` |
+| 性能、安全、部署、可靠性 | `4 非功能需求 / 性能与可靠性` | `REQ-4.1` |
+| 验收链路、验收标准 | `5 验收准则 / 验收准则` | `REQ-5.1` |
+
+### 4.4 branch_draft_or_continue 与 draft_compose
+
+触发条件：
+
+- 用户输入包含“停止追问”
+- 用户输入包含“输出草案”
+- 用户输入包含“先成稿”
+- 用户输入包含“不要继续问”
+- 用户输入包含其他明确收束成稿表达
+
+触发后不应把这句话当作正文事实写入需求规格说明，而应：
+
+1. 基于已确认事实生成章节化草案。
+2. 把未闭合问题压缩为“待确认事项”或 `retained_gaps`。
+3. 下一问转为“接受草案 / 继续细化哪个缺口”。
+4. `raw_workflow_trace.nodes` 中记录 `branch_draft_or_continue` 与 `draft_compose`。
+
+### 4.5 next_interaction_planning
 
 输出对象：
 
@@ -182,11 +228,22 @@ brainstorm-v1-dify-workflow
 - 下一轮问题必须服务于补齐需求规格说明。
 - 如果当前章节仍缺关键信息，应继续当前章节。
 - 如果当前章节已形成可用正文，可以指向规格树下一个 open 节点。
-- 快捷选项应是用户可直接点击的候选事实或选择，不应是操作说明。
+- 快捷选项必须是对象数组，且每项包含 `key`、`label`、`recommended`。
+- 至少一个选项必须为推荐项。
+- 如果用户可以自由补充，应提供“自定义补充”类选项。
 
-### 4.5 normalize_output
+### 4.6 normalize_output
 
 最终输出必须是一个 JSON 对象，并满足 `03-P2-Dify工作流输入输出字段规范.md` 的输出字段要求。
+
+最终节点必须校验：
+
+- `assistant_message` 非空。
+- `next_question` 非空，除非后续进入明确 completed 状态。
+- `quick_options` 为对象数组，每项有 `key` 和 `label`。
+- `document_patch` 每项有 `content`、`target_section`、`anchor_path`。
+- `decision_state_delta` 固定包含 `confirmed_facts`、`confirmed_decisions`、`tentative_assumptions`、`open_questions`、`rejected_directions`、`chapter_projections`、`next_focus`。
+- `raw_workflow_trace.nodes` 包含关键节点和分支信息。
 
 ## 5. 最终输出示例
 
@@ -260,7 +317,7 @@ brainstorm-v1-dify-workflow
 - 能拿到 workflow run id 或 trace。
 - 能把 `document_patch` 应用到 Lab 临时正文。
 - 能把 `decision_state_delta` 和 `decision_state_document` 放入会话状态。
-- 当真实 Dify 未配置时，当前本地 `workflow.json` 可继续作为 fallback 样板。
+- 缺少 `DIFY_API_KEY` 时直接报错，不执行本地 fallback。
 
 ## 8. 验收标准
 
@@ -272,5 +329,8 @@ brainstorm-v1-dify-workflow
 - 使用示例输入能生成 `document_patch`。
 - 输出中包含 `decision_state_delta.confirmed_facts`。
 - 输出中包含 `next_question`。
-- 不安装 Dify 时，本地样板插件测试仍通过。
 - 接入真实 Dify 后，P2 页面可以选择 `brainstorm-v1-dify-workflow` 并完成一轮会话。
+- 多事实输入后，不再机械重复已被绕开的旧问题。
+- 6 轮链路后，正文补丁至少分散到 3 个章节。
+- “停止追问并输出草案”必须进入草案分支，生成章节化草案。
+- `open_questions` 不应无限增长，草案阶段应收束为保留缺口。

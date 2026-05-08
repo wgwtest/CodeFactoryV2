@@ -1033,6 +1033,97 @@ def test_requirement_analysis_lab_runs_local_xg_through_manifest_adapter_loader(
     assert calls == ["xg-local-heuristic-orchestrator"]
 
 
+def test_requirement_analysis_lab_normalizes_string_quick_options_from_dify_plugin(monkeypatch) -> None:
+    from app.requirement_analysis import turn_engine as turn_engine_module
+
+    class FakeAdapter:
+        def __init__(self, plugin_id: str) -> None:
+            self.plugin_id = plugin_id
+
+        def run(self, request) -> OrchestratorRunResult:
+            from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
+
+            base_result = OrchestratorRunResult(
+                contract_version=request.contract_version,
+                plugin={
+                    "plugin_id": self.plugin_id,
+                    "plugin_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                final_output={
+                    "filled_document_text": "# 需求规格说明\n\nstring quick options sentinel",
+                    "document_patch": [],
+                    "changed_sections": [],
+                    "completion_status": "partial",
+                    "confidence": "medium",
+                },
+                interaction_output={
+                    "assistant_message": "请选择一个方向。",
+                    "next_question": "你更倾向哪个方向？",
+                    "quick_options": ["先确认输入", "先确认输出", "先确认边界"],
+                    "suggested_focus": {},
+                },
+                process_output={
+                    "stage_results": [],
+                    "stage_audits": [],
+                    "decision_trace": [],
+                    "provider_logs": [],
+                    "review_after_apply_result": {},
+                    "annotations": [],
+                    "risks": [],
+                },
+                state_output={
+                    "confirmed_facts_delta": [],
+                    "open_questions_delta": ["你更倾向哪个方向？"],
+                    "spec_tree_update": {},
+                    "working_document_update": {},
+                    "turn_path_update": {},
+                },
+                raw_output={},
+            )
+            turn_result = PluginTurnResultMaterializer().materialize(request=request, result=base_result)
+            return base_result.model_copy(
+                update={
+                    "raw_output": {
+                        **dict(base_result.raw_output or {}),
+                        "turn_execution_result": turn_result,
+                    },
+                }
+            )
+
+    def fake_loader(manifest, **_kwargs):
+        return FakeAdapter(manifest.plugin_id)
+
+    monkeypatch.setattr(turn_engine_module, "load_orchestrator_plugin_adapter", fake_loader, raising=False)
+
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空选项归一化验证",
+            "orchestrator_id": "brainstorm-v1-dify-workflow",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "请继续"},
+    )
+
+    assert turn.status_code == 200
+    assert turn.json()["turn"]["next_interaction"]["options"] == [
+        {"key": "A", "label": "先确认输入", "recommended": True},
+        {"key": "B", "label": "先确认输出", "recommended": False},
+        {"key": "C", "label": "先确认边界", "recommended": False},
+    ]
+
+
 def test_requirement_analysis_orchestrator_reload_reflects_plugin_directory_changes(tmp_path: Path, monkeypatch) -> None:
     from app.orchestrators import plugin_registry as plugin_registry_module
 
