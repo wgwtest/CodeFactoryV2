@@ -8,3 +8,7 @@
 - 最后规划下一轮问题。
 
 运行时必须提供 `DIFY_API_KEY`。插件不会在缺少 Dify 配置时降级为本地执行；缺少 API Key 或 Dify 返回结构不合格时会直接报错。`workflow.json` 仅作为 Dify 工作流结构说明和创建参考，不作为本地 fallback 执行器。
+
+插件级 Dify 工作流整改方案见：
+
+- `DIFY_WORKFLOW_REFACTOR_PLAN.md`

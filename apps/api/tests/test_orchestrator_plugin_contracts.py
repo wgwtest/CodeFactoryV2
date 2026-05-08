@@ -528,3 +528,52 @@ def test_plugin_result_normalizer_projects_observable_result_to_turn_payload() -
     assert normalized["process_output"]["decision_trace"] == ["fake Dify workflow 已返回有限观测结果。"]
     assert normalized["raw_plugin_response"]["contract_version"] == "xg-observable-orchestrator-contract@1"
     assert normalized["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["workflow_id"] == "fake-xg-dify-workflow"
+
+
+def test_plugin_result_normalizer_converts_string_quick_options_to_contract_objects() -> None:
+    result = OrchestratorRunResult(
+        contract_version="xg-observable-orchestrator-contract@1",
+        plugin={
+            "plugin_id": "brainstorm-v1-dify-workflow",
+            "plugin_type": "dify_workflow",
+            "observability_level": "limited",
+        },
+        final_output={
+            "filled_document_text": "",
+            "document_patch": [],
+            "changed_sections": [],
+            "completion_status": "partial",
+            "confidence": "medium",
+        },
+        interaction_output={
+            "assistant_message": "请确认关键选项。",
+            "next_question": "请选择一个方向。",
+            "quick_options": ["指挥员查看态势", "参谋分析员研判态势", "值班员维护态势"],
+            "suggested_focus": {},
+        },
+        process_output={
+            "stage_results": [],
+            "stage_audits": [],
+            "decision_trace": [],
+            "provider_logs": [],
+            "review_after_apply_result": {},
+            "annotations": [],
+            "risks": [],
+        },
+        state_output={
+            "confirmed_facts_delta": [],
+            "open_questions_delta": [],
+            "spec_tree_update": {},
+            "working_document_update": {},
+            "turn_path_update": {},
+        },
+        raw_output={},
+    )
+
+    normalized = OrchestratorPluginResultNormalizer().normalize(result)
+
+    assert normalized["model_output"]["quick_options"] == [
+        {"key": "A", "label": "指挥员查看态势", "recommended": True},
+        {"key": "B", "label": "参谋分析员研判态势", "recommended": False},
+        {"key": "C", "label": "值班员维护态势", "recommended": False},
+    ]

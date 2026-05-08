@@ -13,7 +13,7 @@ class OrchestratorPluginResultNormalizer:
         model_output = {
             "assistant_message": str(interaction_output.get("assistant_message") or ""),
             "next_question": str(interaction_output.get("next_question") or ""),
-            "quick_options": list(interaction_output.get("quick_options") or []),
+            "quick_options": self._normalize_quick_options(interaction_output.get("quick_options")),
             "next_suggestion": dict(interaction_output.get("suggested_focus") or {}),
             "document_patch": list(final_output.get("document_patch") or []),
             "filled_document_text": str(final_output.get("filled_document_text") or ""),
@@ -46,3 +46,24 @@ class OrchestratorPluginResultNormalizer:
                 "raw_output": raw_output,
             },
         }
+
+    @staticmethod
+    def _normalize_quick_options(value: object) -> list[dict]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[dict] = []
+        fallback_keys = ("A", "B", "C", "D", "E")
+        for index, item in enumerate(value[:5]):
+            if isinstance(item, dict):
+                key = str(item.get("key") or "").strip().upper()[:4]
+                label = str(item.get("label") or "").strip()
+                if key and label:
+                    normalized.append({"key": key, "label": label, "recommended": bool(item.get("recommended"))})
+                continue
+            if isinstance(item, str):
+                label = item.strip()
+                if not label:
+                    continue
+                key = fallback_keys[index] if index < len(fallback_keys) else f"OPT{index + 1}"
+                normalized.append({"key": key, "label": label, "recommended": index == 0})
+        return normalized
