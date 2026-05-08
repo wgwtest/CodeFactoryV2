@@ -1,3 +1,9 @@
+import json
+import sys
+
+import httpx
+import pytest
+
 from app.orchestrators.plugin_contracts import (
     OrchestratorPluginManifest,
     OrchestratorRunRequest,
@@ -258,72 +264,156 @@ def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
     assert result.plugin["observability_level"] == "limited"
 
 
-def test_brainstorm_v1_dify_workflow_adapter_runs_local_workflow_shape() -> None:
-    registry = OrchestratorPluginRegistry()
-    manifest = registry.require("brainstorm-v1-dify-workflow")
-
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    result = adapter.run(
-        OrchestratorRunRequest(
-            contract_version="xg-observable-orchestrator-contract@1",
-            session={
-                "session_id": "ra-001",
-                "topic": "空域运算软件需求规格探索",
-                "template_id": "81433号",
-                "knowledge_package_id": "airspace-domain-demo",
-                "orchestrator_id": "brainstorm-v1-dify-workflow",
-                "provider_id": "mock",
-                "model": "mock-requirement-analysis-v1",
-                "write_policy": "patch_suggestion_only",
+def _brainstorm_dify_request() -> OrchestratorRunRequest:
+    return OrchestratorRunRequest(
+        contract_version="xg-observable-orchestrator-contract@1",
+        session={
+            "session_id": "ra-001",
+            "topic": "空域运算软件需求规格探索",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "orchestrator_id": "brainstorm-v1-dify-workflow",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "write_policy": "patch_suggestion_only",
+        },
+        turn={
+            "turn_id": "turn-0001",
+            "turn_index": 1,
+            "user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求",
+            "normalized_input": {
+                "input_type": "free_text",
+                "semantic": "这个系统叫空域运算软件，主要解决空域计算分析需求",
             },
-            turn={
-                "turn_id": "turn-0001",
-                "turn_index": 1,
-                "user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-                "normalized_input": {
-                    "input_type": "free_text",
-                    "semantic": "这个系统叫空域运算软件，主要解决空域计算分析需求",
-                },
-                "previous_interaction": {"type": "none"},
-                "input_relation": {"relation": "none"},
+            "previous_interaction": {"type": "none"},
+            "input_relation": {"relation": "none"},
+        },
+        template={"template_id": "81433号", "format": "structured", "content": "", "parsed_structure": {}},
+        document_context={
+            "state": {},
+            "working_document": {"document_id": "lab-working-document", "blocks": []},
+            "active_spec_node": {
+                "node_id": "SPEC-REQ-1.1",
+                "title": "REQ-1.1 编写目的",
+                "target_section": "1 总则 / 编写目的",
+                "question": "系统要做什么？",
             },
-            template={"template_id": "81433号", "format": "structured", "content": "", "parsed_structure": {}},
-            document_context={
-                "state": {},
-                "working_document": {"document_id": "lab-working-document", "blocks": []},
-                "active_spec_node": {
-                    "node_id": "SPEC-REQ-1.1",
-                    "title": "REQ-1.1 编写目的",
-                    "target_section": "1 总则 / 编写目的",
-                    "question": "系统要做什么？",
-                },
-                "spec_tree": [],
-                "confirmed_facts": [],
-                "open_questions": [],
-                "patches": [],
-                "history_summary": "",
-            },
-            execution_options={"expected_output": "both", "observability_required": "limited", "streaming_enabled": False},
-        )
+            "spec_tree": [],
+            "confirmed_facts": [],
+            "open_questions": [],
+            "patches": [],
+            "history_summary": "",
+        },
+        execution_options={"expected_output": "both", "observability_required": "limited", "streaming_enabled": False},
     )
 
+
+def test_brainstorm_v1_dify_workflow_adapter_requires_api_key(monkeypatch) -> None:
+    monkeypatch.delenv("DIFY_API_KEY", raising=False)
+    registry = OrchestratorPluginRegistry()
+    manifest = registry.require("brainstorm-v1-dify-workflow")
+    adapter = load_orchestrator_plugin_adapter(manifest)
+
+    with pytest.raises(ValueError, match="DIFY_API_KEY"):
+        adapter.run(_brainstorm_dify_request())
+
+
+def test_brainstorm_v1_dify_workflow_adapter_calls_remote_dify_when_configured(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        captured["trust_env"] = trust_env
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-remote-001",
+                "data": {
+                    "id": "run-remote-001",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "远端 Dify 已完成。",
+                                "next_question": "请继续确认软件背景。",
+                                "quick_options": [],
+                                "filled_document_text": "围绕当前章节，空域运算软件用于空域计算分析。",
+                                "document_patch": [
+                                    {
+                                        "plan_ref": "BRAINSTORM-DIFY-AP-001",
+                                        "operation": "append_or_update",
+                                        "content": "围绕当前章节，空域运算软件用于空域计算分析。",
+                                        "write_policy": "patch_suggestion_only",
+                                    }
+                                ],
+                                "target_anchor_plan": [],
+                                "changed_sections": ["1 总则 / 编写目的"],
+                                "completion_status": "partial",
+                                "confidence": "medium",
+                                "confirmed_facts_delta": ["空域运算软件用于空域计算分析"],
+                                "open_questions_delta": ["请继续确认软件背景。"],
+                                "decision_state_delta": {
+                                    "confirmed_facts": [
+                                        {
+                                            "item_id": "DS-F-001",
+                                            "content": "空域运算软件用于空域计算分析",
+                                            "source_turn_id": "turn-0001",
+                                            "target_section": "1 总则 / 编写目的",
+                                            "status": "active",
+                                        }
+                                    ],
+                                    "confirmed_decisions": [],
+                                    "tentative_assumptions": [],
+                                    "open_questions": [],
+                                    "rejected_directions": [],
+                                    "chapter_projections": [],
+                                    "next_focus": "请继续确认软件背景。",
+                                },
+                                "decision_trace": [{"step": "remote", "decision": "called dify"}],
+                                "annotations": ["remote dify"],
+                                "risks": [],
+                                "raw_workflow_trace": {"workflow_id": "remote-workflow", "run_id": "run-remote-001"},
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    json_module = json
+    monkeypatch.setenv("DIFY_BASE_URL", "http://dify.local")
+    monkeypatch.setenv("DIFY_API_KEY", "test-dify-key")
+    monkeypatch.setenv("DIFY_RESPONSE_MODE", "blocking")
+    monkeypatch.setenv("DIFY_WORKFLOW_ID", "workflow-config-id")
+    registry = OrchestratorPluginRegistry()
+    adapter = load_orchestrator_plugin_adapter(registry.require("brainstorm-v1-dify-workflow"))
+    brainstorm_adapter_module = sys.modules["_codefactory_plugin_brainstorm_v1_dify_workflow.adapter"]
+    monkeypatch.setattr(brainstorm_adapter_module.httpx, "post", fake_post)
+
+    result = adapter.run(_brainstorm_dify_request())
+
+    assert captured["url"] == "http://dify.local/v1/workflows/run"
+    assert captured["headers"]["Authorization"] == "Bearer test-dify-key"
+    assert captured["trust_env"] is False
+    assert captured["json"]["response_mode"] == "blocking"
+    assert captured["json"]["user"] == "codefactoryv2"
+    assert captured["json"]["inputs"]["user_input"] == "这个系统叫空域运算软件，主要解决空域计算分析需求"
+    assert captured["json"]["inputs"]["active_spec_node_json"]
     assert result.plugin["plugin_id"] == "brainstorm-v1-dify-workflow"
     assert result.plugin["plugin_type"] == "dify_workflow"
     assert result.plugin["observability_level"] == "limited"
-    assert "空域运算软件" in result.final_output["filled_document_text"]
+    assert result.final_output["filled_document_text"] == "围绕当前章节，空域运算软件用于空域计算分析。"
+    assert result.interaction_output["assistant_message"] == "远端 Dify 已完成。"
     assert result.state_output["decision_state_delta"]["confirmed_facts"]
     assert result.state_output["decision_state_document"]["title"] == "需求分析结构化状态"
-    assert result.process_output["decision_trace"]
     assert result.process_output["stage_audits"] == []
-    assert result.raw_output["raw_workflow_trace"]["workflow_id"] == "brainstorm-v1-dify-shaped-workflow"
-    assert [node["node_id"] for node in result.raw_output["raw_workflow_trace"]["nodes"]] == [
-        "normalize_input",
-        "intent_understanding",
-        "decision_state_delta",
-        "document_projection",
-        "next_interaction_planning",
-        "normalize_output",
-    ]
+    assert result.raw_output["raw_workflow_trace"]["remote"] is True
+    assert result.raw_output["raw_workflow_trace"]["workflow_run_id"] == "run-remote-001"
     assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
 
 

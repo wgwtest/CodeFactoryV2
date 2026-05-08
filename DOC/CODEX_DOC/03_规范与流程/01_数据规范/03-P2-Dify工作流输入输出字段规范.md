@@ -18,19 +18,14 @@
 
 ## 2. 调用模式
 
-当前开发分两阶段：
+当前运行模式如下：
 
-1. **本地 Dify-shaped workflow**
-   - 插件目录内保留 `workflow.json`。
-   - adapter 本地执行 workflow 形态，用于验证字段合同和页面挂载。
-   - 不要求安装 Dify。
+- adapter 将输入映射为 Dify `inputs`。
+- Dify 返回结构化 JSON。
+- adapter 将 Dify 输出归一化为 `OrchestratorRunResult`。
+- 插件目录内保留 `workflow.json` 作为工作流结构说明和搭建参考，不作为本地 fallback 执行器。
 
-2. **真实 Dify Workflow API**
-   - adapter 将输入映射为 Dify `inputs`。
-   - Dify 返回结构化 JSON。
-   - adapter 将 Dify 输出归一化为 `OrchestratorRunResult`。
-
-Dify 官方 Workflow 运行接口使用 `POST /workflows/run`，请求体包含 `inputs`、`response_mode`、`user` 等字段，鉴权使用 `Authorization: Bearer {API_KEY}`。Workflow 需要发布后才能通过 API 调用。官方文档见：<https://docs.dify.ai/api-reference/workflows/run-workflow>。
+Dify 官方 Workflow 运行接口使用 `POST /v1/workflows/run`，请求体包含 `inputs`、`response_mode`、`user` 等字段，鉴权使用 `Authorization: Bearer {API_KEY}`。Workflow 需要发布后才能通过 API 调用。官方文档见：<https://docs.dify.ai/api-reference/workflows/run-workflow>。
 
 ## 3. Dify 输入变量
 
@@ -150,13 +145,13 @@ adapter 必须执行以下映射：
 
 如果 Dify 输出缺少可选字段，adapter 可以填充空数组或空对象；如果缺少必填字段，adapter 应判定响应不合格。
 
-## 8. 错误和降级
+## 8. 错误策略
 
 真实 Dify 调用失败时，推荐策略：
 
 - 网络、鉴权、超时失败：返回明确 API 错误，不伪造成功结果。
 - Dify 返回非 JSON 或字段缺失：记录原始响应，返回结构校验错误。
-- 如果插件 manifest 声明支持本地 fallback，adapter 可降级到本地 `workflow.json`，但必须在 `annotations` 和 `raw_workflow_trace` 中标注。
+- `brainstorm-v1-dify-workflow` 不提供本地 fallback。缺少 `DIFY_API_KEY` 时必须直接报错。
 
 ## 9. 配置项
 
@@ -167,6 +162,7 @@ adapter 必须执行以下映射：
 | `DIFY_BASE_URL` | Dify 服务地址 |
 | `DIFY_API_KEY` | Dify API Key |
 | `DIFY_WORKFLOW_ID` | 工作流或应用标识 |
+| `DIFY_PUBLISHED_WORKFLOW_ID` | 已发布 workflow 标识，可选，优先用于 trace |
 | `DIFY_RESPONSE_MODE` | `blocking` 或 `streaming` |
 | `DIFY_TIMEOUT_SECONDS` | 请求超时 |
 
@@ -178,4 +174,4 @@ Dify workflow 型组织器完成联调至少满足：
 - 使用该插件创建会话成功。
 - 输入一段用户文本后，返回 `assistant_message`、`document_patch`、`next_question`。
 - Dify 原始 trace 或 run id 能进入 `raw_output.raw_workflow_trace`。
-- 缺少 Dify 配置时，系统行为符合插件声明的 fallback 或错误策略。
+- 缺少 Dify 配置时，系统返回明确配置错误，不生成伪结果。
