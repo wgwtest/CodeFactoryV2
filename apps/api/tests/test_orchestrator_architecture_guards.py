@@ -94,3 +94,16 @@ def test_policy_interpreted_runtime_uses_generic_stage_reduction() -> None:
 
     for fragment in forbidden_fragments:
         assert fragment not in source, f"PolicyInterpretedRuntime still calls business-named reducer: {fragment}"
+
+
+def test_plugin_turn_result_materializer_does_not_branch_by_plugin_identity() -> None:
+    source = Path("apps/api/app/orchestrators/adapters/plugin_turn_result_materializer.py").read_text(encoding="utf-8")
+    forbidden_fragments = (
+        "brainstorm-v1-dify-workflow",
+        "brainstorm-v1",
+        "xg-dify-workflow-orchestrator",
+        "xg-local-heuristic-orchestrator",
+    )
+
+    for fragment in forbidden_fragments:
+        assert fragment not in source, f"PluginTurnResultMaterializer must consume contract fields, not plugin identity: {fragment}"

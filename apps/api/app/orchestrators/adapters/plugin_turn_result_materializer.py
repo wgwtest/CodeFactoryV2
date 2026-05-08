@@ -42,28 +42,17 @@ class PluginTurnResultMaterializer:
             )
         )
 
-        anchor_path = str(active_spec_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
-        display_heading = str(active_spec_node.get("target_section") or "需求规格说明")
-        document_patch = [
-            {
-                "plan_ref": "AP-PLUGIN-001",
-                "operation": "append_or_update",
-                "content": str(plugin_model_output.get("filled_document_text") or ""),
-                "write_policy": str(session.get("write_policy") or "patch_suggestion_only"),
-            }
-        ]
-        target_anchor_plan = [
-            {
-                "plan_id": "AP-PLUGIN-001",
-                "template_clause_id": anchor_path,
-                "display_heading": display_heading,
-                "canonical_clause_heading": display_heading,
-                "anchor_path": anchor_path,
-            }
-        ]
+        fallback_anchor_path = str(active_spec_node.get("node_id") or "SPEC-REQ-1.1").removeprefix("SPEC-")
+        fallback_display_heading = str(active_spec_node.get("target_section") or "需求规格说明")
+        document_patch, target_anchor_plan = self._materialize_document_patch(
+            plugin_model_output=plugin_model_output,
+            session=session,
+            fallback_anchor_path=fallback_anchor_path,
+            fallback_display_heading=fallback_display_heading,
+        )
         projection_spec_node = {
             **active_spec_node,
-            "target_section": display_heading,
+            "target_section": fallback_display_heading,
         }
         working_document_update_result = self.working_document_service.apply_patches(
             working_document=working_document,
@@ -152,6 +141,94 @@ class PluginTurnResultMaterializer:
             },
             provider_logs=list(plugin_process_output.get("provider_logs") or []),
         )
+
+    @staticmethod
+    def _materialize_document_patch(
+        *,
+        plugin_model_output: dict,
+        session: dict,
+        fallback_anchor_path: str,
+        fallback_display_heading: str,
+    ) -> tuple[list[dict], list[dict]]:
+        write_policy = str(session.get("write_policy") or "patch_suggestion_only")
+        document_patch: list[dict] = []
+        target_anchor_plan: list[dict] = []
+        seen_plan_ids: set[str] = set()
+
+        for item in list(plugin_model_output.get("document_patch") or []):
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            plan_ref = str(item.get("plan_ref") or "").strip()
+            if not plan_ref or plan_ref in seen_plan_ids:
+                plan_ref = PluginTurnResultMaterializer._next_plan_ref(seen_plan_ids)
+            seen_plan_ids.add(plan_ref)
+            anchor_path = str(item.get("anchor_path") or item.get("target_section") or fallback_anchor_path).strip()
+            display_heading = str(
+                item.get("target_section")
+                or item.get("display_heading")
+                or item.get("canonical_clause_heading")
+                or fallback_display_heading
+                or anchor_path
+            ).strip()
+            template_clause_id = str(item.get("template_clause_id") or anchor_path or fallback_anchor_path).strip()
+            normalized_patch = {
+                **item,
+                "plan_ref": plan_ref,
+                "operation": str(item.get("operation") or "append_or_update"),
+                "content": content,
+                "write_policy": str(item.get("write_policy") or write_policy),
+                "anchor_path": anchor_path,
+            }
+            if display_heading:
+                normalized_patch["target_section"] = display_heading
+            document_patch.append(normalized_patch)
+            target_anchor_plan.append(
+                {
+                    "plan_id": plan_ref,
+                    "decision_type": str(item.get("decision_type") or "append_existing_clause"),
+                    "template_clause_id": template_clause_id,
+                    "display_heading": display_heading or anchor_path,
+                    "canonical_clause_heading": str(item.get("canonical_clause_heading") or display_heading or anchor_path),
+                    "anchor_path": anchor_path,
+                    "reason": str(item.get("reason") or "由组织器插件 document_patch 自动物化。"),
+                    "confidence": str(item.get("confidence") or plugin_model_output.get("confidence") or "medium"),
+                }
+            )
+
+        if document_patch:
+            return document_patch, target_anchor_plan
+
+        content = str(plugin_model_output.get("filled_document_text") or "").strip()
+        if not content:
+            return [], []
+        return [
+            {
+                "plan_ref": "AP-PLUGIN-001",
+                "operation": "append_or_update",
+                "content": content,
+                "write_policy": write_policy,
+            }
+        ], [
+            {
+                "plan_id": "AP-PLUGIN-001",
+                "template_clause_id": fallback_anchor_path,
+                "display_heading": fallback_display_heading,
+                "canonical_clause_heading": fallback_display_heading,
+                "anchor_path": fallback_anchor_path,
+            }
+        ]
+
+    @staticmethod
+    def _next_plan_ref(seen_plan_ids: set[str]) -> str:
+        index = len(seen_plan_ids) + 1
+        while True:
+            plan_ref = f"AP-PLUGIN-{index:03d}"
+            if plan_ref not in seen_plan_ids:
+                return plan_ref
+            index += 1
 
     @staticmethod
     def _service_steps() -> list[dict]:

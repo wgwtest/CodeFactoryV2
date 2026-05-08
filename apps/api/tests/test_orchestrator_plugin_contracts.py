@@ -4,6 +4,7 @@ import sys
 import httpx
 import pytest
 
+from app.orchestrators.adapters.plugin_turn_result_materializer import PluginTurnResultMaterializer
 from app.orchestrators.plugin_contracts import (
     OrchestratorPluginManifest,
     OrchestratorRunRequest,
@@ -415,6 +416,138 @@ def test_brainstorm_v1_dify_workflow_adapter_calls_remote_dify_when_configured(m
     assert result.raw_output["raw_workflow_trace"]["remote"] is True
     assert result.raw_output["raw_workflow_trace"]["workflow_run_id"] == "run-remote-001"
     assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
+
+
+def test_plugin_turn_result_materializer_preserves_structured_document_patches() -> None:
+    materializer = PluginTurnResultMaterializer()
+    request = _brainstorm_dify_request()
+    result = OrchestratorRunResult(
+        contract_version=request.contract_version,
+        plugin={
+            "plugin_id": "brainstorm-v1-dify-workflow",
+            "plugin_type": "dify_workflow",
+            "observability_level": "limited",
+        },
+        final_output={
+            "filled_document_text": (
+                "1 总则 / 编写目的\n空域运算软件用于空域计算分析。\n\n"
+                "3 功能需求 / 核心业务流程\n导入数据后执行空域评估。"
+            ),
+            "document_patch": [
+                {
+                    "operation": "append_or_update",
+                    "anchor_path": "REQ-1.1",
+                    "target_section": "1 总则 / 编写目的",
+                    "content": "空域运算软件用于空域计算分析。",
+                },
+                {
+                    "operation": "append_or_update",
+                    "anchor_path": "REQ-3.2",
+                    "target_section": "3 功能需求 / 核心业务流程",
+                    "content": "导入数据后执行空域评估。",
+                },
+            ],
+            "changed_sections": ["1 总则 / 编写目的", "3 功能需求 / 核心业务流程"],
+            "completion_status": "partial",
+            "confidence": "medium",
+        },
+        interaction_output={
+            "assistant_message": "已生成章节化补丁。",
+            "next_question": "是否继续补充异常处理？",
+            "quick_options": [],
+            "suggested_focus": {},
+        },
+        process_output={
+            "stage_results": [],
+            "stage_audits": [],
+            "decision_trace": [],
+            "provider_logs": [],
+            "review_after_apply_result": {},
+            "annotations": [],
+            "risks": [],
+        },
+        state_output={
+            "confirmed_facts_delta": [],
+            "open_questions_delta": [],
+            "spec_tree_update": {},
+            "working_document_update": {},
+            "turn_path_update": {},
+        },
+        raw_output={
+            "raw_plugin_response": {},
+            "raw_model_response": {},
+            "raw_workflow_trace": {},
+        },
+    )
+
+    turn_result = materializer.materialize(request=request, result=result)
+
+    assert len(turn_result.turn["spec_execution"]["document_patch"]) == 2
+    assert [patch["anchor_path"] for patch in turn_result.turn["spec_execution"]["document_patch"]] == [
+        "REQ-1.1",
+        "REQ-3.2",
+    ]
+    assert [plan["anchor_path"] for plan in turn_result.turn["spec_execution"]["target_anchor_plan"]] == [
+        "REQ-1.1",
+        "REQ-3.2",
+    ]
+    assert [block["anchor_path"] for block in turn_result.state_patch["working_document"]["blocks"]] == [
+        "REQ-1.1",
+        "REQ-3.2",
+    ]
+
+
+def test_plugin_turn_result_materializer_falls_back_to_filled_document_text_when_document_patch_missing() -> None:
+    materializer = PluginTurnResultMaterializer()
+    request = _brainstorm_dify_request()
+    result = OrchestratorRunResult(
+        contract_version=request.contract_version,
+        plugin={
+            "plugin_id": "xg-dify-workflow-orchestrator",
+            "plugin_type": "dify_workflow",
+            "observability_level": "limited",
+        },
+        final_output={
+            "filled_document_text": "围绕当前章节，空域运算软件用于空域计算分析。",
+            "document_patch": [],
+            "changed_sections": ["1 总则 / 编写目的"],
+            "completion_status": "partial",
+            "confidence": "medium",
+        },
+        interaction_output={
+            "assistant_message": "已生成整篇正文。",
+            "next_question": "请继续确认软件背景。",
+            "quick_options": [],
+            "suggested_focus": {},
+        },
+        process_output={
+            "stage_results": [],
+            "stage_audits": [],
+            "decision_trace": [],
+            "provider_logs": [],
+            "review_after_apply_result": {},
+            "annotations": [],
+            "risks": [],
+        },
+        state_output={
+            "confirmed_facts_delta": [],
+            "open_questions_delta": [],
+            "spec_tree_update": {},
+            "working_document_update": {},
+            "turn_path_update": {},
+        },
+        raw_output={
+            "raw_plugin_response": {},
+            "raw_model_response": {},
+            "raw_workflow_trace": {},
+        },
+    )
+
+    turn_result = materializer.materialize(request=request, result=result)
+
+    assert len(turn_result.turn["spec_execution"]["document_patch"]) == 1
+    assert turn_result.turn["spec_execution"]["document_patch"][0]["plan_ref"] == "AP-PLUGIN-001"
+    assert turn_result.state_patch["working_document"]["blocks"][0]["anchor_path"] == "REQ-1.1"
 
 
 def test_removed_strong_rule_plugin_is_not_loadable(db_session) -> None:

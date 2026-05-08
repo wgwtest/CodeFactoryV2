@@ -521,3 +521,23 @@ uv run pytest apps/api/tests/test_orchestrator_plugin_contracts.py apps/api/test
    - 新增一次改造后机测记录。
 4. 如改造影响 P2 通用合同
    - 再同步 `DOC/CODEX_DOC/03_规范与流程/01_数据规范/03-P2-Dify工作流输入输出字段规范.md`。
+
+## 11. 2026-05-08 实施记录
+
+已在本机 Dify 工作台完成本方案的工作流侧整改并发布：
+
+- Dify App ID：`e5444ba7-7134-4f0d-9258-fbd5f162e4f1`
+- Published Workflow ID：`3e6c884d-fb5e-4977-a5b2-fb01bd5f3367`
+- Provider：`deepseek-chat`
+- 调用模式：`blocking`
+
+本轮采用“LLM 理解 + Code 节点合同收敛”的实现方式：
+
+1. `normalize_input` 增加上一问、上一组选项、已知事实、未闭合问题摘要和 `draft_requested` 派生。
+2. `document_projection` 改为确定性章节映射，所有 patch 补齐 `target_section` 与 `anchor_path`。
+3. `branch_draft_or_continue` 以 Code 节点等价分支落地；收束触发后进入 `draft_compose` 行为。
+4. `normalize_output` 对 `quick_options`、`document_patch`、`decision_state_delta` 做最终结构校验。
+
+复测证据已归档：
+
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-08-P2-Brainstorm-v1-Dify工作流整改复测记录.md`
