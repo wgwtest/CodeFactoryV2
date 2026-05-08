@@ -136,6 +136,11 @@ test("renders P6 portal blueprint outside MainShell on /portal route and loads f
   expect(screen.getByText(/当前知识库：知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "图表视图" })).toHaveAttribute("href", "/portal-data?scenario=baseline");
   expect(screen.getByRole("link", { name: "模拟发生器" })).toHaveAttribute("href", "/xx-p6-sim");
+  expect(screen.getByTestId("p6-portal-node-p1")).toHaveAttribute("data-route", "/archives");
+  expect(screen.getByTestId("p6-portal-node-p2")).toHaveAttribute("data-route", "/p2-requirement-analysis-lab");
+  expect(screen.getByTestId("p6-portal-node-p3")).toHaveAttribute("data-route", "/p3-design-lab");
+  expect(screen.getByTestId("p6-portal-node-p4")).toHaveAttribute("data-route", "/xx-p4");
+  expect(screen.getByTestId("p6-portal-node-p5")).toHaveAttribute("data-route", "/build");
 
   expect(getMock).toHaveBeenCalledWith("/p6/mock-scenarios");
   expect(getMock).toHaveBeenCalledWith("/platform-config/display-baseline");

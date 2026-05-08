@@ -11,22 +11,22 @@ STAGE_METADATA = {
     "P1": {
         "node_id": "p1",
         "stage_name": "业务知识库",
-        "route": "/graph",
-        "entry_label": "图谱入口",
+        "route": "/archives",
+        "entry_label": "知识库入口",
         "description": "负责沉淀领域知识并向后续阶段提供稳定知识供给。",
     },
     "P2": {
         "node_id": "p2",
         "stage_name": "需求分析系统",
-        "route": "/requirements",
-        "entry_label": "需求入口",
+        "route": "/p2-requirement-analysis-lab",
+        "entry_label": "需求 Lab",
         "description": "把业务语言建模为结构化需求规格与需求对象。",
     },
     "P3": {
         "node_id": "p3",
         "stage_name": "软件设计系统",
-        "route": "/modeling",
-        "entry_label": "软设入口",
+        "route": "/p3-design-lab",
+        "entry_label": "设计 Lab",
         "description": "承接需求规格并输出软件设计说明与设计结构表达。",
     },
     "P4": {

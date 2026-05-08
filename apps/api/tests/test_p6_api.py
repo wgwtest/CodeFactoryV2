@@ -394,7 +394,7 @@ def test_p6_portal_projection_returns_stage_and_participant_nodes() -> None:
         for port in p5_node["stage_card"]["flow_port_items"]
     )
     assert p3_node["stage_card"]["system_overall_metric_items"][1]["label"] == "设计基线"
-    assert p3_node["route"] == "/modeling"
+    assert p3_node["route"] == "/p3-design-lab"
 
 
 def test_p6_observation_projection_tracks_focus_stage_and_alerts() -> None:
@@ -449,6 +449,10 @@ def test_platform_config_routes_and_legend_are_available_for_portal_consumers() 
 
     assert routes_payload["portal_route"]["path"] == "/portal"
     assert routes_payload["observation_route"]["path"] == "/observation"
+    assert routes_payload["stage_routes"]["P1"]["path"] == "/archives"
+    assert routes_payload["stage_routes"]["P2"]["path"] == "/p2-requirement-analysis-lab"
+    assert routes_payload["stage_routes"]["P3"]["path"] == "/p3-design-lab"
+    assert routes_payload["stage_routes"]["P4"]["path"] == "/xx-p4"
     assert routes_payload["stage_routes"]["P5"]["path"] == "/build"
     assert legend_payload["summary_copy"] == "门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。"
     assert legend_payload["signal_items"][2]["label"] == "模拟源驱动"
