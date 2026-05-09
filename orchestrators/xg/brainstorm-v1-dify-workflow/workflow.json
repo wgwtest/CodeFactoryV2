@@ -3,8 +3,9 @@
   "name": "Brainstorm v1 Dify-shaped Workflow",
   "description": "真实 Dify Workflow 的结构说明；adapter 只调用 Dify Workflow API，不执行本地 fallback。",
   "dify_app_id": "e5444ba7-7134-4f0d-9258-fbd5f162e4f1",
-  "published_workflow_id": "3e6c884d-fb5e-4977-a5b2-fb01bd5f3367",
+  "published_workflow_id": "e3d3b39f-07e8-495d-bd90-356bba898ef7",
   "last_refactor_date": "2026-05-08",
+  "last_20turn_remediation_date": "2026-05-08",
   "output_contract": "xg-observable-orchestrator-contract@1",
   "nodes": [
     {
@@ -23,9 +24,14 @@
       "description": "生成候选 Brainstorm v1 决策状态增量；最终合同字段由后续 Code 节点收敛。"
     },
     {
-      "node_id": "branch_draft_or_continue",
+      "node_id": "branch_intent_route",
       "type": "code-branch",
-      "description": "当用户输入包含“停止追问 / 输出草案 / 先成稿 / 不要继续问”等触发词时进入 draft_compose；否则继续章节投影。"
+      "description": "按固定意图路由 review_status、draft_compose、correction 和普通事实补充分支；draft 请求优先级高于 review 词命中。"
+    },
+    {
+      "node_id": "review_status",
+      "type": "code",
+      "description": "处理回看已闭合/未闭合事项的请求；默认不写正文 patch，返回状态摘要、下一步建议和 trace。"
     },
     {
       "node_id": "document_projection",
@@ -35,12 +41,12 @@
     {
       "node_id": "draft_compose",
       "type": "code",
-      "description": "在收束分支中基于已确认事实生成章节化草案，并把未闭合问题保留为待确认事项。"
+      "description": "在收束分支中基于已确认事实生成章节化草案；总则可由已知事实综合生成，并过滤已回答的模板初始问题。"
     },
     {
       "node_id": "next_interaction_planning",
-      "type": "llm",
-      "description": "生成候选下一轮交互；最终 next_question 与 quick_options 由 normalize_output 校验。"
+      "type": "llm/code",
+      "description": "生成候选下一轮交互；事实覆盖较充分时转入回看/成稿入口，避免长轮次反复追问同一语义焦点。"
     },
     {
       "node_id": "normalize_output",
@@ -70,9 +76,19 @@
       "anchor_path": "REQ-3.2"
     },
     {
+      "fact_type": "主要界面、页面列表、交互入口",
+      "target_section": "3 功能需求 / 主要界面列表",
+      "anchor_path": "REQ-3.UI"
+    },
+    {
+      "fact_type": "协同模式、任务接力、批注、结果共享",
+      "target_section": "3 功能需求 / 协同与共享",
+      "anchor_path": "REQ-3.COLLAB"
+    },
+    {
       "fact_type": "异常、失败、补偿",
       "target_section": "3 功能需求 / 异常与补偿",
-      "anchor_path": "REQ-3.3"
+      "anchor_path": "REQ-3.ERR"
     },
     {
       "fact_type": "性能、安全、部署、可靠性",
@@ -84,5 +100,16 @@
       "target_section": "5 验收准则 / 验收准则",
       "anchor_path": "REQ-5.1"
     }
-  ]
+  ],
+  "latest_20turn_validation": {
+    "session_id": "38130bb7-d72a-419f-818c-6dfe959e3893",
+    "result_file": ".run-logs/p2-dify-20turn-remediation-result.json",
+    "turn_count": 20,
+    "final_counts": {
+      "confirmed_facts": 27,
+      "open_questions": 0,
+      "working_blocks": 9
+    },
+    "checks_passed": true
+  }
 }
