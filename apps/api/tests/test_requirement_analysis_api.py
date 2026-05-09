@@ -351,8 +351,8 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
         "brainstorm-v1",
         "brainstorm-v1-dify-workflow",
         "xg-local-heuristic-orchestrator",
-        "xg-dify-workflow-orchestrator",
     }.issubset(plugin_ids)
+    assert "xg-dify-workflow-orchestrator" not in plugin_ids
 
     heuristic = next(item for item in items if item["plugin_id"] == "xg-local-heuristic-orchestrator")
     assert heuristic["orchestrator_id"] == "xg-local-heuristic-orchestrator"
@@ -362,12 +362,6 @@ def test_requirement_analysis_lab_session_turn_and_recovery() -> None:
     assert heuristic["observability_level"] == "full"
     assert heuristic["capabilities"]["document_patch"] is True
     assert heuristic["capabilities"]["stage_audits"] is True
-
-    dify = next(item for item in items if item["plugin_id"] == "xg-dify-workflow-orchestrator")
-    assert dify["plugin_type"] == "dify_workflow"
-    assert dify["observability_level"] == "limited"
-    assert dify["capabilities"]["filled_document_text"] is True
-    assert dify["capabilities"]["stage_audits"] is False
 
     brainstorm = next(item for item in items if item["plugin_id"] == "brainstorm-v1")
     assert brainstorm["plugin_type"] == "local_package"
@@ -1012,7 +1006,7 @@ def test_requirement_analysis_lab_runs_brainstorm_v1_dify_workflow_plugin() -> N
     assert "DIFY_API_KEY" in turn.json()["detail"]
 
 
-def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observability() -> None:
+def test_removed_legacy_dify_workflow_plugin_is_rejected() -> None:
     client = TestClient(create_app())
 
     created = client.post(
@@ -1027,22 +1021,8 @@ def test_requirement_analysis_lab_can_run_fake_dify_plugin_with_limited_observab
             "write_policy": "patch_suggestion_only",
         },
     )
-    assert created.status_code == 200
-    session = created.json()
-    assert session["orchestrator"]["plugin_type"] == "dify_workflow"
-    assert session["orchestrator"]["observability_level"] == "limited"
-
-    turn = client.post(
-        f"/api/requirement-analysis/sessions/{session['session_id']}/turns",
-        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
-    )
-    assert turn.status_code == 200
-    payload = turn.json()
-    assert payload["turn"]["orchestrator_plugin"]["plugin_id"] == "xg-dify-workflow-orchestrator"
-    assert payload["turn"]["orchestrator_plugin"]["observability_level"] == "limited"
-    assert payload["turn"]["stage_audits"] == []
-    assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["fake"] is True
-    assert "空域运算软件" in payload["session"]["working_document"]["blocks"][0]["text"]
+    assert created.status_code == 400
+    assert created.json()["detail"] == "unsupported orchestrator"
 
 
 def test_requirement_analysis_lab_runs_dify_through_manifest_adapter_loader(monkeypatch) -> None:
@@ -1120,7 +1100,7 @@ def test_requirement_analysis_lab_runs_dify_through_manifest_adapter_loader(monk
         "/api/requirement-analysis/sessions",
         json={
             "topic": "空域运算软件需求规格探索",
-            "orchestrator_id": "xg-dify-workflow-orchestrator",
+            "orchestrator_id": "brainstorm-v1-dify-workflow",
             "provider_id": "mock",
             "model": "mock-requirement-analysis-v1",
             "template_id": "81433号",
@@ -1137,7 +1117,7 @@ def test_requirement_analysis_lab_runs_dify_through_manifest_adapter_loader(monk
 
     assert turn.status_code == 200
     payload = turn.json()
-    assert calls == ["xg-dify-workflow-orchestrator"]
+    assert calls == ["brainstorm-v1-dify-workflow"]
     assert payload["turn"]["spec_execution"]["assistant_message"] == "adapter loader sentinel"
     assert payload["turn"]["raw_plugin_response"]["raw_output"]["raw_workflow_trace"]["sentinel"] is True
 

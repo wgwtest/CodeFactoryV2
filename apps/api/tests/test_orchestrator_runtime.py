@@ -218,12 +218,12 @@ def test_policy_runtime_is_host_owned_and_no_strong_rule_runtime_remains() -> No
 
 def test_dify_workflow_adapter_implementation_is_plugin_local() -> None:
     host_dify_adapter = Path("apps/api/app/orchestrators/adapters/dify_workflow_plugin.py")
-    plugin_dify_adapter = Path("orchestrators/xg/xg-dify-workflow-orchestrator/adapter.py")
+    plugin_dify_adapter = Path("orchestrators/xg/brainstorm-v1-dify-workflow/adapter.py")
     plugin_source = plugin_dify_adapter.read_text(encoding="utf-8")
 
     assert not host_dify_adapter.exists()
     assert "app.orchestrators.adapters.dify_workflow_plugin" not in plugin_source
-    assert "class DifyWorkflowOrchestratorPluginAdapter" in plugin_source
+    assert "class BrainstormV1DifyWorkflowAdapter" in plugin_source
 
 
 def test_host_stage_asset_resolvers_do_not_encode_xg_stage_names() -> None:

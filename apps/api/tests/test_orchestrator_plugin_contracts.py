@@ -145,15 +145,9 @@ def test_plugin_registry_lists_local_and_dify_plugins() -> None:
     plugin_ids = {plugin.plugin_id for plugin in plugins}
 
     assert "xg-local-heuristic-orchestrator" in plugin_ids
-    assert "xg-dify-workflow-orchestrator" in plugin_ids
     assert "brainstorm-v1-dify-workflow" in plugin_ids
     assert "xg-local-strong-rule-orchestrator" not in plugin_ids
-
-    dify = registry.require("xg-dify-workflow-orchestrator")
-    assert dify.plugin_type == "dify_workflow"
-    assert dify.observability_level == "limited"
-    assert dify.capabilities["filled_document_text"] is True
-    assert dify.capabilities["stage_audits"] is False
+    assert "xg-dify-workflow-orchestrator" not in plugin_ids
 
     brainstorm_dify = registry.require("brainstorm-v1-dify-workflow")
     assert brainstorm_dify.plugin_type == "dify_workflow"
@@ -223,46 +217,11 @@ def test_policy_interpreted_stage_strategy_must_declare_explicit_runtime_fields(
 
 def test_adapter_loader_instantiates_plugins_from_manifest_entry() -> None:
     registry = OrchestratorPluginRegistry()
-    manifest = registry.require("xg-dify-workflow-orchestrator")
+    manifest = registry.require("brainstorm-v1-dify-workflow")
 
     adapter = load_orchestrator_plugin_adapter(manifest)
-    result = adapter.run(
-        OrchestratorRunRequest(
-            contract_version="xg-observable-orchestrator-contract@1",
-            session={
-                "session_id": "ra-001",
-                "topic": "空域运算软件需求规格探索",
-                "template_id": "81433号",
-                "knowledge_package_id": "airspace-domain-demo",
-                "orchestrator_id": "xg-dify-workflow-orchestrator",
-                "provider_id": "mock",
-                "model": "mock-requirement-analysis-v1",
-                "write_policy": "patch_suggestion_only",
-            },
-            turn={
-                "turn_id": "turn-0001",
-                "turn_index": 1,
-                "user_input": "这个系统叫空域运算软件",
-                "normalized_input": {"input_type": "free_text", "semantic": "这个系统叫空域运算软件"},
-                "previous_interaction": {"type": "none"},
-                "input_relation": {"relation": "none"},
-            },
-            template={"template_id": "81433号", "format": "markdown", "content": "# 需求规格说明\n", "parsed_structure": {}},
-            document_context={
-                "working_document": {"document_id": "lab-working-document", "blocks": []},
-                "active_spec_node": {"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
-                "spec_tree": [],
-                "confirmed_facts": [],
-                "open_questions": [],
-                "patches": [],
-                "history_summary": "",
-            },
-            execution_options={"expected_output": "full_document", "observability_required": "limited", "streaming_enabled": False},
-        )
-    )
-
-    assert result.plugin["plugin_id"] == "xg-dify-workflow-orchestrator"
-    assert result.plugin["observability_level"] == "limited"
+    assert adapter.manifest.plugin_id == "brainstorm-v1-dify-workflow"
+    assert adapter.manifest.plugin_type == "dify_workflow"
 
 
 def _brainstorm_dify_request() -> OrchestratorRunRequest:
@@ -621,7 +580,7 @@ def test_plugin_turn_result_materializer_falls_back_to_filled_document_text_when
     result = OrchestratorRunResult(
         contract_version=request.contract_version,
         plugin={
-            "plugin_id": "xg-dify-workflow-orchestrator",
+            "plugin_id": "brainstorm-v1-dify-workflow",
             "plugin_type": "dify_workflow",
             "observability_level": "limited",
         },
@@ -679,58 +638,18 @@ def test_removed_strong_rule_plugin_is_not_loadable(db_session) -> None:
         raise AssertionError("removed strong-rule plugin should not be loadable")
 
 
-def test_dify_workflow_plugin_returns_limited_observability_result() -> None:
+def test_removed_legacy_dify_workflow_plugin_is_not_loadable() -> None:
     registry = OrchestratorPluginRegistry()
-    manifest = registry.require("xg-dify-workflow-orchestrator")
-    adapter = load_orchestrator_plugin_adapter(manifest)
-    request = OrchestratorRunRequest(
-        contract_version="xg-observable-orchestrator-contract@1",
-        session={
-            "session_id": "ra-001",
-            "topic": "空域运算软件需求规格探索",
-            "template_id": "81433号",
-            "knowledge_package_id": "airspace-domain-demo",
-            "orchestrator_id": "xg-dify-workflow-orchestrator",
-            "provider_id": "mock",
-            "model": "mock-requirement-analysis-v1",
-            "write_policy": "patch_suggestion_only",
-        },
-        turn={
-            "turn_id": "turn-0001",
-            "turn_index": 1,
-            "user_input": "这个系统叫空域运算软件",
-            "normalized_input": {"input_type": "free_text", "semantic": "这个系统叫空域运算软件"},
-            "previous_interaction": {"type": "none"},
-            "input_relation": {"relation": "none"},
-        },
-        template={"template_id": "81433号", "format": "markdown", "content": "# 需求规格说明\n", "parsed_structure": {}},
-        document_context={
-            "working_document": {"document_id": "lab-working-document", "blocks": []},
-            "active_spec_node": {"node_id": "SPEC-REQ-1.1", "target_section": "1 总则 / 编写目的"},
-            "spec_tree": [],
-            "confirmed_facts": [],
-            "open_questions": [],
-            "patches": [],
-            "history_summary": "",
-        },
-        execution_options={"expected_output": "full_document", "observability_required": "limited", "streaming_enabled": False},
-    )
 
-    result = adapter.run(request)
-
-    assert result.plugin["plugin_id"] == "xg-dify-workflow-orchestrator"
-    assert result.plugin["observability_level"] == "limited"
-    assert "空域运算软件" in result.final_output["filled_document_text"]
-    assert result.final_output["document_patch"] == []
-    assert result.process_output["stage_audits"] == []
-    assert result.raw_output["raw_workflow_trace"]["fake"] is True
+    with pytest.raises(ValueError, match="unsupported orchestrator"):
+        registry.require("xg-dify-workflow-orchestrator")
 
 
 def test_plugin_result_normalizer_projects_observable_result_to_turn_payload() -> None:
     result = OrchestratorRunResult(
         contract_version="xg-observable-orchestrator-contract@1",
         plugin={
-            "plugin_id": "xg-dify-workflow-orchestrator",
+            "plugin_id": "brainstorm-v1-dify-workflow",
             "plugin_type": "dify_workflow",
             "observability_level": "limited",
         },
