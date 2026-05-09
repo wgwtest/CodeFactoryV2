@@ -5,8 +5,8 @@
       "template_code": "81433",
       "base_template_id": "81433号",
       "base_template_name": "软件级需求规格说明模板",
-      "name": "默认运算软件需求规格说明模板实例-v1.1",
-      "description": "基于 81433 扩充的 Lab 模板实例。",
+      "name": "默认软件级需求规格说明模板实例-v1.2",
+      "description": "基于 81433 的通用 Lab 模板实例，不绑定具体业务样例。",
       "status": "available"
     }
   ]

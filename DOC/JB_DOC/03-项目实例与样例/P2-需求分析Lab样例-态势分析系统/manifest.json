@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "document_id": "p2-sample-srs-attitude-analysis-system",
+      "name": "需求规格说明样例-态势分析系统",
+      "file_name": "01-需求规格说明样例-态势分析系统.md",
+      "document_type": "需求规格说明样例",
+      "sample_object": "态势分析系统",
+      "status": "available"
+    },
+    {
+      "document_id": "p2-dynamic-examiner-guide-attitude-analysis-system",
+      "name": "受控动态考官手册-态势分析系统",
+      "file_name": "02-动态考官手册-态势分析系统.md",
+      "document_type": "受控动态考官手册",
+      "sample_object": "态势分析系统",
+      "status": "available"
+    },
+    {
+      "document_id": "p2-orchestrator-evaluation-checklist-attitude-analysis-system",
+      "name": "组织器评估清单-态势分析系统",
+      "file_name": "03-组织器评估清单-态势分析系统.md",
+      "document_type": "组织器评估清单",
+      "sample_object": "态势分析系统",
+      "status": "available"
+    }
+  ]
+}
