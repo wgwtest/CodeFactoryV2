@@ -418,6 +418,124 @@ def test_brainstorm_v1_dify_workflow_adapter_calls_remote_dify_when_configured(m
     assert result.raw_output["turn_execution_result"].turn["decision_state_delta"]["confirmed_facts"]
 
 
+def test_brainstorm_v1_dify_workflow_adapter_replaces_open_questions_on_draft_compose(monkeypatch) -> None:
+    base_request = _brainstorm_dify_request()
+    json_module = json
+    request = base_request.model_copy(
+        update={
+            "document_context": {
+                **base_request.document_context,
+                "state": {
+                    "decision_state": {
+                        "topic": "空域运算软件需求规格探索",
+                        "confirmed_facts": [],
+                        "confirmed_decisions": [],
+                        "tentative_assumptions": [],
+                        "open_questions": [
+                            {
+                                "item_id": "Q-001",
+                                "content": "组织器策略问题：请先确认软件名称、背景领域和编写目的。",
+                                "target_section": "1 总则 / 编写目的",
+                                "status": "open",
+                            }
+                        ],
+                        "rejected_directions": [],
+                        "next_focus": "",
+                        "chapter_projections": [],
+                    }
+                },
+                "open_questions": [
+                    {
+                        "question_id": "Q-001",
+                        "content": "组织器策略问题：请先确认软件名称、背景领域和编写目的。",
+                        "target_section": "1 总则 / 编写目的",
+                        "status": "open",
+                    }
+                ],
+            }
+        }
+    )
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-remote-002",
+                "data": {
+                    "id": "run-remote-002",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "已输出草案。",
+                                "next_question": "请确认是否接受当前草案，或选择继续细化哪个缺口？",
+                                "quick_options": [{"key": "A", "label": "接受草案并进入人工审阅", "recommended": True}],
+                                "filled_document_text": "1 总则 / 编写目的\n本文用于明确空域运算软件的需求范围。",
+                                "document_patch": [
+                                    {
+                                        "plan_ref": "BRAINSTORM-DIFY-DRAFT-001",
+                                        "operation": "append_or_update",
+                                        "content": "本文用于明确空域运算软件的需求范围。",
+                                        "write_policy": "patch_suggestion_only",
+                                        "target_section": "1 总则 / 编写目的",
+                                        "anchor_path": "REQ-1.1",
+                                    }
+                                ],
+                                "changed_sections": ["1 总则 / 编写目的"],
+                                "completion_status": "partial",
+                                "confidence": "high",
+                                "confirmed_facts_delta": [],
+                                "open_questions_delta": ["需补充部署约束。"],
+                                "decision_state_delta": {
+                                    "confirmed_facts": [],
+                                    "confirmed_decisions": [],
+                                    "tentative_assumptions": [],
+                                    "open_questions": [
+                                        {
+                                            "item_id": "DS-Q-001",
+                                            "content": "需补充部署约束。",
+                                            "target_section": "待确认事项",
+                                            "status": "deferred_to_draft_gap",
+                                        }
+                                    ],
+                                    "rejected_directions": [],
+                                    "chapter_projections": [],
+                                    "next_focus": "请确认是否接受当前草案，或选择继续细化哪个缺口？",
+                                },
+                                "decision_trace": [],
+                                "annotations": [],
+                                "risks": ["需补充部署约束。"],
+                                "raw_workflow_trace": {"workflow_id": "remote-workflow", "run_id": "run-remote-002", "branch_taken": "draft_compose"},
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setenv("DIFY_BASE_URL", "http://dify.local")
+    monkeypatch.setenv("DIFY_API_KEY", "test-dify-key")
+    registry = OrchestratorPluginRegistry()
+    adapter = load_orchestrator_plugin_adapter(registry.require("brainstorm-v1-dify-workflow"))
+    brainstorm_adapter_module = sys.modules["_codefactory_plugin_brainstorm_v1_dify_workflow.adapter"]
+    monkeypatch.setattr(brainstorm_adapter_module.httpx, "post", fake_post)
+
+    result = adapter.run(request)
+
+    questions = result.raw_output["turn_execution_result"].state_patch["decision_state"]["open_questions"]
+    assert questions == [
+        {
+            "item_id": "DS-Q-001",
+            "content": "需补充部署约束。",
+            "target_section": "待确认事项",
+            "status": "deferred_to_draft_gap",
+        }
+    ]
+    assert result.state_output["open_questions_delta"] == ["需补充部署约束。"]
+
+
 def test_plugin_turn_result_materializer_preserves_structured_document_patches() -> None:
     materializer = PluginTurnResultMaterializer()
     request = _brainstorm_dify_request()

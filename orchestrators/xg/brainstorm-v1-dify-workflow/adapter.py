@@ -163,10 +163,12 @@ class BrainstormV1DifyWorkflowAdapter:
             raise ValueError("remote dify result_json is not a JSON object")
 
         decision_state_delta = dict(parsed.get("decision_state_delta") or {})
+        raw_workflow_trace = dict(parsed.get("raw_workflow_trace") or {})
         decision_state, change_summary = self._apply_decision_delta(
             current_state=context["decision_state"],
             delta=decision_state_delta,
             next_focus=str(decision_state_delta.get("next_focus") or parsed.get("next_question") or ""),
+            replace_open_questions=raw_workflow_trace.get("branch_taken") == "draft_compose",
         )
         return {
             "assistant_message": str(parsed.get("assistant_message") or ""),
@@ -187,7 +189,7 @@ class BrainstormV1DifyWorkflowAdapter:
             "annotations": list(parsed.get("annotations") or []),
             "risks": list(parsed.get("risks") or []),
             "raw_workflow_trace": {
-                **dict(parsed.get("raw_workflow_trace") or {}),
+                **raw_workflow_trace,
                 **dict(trace.get("workflow_trace") or {}),
             },
         }
@@ -268,7 +270,14 @@ class BrainstormV1DifyWorkflowAdapter:
             "anchor_path": active_spec_node_id.removeprefix("SPEC-") or "REQ-1.1",
         }
 
-    def _apply_decision_delta(self, *, current_state: dict, delta: dict, next_focus: str) -> tuple[dict, dict]:
+    def _apply_decision_delta(
+        self,
+        *,
+        current_state: dict,
+        delta: dict,
+        next_focus: str,
+        replace_open_questions: bool = False,
+    ) -> tuple[dict, dict]:
         state = self._normalize_decision_state(current_state)
         before_counts = self._counts(state)
         for key in [
@@ -279,6 +288,9 @@ class BrainstormV1DifyWorkflowAdapter:
             "rejected_directions",
             "chapter_projections",
         ]:
+            if key == "open_questions" and replace_open_questions:
+                state[key] = list(delta.get(key, []))
+                continue
             state[key] = self._append_unique_items(list(state.get(key, [])), list(delta.get(key, [])))
         state["next_focus"] = next_focus
         after_counts = self._counts(state)
