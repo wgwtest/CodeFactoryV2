@@ -1,0 +1,220 @@
+import type {
+  P3DesignLabInputPackage,
+  P3DesignLabSession,
+  RequirementAuthoringCheckResult,
+} from "../../lib/api";
+import type { StageDocumentWorkbenchViewModel } from "../../components/stageWorkbench/models";
+
+type BuildP3DesignLabWorkbenchViewModelInput = {
+  inputPackage: P3DesignLabInputPackage | null;
+  session: P3DesignLabSession | null;
+  policy: Record<string, string>;
+};
+
+export function buildP3DesignLabWorkbenchViewModel({
+  inputPackage,
+  session,
+  policy,
+}: BuildP3DesignLabWorkbenchViewModelInput): StageDocumentWorkbenchViewModel {
+  const visiblePackage = session?.input_package ?? inputPackage;
+  const designDocument = session?.design_document ?? null;
+  const designBaseline = session?.design_baseline ?? null;
+  const projection = session?.workorder_projection ?? null;
+
+  return {
+    identity: {
+      stage: "P3",
+      documentType: "软件设计说明",
+      upstreamStage: "P2",
+      downstreamStage: "P4",
+    },
+    header: {
+      title: "P3 Design Lab",
+      subtitle: "只消费 P2 新版冻结包，不兼容旧规格池",
+      statusLabel: session ? `状态：${session.status}` : "状态：待生成",
+      sourceLabel: "输入：P2 authoring frozen_package",
+      providerLabel: "Provider：Mock Design Provider",
+    },
+    layout: {
+      defaultActiveProductTab: "document",
+    },
+    inputFacts: {
+      title: visiblePackage?.standard_document.title ?? "",
+      sourceTitle: visiblePackage?.source_title ?? "没有可用的 P2 冻结包",
+      readonly: true,
+      sections:
+        visiblePackage?.standard_document.sections.map((section) => ({
+          sectionId: section.section_id,
+          title: section.title,
+          clauses: section.clauses.map((clause) => ({
+            clauseId: clause.clause_id,
+            title: clause.title,
+            content: clause.content,
+          })),
+        })) ?? [],
+      emptyDescription: "没有 P2 新版冻结包",
+    },
+    interaction: {
+      mode: "cli",
+      title: "自然语言配置 / CLI",
+      description: "用于控制转换策略和校正输出，不替代虚规输入",
+      runline: [
+        { key: "input", label: "P2 冻结包", state: visiblePackage ? "done" : "idle" },
+        { key: "generation", label: "设计生成", state: session ? "done" : "active" },
+        { key: "baseline", label: "基线固化", state: designBaseline ? "done" : "idle" },
+        { key: "projection", label: "P4 投影", state: projection ? "done" : "idle" },
+      ],
+      policies: [
+        { key: "architecture_preference", label: "架构偏好", value: policy.architecture_preference ?? "" },
+        { key: "module_granularity", label: "模块粒度", value: policy.module_granularity ?? "" },
+        { key: "output_style", label: "输出风格", value: policy.output_style ?? "" },
+      ],
+      message: session
+        ? "已生成设计基线。可继续输入：细化模块 / 重生成接口 / 增加状态机 / 保守一点。"
+        : "选择 P2 冻结包后，可直接生成软件设计说明、设计基线和 P4 工单投影。",
+      feed: [
+        {
+          id: "input-facts",
+          speaker: "P3",
+          content: "读取虚规正文、结构化字段和标注，保持只读。",
+        },
+        {
+          id: "system-status",
+          speaker: "SYS",
+          content: session ? "设计基线已就绪，等待下一轮自然语言配置。" : "等待生成软件设计说明。",
+        },
+      ],
+      composer: {
+        ariaLabel: "P3 Design Lab CLI",
+        disabled: !session,
+        submitLabel: "提交",
+      },
+    },
+    product: {
+      documentId: session?.session_id ?? "p3-design-lab-draft",
+      documentType: "software_design_description",
+      title: designDocument?.title,
+      subtitle: "基于 P2 需求规格冻结包生成",
+      versionLabel: "SoftwareDesignBaseline v2",
+      status: designDocument ? "generated" : "empty",
+      page: {
+        ariaLabel: "A4 软件设计说明预览",
+        headerLeft: "CodeFactoryV2 / P3",
+        headerRight: "Software Design Description",
+        footerLeft: "SoftwareDesignBaseline v2",
+        footerRight: "Page 1",
+        emptyDescription: "尚未生成软件设计说明",
+      },
+      sections:
+        designDocument?.sections.map((section) => ({
+          sectionId: section.section_id,
+          title: section.title,
+          status: section.status ?? "generated",
+          blocks: [
+            {
+              blockId: `${section.section_id}-body`,
+              kind: "paragraph",
+              content: section.content,
+              anchorId: section.section_id,
+              sourceRefs: [],
+              qualityRefs: [],
+            },
+          ],
+        })) ?? [],
+      annotations: [],
+      traceLinks: designBaseline?.traceability ?? [],
+    },
+    outline: {
+      sections:
+        designDocument?.sections.map((section) => ({
+          sectionId: section.section_id,
+          title: section.title,
+        })) ?? [],
+      baseline: designBaseline
+        ? {
+            label: "SoftwareDesignBaseline v2",
+            architectureMode: designBaseline.architecture_mode,
+            moduleCount: designBaseline.modules.length,
+            traceabilityCount: designBaseline.traceability?.length ?? 0,
+            modules: designBaseline.modules.map((module) => ({
+              moduleId: module.module_id,
+              name: module.name,
+            })),
+          }
+        : undefined,
+      emptyDescription: "生成设计基线后显示目录和模块映射",
+    },
+    quality: buildQualityGateViewModel(session?.check_result ?? null),
+    projection: {
+      targetStage: "P4",
+      packageName: "P4 工单投影",
+      status: projection ? "ready" : "empty",
+      sourceDocumentId: designDocument?.title,
+      sourceStateId: designBaseline?.baseline_id,
+      items:
+        projection?.items.map((item) => ({
+          itemId: item.item_id,
+          title: item.title,
+          itemType: "module_workorder",
+          traceRefs: item.module_id ? [item.module_id] : [],
+          readiness: "ready",
+        })) ?? [],
+      emptyDescription: "生成设计基线后显示工单预览。",
+    },
+    freeze: {
+      status: designDocument && designBaseline && projection ? "candidate" : "not_ready",
+      gates: [],
+      candidateOutputs: ["软件设计说明", "SoftwareDesignBaseline v2", "P4 模块工单投影"],
+    },
+    actions: [
+      {
+        key: "generate",
+        label: "生成设计基线",
+        disabled: !inputPackage,
+        loading: false,
+      },
+    ],
+  };
+}
+
+function buildQualityGateViewModel(checkResult: RequirementAuthoringCheckResult | null): StageDocumentWorkbenchViewModel["quality"] {
+  if (!checkResult) {
+    return {
+      status: "not_run",
+      summary: {
+        blockingCount: 0,
+        warningCount: 0,
+        passedCount: 0,
+      },
+      gates: [],
+      emptyDescription: "尚未运行设计完整性检查",
+    };
+  }
+
+  return {
+    status: checkResult.blocking_count > 0 ? "blocked" : checkResult.warning_count > 0 ? "warning" : "passed",
+    summary: {
+      blockingCount: checkResult.blocking_count,
+      warningCount: checkResult.warning_count,
+      passedCount: checkResult.passed_count,
+    },
+    gates: checkResult.items.map((item, index) => ({
+      itemId: toDisplayString(item.item_id, `gate-${index + 1}`),
+      severity: toDisplayString(item.severity, "info"),
+      title: toDisplayString(item.title, `检查项 ${index + 1}`),
+      description: toDisplayString(item.description, "没有补充说明"),
+      scope: toDisplayString(item.scope, "document"),
+      anchorId: toOptionalDisplayString(item.anchor_id),
+      suggestedAction: toOptionalDisplayString(item.suggested_action),
+    })),
+    emptyDescription: "尚未运行设计完整性检查",
+  };
+}
+
+function toDisplayString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim().length > 0 ? value : fallback;
+}
+
+function toOptionalDisplayString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}

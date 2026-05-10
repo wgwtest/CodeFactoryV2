@@ -1,12 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Input, Select, Space, Spin, Tag, Typography } from "antd";
 
+import { DocumentProductSurface } from "../components/stageWorkbench/DocumentProductSurface";
+import { StageDocumentWorkbench } from "../components/stageWorkbench/StageDocumentWorkbench";
+import type {
+  StageInputFactsViewModel,
+  StageInteractionViewModel,
+  StageDocumentWorkbenchViewModel,
+} from "../components/stageWorkbench/models";
+import { DocumentBodyPanel } from "../components/stageWorkbench/panels/DocumentBodyPanel";
+import { DocumentOutlinePanel } from "../components/stageWorkbench/panels/DocumentOutlinePanel";
+import { QualityCheckPanel } from "../components/stageWorkbench/panels/QualityCheckPanel";
+import { StageProjectionPanel } from "../components/stageWorkbench/panels/StageProjectionPanel";
 import type { P3DesignLabInputPackage, P3DesignLabSession } from "../lib/api";
 import {
   createSoftwareDesignV2Session,
   generateSoftwareDesignV2Session,
   getSoftwareDesignV2InputPackages,
 } from "../lib/softwareDesignV2";
+import { buildP3DesignLabWorkbenchViewModel } from "./adapters/p3DesignLabWorkbenchAdapter";
 import "./P3DesignLabPage.css";
 
 const { Text } = Typography;
@@ -58,7 +70,15 @@ export function P3DesignLabPage() {
     () => inputPackages.find((item) => item.input_package_id === selectedPackageId) ?? inputPackages[0] ?? null,
     [inputPackages, selectedPackageId],
   );
-  const visiblePackage = designSession?.input_package ?? selectedPackage;
+  const workbench = useMemo(
+    () =>
+      buildP3DesignLabWorkbenchViewModel({
+        inputPackage: selectedPackage,
+        session: designSession,
+        policy: DEFAULT_POLICY,
+      }),
+    [designSession, selectedPackage],
+  );
 
   async function handleGenerate() {
     if (!selectedPackage) {
@@ -88,22 +108,16 @@ export function P3DesignLabPage() {
     );
   }
 
-  return (
-    <div className="p3-design-lab-page" id="p3-design-lab-page">
-      <header className="p3-design-lab-topbar">
-        <div>
-          <div className="p3-design-lab-title-row">
-            <h1 className="p3-design-lab-title">P3 Design Lab</h1>
-            <span className="p3-design-lab-subtitle">只消费 P2 新版冻结包，不兼容旧规格池</span>
-          </div>
-          <div className="p3-design-lab-badges">
-            <Tag color="blue">输入：P2 authoring frozen_package</Tag>
+  const badges = (
+    <>
+            <Tag color="blue">{workbench.header.sourceLabel}</Tag>
             <Tag>布局：左 38% / 右 62%</Tag>
-            <Tag>Provider：Mock Design Provider</Tag>
-            {designSession ? <Tag color="green">状态：{designSession.status}</Tag> : <Tag>状态：待生成</Tag>}
-          </div>
-        </div>
-        <div className="p3-design-lab-actions">
+            <Tag>{workbench.header.providerLabel}</Tag>
+            {designSession ? <Tag color="green">{workbench.header.statusLabel}</Tag> : <Tag>{workbench.header.statusLabel}</Tag>}
+    </>
+  );
+  const actions = (
+    <>
           <Select
             aria-label="选择冻结包"
             style={{ minWidth: 280 }}
@@ -115,88 +129,47 @@ export function P3DesignLabPage() {
           <Button type="primary" loading={submitting} disabled={!selectedPackage} onClick={() => void handleGenerate()}>
             生成设计基线
           </Button>
-        </div>
-      </header>
+    </>
+  );
 
-      {error ? <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} /> : null}
-
-      <main className="p3-design-lab-shell">
-        <aside className="p3-design-lab-left">
+  return (
+    <StageDocumentWorkbench
+      stage="P3"
+      className="p3-design-lab-page"
+      title={workbench.header.title}
+      subtitle={workbench.header.subtitle}
+      badges={badges}
+      actions={actions}
+      alert={error ? <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} /> : null}
+      leftTop={
           <section className="p3-design-lab-panel" data-testid="p3-design-lab-requirement-pane">
             <div className="p3-design-lab-panel-head">
               <div>
                 <h2 className="p3-design-lab-panel-title">需求规格说明（输入事实源）</h2>
-                <div className="p3-design-lab-panel-note">{visiblePackage?.source_title ?? "没有可用的 P2 冻结包"}</div>
+                <div className="p3-design-lab-panel-note">{workbench.inputFacts.sourceTitle}</div>
               </div>
               <Tag color="blue">只读</Tag>
             </div>
             <div className="p3-design-lab-panel-body">
-              {visiblePackage ? <RequirementDocument packageItem={visiblePackage} /> : <Empty description="没有 P2 新版冻结包" />}
+              <RequirementDocument inputFacts={workbench.inputFacts} />
             </div>
           </section>
-
+      }
+      leftBottom={
           <section className="p3-design-lab-panel" data-testid="p3-design-lab-cli-pane">
             <div className="p3-design-lab-panel-head">
               <div>
-                <h2 className="p3-design-lab-panel-title">自然语言配置 / CLI</h2>
-                <div className="p3-design-lab-panel-note">用于控制转换策略和校正输出，不替代虚规输入</div>
+                <h2 className="p3-design-lab-panel-title">{workbench.interaction.title}</h2>
+                <div className="p3-design-lab-panel-note">{workbench.interaction.description}</div>
               </div>
               <Tag color="green">Design Turn</Tag>
             </div>
             <div className="p3-design-lab-panel-body">
-              <div className="p3-design-lab-cli">
-                <div className="p3-design-lab-runline" aria-label="P3 生成链路">
-                  <span className={visiblePackage ? "is-done" : ""}>P2 冻结包</span>
-                  <span className={designSession ? "is-done" : "is-active"}>设计生成</span>
-                  <span className={designSession?.design_baseline ? "is-done" : ""}>基线固化</span>
-                  <span className={designSession?.workorder_projection ? "is-done" : ""}>P4 投影</span>
-                </div>
-                <div className="p3-design-lab-policy-grid">
-                  <div className="p3-design-lab-policy">
-                    <strong>架构偏好</strong>
-                    <br />
-                    {DEFAULT_POLICY.architecture_preference}
-                  </div>
-                  <div className="p3-design-lab-policy">
-                    <strong>模块粒度</strong>
-                    <br />
-                    {DEFAULT_POLICY.module_granularity}
-                  </div>
-                  <div className="p3-design-lab-policy">
-                    <strong>输出风格</strong>
-                    <br />
-                    {DEFAULT_POLICY.output_style}
-                  </div>
-                </div>
-                <div className="p3-design-lab-message">
-                  {designSession
-                    ? "已生成设计基线。可继续输入：细化模块 / 重生成接口 / 增加状态机 / 保守一点。"
-                    : "选择 P2 冻结包后，可直接生成软件设计说明、设计基线和 P4 工单投影。"}
-                </div>
-                <div className="p3-design-lab-cli-log">
-                  <div>
-                    <span>P3</span>
-                    <p>读取虚规正文、结构化字段和标注，保持只读。</p>
-                  </div>
-                  <div>
-                    <span>SYS</span>
-                    <p>{designSession ? "设计基线已就绪，等待下一轮自然语言配置。" : "等待生成软件设计说明。"}</p>
-                  </div>
-                </div>
-                <div className="p3-design-lab-input-row">
-                  <Input.TextArea
-                    value={cliInput}
-                    onChange={(event) => setCliInput(event.target.value)}
-                    aria-label="P3 Design Lab CLI"
-                    autoSize={{ minRows: 2, maxRows: 4 }}
-                  />
-                  <Button disabled={!designSession}>提交</Button>
-                </div>
-              </div>
+              <InteractionPanel interaction={workbench.interaction} cliInput={cliInput} onCliInputChange={setCliInput} />
             </div>
           </section>
-        </aside>
-
+      }
+      main={
         <section className="p3-design-lab-panel" data-testid="p3-design-lab-design-pane">
           <div className="p3-design-lab-panel-head">
             <div>
@@ -204,31 +177,33 @@ export function P3DesignLabPage() {
               <div className="p3-design-lab-panel-note">由同一份 SoftwareDesignBaseline v2 投影生成</div>
             </div>
             <Space>
-              {designSession?.design_document ? <Tag color="green">正文已生成</Tag> : <Tag>待生成</Tag>}
-              {designSession?.workorder_projection ? <Tag color="gold">工单投影已生成</Tag> : null}
+              {workbench.product.status !== "empty" ? <Tag color="green">正文已生成</Tag> : <Tag>待生成</Tag>}
+              {workbench.outline.baseline ? <Tag color="blue">{workbench.outline.baseline.label}</Tag> : null}
+              {workbench.projection.status !== "empty" ? <Tag color="gold">工单投影已生成</Tag> : null}
             </Space>
           </div>
           <div className="p3-design-lab-panel-body">
-            <div className="p3-design-lab-design-grid">
-              <DesignDocument session={designSession} />
-              <DesignRail session={designSession} />
-            </div>
+            <DesignProductTabs workbench={workbench} />
           </div>
         </section>
-      </main>
-    </div>
+      }
+    />
   );
 }
 
-function RequirementDocument({ packageItem }: { packageItem: P3DesignLabInputPackage }) {
+function RequirementDocument({ inputFacts }: { inputFacts: StageInputFactsViewModel }) {
+  if (inputFacts.sections.length === 0) {
+    return <Empty description={inputFacts.emptyDescription} />;
+  }
+
   return (
     <article className="p3-design-lab-paper">
-      <h2 className="p3-design-lab-paper-title">{packageItem.standard_document.title}</h2>
-      {packageItem.standard_document.sections.map((section) => (
-        <section key={section.section_id} className="p3-design-lab-section">
+      <h2 className="p3-design-lab-paper-title">{inputFacts.title}</h2>
+      {inputFacts.sections.map((section) => (
+        <section key={section.sectionId} className="p3-design-lab-section">
           <h3>{section.title}</h3>
           {section.clauses.map((clause) => (
-            <p key={clause.clause_id}>
+            <p key={clause.clauseId}>
               <Text strong>{clause.title}：</Text>
               {clause.content}
             </p>
@@ -239,79 +214,69 @@ function RequirementDocument({ packageItem }: { packageItem: P3DesignLabInputPac
   );
 }
 
-function DesignDocument({ session }: { session: P3DesignLabSession | null }) {
-  if (!session?.design_document) {
-    return (
-    <article className="p3-design-lab-paper p3-design-lab-design-paper">
-      <div className="p3-design-lab-a4-page is-empty">
-        <Empty description="尚未生成软件设计说明" />
-      </div>
-    </article>
-  );
-}
-
+function InteractionPanel({
+  interaction,
+  cliInput,
+  onCliInputChange,
+}: {
+  interaction: StageInteractionViewModel;
+  cliInput: string;
+  onCliInputChange: (value: string) => void;
+}) {
   return (
-    <article className="p3-design-lab-paper p3-design-lab-design-paper" aria-label="A4 软件设计说明预览">
-      <div className="p3-design-lab-a4-page">
-        <div className="p3-design-lab-a4-meta">
-          <span>CodeFactoryV2 / P3</span>
-          <span>Software Design Description</span>
-        </div>
-        <h2 className="p3-design-lab-paper-title">{session.design_document.title}</h2>
-        <div className="p3-design-lab-a4-subtitle">基于 P2 需求规格冻结包生成</div>
-        {session.design_document.sections.map((section) => (
-          <section key={section.section_id} className="p3-design-lab-section is-generated">
-            <h3>{section.title}</h3>
-            <p>{section.content}</p>
-          </section>
+    <div className="p3-design-lab-cli">
+      <div className="p3-design-lab-runline" aria-label="P3 生成链路">
+        {interaction.runline.map((step) => (
+          <span className={step.state === "done" ? "is-done" : step.state === "active" ? "is-active" : ""} key={step.key}>
+            {step.label}
+          </span>
         ))}
-        <footer className="p3-design-lab-a4-footer">
-          <span>SoftwareDesignBaseline v2</span>
-          <span>Page 1</span>
-        </footer>
       </div>
-    </article>
+      <div className="p3-design-lab-policy-grid">
+        {interaction.policies.map((policy) => (
+          <div className="p3-design-lab-policy" key={policy.key}>
+            <strong>{policy.label}</strong>
+            <br />
+            {policy.value}
+          </div>
+        ))}
+      </div>
+      <div className="p3-design-lab-message">{interaction.message}</div>
+      <div className="p3-design-lab-cli-log">
+        {interaction.feed.map((item) => (
+          <div key={item.id}>
+            <span>{item.speaker}</span>
+            <p>{item.content}</p>
+          </div>
+        ))}
+      </div>
+      <div className="p3-design-lab-input-row">
+        <Input.TextArea
+          value={cliInput}
+          onChange={(event) => onCliInputChange(event.target.value)}
+          aria-label={interaction.composer.ariaLabel}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+        />
+        <Button disabled={interaction.composer.disabled}>{interaction.composer.submitLabel}</Button>
+      </div>
+    </div>
   );
 }
 
-function DesignRail({ session }: { session: P3DesignLabSession | null }) {
+function DesignProductTabs({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
   return (
-    <aside className="p3-design-lab-rail">
-      <div className="p3-design-lab-rail-card">
-        <h4>设计基线摘要</h4>
-        {session?.design_baseline ? (
-          <>
-            <p>
-              <Text strong>SoftwareDesignBaseline v2</Text>
-            </p>
-            <ul>
-              <li>架构：{session.design_baseline.architecture_mode}</li>
-              <li>模块：{session.design_baseline.modules.length} 个</li>
-              <li>追溯：{session.design_baseline.traceability?.length ?? 0} 条</li>
-            </ul>
-          </>
-        ) : (
-          <p>等待生成设计基线。</p>
-        )}
-      </div>
-      <div className="p3-design-lab-rail-card">
-        <h4>P4 工单投影</h4>
-        {session?.workorder_projection ? (
-          <div className="p3-design-lab-workorders">
-            {session.workorder_projection.items.map((item) => (
-              <div className="p3-design-lab-workorder" key={item.item_id}>
-                {item.title}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p>生成设计基线后显示工单预览。</p>
-        )}
-      </div>
-      <div className="p3-design-lab-rail-card">
-        <h4>不兼容提示</h4>
-        <p>本页不读取旧 requirements/specs，也不显示旧 P3 订单入口。</p>
-      </div>
-    </aside>
+    <DocumentProductSurface
+      defaultActiveKey={workbench.layout.defaultActiveProductTab}
+      tabs={[
+        { key: "document", label: "正文", children: <DocumentBodyPanel document={workbench.product} /> },
+        { key: "outline", label: "目录", children: <DocumentOutlinePanel outline={workbench.outline} /> },
+        { key: "check", label: "检查", children: <QualityCheckPanel quality={workbench.quality} /> },
+        {
+          key: "projection",
+          label: "投影",
+          children: <StageProjectionPanel projection={workbench.projection} note="本页不读取旧 requirements/specs，也不显示旧 P3 订单入口。" />,
+        },
+      ]}
+    />
   );
 }
