@@ -105,6 +105,18 @@
   background: #f8fafc;
 }
 
+.p3-design-lab-panel-head > .ant-space {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.p3-design-lab-panel-head .ant-tag {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.35;
+}
+
 .p3-design-lab-panel-title {
   margin: 0;
   font-family: Georgia, "Noto Serif SC", "SimSun", serif;
@@ -179,7 +191,7 @@
 .p3-design-lab-cli {
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(42px, auto) minmax(54px, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(48px, 1fr) auto;
   gap: 10px;
 }
 

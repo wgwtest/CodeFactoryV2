@@ -67,13 +67,17 @@ test("renders P3 Design Lab using only P2 frozen packages and generates design b
   expect(within(designPane).getByRole("tab", { name: "目录" })).toBeInTheDocument();
   expect(within(designPane).getByRole("tab", { name: "检查" })).toBeInTheDocument();
   expect(within(designPane).getByRole("tab", { name: "投影" })).toBeInTheDocument();
+  expect(within(designPane).getByTestId("document-body-panel")).toBeInTheDocument();
   expect(within(designPane).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
   expect(within(designPane).getAllByText("SoftwareDesignBaseline v2")).toHaveLength(2);
   fireEvent.click(within(designPane).getByRole("tab", { name: "目录" }));
+  expect(within(designPane).getByTestId("document-outline-panel")).toBeInTheDocument();
   expect(within(designPane).getByText("规划任务管理")).toBeInTheDocument();
   fireEvent.click(within(designPane).getByRole("tab", { name: "检查" }));
+  expect(within(designPane).getByTestId("quality-check-panel")).toBeInTheDocument();
   expect(within(designPane).getByText("尚未运行设计完整性检查")).toBeInTheDocument();
   fireEvent.click(within(designPane).getByRole("tab", { name: "投影" }));
+  expect(within(designPane).getByTestId("stage-projection-panel")).toBeInTheDocument();
   expect(screen.getByText("规划任务管理模块实现")).toBeInTheDocument();
 });
 

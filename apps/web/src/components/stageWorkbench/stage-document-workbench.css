@@ -65,7 +65,7 @@
 .stage-document-workbench-left {
   min-height: 0;
   display: grid;
-  grid-template-rows: 64fr 36fr;
+  grid-template-rows: 52fr 48fr;
   gap: 16px;
 }
 
@@ -96,6 +96,74 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.stage-document-panel,
+.stage-document-body-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.stage-document-tab-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.stage-document-rail-card {
+  padding: 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.stage-document-rail-card h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.stage-document-rail-card p,
+.stage-document-rail-card li {
+  margin: 0;
+  color: #4b5b70;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.stage-document-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.stage-document-workorders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-document-workorder {
+  padding: 8px;
+  border: 1px solid #cbd8cd;
+  border-radius: 6px;
+  background: #f6fbf5;
+  color: #3b4d42;
+  font-size: 12px;
+}
+
+.stage-document-gate-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stage-document-gate {
+  padding: 8px;
+  border: 1px solid #d9e0ea;
+  border-radius: 6px;
+  background: #fff;
 }
 
 .a4-document-surface {
@@ -187,6 +255,32 @@
   line-height: 1.75;
 }
 
+.a4-document-block + .a4-document-block,
+.a4-document-block-list + .a4-document-block,
+.a4-document-block + .a4-document-block-list {
+  margin-top: 8px;
+}
+
+.a4-document-block-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #364256;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.a4-document-block-code {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #d5deeb;
+  border-radius: 6px;
+  background: #f4f7fb;
+  color: #25364c;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .a4-document-footer {
   position: absolute;
   right: 54px;
@@ -243,6 +337,10 @@
   .stage-document-workbench-actions .ant-select {
     min-width: 0 !important;
     width: 100%;
+  }
+
+  .stage-document-workorders {
+    grid-template-columns: 1fr;
   }
 
   .a4-document-surface {
