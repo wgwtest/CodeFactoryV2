@@ -1,0 +1,156 @@
+# 2026-05-10 P3 Design Lab 共性工作台抽象自检记录
+
+## 1. 验证对象
+
+- `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计-260510-DesignLab共性工作台抽象补充.md`
+- `apps/web/src/components/stageWorkbench/`
+- `apps/web/src/pages/P3DesignLabPage.tsx`
+- `apps/web/src/test/P3DesignLabPage.test.tsx`
+
+## 2. 验证命令
+
+### 2.1 TDD 红灯
+
+```text
+corepack pnpm --dir apps/web test -- P3DesignLabPage.test.tsx
+```
+
+结果：
+
+- 失败点：`Unable to find an element by: [data-testid="stage-document-workbench"]`
+- 说明：测试能正确捕获“P3 Design Lab 尚未接入共性阶段工作台骨架”的缺口。
+
+### 2.2 TDD 绿灯与回归
+
+```text
+corepack pnpm --dir apps/web test -- P3DesignLabPage.test.tsx
+```
+
+结果：
+
+```text
+Test Files  38 passed (38)
+Tests       110 passed | 4 skipped (114)
+```
+
+说明：
+
+- 命令实际运行了前端测试全集。
+- `P3DesignLabPage.test.tsx` 覆盖：
+  - 共性工作台骨架 `stage-document-workbench`。
+  - 左侧需求规格说明输入区。
+  - 左侧 CLI 区。
+  - 右侧正文、目录、检查、投影四个 Tab。
+  - 生成设计基线后正文 A4 预览、目录模块、检查空态和 P4 工单投影。
+
+### 2.3 构建
+
+```text
+corepack pnpm --dir apps/web build
+```
+
+结果：失败。
+
+失败位置：
+
+- `apps/web/src/lib/api.ts`
+- `apps/web/src/pages/RequirementAnalysisLabPage.tsx`
+- `apps/web/src/test/requirementAnalysisLabViewModel.test.ts`
+
+主要错误：
+
+- `RequirementAnalysisDecisionStateItem`、`RequirementAnalysisDecisionState`、`RequirementAnalysisDecisionStateDocument` 重复定义。
+- `RequirementAnalysisCurrentTurn` 相关字段重复声明。
+- `RequirementAnalysisLabPage.tsx` 存在 `unknown` 到 `ReactNode` 的类型错误。
+- `requirementAnalysisLabViewModel.test.ts` 中测试夹具缺少 `session_phase`。
+
+判定：
+
+- 本轮改动未修改上述文件。
+- `git diff --name-only` 显示本轮代码改动只涉及 `P3DesignLabPage.tsx`、`P3DesignLabPage.test.tsx` 和新增 `stageWorkbench` 组件。
+- 构建失败属于当前分支既有 P2 需求分析类型债，不是本轮 P3 共性工作台抽象引入。
+
+### 2.4 运行态服务检查
+
+```text
+curl -sS http://127.0.0.1:5177/api/health
+```
+
+结果：
+
+```text
+{"status":"ok"}
+```
+
+## 3. 浏览器运行态验证
+
+### 3.1 空输入态
+
+页面：
+
+```text
+http://127.0.0.1:5177/p3-design-lab
+```
+
+截图：
+
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P3-DesignLab共性工作台抽象自检截图/01-empty-state.png`
+
+结论：
+
+- 页面可打开。
+- 左侧需求规格说明区显示无可用 P2 冻结包。
+- 左侧 CLI 区正常显示。
+- 右侧主产物区显示正文、目录、检查、投影四个 Tab。
+- 正文 Tab 保持 A4 文档空态。
+
+### 3.2 生成态
+
+临时运行态准备：
+
+1. 通过 `/api/requirement-authoring/documents` 创建一份 `空域协同规划软件需求规格说明`。
+2. 通过 `/api/requirement-authoring/documents/{document_id}/form-fields` 补齐字段。
+3. 通过 `/api/requirement-authoring/documents/{document_id}/check` 执行缺口检查。
+4. 通过 `/api/requirement-authoring/documents/{document_id}/freeze` 冻结。
+5. `/api/software-design-v2/input-packages` 返回 `p3_consumable=true` 输入包。
+
+浏览器脚本检查：
+
+- 点击 `生成设计基线`。
+- 等待 `空域协同规划软件设计说明` 出现。
+- 读取 Tab 文本，结果为：
+
+```json
+{
+  "tabs": ["正文", "目录", "检查", "投影"]
+}
+```
+
+截图：
+
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P3-DesignLab共性工作台抽象自检截图/02-generated-document.png`
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P3-DesignLab共性工作台抽象自检截图/03-outline-tab.png`
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P3-DesignLab共性工作台抽象自检截图/04-projection-tab.png`
+
+结论：
+
+- 真实运行态可从 P2 冻结需求规格说明生成 P3 设计基线。
+- 正文 Tab 展示 A4 软件设计说明。
+- 目录 Tab 展示设计章节和 `SoftwareDesignBaseline v2` 模块摘要。
+- 检查 Tab 可展示未检查状态。
+- 投影 Tab 展示 P4 模块工单投影。
+- DOM 检查确认切换到 `投影` 时选中 Tab 为 `投影`。
+
+## 4. 自检结论
+
+本轮完成了 `P3 Design Lab` 的共性阶段工作台首轮抽象验证：
+
+- `P3` 已不再继续扩旧 `/xx-p3` 页面结构。
+- `P3 Design Lab` 已接入可供后续 `P2` 反向升级复用的共性工作台外壳。
+- 右侧主产物区已采用可配置 Tab 表达正文、目录、检查、投影。
+- A4 文档纸面从 P3 专属页面中抽出为可复用组件。
+
+剩余风险：
+
+- `P2 RequirementAuthoringPage` 尚未反向迁移到共性工作台骨架。
+- 前端 `build` 仍被既有 P2 需求分析类型债阻塞，需单独清理。
