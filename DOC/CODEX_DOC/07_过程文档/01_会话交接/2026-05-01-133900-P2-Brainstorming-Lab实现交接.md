@@ -44,7 +44,7 @@
 
 完整自测记录见：
 
-`DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-01-133900-P2-Brainstorming-Lab实现自检记录.md`
+`DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260501-1339-P2-Brainstorming-Lab实现自检记录.md`
 
 关键结果：
 
@@ -96,5 +96,5 @@ http://127.0.0.1:5175/p2-brainstorm-lab
 
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming能力原理验证与架构规划.md`
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming-Lab状态机与v3原型草案.md`
-- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-01-141728-P2-Brainstorming-Lab-v3实现自检记录.md`
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260501-1417-P2-Brainstorming-Lab-v3实现自检记录.md`
 - `DOC/CODEX_DOC/08_原型与附图/2026-05-01-141500-CodeFactoryV2-P2-Brainstorming-Lab原型-v3/README.md`

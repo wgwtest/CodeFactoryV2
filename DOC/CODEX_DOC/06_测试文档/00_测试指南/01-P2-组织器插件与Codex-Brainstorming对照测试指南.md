@@ -18,6 +18,16 @@
 4. 分析“为什么 P2 输出不如 brainstorming 直观、深入或稳定”。
 5. 把测试结论反推到组织器设计、Prompt 资产、插件合同和前端观测页面。
 
+当前重点对照对象为三组：
+
+| 对象 | 性质 | 是否 P2 插件 | 测试定位 |
+| --- | --- | --- | --- |
+| `brainstorm-v1` | 本地 Prompt/schema 驱动组织器 | 是 | P2 本地组织器主要整改对象 |
+| `brainstorm-v1-dify-workflow` | Dify Workflow 驱动组织器 | 是 | P2 外部 workflow 型组织器主要整改对象 |
+| Codex `brainstorming` skill | Codex 本身的 skill | 否 | 强参考标杆，用于对比交互深度、决策推进和成稿质量 |
+
+真实 Codex `brainstorming` skill 不是插件，不能要求它输出 P2 插件合同、Provider 调用日志、document patch 或 decision state JSON。它的价值是提供高质量需求探索行为样本，用于反推 P2 组织器应如何改进。
+
 ## 2. 归档位置规则
 
 ### 2.1 长期指南
@@ -73,9 +83,9 @@ DOC/CODEX_DOC/03_规范与流程/
 
 | 类型 | 文档 |
 | --- | --- |
-| P2 多轮效果验证 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-06-P2需求分析Lab-态势分析系统多轮效果验证报告.md` |
-| 真实 Codex Brainstorming 深化测试 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-06-Codex真实BrainstormingSkill-态势分析系统深化测试报告.md` |
-| P2 与 Codex 20 回合对比 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-06-P2与Codex-Brainstorming-20回合决策模式对比测试报告.md` |
+| P2 多轮效果验证 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-1928-P2需求分析Lab-态势分析系统多轮效果验证报告.md` |
+| 真实 Codex Brainstorming 深化测试 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-2040-Codex真实BrainstormingSkill-态势分析系统深化测试报告.md` |
+| P2 与 Codex 20 回合对比 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-2334-P2与Codex-Brainstorming-20回合决策模式对比测试报告.md` |
 | 决策模式整改策略 | `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260506-决策模式与组织器整改策略补充.md` |
 | 组织器插件输入输出合同 | `DOC/CODEX_DOC/03_规范与流程/01_数据规范/02-P2-组织器插件输入输出合同规范.md` |
 | Brainstorm v1 Dify 工作流规范 | `DOC/CODEX_DOC/03_规范与流程/02_组织器协作流程/02-P2-Brainstorm-v1-Dify工作流搭建规范.md` |
@@ -92,7 +102,7 @@ DOC/CODEX_DOC/03_规范与流程/
 
 ## 4. 核心测试问题
 
-这类测试不应只比较“写了多少字”。必须回答以下问题：
+这类测试不应只比较“能不能跑通”。必须回答以下问题：
 
 1. 组织器是否先识别关键产品决策，而不是直接填需求规格章节。
 2. 组织器是否能在长轮次中维护稳定的决策链。
@@ -102,6 +112,9 @@ DOC/CODEX_DOC/03_规范与流程/
 6. 是否能在轮次上限或信息足够时主动收束并输出成稿。
 7. 调用日志是否能复现每一阶段的模型输入、输出、输出格式要求和后处理。
 8. 测试结论能否明确映射到插件 Prompt、schema、adoption、runtime 或前端观测设计。
+9. 最终正文有效字数、平均正文块长度、实质正文块比例和草案丰富度是否随整改向好。
+10. 已确认事实和已确认决策是否随整改稳定沉淀，而不是只形成空泛正文。
+11. P2 组织器与真实 Codex `brainstorming` skill 的差距是否缩小。
 
 ## 5. 测试对象分类
 
@@ -151,6 +164,33 @@ orchestrators/xg/brainstorm-v1-dify-workflow/
 3. 是否给出选项、推荐和理由。
 4. 是否在信息足够后进入方案比选。
 5. 是否在用户要求或轮次上限时主动成稿。
+
+对照测试时，应把 Codex `brainstorming` skill 当作参考标杆，而不是当作要被 P2 宿主调度的组件。
+
+Codex `brainstorming` skill 的测试要求：
+
+1. 使用隔离 Codex 会话，明确加载真实 `brainstorming` skill。
+2. 使用与 P2 组织器相同的基准起始输入和受控动态考官事实池。
+3. 不强制要求它每轮输出结构化 `decision_state`，但测试者需要在记录中归纳已确认事实、已确认决策、未闭合问题和最终成稿。
+4. 当交互已充分或达到轮次上限时，应要求它形成需求规格说明或等价成稿。
+5. 记录其交互过程、最终成稿、问题组织方式、方案收束方式和可借鉴策略。
+
+Codex `brainstorming` skill 的对照指标可以采用以下折算方式：
+
+| P2 指标 | Codex skill 折算口径 |
+| --- | --- |
+| `completed_turns` | 实际交互轮数 |
+| `confirmed_facts_count` | 从交互记录和最终成稿中归纳的明确事实数 |
+| `confirmed_decisions_count` | 从交互记录和最终成稿中归纳的稳定产品决策数 |
+| `open_questions_remaining` | 最终仍需用户确认的问题数 |
+| `final_working_document_text_chars` | 最终需求规格说明或等价成稿的有效字数 |
+| `final_working_document_block_count` | 最终成稿的章节数、条目数或自然段数，需说明切分口径 |
+| `avg_block_text_chars` | 最终有效字数 / 有效正文块数 |
+| `substantive_block_count` | 包含具体事实、角色、场景、功能、数据、约束、异常或验收要点的正文块数 |
+| `draft_richness_score` | 根据最终成稿的详实程度、章节覆盖、具体性和可执行性评分 |
+| `next_question_quality_score` | 根据交互过程中提问是否聚焦、承接上下文、有推荐理由评分 |
+
+这些折算指标用于对照分析，不表示 Codex skill 已变成 P2 插件。
 
 ## 6. 标准测试场景
 

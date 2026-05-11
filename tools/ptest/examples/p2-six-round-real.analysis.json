@@ -244,7 +244,7 @@
     {
       "evidence_id": "summary-report",
       "label": "P2 组织器多轮整改 6 轮总体测试分析报告",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改6轮总体测试分析报告.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1317-P2-组织器多轮整改6轮总体测试分析报告.md",
       "type": "test_record"
     },
     {
@@ -256,55 +256,55 @@
     {
       "evidence_id": "appendix-index",
       "label": "P2 6 轮交互证据附录索引",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/README.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/README.md",
       "type": "interaction_appendix"
     },
     {
       "evidence_id": "round-1-record",
       "label": "第 1 轮测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第1轮测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1214-P2-组织器多轮整改第1轮测试记录.md",
       "type": "test_record",
       "iteration": 1
     },
     {
       "evidence_id": "round-2-record",
       "label": "第 2 轮测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第2轮测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1318-P2-组织器多轮整改第2轮测试记录.md",
       "type": "test_record",
       "iteration": 2
     },
     {
       "evidence_id": "round-3-record",
       "label": "第 3 轮测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第3轮测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1609-P2-组织器多轮整改第3轮测试记录.md",
       "type": "test_record",
       "iteration": 3
     },
     {
       "evidence_id": "round-4-record",
       "label": "第 4 轮测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第4轮测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1609-P2-组织器多轮整改第4轮测试记录.md",
       "type": "test_record",
       "iteration": 4
     },
     {
       "evidence_id": "round-5-record",
       "label": "第 5 轮测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第5轮测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1848-P2-组织器多轮整改第5轮测试记录.md",
       "type": "test_record",
       "iteration": 5
     },
     {
       "evidence_id": "round-6-record",
       "label": "第 6 轮确认测试记录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改第6轮确认测试记录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1855-P2-组织器多轮整改第6轮确认测试记录.md",
       "type": "test_record",
       "iteration": 6
     },
     {
       "evidence_id": "round-1-local-appendix",
       "label": "第 1 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第1轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第1轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 1,
       "object_id": "brainstorm-v1"
@@ -312,7 +312,7 @@
     {
       "evidence_id": "round-1-dify-appendix",
       "label": "第 1 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第1轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第1轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 1,
       "object_id": "brainstorm-v1-dify-workflow"
@@ -320,7 +320,7 @@
     {
       "evidence_id": "round-2-local-appendix",
       "label": "第 2 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第2轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第2轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 2,
       "object_id": "brainstorm-v1"
@@ -328,7 +328,7 @@
     {
       "evidence_id": "round-2-dify-appendix",
       "label": "第 2 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第2轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第2轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 2,
       "object_id": "brainstorm-v1-dify-workflow"
@@ -336,7 +336,7 @@
     {
       "evidence_id": "round-3-local-appendix",
       "label": "第 3 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第3轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第3轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 3,
       "object_id": "brainstorm-v1"
@@ -344,7 +344,7 @@
     {
       "evidence_id": "round-3-dify-appendix",
       "label": "第 3 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第3轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第3轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 3,
       "object_id": "brainstorm-v1-dify-workflow"
@@ -352,7 +352,7 @@
     {
       "evidence_id": "round-4-local-appendix",
       "label": "第 4 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第4轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第4轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 4,
       "object_id": "brainstorm-v1"
@@ -360,7 +360,7 @@
     {
       "evidence_id": "round-4-dify-appendix",
       "label": "第 4 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第4轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第4轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 4,
       "object_id": "brainstorm-v1-dify-workflow"
@@ -368,7 +368,7 @@
     {
       "evidence_id": "round-5-local-appendix",
       "label": "第 5 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第5轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第5轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 5,
       "object_id": "brainstorm-v1"
@@ -376,7 +376,7 @@
     {
       "evidence_id": "round-5-dify-appendix",
       "label": "第 5 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第5轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第5轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 5,
       "object_id": "brainstorm-v1-dify-workflow"
@@ -384,7 +384,7 @@
     {
       "evidence_id": "round-6-local-appendix",
       "label": "第 6 轮 brainstorm-v1 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第6轮-brainstorm-v1-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第6轮-brainstorm-v1-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 6,
       "object_id": "brainstorm-v1"
@@ -392,7 +392,7 @@
     {
       "evidence_id": "round-6-dify-appendix",
       "label": "第 6 轮 Dify 交互与最终成果附录",
-      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-10-P2-组织器多轮整改交互证据附录/第6轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260510-1911-P2-组织器多轮整改交互证据附录/第6轮-brainstorm-v1-dify-workflow-交互与最终成果附录.md",
       "type": "interaction_appendix",
       "iteration": 6,
       "object_id": "brainstorm-v1-dify-workflow"

@@ -40,7 +40,7 @@ orchestrators/xg/brainstorm-v1-dify-workflow/
 
 ## 3. 当前问题摘要
 
-依据 `2026-05-08-P2-Brainstorm-v1-Dify插件全面测试报告.md`，当前 Dify workflow 已能完成真实调用，但尚未达到完整验收状态。
+依据 `260508-2109-P2-Brainstorm-v1-Dify插件全面测试报告.md`，当前 Dify workflow 已能完成真实调用，但尚未达到完整验收状态。
 
 已修复的 P2 接入问题：
 
@@ -540,4 +540,4 @@ uv run pytest apps/api/tests/test_orchestrator_plugin_contracts.py apps/api/test
 
 复测证据已归档：
 
-- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-08-P2-Brainstorm-v1-Dify工作流整改复测记录.md`
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260508-2109-P2-Brainstorm-v1-Dify工作流整改复测记录.md`

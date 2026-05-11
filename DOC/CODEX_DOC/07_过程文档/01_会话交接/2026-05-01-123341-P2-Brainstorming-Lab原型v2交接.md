@@ -41,7 +41,7 @@
 
 自检记录：
 
-- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-01-123341-P2-Brainstorming-Lab原型v2自检记录.md`
+- `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260501-1233-P2-Brainstorming-Lab原型v2自检记录.md`
 
 已确认：
 

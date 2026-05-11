@@ -15,7 +15,7 @@
 本文是 `brainstorm-v1-dify-workflow` 插件的第二轮 Dify 工作流整改计划，依据以下 20 轮真实联调报告编写：
 
 ```text
-DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-08-P2-Brainstorm-v1-Dify-20轮深度测试报告.md
+DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260508-0025-P2-Brainstorm-v1-Dify-20轮深度测试报告.md
 ```
 
 本文放在插件目录内是有意为之：
@@ -507,7 +507,7 @@ uv run pytest apps/api/tests/test_orchestrator_plugin_contracts.py apps/api/test
 复用 20 轮深测链路：
 
 ```text
-DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-08-P2-Brainstorm-v1-Dify-20轮深度测试报告.md
+DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260508-0025-P2-Brainstorm-v1-Dify-20轮深度测试报告.md
 ```
 
 通过条件：
@@ -622,5 +622,5 @@ DOC/CODEX_DOC/06_测试文档/03_机测记录/YYYY-MM-DD-P2-Brainstorm-v1-Dify-2
 正式复测记录见：
 
 ```text
-DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05-08-P2-Brainstorm-v1-Dify-20轮质量整改复测记录.md
+DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260508-0025-P2-Brainstorm-v1-Dify-20轮质量整改复测记录.md
 ```
