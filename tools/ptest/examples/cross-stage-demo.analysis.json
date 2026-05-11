@@ -1,0 +1,309 @@
+{
+  "schema_version": "ptest.analysis.v1",
+  "title": "P-Test 跨阶段 analysis.json 样例",
+  "plan_ref": "DOC/CODEX_DOC/03_规范与流程/01_数据规范/04-P-Test-analysis-json数据规范.md",
+  "generated_at": "2026-05-11T10:30:00+08:00",
+  "analysis_method": {
+    "executor": "codex",
+    "mode": "sample_only",
+    "notes": [
+      "本文件用于展示 P-Test analysis.json 的结构和页面渲染效果。",
+      "所有数值均为样例数据，不代表真实 P2/P3/P4/P5 测试结论。",
+      "样例覆盖 trend、bar、status_matrix、stacked_bar、table 五类展示形式。"
+    ]
+  },
+  "test_objects": [
+    {
+      "object_id": "p2-requirement-analysis",
+      "display_name": "P2 需求分析系统",
+      "type": "stage_system"
+    },
+    {
+      "object_id": "p3-design-lab",
+      "display_name": "P3 软件设计系统",
+      "type": "stage_system"
+    },
+    {
+      "object_id": "p4-tool-repository",
+      "display_name": "P4 工具仓库",
+      "type": "stage_system"
+    }
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "scope": "首轮基线测试",
+      "changes_summary": "按既有测试记录采集基础指标。",
+      "evidence_links": ["e-plan", "e-round-1"]
+    },
+    {
+      "iteration": 2,
+      "scope": "合同与证据链补强复测",
+      "changes_summary": "补齐测试证据入口、失败响应和输出合同字段。",
+      "evidence_links": ["e-round-2"]
+    },
+    {
+      "iteration": 3,
+      "scope": "稳定性与展示口径复测",
+      "changes_summary": "验证指标稳定性、趋势收敛和证据可追溯性。",
+      "evidence_links": ["e-round-3", "e-summary"]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_id": "test_case_pass_rate",
+      "name": "测试用例通过率",
+      "purpose": "观察各阶段测试通过率是否随整改提升。",
+      "type": "ratio",
+      "unit": "%",
+      "source": "机测记录、验收入口、测试汇总表",
+      "calculation": "通过用例数 / 已执行用例数 * 100；跳过用例不计入分母。",
+      "visualization": "trend",
+      "limitations": "通过率只反映用例覆盖范围内的表现，不能替代人工验收。"
+    },
+    {
+      "metric_id": "blocking_defect_count",
+      "name": "阻塞缺陷数",
+      "purpose": "观察每轮仍阻塞交付或验收的缺陷数量。",
+      "type": "count",
+      "unit": "个",
+      "source": "问题清单、整改说明、失败日志",
+      "calculation": "统计被标记为 blocking 或必须本轮修复的问题数量。",
+      "visualization": "bar",
+      "limitations": "缺陷粒度受记录口径影响；不能直接和代码规模等同。"
+    },
+    {
+      "metric_id": "evidence_trace_complete",
+      "name": "证据链完整",
+      "purpose": "确认测试结果是否能追溯到记录、日志、截图或最终产物。",
+      "type": "boolean",
+      "unit": "是/否",
+      "source": "测试记录、证据附件、日志目录",
+      "calculation": "每个关键结论至少有一个可打开证据入口则判定为是。",
+      "visualization": "status_matrix",
+      "limitations": "完整证据链不代表结论一定正确，只表示可复核。"
+    },
+    {
+      "metric_id": "defect_type_distribution",
+      "name": "缺陷类型分布",
+      "purpose": "观察缺陷主要集中在合同、数据、界面还是测试脚本。",
+      "type": "category",
+      "unit": "个",
+      "source": "问题分类表、整改说明",
+      "calculation": "按 contract、data、ui、test_script 四类统计每轮缺陷数量。",
+      "visualization": "stacked_bar",
+      "limitations": "分类依赖分析者判断，交叉问题只计入主归属。"
+    },
+    {
+      "metric_id": "main_residual_risk",
+      "name": "主要遗留风险",
+      "purpose": "保留每个阶段当前最需要人工关注的风险文本。",
+      "type": "text",
+      "unit": "",
+      "source": "验收结论、整改说明、人工复核记录",
+      "calculation": "提取每轮结束时仍未关闭且影响后续工作的最高优先级风险。",
+      "visualization": "table",
+      "limitations": "文本风险不适合直接量化，需要结合证据人工复核。"
+    }
+  ],
+  "series": [
+    {
+      "metric_id": "test_case_pass_rate",
+      "object_id": "p2-requirement-analysis",
+      "points": [
+        {"iteration": 1, "value": 72, "evidence_refs": ["e-round-1"]},
+        {"iteration": 2, "value": 86, "evidence_refs": ["e-round-2"]},
+        {"iteration": 3, "value": 94, "evidence_refs": ["e-round-3"]}
+      ]
+    },
+    {
+      "metric_id": "test_case_pass_rate",
+      "object_id": "p3-design-lab",
+      "points": [
+        {"iteration": 1, "value": 68},
+        {"iteration": 2, "value": 82},
+        {"iteration": 3, "value": 91}
+      ]
+    },
+    {
+      "metric_id": "test_case_pass_rate",
+      "object_id": "p4-tool-repository",
+      "points": [
+        {"iteration": 1, "value": 75},
+        {"iteration": 2, "value": 80},
+        {"iteration": 3, "value": 88}
+      ]
+    },
+    {
+      "metric_id": "blocking_defect_count",
+      "object_id": "p2-requirement-analysis",
+      "points": [
+        {"iteration": 1, "value": 5},
+        {"iteration": 2, "value": 2},
+        {"iteration": 3, "value": 0}
+      ]
+    },
+    {
+      "metric_id": "blocking_defect_count",
+      "object_id": "p3-design-lab",
+      "points": [
+        {"iteration": 1, "value": 6},
+        {"iteration": 2, "value": 3},
+        {"iteration": 3, "value": 1}
+      ]
+    },
+    {
+      "metric_id": "blocking_defect_count",
+      "object_id": "p4-tool-repository",
+      "points": [
+        {"iteration": 1, "value": 4},
+        {"iteration": 2, "value": 2},
+        {"iteration": 3, "value": 1}
+      ]
+    },
+    {
+      "metric_id": "evidence_trace_complete",
+      "object_id": "p2-requirement-analysis",
+      "points": [
+        {"iteration": 1, "value": false, "note": "首轮缺少部分日志入口"},
+        {"iteration": 2, "value": true},
+        {"iteration": 3, "value": true}
+      ]
+    },
+    {
+      "metric_id": "evidence_trace_complete",
+      "object_id": "p3-design-lab",
+      "points": [
+        {"iteration": 1, "value": false},
+        {"iteration": 2, "value": false, "note": "截图已补齐，接口日志仍缺"},
+        {"iteration": 3, "value": true}
+      ]
+    },
+    {
+      "metric_id": "evidence_trace_complete",
+      "object_id": "p4-tool-repository",
+      "points": [
+        {"iteration": 1, "value": true},
+        {"iteration": 2, "value": true},
+        {"iteration": 3, "value": true}
+      ]
+    },
+    {
+      "metric_id": "defect_type_distribution",
+      "object_id": "p2-requirement-analysis",
+      "points": [
+        {"iteration": 1, "value": {"contract": 3, "data": 2, "ui": 1, "test_script": 1}},
+        {"iteration": 2, "value": {"contract": 1, "data": 1, "ui": 1, "test_script": 0}},
+        {"iteration": 3, "value": {"contract": 0, "data": 1, "ui": 0, "test_script": 0}}
+      ]
+    },
+    {
+      "metric_id": "defect_type_distribution",
+      "object_id": "p3-design-lab",
+      "points": [
+        {"iteration": 1, "value": {"contract": 2, "data": 2, "ui": 3, "test_script": 1}},
+        {"iteration": 2, "value": {"contract": 1, "data": 1, "ui": 2, "test_script": 0}},
+        {"iteration": 3, "value": {"contract": 0, "data": 1, "ui": 1, "test_script": 0}}
+      ]
+    },
+    {
+      "metric_id": "defect_type_distribution",
+      "object_id": "p4-tool-repository",
+      "points": [
+        {"iteration": 1, "value": {"contract": 1, "data": 3, "ui": 1, "test_script": 0}},
+        {"iteration": 2, "value": {"contract": 1, "data": 1, "ui": 1, "test_script": 0}},
+        {"iteration": 3, "value": {"contract": 0, "data": 1, "ui": 0, "test_script": 0}}
+      ]
+    },
+    {
+      "metric_id": "main_residual_risk",
+      "object_id": "p2-requirement-analysis",
+      "points": [
+        {"iteration": 1, "value": "组织器输出合同仍存在字段缺失。"},
+        {"iteration": 2, "value": "部分主观指标缺少复核证据。"},
+        {"iteration": 3, "value": "需要扩大长轮次回归样本。"}
+      ]
+    },
+    {
+      "metric_id": "main_residual_risk",
+      "object_id": "p3-design-lab",
+      "points": [
+        {"iteration": 1, "value": "设计产物与工作台视图存在字段映射差异。"},
+        {"iteration": 2, "value": "文档投影截图覆盖不足。"},
+        {"iteration": 3, "value": "复杂设计包仍需人工验收。"}
+      ]
+    },
+    {
+      "metric_id": "main_residual_risk",
+      "object_id": "p4-tool-repository",
+      "points": [
+        {"iteration": 1, "value": "工具匹配结果的解释字段不足。"},
+        {"iteration": 2, "value": "少量工具供给记录缺少来源链。"},
+        {"iteration": 3, "value": "需补充跨领域工具样本。"}
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "iteration": 1,
+      "title": "首轮基线",
+      "problem": "三个阶段均存在证据链、合同字段或缺陷分类不完整问题。",
+      "change": "建立统一指标口径，并按 P-Test analysis.json 规范重整测试记录。",
+      "result": "可以生成初版分析，但证据链不足。"
+    },
+    {
+      "iteration": 2,
+      "title": "证据链补强",
+      "problem": "部分日志、截图和失败响应入口仍未被索引。",
+      "change": "补齐 evidence_index，并在 series 点位记录异常说明。",
+      "result": "通过率提升，阻塞缺陷下降。"
+    },
+    {
+      "iteration": 3,
+      "title": "稳定复测",
+      "problem": "仍需扩大样本验证趋势是否稳定。",
+      "change": "按统一规范输出最新轮次数据切片和风险文本。",
+      "result": "样例展示 P-Test 可对跨阶段测试结果进行统一可视化。"
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "e-plan",
+      "label": "P-Test analysis.json 数据规范",
+      "path": "DOC/CODEX_DOC/03_规范与流程/01_数据规范/04-P-Test-analysis-json数据规范.md",
+      "type": "plan"
+    },
+    {
+      "evidence_id": "e-round-1",
+      "label": "首轮基线测试记录",
+      "path": "DOC/CODEX_DOC/06_测试文档/03_机测记录/sample-round-1.md",
+      "type": "test_record",
+      "iteration": 1
+    },
+    {
+      "evidence_id": "e-round-2",
+      "label": "第二轮整改复测记录",
+      "path": "DOC/CODEX_DOC/06_测试文档/03_机测记录/sample-round-2.md",
+      "type": "test_record",
+      "iteration": 2
+    },
+    {
+      "evidence_id": "e-round-3",
+      "label": "第三轮稳定复测记录",
+      "path": "DOC/CODEX_DOC/06_测试文档/03_机测记录/sample-round-3.md",
+      "type": "test_record",
+      "iteration": 3
+    },
+    {
+      "evidence_id": "e-summary",
+      "label": "跨阶段测试分析结论样例",
+      "path": "DOC/CODEX_DOC/06_测试文档/05_验收结论/sample-cross-stage-summary.md",
+      "type": "final_artifact"
+    }
+  ],
+  "conclusions": [
+    "该样例展示了 P-Test 如何用同一份 analysis.json 承载多阶段、多轮次、多指标分析结果。",
+    "测试计划阶段只需要按规范定义指标和证据来源；测试后再整理为 analysis.json。",
+    "Schema 主要用于工具校验，分系统日常编写测试方案时优先阅读数据规范文档。"
+  ]
+}

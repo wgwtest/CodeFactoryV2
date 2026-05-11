@@ -1,0 +1,249 @@
+{
+  "schema_version": "ptest.analysis.v1",
+  "title": "P2 组织器多轮整改 6 轮测试分析样例",
+  "plan_ref": "DOC/CODEX_DOC/04_研制计划/02.06-WBS-P2-组织器多轮自测整改闭环-研制计划.md",
+  "generated_at": "2026-05-10T00:00:00+08:00",
+  "analysis_method": {
+    "executor": "codex",
+    "mode": "plan_driven_manual_assisted_sample",
+    "notes": [
+      "本文件是 P-Test 模板联调用样例，指标定义来自研制计划第 5 节。",
+      "当前 worktree 未包含交接文档提到的 6 轮总体测试报告与交互证据附件，因此数值用于展示结构，不作为正式测试结论。"
+    ]
+  },
+  "test_objects": [
+    {
+      "object_id": "brainstorm-v1",
+      "display_name": "Brainstorm V1",
+      "type": "p2_orchestrator"
+    },
+    {
+      "object_id": "brainstorm-v1-dify-workflow",
+      "display_name": "Brainstorm V1 Dify Workflow",
+      "type": "p2_orchestrator"
+    }
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "scope": "受控动态考官首轮基线",
+      "changes_summary": "暴露合同错误、收束失败和可观测性不足。",
+      "evidence_links": []
+    },
+    {
+      "iteration": 2,
+      "scope": "阻塞性合同错误整改复测",
+      "changes_summary": "收敛 plan_ref、patch 和状态归一化问题。",
+      "evidence_links": []
+    },
+    {
+      "iteration": 3,
+      "scope": "显式收束与草案交付复测",
+      "changes_summary": "强化草案交付状态和带缺口草案路径。",
+      "evidence_links": []
+    },
+    {
+      "iteration": 4,
+      "scope": "开放问题生命周期复测",
+      "changes_summary": "补充开放问题关闭、延期和下一问质量约束。",
+      "evidence_links": []
+    },
+    {
+      "iteration": 5,
+      "scope": "正文投影与章节覆盖复测",
+      "changes_summary": "提升正文块投影、章节覆盖和证据链表达。",
+      "evidence_links": []
+    },
+    {
+      "iteration": 6,
+      "scope": "稳定性与可观测性确认",
+      "changes_summary": "确认两个组织器均具备可审计调用证据和稳定草案产物。",
+      "evidence_links": []
+    }
+  ],
+  "metrics": [
+    {
+      "metric_id": "completed_turns",
+      "name": "完成 Turn 数",
+      "type": "count",
+      "unit": "Turn",
+      "source": "单轮测试记录、summary",
+      "calculation": "统计被测组织器完成并返回有效响应的 Turn 数。",
+      "visualization": "trend",
+      "limitations": "Turn 多不等于质量高，只表示会话推进长度。"
+    },
+    {
+      "metric_id": "error_count",
+      "name": "错误数",
+      "type": "count",
+      "unit": "次",
+      "source": "单轮测试记录、错误响应",
+      "calculation": "统计 400、500、外部 workflow failed、Provider 不可用等失败。",
+      "visualization": "bar",
+      "limitations": "外部服务故障不能直接等同于组织器质量退化。"
+    },
+    {
+      "metric_id": "draft_delivery_success",
+      "name": "草案交付成功",
+      "type": "boolean",
+      "unit": "是/否",
+      "source": "最终 Turn、工作正文、交互附件",
+      "calculation": "显式收束后是否进入 draft_delivery 或 draft_with_gaps，并产生可审阅成果。",
+      "visualization": "status_matrix",
+      "limitations": "成功交付不代表草案深度达标。"
+    },
+    {
+      "metric_id": "final_working_document_text_chars",
+      "name": "最终正文有效字数",
+      "type": "count",
+      "unit": "字",
+      "source": "最终工作正文、证据附件",
+      "calculation": "排除空白和明显日志噪声后的正文字符数。",
+      "visualization": "trend",
+      "limitations": "字数增加可能是丰富，也可能是冗余。"
+    },
+    {
+      "metric_id": "final_working_document_block_count",
+      "name": "最终正文块数",
+      "type": "count",
+      "unit": "块",
+      "source": "最终工作正文、document patches",
+      "calculation": "统计最终临时正文或工作正文中的有效正文块。",
+      "visualization": "trend",
+      "limitations": "块数受投影策略影响，不完全代表结构质量。"
+    },
+    {
+      "metric_id": "confirmed_facts_count",
+      "name": "已确认事实数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、summary",
+      "calculation": "统计最终结构化状态中的 confirmed_facts 数量。",
+      "visualization": "trend",
+      "limitations": "事实多不代表关键决策充分。"
+    },
+    {
+      "metric_id": "confirmed_decisions_count",
+      "name": "已确认决策数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、summary",
+      "calculation": "统计最终结构化状态中的 confirmed_decisions 数量。",
+      "visualization": "trend",
+      "limitations": "决策项粒度可能因组织器 schema 不同而不可完全等价。"
+    },
+    {
+      "metric_id": "open_questions_remaining",
+      "name": "最终未闭合问题数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、summary",
+      "calculation": "统计最终结构化状态中的 open_questions 数量。",
+      "visualization": "trend",
+      "limitations": "未闭合问题多可能表示深入探索，也可能表示收束不足。"
+    },
+    {
+      "metric_id": "tentative_assumptions_count",
+      "name": "暂定假设数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、summary",
+      "calculation": "统计最终结构化状态中的 tentative_assumptions 数量。",
+      "visualization": "trend",
+      "limitations": "假设数应结合后续验证情况解释。"
+    },
+    {
+      "metric_id": "rejected_directions_count",
+      "name": "被否定方向数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、summary",
+      "calculation": "统计最终结构化状态中的 rejected_directions 数量。",
+      "visualization": "trend",
+      "limitations": "被否定方向少可能是清晰，也可能是未充分探索。"
+    },
+    {
+      "metric_id": "chapter_projection_count",
+      "name": "章节投影数",
+      "type": "count",
+      "unit": "个",
+      "source": "decision state、document projection",
+      "calculation": "统计最终结构化状态中的 chapter_projections 或等价章节投影数量。",
+      "visualization": "trend",
+      "limitations": "章节投影不能替代需求合理性判断。"
+    },
+    {
+      "metric_id": "examiner_action_distribution",
+      "name": "考官动作分布",
+      "type": "category",
+      "unit": "次",
+      "source": "动态考官脚本、测试记录",
+      "calculation": "统计 small_guidance、light_correction、answer、closure_request 等动作。",
+      "visualization": "stacked_bar",
+      "limitations": "考官动作受测试策略影响，不能单独评价组织器。"
+    },
+    {
+      "metric_id": "observability_log_count",
+      "name": "可审计调用日志数",
+      "type": "count",
+      "unit": "条",
+      "source": "provider logs、external workflow logs",
+      "calculation": "统计最终会话中可追溯的模型或外部 workflow 调用日志数量。",
+      "visualization": "trend",
+      "limitations": "日志多不代表质量高，只表示可观测程度。"
+    }
+  ],
+  "series": [
+    {"metric_id": "completed_turns", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 11}, {"iteration": 2, "value": 14}, {"iteration": 3, "value": 18}, {"iteration": 4, "value": 20}, {"iteration": 5, "value": 20}, {"iteration": 6, "value": 20}]},
+    {"metric_id": "completed_turns", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 9}, {"iteration": 2, "value": 13}, {"iteration": 3, "value": 17}, {"iteration": 4, "value": 18}, {"iteration": 5, "value": 20}, {"iteration": 6, "value": 20}]},
+    {"metric_id": "error_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 3}, {"iteration": 2, "value": 1}, {"iteration": 3, "value": 0}, {"iteration": 4, "value": 0}, {"iteration": 5, "value": 0}, {"iteration": 6, "value": 0}]},
+    {"metric_id": "error_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 4}, {"iteration": 2, "value": 2}, {"iteration": 3, "value": 1}, {"iteration": 4, "value": 1}, {"iteration": 5, "value": 0}, {"iteration": 6, "value": 0}]},
+    {"metric_id": "draft_delivery_success", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": false}, {"iteration": 2, "value": false}, {"iteration": 3, "value": true}, {"iteration": 4, "value": true}, {"iteration": 5, "value": true}, {"iteration": 6, "value": true}]},
+    {"metric_id": "draft_delivery_success", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": false}, {"iteration": 2, "value": false}, {"iteration": 3, "value": false}, {"iteration": 4, "value": true}, {"iteration": 5, "value": true}, {"iteration": 6, "value": true}]},
+    {"metric_id": "final_working_document_text_chars", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 820}, {"iteration": 2, "value": 1260}, {"iteration": 3, "value": 2140}, {"iteration": 4, "value": 2860}, {"iteration": 5, "value": 3480}, {"iteration": 6, "value": 3720}]},
+    {"metric_id": "final_working_document_text_chars", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 620}, {"iteration": 2, "value": 980}, {"iteration": 3, "value": 1520}, {"iteration": 4, "value": 2320}, {"iteration": 5, "value": 3100}, {"iteration": 6, "value": 3380}]},
+    {"metric_id": "final_working_document_block_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 3}, {"iteration": 2, "value": 5}, {"iteration": 3, "value": 8}, {"iteration": 4, "value": 10}, {"iteration": 5, "value": 12}, {"iteration": 6, "value": 12}]},
+    {"metric_id": "final_working_document_block_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 2}, {"iteration": 2, "value": 4}, {"iteration": 3, "value": 6}, {"iteration": 4, "value": 9}, {"iteration": 5, "value": 11}, {"iteration": 6, "value": 12}]},
+    {"metric_id": "confirmed_facts_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 7}, {"iteration": 2, "value": 11}, {"iteration": 3, "value": 15}, {"iteration": 4, "value": 19}, {"iteration": 5, "value": 22}, {"iteration": 6, "value": 23}]},
+    {"metric_id": "confirmed_facts_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 5}, {"iteration": 2, "value": 9}, {"iteration": 3, "value": 13}, {"iteration": 4, "value": 17}, {"iteration": 5, "value": 20}, {"iteration": 6, "value": 22}]},
+    {"metric_id": "confirmed_decisions_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 2}, {"iteration": 2, "value": 4}, {"iteration": 3, "value": 6}, {"iteration": 4, "value": 8}, {"iteration": 5, "value": 10}, {"iteration": 6, "value": 11}]},
+    {"metric_id": "confirmed_decisions_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 1}, {"iteration": 2, "value": 3}, {"iteration": 3, "value": 5}, {"iteration": 4, "value": 7}, {"iteration": 5, "value": 9}, {"iteration": 6, "value": 10}]},
+    {"metric_id": "open_questions_remaining", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 10}, {"iteration": 2, "value": 8}, {"iteration": 3, "value": 6}, {"iteration": 4, "value": 4}, {"iteration": 5, "value": 3}, {"iteration": 6, "value": 2}]},
+    {"metric_id": "open_questions_remaining", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 12}, {"iteration": 2, "value": 10}, {"iteration": 3, "value": 8}, {"iteration": 4, "value": 5}, {"iteration": 5, "value": 3}, {"iteration": 6, "value": 2}]},
+    {"metric_id": "tentative_assumptions_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 5}, {"iteration": 2, "value": 4}, {"iteration": 3, "value": 4}, {"iteration": 4, "value": 3}, {"iteration": 5, "value": 2}, {"iteration": 6, "value": 2}]},
+    {"metric_id": "tentative_assumptions_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 6}, {"iteration": 2, "value": 5}, {"iteration": 3, "value": 4}, {"iteration": 4, "value": 3}, {"iteration": 5, "value": 3}, {"iteration": 6, "value": 2}]},
+    {"metric_id": "rejected_directions_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 1}, {"iteration": 2, "value": 2}, {"iteration": 3, "value": 3}, {"iteration": 4, "value": 4}, {"iteration": 5, "value": 4}, {"iteration": 6, "value": 5}]},
+    {"metric_id": "rejected_directions_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 0}, {"iteration": 2, "value": 1}, {"iteration": 3, "value": 2}, {"iteration": 4, "value": 3}, {"iteration": 5, "value": 4}, {"iteration": 6, "value": 4}]},
+    {"metric_id": "chapter_projection_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 2}, {"iteration": 2, "value": 4}, {"iteration": 3, "value": 6}, {"iteration": 4, "value": 7}, {"iteration": 5, "value": 8}, {"iteration": 6, "value": 8}]},
+    {"metric_id": "chapter_projection_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 1}, {"iteration": 2, "value": 3}, {"iteration": 3, "value": 5}, {"iteration": 4, "value": 6}, {"iteration": 5, "value": 8}, {"iteration": 6, "value": 8}]},
+    {"metric_id": "examiner_action_distribution", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": {"answer": 7, "small_guidance": 2, "light_correction": 1, "closure_request": 1}}, {"iteration": 2, "value": {"answer": 9, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}, {"iteration": 3, "value": {"answer": 12, "small_guidance": 4, "light_correction": 1, "closure_request": 1}}, {"iteration": 4, "value": {"answer": 14, "small_guidance": 4, "light_correction": 1, "closure_request": 1}}, {"iteration": 5, "value": {"answer": 15, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}, {"iteration": 6, "value": {"answer": 15, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}]},
+    {"metric_id": "examiner_action_distribution", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": {"answer": 5, "small_guidance": 2, "light_correction": 1, "closure_request": 1}}, {"iteration": 2, "value": {"answer": 8, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}, {"iteration": 3, "value": {"answer": 11, "small_guidance": 4, "light_correction": 1, "closure_request": 1}}, {"iteration": 4, "value": {"answer": 12, "small_guidance": 4, "light_correction": 1, "closure_request": 1}}, {"iteration": 5, "value": {"answer": 15, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}, {"iteration": 6, "value": {"answer": 15, "small_guidance": 3, "light_correction": 1, "closure_request": 1}}]},
+    {"metric_id": "observability_log_count", "object_id": "brainstorm-v1", "points": [{"iteration": 1, "value": 2}, {"iteration": 2, "value": 5}, {"iteration": 3, "value": 8}, {"iteration": 4, "value": 10}, {"iteration": 5, "value": 12}, {"iteration": 6, "value": 12}]},
+    {"metric_id": "observability_log_count", "object_id": "brainstorm-v1-dify-workflow", "points": [{"iteration": 1, "value": 0}, {"iteration": 2, "value": 2}, {"iteration": 3, "value": 5}, {"iteration": 4, "value": 7}, {"iteration": 5, "value": 11}, {"iteration": 6, "value": 12}]}
+  ],
+  "timeline": [
+    {"iteration": 1, "title": "首轮基线", "problem": "合同错误、收束失败和日志不足集中暴露。", "change": "建立问题分类和复测路径。", "result": "未达最低通过标准。"},
+    {"iteration": 2, "title": "合同整改", "problem": "仍存在少量合同与外部 workflow 失败。", "change": "归一化关键字段并补充失败响应记录。", "result": "阻塞错误明显下降。"},
+    {"iteration": 3, "title": "草案交付", "problem": "Dify 路径收束仍不稳定。", "change": "强化 draft_delivery 与 draft_with_gaps 分支。", "result": "本地组织器开始稳定交付草案。"},
+    {"iteration": 4, "title": "问题生命周期", "problem": "开放问题关闭和延期表达不足。", "change": "补充状态迁移与下一问约束。", "result": "两个组织器均进入可审阅草案路径。"},
+    {"iteration": 5, "title": "正文投影", "problem": "章节覆盖和正文块投影仍有差距。", "change": "优化章节投影与正文承载。", "result": "主要指标接近收敛。"},
+    {"iteration": 6, "title": "稳定确认", "problem": "需确认可观测性和连续稳定性。", "change": "补齐 provider/external workflow 日志索引。", "result": "样例数据显示两个组织器均满足最低展示条件。"}
+  ],
+  "evidence_index": [
+    {
+      "label": "P-Test 设计文档",
+      "path": "DOC/CODEX_DOC/02_设计说明/P-Test_测试分析与可视化/P-Test-测试分析与可视化设计.md",
+      "type": "design"
+    },
+    {
+      "label": "P2 组织器多轮自测整改闭环研制计划",
+      "path": "DOC/CODEX_DOC/04_研制计划/02.06-WBS-P2-组织器多轮自测整改闭环-研制计划.md",
+      "type": "plan"
+    }
+  ],
+  "conclusions": [
+    "P-Test v1 的固定模板可以按指标聚合多轮、多对象序列。",
+    "正式分析必须用真实测试记录和交互证据替换本样例数值。",
+    "HTML 展示层只做渲染，不执行智能判定或 P2 专用规则。"
+  ]
+}
