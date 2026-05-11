@@ -156,6 +156,7 @@ class OrchestratorContractValidator:
         if not isinstance(value, list):
             return []
         known_plan_ids = {str(plan.get("plan_id")) for plan in list(target_anchor_plan or [])}
+        plan_ref_aliases = OrchestratorContractValidator.plan_ref_aliases(target_anchor_plan or [])
         patches = []
         for item in value[:6]:
             if not isinstance(item, dict):
@@ -164,6 +165,7 @@ class OrchestratorContractValidator:
             content = str(item.get("content") or "").strip()
             if not plan_ref or not content:
                 continue
+            plan_ref = plan_ref_aliases.get(plan_ref, plan_ref)
             if known_plan_ids and plan_ref not in known_plan_ids:
                 raise ValueError(f"document_patch.plan_ref does not match target_anchor_plan: {plan_ref}")
             patches.append(
@@ -175,3 +177,16 @@ class OrchestratorContractValidator:
                 }
             )
         return patches
+
+    @staticmethod
+    def plan_ref_aliases(target_anchor_plan: list[dict]) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        for plan in target_anchor_plan:
+            plan_id = str(plan.get("plan_id") or "").strip()
+            if not plan_id:
+                continue
+            for key in ("template_clause_id", "anchor_path"):
+                alias = str(plan.get(key) or "").strip()
+                if alias:
+                    aliases[alias] = plan_id
+        return aliases

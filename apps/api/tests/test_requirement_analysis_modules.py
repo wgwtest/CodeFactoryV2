@@ -18,6 +18,7 @@ from app.requirement_analysis.provider_call_service import ProviderRunResult
 from app.requirement_analysis.summary_artifact_service import ArtifactUpdateResult, RequirementAnalysisSummaryArtifactService
 from app.requirement_analysis.turn_context_builder import TurnContext
 from app.requirement_analysis.turn_decision_service import TurnDecisionService, TurnDecisionResult
+from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
 from app.requirement_analysis.working_document_review_service import WorkingDocumentReviewService
 from app.requirement_analysis.working_document_service import WorkingDocumentService
 
@@ -174,6 +175,69 @@ def test_write_contract_normalizes_anchor_plan_and_plan_ref() -> None:
     assert normalized["target_anchor_plan"][0]["plan_id"] == "AP-001"
     assert normalized["document_patch"][0]["plan_ref"] == "AP-001"
     assert "section" not in normalized["document_patch"][0]
+
+
+def test_write_contract_rewrites_clause_id_plan_ref_to_existing_anchor_plan_id() -> None:
+    validator = OrchestratorContractValidator()
+
+    normalized = validator.normalize_turn_output(
+        {
+            "target_anchor_plan": [
+                {
+                    "plan_id": "AP-SCOPE-001",
+                    "decision_type": "revise_existing_clause",
+                    "template_clause_id": "REQ-2.4",
+                    "display_heading": "2.4 范围边界",
+                }
+            ],
+            "document_patch": [
+                {
+                    "plan_ref": "REQ-2.4",
+                    "operation": "append_or_update",
+                    "content": "第一阶段不做实时多源情报接入，不做自动决策推荐。",
+                }
+            ],
+        },
+        provider_id="mock",
+        model="mock-requirement-analysis-v1",
+        write_policy="patch_suggestion_only",
+    )
+
+    assert normalized["document_patch"][0]["plan_ref"] == "AP-SCOPE-001"
+
+
+def test_deepseek_document_patch_normalization_preserves_structured_anchor_fields() -> None:
+    class DummySession:
+        write_policy = "patch_suggestion_only"
+
+    normalized = DeepSeekRequirementAnalysisClient._normalize_document_patch(
+        [
+            {
+                "plan_ref": "PLAN-017",
+                "operation": "append_or_update",
+                "content": "第一阶段不做实时多源情报接入，不做自动决策推荐。",
+                "target_section": "2.4 范围边界",
+                "display_heading": "2.4 范围边界",
+                "template_clause_id": "REQ-2.4",
+                "anchor_path": "REQ-2.4",
+            }
+        ],
+        session=DummySession(),
+        target_anchor_plan=[],
+    )
+
+    assert normalized == [
+        {
+            "plan_ref": "PLAN-017",
+            "operation": "append_or_update",
+            "content": "第一阶段不做实时多源情报接入，不做自动决策推荐。",
+            "write_policy": "patch_suggestion_only",
+            "target_section": "2.4 范围边界",
+            "display_heading": "2.4 范围边界",
+            "template_clause_id": "REQ-2.4",
+            "anchor_path": "REQ-2.4",
+        }
+    ]
 
 
 def test_write_contract_rejects_patch_without_existing_plan_ref() -> None:
@@ -857,6 +921,63 @@ def test_working_document_replace_and_delete_keep_current_text_clean() -> None:
     assert "第一阶段不做协同规划" not in delete_update.after_excerpt
     assert working_document["revision_fragments"][-1]["apply_mode"] == "delete"
     assert working_document["revision_fragments"][-1]["deleted_text"] == "第一阶段不做协同规划"
+
+
+def test_working_document_append_or_update_replaces_subsumed_previous_text() -> None:
+    service = WorkingDocumentService()
+    working_document = service.initialize(topic="态势分析系统需求规格说明", template_id="81433号")
+
+    service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "plan_ref": "AP-001",
+                "operation": "append_or_update",
+                "content": "第一阶段范围边界：\n- 包含：文件导入导出、内网数据加载\n- 不包含：实时数据总线",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.4", "target_section": "2 项目概述 / 范围边界"},
+        turn_id="turn-0001",
+        user_input_summary="初始范围边界",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-001",
+                "template_clause_id": "REQ-2.4",
+                "display_heading": "2.4 范围边界",
+                "anchor_path": "REQ-2.4",
+            }
+        ],
+    )
+
+    update = service.apply_patches(
+        working_document=working_document,
+        document_patch=[
+            {
+                "plan_ref": "AP-002",
+                "operation": "append_or_update",
+                "content": "第一阶段范围边界：\n- 包含：文件导入导出、内网数据加载\n- 不包含：实时数据总线、自动决策推荐、高精度测绘级或工程级计算",
+            }
+        ],
+        patch_proposals=[],
+        projection_spec_node={"node_id": "SPEC-REQ-2.4", "target_section": "2 项目概述 / 范围边界"},
+        turn_id="turn-0002",
+        user_input_summary="扩展范围边界",
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-002",
+                "template_clause_id": "REQ-2.4",
+                "display_heading": "2.4 范围边界",
+                "anchor_path": "REQ-2.4",
+            }
+        ],
+    )
+
+    assert working_document["blocks"][0]["text"].count("第一阶段范围边界") == 1
+    assert "自动决策推荐" in working_document["blocks"][0]["text"]
+    assert update.blocks[0]["text"] == working_document["blocks"][0]["text"]
+    assert working_document["revision_fragments"][-1]["apply_mode"] == "append_or_update"
+    assert "实时数据总线" in working_document["revision_fragments"][-1]["deleted_text"]
 
 
 def test_working_document_inserts_late_general_clause_by_template_order() -> None:

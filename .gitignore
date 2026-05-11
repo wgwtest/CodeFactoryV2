@@ -21,5 +21,6 @@ tools/ptest/dist/
 .data/knowledge_output/
 .data/knowledge_output/ui-test-kb-*
 .logs/
+.run-logs/
 graphify-out/
 graphify-out/cache/

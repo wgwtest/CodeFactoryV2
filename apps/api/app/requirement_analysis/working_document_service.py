@@ -353,12 +353,46 @@ class WorkingDocumentService:
                 start_offset=0,
                 end_offset=0,
             )
+        if WorkingDocumentService._content_subsumes_previous(
+            previous_text=normalized_previous,
+            content=normalized_content,
+        ):
+            return PatchTextResult(
+                new_text=normalized_content,
+                start_offset=0,
+                end_offset=len(normalized_content),
+                deleted_text=normalized_previous,
+            )
         appended = f"{normalized_previous}\n{normalized_content}"
         return PatchTextResult(
             new_text=appended,
             start_offset=len(normalized_previous) + 1,
             end_offset=len(appended),
         )
+
+    @staticmethod
+    def _content_subsumes_previous(*, previous_text: str, content: str) -> bool:
+        previous_lines = WorkingDocumentService._normalized_text_lines(previous_text)
+        content_lines = WorkingDocumentService._normalized_text_lines(content)
+        if not previous_lines or not content_lines:
+            return False
+        if previous_lines[0] != content_lines[0]:
+            return False
+        previous_body = set(previous_lines[1:] or previous_lines)
+        content_body = set(content_lines[1:] or content_lines)
+        if not previous_body:
+            return False
+        overlap = len(previous_body & content_body)
+        return overlap >= max(1, len(previous_body) // 2) and len(content_lines) >= len(previous_lines)
+
+    @staticmethod
+    def _normalized_text_lines(text: str) -> list[str]:
+        lines: list[str] = []
+        for raw_line in str(text or "").splitlines():
+            line = re.sub(r"\s+", "", raw_line.strip(" -\t"))
+            if line:
+                lines.append(line)
+        return lines
 
     @staticmethod
     def _anchor_path(*, patch: dict, projection_spec_node: dict, anchor_plan: dict | None = None) -> str:

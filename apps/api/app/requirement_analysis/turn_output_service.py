@@ -28,8 +28,130 @@ class RequirementAnalysisTurnOutputService:
         for patch in list(model_output.get("document_patch") or []):
             plan_ref = str(patch.get("plan_ref") or "").strip()
             if not plan_ref or plan_ref not in plan_ids:
-                raise ValueError(f"document_patch.plan_ref is not in target_anchor_plan: {plan_ref}")
-        return model_output
+                materialized_plan = RequirementAnalysisTurnOutputService.materialize_anchor_plan_for_patch(
+                    patch=patch,
+                    canonical_clause_map=canonical_clause_map,
+                )
+                if not plan_ref or materialized_plan is None:
+                    raise ValueError(f"document_patch.plan_ref is not in target_anchor_plan: {plan_ref}")
+                materialized_plan["plan_id"] = plan_ref
+                plans.append(materialized_plan)
+                plan_ids.add(plan_ref)
+        return {**model_output, "target_anchor_plan": plans}
+
+    @staticmethod
+    def materialize_anchor_plan_for_patch(*, patch: dict, canonical_clause_map: dict) -> dict | None:
+        template_clause_id = RequirementAnalysisTurnOutputService.resolve_template_clause_id_from_patch(
+            patch=patch,
+            canonical_clause_map=canonical_clause_map,
+        )
+        if not template_clause_id:
+            return None
+        clause = dict(canonical_clause_map.get(template_clause_id) or {})
+        display_heading = str(
+            patch.get("target_section")
+            or patch.get("display_heading")
+            or clause.get("display_heading")
+            or clause.get("heading")
+            or template_clause_id
+        )
+        return {
+            "plan_id": "",
+            "decision_type": "append_existing_clause",
+            "template_clause_id": template_clause_id,
+            "canonical_clause_heading": str(clause.get("display_heading") or clause.get("heading") or display_heading),
+            "subtopic_action": "none",
+            "subtopic_key": "",
+            "subtopic_title": "",
+            "display_heading": display_heading,
+            "template_shape_ref": "",
+            "reason": "由 document_patch 自带结构化锚点补齐 target_anchor_plan，未做业务语义匹配。",
+            "confidence": "medium",
+            "anchor_path": template_clause_id,
+        }
+
+    @staticmethod
+    def resolve_template_clause_id_from_patch(*, patch: dict, canonical_clause_map: dict) -> str:
+        candidates = [
+            patch.get("template_clause_id"),
+            patch.get("anchor_path"),
+            patch.get("plan_ref"),
+        ]
+        normalized_candidates: list[str] = []
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if not value:
+                continue
+            normalized_candidates.append(value)
+            if value.startswith("SPEC-"):
+                normalized_candidates.append(value.removeprefix("SPEC-"))
+            if value.startswith("plan-"):
+                plan_value = value.removeprefix("plan-")
+                normalized_candidates.append(plan_value)
+                first_token = plan_value.split("-", 1)[0].strip()
+                if first_token:
+                    normalized_candidates.append(first_token)
+                    normalized_candidates.append(f"REQ-{first_token}")
+        for value in normalized_candidates:
+            if not canonical_clause_map or value in canonical_clause_map:
+                return value
+        heading_clause_id = RequirementAnalysisTurnOutputService.resolve_template_clause_id_from_patch_heading(
+            patch=patch,
+            canonical_clause_map=canonical_clause_map,
+        )
+        if heading_clause_id:
+            return heading_clause_id
+        return ""
+
+    @staticmethod
+    def resolve_template_clause_id_from_patch_heading(*, patch: dict, canonical_clause_map: dict) -> str:
+        if not canonical_clause_map:
+            return ""
+        patch_headings = RequirementAnalysisTurnOutputService.heading_match_candidates(
+            patch.get("display_heading"),
+            patch.get("target_section"),
+        )
+        patch_headings.discard("")
+        if not patch_headings:
+            return ""
+        for clause_id, clause in canonical_clause_map.items():
+            clause_data = dict(clause or {})
+            clause_headings = RequirementAnalysisTurnOutputService.heading_match_candidates(
+                clause_id,
+                clause_data.get("display_heading"),
+                clause_data.get("heading"),
+            )
+            if patch_headings & clause_headings:
+                return str(clause_id)
+        return ""
+
+    @staticmethod
+    def heading_match_candidates(*values: object) -> set[str]:
+        candidates: set[str] = set()
+        for value in values:
+            normalized = RequirementAnalysisTurnOutputService.normalize_heading_for_exact_match(value)
+            if not normalized:
+                continue
+            candidates.add(normalized)
+            leaf = normalized.split("/")[-1].strip()
+            if leaf:
+                candidates.add(leaf)
+                without_number = RequirementAnalysisTurnOutputService.strip_heading_number(leaf)
+                if without_number:
+                    candidates.add(without_number)
+        return candidates
+
+    @staticmethod
+    def normalize_heading_for_exact_match(value: object) -> str:
+        return " ".join(str(value or "").strip().split())
+
+    @staticmethod
+    def strip_heading_number(value: object) -> str:
+        text = RequirementAnalysisTurnOutputService.normalize_heading_for_exact_match(value)
+        parts = text.split(" ", 1)
+        if len(parts) == 2 and parts[0].replace(".", "").isdigit():
+            return parts[1].strip()
+        return text
 
     @staticmethod
     def normalize_turn_model_output(model_output: dict, *, session: RequirementAnalysisSession) -> dict:

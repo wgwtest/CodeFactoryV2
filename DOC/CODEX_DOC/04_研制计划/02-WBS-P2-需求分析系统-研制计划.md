@@ -36,6 +36,8 @@
 - `DOC/CODEX_DOC/04_研制计划/02.04-WBS-P2-组织器运行时真解耦升级-研制计划.md`
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260508-组织器运行时深化解耦补充.md`
 - `DOC/CODEX_DOC/04_研制计划/02.05-WBS-P2-组织器运行时深化解耦升级-研制计划.md`
+- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260509-三组织器连续会话整改升级补充.md`
+- `DOC/CODEX_DOC/04_研制计划/02.06-WBS-P2-组织器多轮自测整改闭环-研制计划.md`
 - `DOC/CODEX_DOC/06_测试文档/00_测试指南/01-P2-组织器插件与Codex-Brainstorming对照测试指南.md`
 - `DOC/JB_DOC/03-项目实例与样例/P2-需求分析Lab样例-态势分析系统/README.md`
 
@@ -96,6 +98,13 @@
 - 设计依据：`DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260508-组织器运行时深化解耦补充.md`
 - 分支：`feat/p2-requirement-analysis-system`
 - 范围：在 `02.04` 已完成共享 runtime 的基础上，继续将 request 到 runtime input 的映射收回宿主，按 `output_targets/adoption` 通用化阶段归约，并收口策略解释型插件的决策状态服务副本归属。
+
+### P2 组织器多轮自测整改闭环
+
+- 计划文档：`DOC/CODEX_DOC/04_研制计划/02.06-WBS-P2-组织器多轮自测整改闭环-研制计划.md`
+- 设计依据：`DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260509-三组织器连续会话整改升级补充.md`
+- 分支：`feat/p2-requirement-analysis-system`
+- 范围：围绕 `brainstorm-v1` 与 `brainstorm-v1-dify-workflow` 建立最多 10 轮的完整自测、诊断、全量整改、复测和归档闭环；每轮必须把当轮发现的问题尽量全部整改后再进入下一轮，优先改插件、Dify workflow、Prompt/schema 和模板，谨慎修改 P2 平台本体。
 
 ## 8. 多轮测试与样例依据
 

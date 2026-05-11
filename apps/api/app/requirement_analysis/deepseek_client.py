@@ -45,14 +45,34 @@ class DeepSeekRequirementAnalysisClient:
             },
             {"role": "user", "content": prompt_bundle["assembled_prompt"]},
         ]
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=request_messages,
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-        content = self._extract_content(response)
-        parsed = json.loads(content)
+        content = ""
+        parsed: dict[str, Any] | None = None
+        parse_error: json.JSONDecodeError | None = None
+        for attempt_messages in (
+            request_messages,
+            self._json_repair_messages(request_messages),
+            self._compact_json_repair_messages(request_messages),
+        ):
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=attempt_messages,
+                temperature=0,
+                response_format={"type": "json_object"},
+                max_tokens=settings.requirement_analysis_deepseek_max_tokens,
+            )
+            content = self._extract_content(response)
+            try:
+                parsed_value = json.loads(content)
+                parsed = parsed_value if isinstance(parsed_value, dict) else {}
+                request_messages = attempt_messages
+                parse_error = None
+                break
+            except json.JSONDecodeError as exc:
+                parse_error = exc
+        if parsed is None:
+            if parse_error is not None:
+                raise parse_error
+            parsed = {}
         return self._normalize_output(
             parsed,
             session=session,
@@ -216,6 +236,36 @@ class DeepSeekRequirementAnalysisClient:
         if not isinstance(content, str) or not content.strip():
             raise ValueError("DeepSeek 响应缺少 JSON 文本")
         return content
+
+    @staticmethod
+    def _json_repair_messages(request_messages: list[dict[str, str]]) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "上一次返回的内容不是合法 JSON，可能存在截断、未闭合字符串或额外说明。"
+                    "请基于同一任务重新输出，压缩长正文，减少重复内容，只返回合法 JSON。"
+                    "不得返回 Markdown、解释文字或代码块。"
+                ),
+            },
+            *request_messages,
+        ]
+
+    @staticmethod
+    def _compact_json_repair_messages(request_messages: list[dict[str, str]]) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "前两次返回仍不是合法 JSON 或内容过长导致截断。现在进入极度压缩模式。"
+                    "只返回合法 JSON 对象，不返回 Markdown、解释文字或代码块。"
+                    "assistant_message 控制在 80 字以内；document_patch 最多 3 条；"
+                    "每条 content 控制在 200 字以内；open_questions、annotations、risks 最多 3 条；"
+                    "保留必须字段，省略长正文、重复列表和详细条目。"
+                ),
+            },
+            *request_messages,
+        ]
 
     def _normalize_output(
         self,
@@ -464,6 +514,7 @@ class DeepSeekRequirementAnalysisClient:
         if not isinstance(value, list):
             return []
         known_plan_ids = {str(plan.get("plan_id")) for plan in list(target_anchor_plan or [])}
+        plan_ref_aliases = DeepSeekRequirementAnalysisClient._plan_ref_aliases(target_anchor_plan or [])
         patches = []
         for item in value[:6]:
             if not isinstance(item, dict):
@@ -472,17 +523,34 @@ class DeepSeekRequirementAnalysisClient:
             content = str(item.get("content") or "").strip()
             if not plan_ref or not content:
                 continue
+            plan_ref = plan_ref_aliases.get(plan_ref, plan_ref)
             if known_plan_ids and plan_ref not in known_plan_ids:
                 raise ValueError(f"document_patch.plan_ref does not match target_anchor_plan: {plan_ref}")
-            patches.append(
-                {
-                    "plan_ref": plan_ref,
-                    "operation": str(item.get("operation") or "append_or_update"),
-                    "content": content,
-                    "write_policy": str(item.get("write_policy") or session.write_policy),
-                }
-            )
+            normalized_patch = {
+                "plan_ref": plan_ref,
+                "operation": str(item.get("operation") or "append_or_update"),
+                "content": content,
+                "write_policy": str(item.get("write_policy") or session.write_policy),
+            }
+            for key in ("target_section", "display_heading", "template_clause_id", "anchor_path"):
+                value = str(item.get(key) or "").strip()
+                if value:
+                    normalized_patch[key] = value
+            patches.append(normalized_patch)
         return patches
+
+    @staticmethod
+    def _plan_ref_aliases(target_anchor_plan: list[dict]) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        for plan in target_anchor_plan:
+            plan_id = str(plan.get("plan_id") or "").strip()
+            if not plan_id:
+                continue
+            for key in ("template_clause_id", "anchor_path"):
+                alias = str(plan.get(key) or "").strip()
+                if alias:
+                    aliases[alias] = plan_id
+        return aliases
 
     @staticmethod
     def _normalize_intent_understanding_result(value: Any) -> dict:
@@ -561,6 +629,8 @@ class DeepSeekRequirementAnalysisClient:
         if not isinstance(value, dict):
             return {
                 "planning_strategy": "wait_user_input",
+                "interaction_mode": "ask_user",
+                "should_ask_user": True,
                 "user_message": "",
                 "next_question": "",
                 "quick_options": [],
@@ -568,8 +638,13 @@ class DeepSeekRequirementAnalysisClient:
                 "review_acknowledgement": "",
                 "target_spec_nodes": [],
             }
+        should_ask_user = value.get("should_ask_user")
+        if not isinstance(should_ask_user, bool):
+            should_ask_user = True
         return {
             "planning_strategy": str(value.get("planning_strategy") or "wait_user_input"),
+            "interaction_mode": str(value.get("interaction_mode") or ("ask_user" if should_ask_user else "deliverable")),
+            "should_ask_user": should_ask_user,
             "user_message": str(value.get("user_message") or ""),
             "next_question": str(value.get("next_question") or ""),
             "quick_options": DeepSeekRequirementAnalysisClient._normalize_quick_options(value.get("quick_options")),

@@ -3,9 +3,18 @@
   "name": "Brainstorm v1 Dify-shaped Workflow",
   "description": "真实 Dify Workflow 的结构说明；adapter 只调用 Dify Workflow API，不执行本地 fallback。",
   "dify_app_id": "e5444ba7-7134-4f0d-9258-fbd5f162e4f1",
-  "published_workflow_id": "e3d3b39f-07e8-495d-bd90-356bba898ef7",
+  "published_workflow_id": "9f82e359-07e2-4bbd-ae88-8ca0bb7272ef",
   "last_refactor_date": "2026-05-08",
-  "last_20turn_remediation_date": "2026-05-08",
+  "last_20turn_remediation_date": "2026-05-10",
+  "last_template_anchor_alignment_date": "2026-05-10",
+  "last_publish": {
+    "published_workflow_id": "9f82e359-07e2-4bbd-ae88-8ca0bb7272ef",
+    "hash": "80e3500495482f7502d25bac51a2b13e0effbfbb019c282092d096d658e8c4ab",
+    "version": "2026-05-10 15:39:49",
+    "marked_name": "P2第4轮动态考官整改",
+    "marked_comment": "收紧过早回看/草案触发条件，清理草案口语噪声并修正非功能分类。",
+    "published_at": 1778398789
+  },
   "output_contract": "xg-observable-orchestrator-contract@1",
   "nodes": [
     {
@@ -71,45 +80,78 @@
       "anchor_path": "REQ-3.1"
     },
     {
-      "fact_type": "流程、数据接入、分析工具",
+      "fact_type": "核心流程、工具使用主线",
       "target_section": "3 功能需求 / 核心业务流程",
       "anchor_path": "REQ-3.2"
     },
     {
-      "fact_type": "主要界面、页面列表、交互入口",
-      "target_section": "3 功能需求 / 主要界面列表",
-      "anchor_path": "REQ-3.UI"
+      "fact_type": "功能域、主要界面、页面列表、交互入口",
+      "target_section": "3 功能需求 / 功能分解总览",
+      "anchor_path": "REQ-3.3"
+    },
+    {
+      "fact_type": "核心功能项、分析工具、功能行为",
+      "target_section": "3 功能需求 / 核心功能项说明",
+      "anchor_path": "REQ-3.4"
     },
     {
       "fact_type": "协同模式、任务接力、批注、结果共享",
-      "target_section": "3 功能需求 / 协同与共享",
-      "anchor_path": "REQ-3.COLLAB"
+      "target_section": "3 功能需求 / 结果输出与共享",
+      "anchor_path": "REQ-3.6"
     },
     {
       "fact_type": "异常、失败、补偿",
       "target_section": "3 功能需求 / 异常与补偿",
-      "anchor_path": "REQ-3.ERR"
+      "anchor_path": "REQ-3.7"
     },
     {
-      "fact_type": "性能、安全、部署、可靠性",
-      "target_section": "4 非功能需求 / 性能与可靠性",
+      "fact_type": "输入数据、数据接入、底图、DEM、矢量、栅格",
+      "target_section": "4 数据需求 / 输入数据",
       "anchor_path": "REQ-4.1"
     },
     {
-      "fact_type": "验收链路、验收标准",
-      "target_section": "5 验收准则 / 验收准则",
+      "fact_type": "输出数据、报表、导出文件",
+      "target_section": "4 数据需求 / 输出数据与报表",
+      "anchor_path": "REQ-4.2"
+    },
+    {
+      "fact_type": "性能、刷新、并发、可靠性",
+      "target_section": "5 非功能需求 / 性能与可靠性",
       "anchor_path": "REQ-5.1"
+    },
+    {
+      "fact_type": "安全、权限、认证、审计",
+      "target_section": "5 非功能需求 / 安全与权限",
+      "anchor_path": "REQ-5.2"
+    },
+    {
+      "fact_type": "部署环境、内网、专网、离线运行",
+      "target_section": "5 非功能需求 / 部署与运行环境",
+      "anchor_path": "REQ-5.3"
+    },
+    {
+      "fact_type": "精度口径、质量约束、适用限制",
+      "target_section": "5 非功能需求 / 精度与质量约束",
+      "anchor_path": "REQ-5.4"
+    },
+    {
+      "fact_type": "验收链路、验收标准",
+      "target_section": "6 验收准则 / 验收准则",
+      "anchor_path": "REQ-6.2"
     }
   ],
   "latest_20turn_validation": {
-    "session_id": "38130bb7-d72a-419f-818c-6dfe959e3893",
-    "result_file": ".run-logs/p2-dify-20turn-remediation-result.json",
-    "turn_count": 20,
+    "session_id": "60eda379-f8ba-4f23-b2d6-09907c71ca0b",
+    "result_file": ".run-logs/p2-iteration-20260510-round4-after-second-fix/brainstorm-v1-dify-workflow.summary.json",
+    "turn_count": 11,
     "final_counts": {
-      "confirmed_facts": 27,
+      "confirmed_facts": 29,
+      "confirmed_decisions": 25,
       "open_questions": 0,
-      "working_blocks": 9
+      "working_blocks": 15
     },
-    "checks_passed": true
+    "final_working_document_text_chars": 1771,
+    "checks_passed": true,
+    "blocked_followup": "2026-05-10 第三次复测被外部模型 402 Insufficient Balance 阻塞，非组织器合同失败。"
   }
 }

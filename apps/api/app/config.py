@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     requirement_analysis_deepseek_api_key: str | None = None
     requirement_analysis_deepseek_base_url: str = "https://api.deepseek.com"
     requirement_analysis_deepseek_model: str = "deepseek-chat"
+    requirement_analysis_deepseek_max_tokens: int = 8192
     formal_chunk_segment_threshold: int = 120
     formal_chunk_char_threshold: int = 50000
     formal_chunk_char_limit: int = 32000

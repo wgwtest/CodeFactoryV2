@@ -15,6 +15,8 @@ class OrchestratorPluginResultNormalizer:
             "next_question": str(interaction_output.get("next_question") or ""),
             "quick_options": self._normalize_quick_options(interaction_output.get("quick_options")),
             "next_suggestion": dict(interaction_output.get("suggested_focus") or {}),
+            "interaction_mode": str(dict(interaction_output.get("suggested_focus") or {}).get("interaction_mode") or ""),
+            "should_ask_user": dict(interaction_output.get("suggested_focus") or {}).get("should_ask_user"),
             "document_patch": list(final_output.get("document_patch") or []),
             "filled_document_text": str(final_output.get("filled_document_text") or ""),
             "confidence": str(final_output.get("confidence") or "medium"),

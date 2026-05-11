@@ -64,11 +64,21 @@ class PluginTurnResultMaterializer:
             target_anchor_plan=target_anchor_plan,
         )
         working_document_update = working_document_update_result.to_dict()
-        next_question = str(plugin_model_output.get("next_question") or "请继续补充下一项需求规格信息。")
         assistant_message = str(plugin_model_output.get("assistant_message") or "组织器插件已返回需求规格正文草稿。")
         now = datetime.now(UTC).isoformat()
         turn_index = int(request_turn.get("turn_index") or len(turns) + 1)
-        next_options = list(plugin_model_output.get("quick_options") or [])
+        next_suggestion = dict(plugin_model_output.get("next_suggestion") or {})
+        should_ask_user = self._bool_value(plugin_model_output.get("should_ask_user"), default=True)
+        if plugin_model_output.get("should_ask_user") is None and "should_ask_user" in next_suggestion:
+            should_ask_user = self._bool_value(next_suggestion.get("should_ask_user"), default=True)
+        interaction_mode = str(plugin_model_output.get("interaction_mode") or next_suggestion.get("interaction_mode") or "").strip()
+        next_question = str(plugin_model_output.get("next_question") or "")
+        if should_ask_user and not next_question:
+            next_question = "请继续补充下一项需求规格信息。"
+        next_options = [] if not should_ask_user else list(plugin_model_output.get("quick_options") or [])
+        next_interaction_type = interaction_mode if not should_ask_user and interaction_mode else "open_question"
+        next_interaction_prompt = next_question if should_ask_user else assistant_message
+        next_interaction_target_ids = [active_spec_node_id] if should_ask_user and active_spec_node_id else []
         turn = {
             "turn_id": turn_id,
             "session_id": str(session.get("session_id") or ""),
@@ -99,10 +109,10 @@ class PluginTurnResultMaterializer:
             "closure_decision": {"status": "open"},
             "next_interaction": {
                 "interaction_id": f"interaction-{turn_index:04d}",
-                "type": "open_question",
-                "prompt": next_question,
+                "type": next_interaction_type,
+                "prompt": next_interaction_prompt,
                 "options": next_options,
-                "target_spec_node_ids": [active_spec_node_id] if active_spec_node_id else [],
+                "target_spec_node_ids": next_interaction_target_ids,
                 "reason": "",
             },
             "stage_audits": list(plugin_process_output.get("stage_audits") or []),
@@ -229,6 +239,20 @@ class PluginTurnResultMaterializer:
             if plan_ref not in seen_plan_ids:
                 return plan_ref
             index += 1
+
+    @staticmethod
+    def _bool_value(value: object, *, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y"}:
+                return True
+            if normalized in {"false", "0", "no", "n"}:
+                return False
+        if value is None:
+            return default
+        return bool(value)
 
     @staticmethod
     def _service_steps() -> list[dict]:

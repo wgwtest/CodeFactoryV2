@@ -87,10 +87,15 @@ class LocalXGMockStageProvider:
             intent_input_type = "option_answer_with_supplement"
         elif matched_option:
             intent_input_type = "option_answer"
+        elif "强制停止追问" in semantic or "输出完整需求规格说明草案" in semantic:
+            intent_input_type = "convergence_command"
         elif not dict(stage_input.get("working_document") or {}).get("blocks"):
             intent_input_type = "first_round_product_concept"
         else:
             intent_input_type = input_type or "free_supplement"
+        document_strategy = "consolidate_and_output" if intent_input_type == "convergence_command" else (
+            "bootstrap_document" if intent_input_type == "first_round_product_concept" else "write_targeted_sections"
+        )
         intent_result = {
             "user_goal_summary": semantic,
             "input_type": intent_input_type,
@@ -99,7 +104,7 @@ class LocalXGMockStageProvider:
             "matched_option": str(matched_option) if matched_option else None,
             "supplemental_facts": [semantic] if semantic else [],
             "target_section_candidates": [active_section],
-            "document_strategy": "bootstrap_document" if intent_input_type == "first_round_product_concept" else "write_targeted_sections",
+            "document_strategy": document_strategy,
             "write_task_candidate": f"围绕“{active_section}”把用户输入转成需求规格正文。",
             "review_focus_candidate": f"检查“{active_section}”是否形成可作为需求规格说明的正文。",
             "ambiguities": [],
@@ -110,16 +115,16 @@ class LocalXGMockStageProvider:
             "current_major_gaps": [str(active_node.get("question") or "当前章节仍缺少正文。")],
         }
         stage_task_definition = {
-            "task_summary": intent_result["write_task_candidate"],
+            "task_summary": "基于当前结构化状态输出需求规格说明草案，并停止继续追问。" if intent_input_type == "convergence_command" else intent_result["write_task_candidate"],
             "target_sections": [active_section],
-            "non_goals": ["不要直接生成正式需求规格文档；只维护 Lab 临时正文。"],
+            "non_goals": ["不要继续追问用户。"] if intent_input_type == "convergence_command" else ["不要直接生成正式需求规格文档；只维护 Lab 临时正文。"],
             "must_output": ["confirmed_facts_delta", "document_patch", "assistant_message"],
             "review_standard": intent_result["review_focus_candidate"],
         }
         stage_quality_constraints = {
             "minimum_depth": "至少写出可进入需求规格说明的一段完整正文，不只输出章节名或六个字摘要。",
             "must_cover_dimensions": ["用户输入中的明确事实", "目标章节成文", "后续缺口"],
-            "assistant_reply_style": "先说明本轮写入内容，再说明下一步由规划阶段给出。",
+            "assistant_reply_style": "直接交付草案，不输出追问。" if intent_input_type == "convergence_command" else "先说明本轮写入内容，再说明下一步由规划阶段给出。",
         }
         provider_response = {
             "intent_understanding_result": intent_result,
@@ -250,6 +255,21 @@ class LocalXGMockStageProvider:
         context = dict(stage_input.get("turn_context") or {})
         active_node = dict(context.get("active_spec_node") or {})
         active_section = str(active_node.get("target_section") or "需求规格说明待确认章节")
+        intent_result = dict(stage_input.get("intent_understanding_result") or {})
+        is_convergence = (
+            str(intent_result.get("input_type") or "") == "convergence_command"
+            or str(intent_result.get("document_strategy") or "") == "consolidate_and_output"
+        )
+        if is_convergence:
+            return self._decision_state_draft_delivery_output(
+                session=session,
+                user_input=user_input,
+                normalized=normalized,
+                orchestrator=orchestrator,
+                stage=stage,
+                stage_input=stage_input,
+                semantic=semantic,
+            )
         provider_response = {
             "organizer_interpretation": {
                 "summary": f"Brainstorm v1 将本轮输入沉淀为 {active_section} 的决策状态增量。",
@@ -421,6 +441,37 @@ class LocalXGMockStageProvider:
         target_review = dict(review_result.get("target_review") or stage_input.get("target_review") or {})
         global_review = dict(review_result.get("global_review") or stage_input.get("global_review") or {})
         focus_node = current_spec_node if str(global_review.get("status") or "") == "continue_same_topic" else next_spec_node
+        intent_result = dict(stage_input.get("intent_understanding_result") or {})
+        is_convergence = (
+            str(intent_result.get("input_type") or "") == "convergence_command"
+            or str(intent_result.get("document_strategy") or "") == "consolidate_and_output"
+        )
+        if is_convergence:
+            provider_response = {
+                "next_interaction_plan": {
+                    "planning_strategy": "draft_delivery",
+                    "interaction_mode": "draft_delivery",
+                    "should_ask_user": False,
+                    "user_message": "已基于当前结构化状态生成需求规格说明草案；未闭合内容已写入待确认事项。本轮不再继续追问。",
+                    "next_question": "",
+                    "quick_options": [],
+                    "plan_reason": "用户要求强制停止追问并输出完整草案。",
+                    "review_acknowledgement": str(target_review.get("reason") or ""),
+                    "target_spec_nodes": [],
+                },
+                "planning_trace": ["Mock 下一步交互规划进入 draft_delivery 交付模式。"],
+                "confidence": "medium",
+            }
+            return self._provider_result(
+                session=session,
+                orchestrator=orchestrator,
+                user_input=user_input,
+                normalized=normalized,
+                stage=stage,
+                stage_input=stage_input,
+                provider_response=provider_response,
+                raw_content="mock_next_interaction_draft_delivery_output",
+            )
         if focus_node.get("node_id"):
             question = str(focus_node.get("question") or focus_node.get("title") or "请继续补充需求规格说明。")
             quick_options = self.process_artifact_service.quick_options_for_node(orchestrator.orchestrator_id, focus_node)
@@ -453,6 +504,107 @@ class LocalXGMockStageProvider:
             stage_input=stage_input,
             provider_response=provider_response,
             raw_content="mock_next_interaction_planning_output",
+        )
+
+    def _decision_state_draft_delivery_output(
+        self,
+        *,
+        session: SessionSnapshot,
+        user_input: str,
+        normalized: dict,
+        orchestrator: OrchestratorPackage,
+        stage: dict,
+        stage_input: dict,
+        semantic: str,
+    ) -> ProviderRunResult:
+        decision_state = dict(stage_input.get("decision_state") or {})
+        context = dict(stage_input.get("turn_context") or {})
+        active_node = dict(context.get("active_spec_node") or {})
+        anchor = str(active_node.get("node_id") or "SPEC-REQ-6.3").removeprefix("SPEC-")
+        confirmed = [
+            str(item.get("content") or "")
+            for item in list(decision_state.get("confirmed_facts") or [])
+            if isinstance(item, dict) and str(item.get("content") or "").strip()
+        ]
+        open_questions = [
+            str(item.get("content") or "")
+            for item in list(decision_state.get("open_questions") or [])
+            if isinstance(item, dict) and str(item.get("content") or "").strip()
+        ]
+        content_lines = [
+            "## 需求规格说明草案",
+            "",
+            "本草案基于当前已确认信息生成，用于进入人工审阅和后续正式成稿。",
+        ]
+        if confirmed:
+            content_lines.extend(["", "### 已确认信息", *[f"- {item}" for item in confirmed[:12]]])
+        if open_questions:
+            content_lines.extend(["", "### 待确认事项", *[f"- {item}" for item in open_questions[:8]]])
+        content = "\n".join(content_lines)
+        provider_response = {
+            "organizer_interpretation": {
+                "summary": "用户要求强制停止追问并输出当前草案。",
+                "intent": "draft_delivery",
+                "confidence": "medium",
+            },
+            "assistant_message": "已基于当前结构化状态生成需求规格说明草案；本轮不再继续追问。",
+            "decision_state_delta": {
+                "confirmed_facts": [],
+                "confirmed_decisions": [],
+                "tentative_assumptions": [],
+                "open_questions": [],
+                "rejected_directions": [],
+                "chapter_projections": [
+                    {
+                        "content": "需求规格说明草案已生成，待确认事项已随草案列出。",
+                        "target_section": "6 验收准则 / 待确认事项",
+                        "status": "projected",
+                    }
+                ],
+                "next_focus": "等待用户审阅草案后主动提出修改意见。",
+            },
+            "template_shape_assessment": {
+                "shape_type": "coarse_grained_extensible",
+                "reason": "收束成稿使用当前模板待确认事项条款承载草案交付摘要。",
+                "allowed_write_modes": ["revise_existing_anchor", "append_existing_clause"],
+                "forbidden_write_modes": ["continue_asking_user"],
+                "template_revision_recommendations": [],
+            },
+            "target_anchor_plan": [
+                {
+                    "plan_id": "BRAINSTORM-DRAFT-001",
+                    "decision_type": "append_existing_clause",
+                    "template_clause_id": anchor,
+                    "canonical_clause_heading": str(active_node.get("target_section") or "6 验收准则 / 待确认事项"),
+                    "display_heading": str(active_node.get("target_section") or "6 验收准则 / 待确认事项"),
+                    "reason": "强制收束时将草案交付和待确认事项写入当前可用锚点。",
+                    "confidence": "medium",
+                    "anchor_path": anchor,
+                }
+            ],
+            "confirmed_facts_delta": [],
+            "open_questions_delta": [],
+            "document_patch": [
+                {
+                    "plan_ref": "BRAINSTORM-DRAFT-001",
+                    "operation": "replace",
+                    "content": content if content.strip() else f"基于当前信息生成需求规格说明草案：{semantic}",
+                    "write_policy": session.write_policy,
+                }
+            ],
+            "annotations": ["本轮为强制收束成稿，不再产生下一步追问。"],
+            "risks": [],
+            "confidence": "medium",
+        }
+        return self._provider_result(
+            session=session,
+            orchestrator=orchestrator,
+            user_input=user_input,
+            normalized=normalized,
+            stage=stage,
+            stage_input=stage_input,
+            provider_response=provider_response,
+            raw_content="mock_decision_state_draft_delivery_output",
         )
 
     @staticmethod
