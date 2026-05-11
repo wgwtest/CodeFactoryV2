@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codefactory.local/schemas/ptest.analysis.v1.schema.json",
+  "title": "P-Test Analysis Dataset",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "title",
+    "plan_ref",
+    "generated_at",
+    "analysis_method",
+    "test_objects",
+    "iterations",
+    "metrics",
+    "series",
+    "timeline",
+    "evidence_index",
+    "conclusions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ptest.analysis.v1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "analysis_method": {
+      "type": "object",
+      "required": ["executor", "mode", "notes"],
+      "properties": {
+        "executor": {"type": "string"},
+        "mode": {"type": "string"},
+        "notes": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "test_objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["object_id", "display_name", "type"],
+        "properties": {
+          "object_id": {"type": "string"},
+          "display_name": {"type": "string"},
+          "type": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "iterations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "scope", "changes_summary", "evidence_links"],
+        "properties": {
+          "iteration": {"type": "integer", "minimum": 1},
+          "started_at": {"type": "string"},
+          "ended_at": {"type": "string"},
+          "scope": {"type": "string"},
+          "changes_summary": {"type": "string"},
+          "evidence_links": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric_id", "name", "type", "unit", "source", "calculation", "visualization", "limitations"],
+        "properties": {
+          "metric_id": {"type": "string"},
+          "name": {"type": "string"},
+          "type": {
+            "enum": ["count", "ratio", "boolean", "score", "category", "text"]
+          },
+          "unit": {"type": "string"},
+          "source": {"type": "string"},
+          "calculation": {"type": "string"},
+          "visualization": {
+            "enum": ["trend", "bar", "status_matrix", "stacked_bar", "table"]
+          },
+          "limitations": {"type": "string"},
+          "purpose": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric_id", "object_id", "points"],
+        "properties": {
+          "metric_id": {"type": "string"},
+          "object_id": {"type": "string"},
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["iteration", "value"],
+              "properties": {
+                "iteration": {"type": "integer", "minimum": 1},
+                "value": {
+                  "type": ["number", "integer", "boolean", "string", "object", "null"]
+                },
+                "note": {"type": "string"},
+                "evidence_refs": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "title", "problem", "change", "result"],
+        "properties": {
+          "iteration": {"type": "integer", "minimum": 1},
+          "title": {"type": "string"},
+          "problem": {"type": "string"},
+          "change": {"type": "string"},
+          "result": {"type": "string"},
+          "evidence_refs": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "evidence_index": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "path", "type"],
+        "properties": {
+          "label": {"type": "string"},
+          "path": {"type": "string"},
+          "type": {
+            "enum": [
+              "plan",
+              "test_record",
+              "interaction_appendix",
+              "rectification_note",
+              "final_artifact",
+              "log",
+              "screenshot",
+              "design"
+            ]
+          },
+          "evidence_id": {"type": "string"},
+          "iteration": {"type": "integer", "minimum": 1},
+          "object_id": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "conclusions": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": true
+}

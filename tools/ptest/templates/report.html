@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P-Test Report</title>
+    <link rel="stylesheet" href="./report.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <strong>P-Test</strong>
+        <span>静态测试分析可视化</span>
+      </div>
+      <label class="file-loader">
+        <input id="analysis-file" type="file" accept="application/json,.json" />
+        载入 analysis.json
+      </label>
+    </header>
+
+    <main>
+      <p id="load-status" class="load-status">正在读取同目录 analysis.json...</p>
+
+      <section id="overview" class="overview"></section>
+
+      <section class="section-heading">
+        <p>Metric trends</p>
+        <h2>指标趋势</h2>
+      </section>
+      <section id="metrics" class="metrics"></section>
+
+      <section class="section-heading">
+        <p>Iteration timeline</p>
+        <h2>整改时间线</h2>
+      </section>
+      <section id="timeline" class="timeline"></section>
+
+      <section class="section-heading">
+        <p>Evidence index</p>
+        <h2>证据下钻</h2>
+      </section>
+      <section id="evidence" class="evidence"></section>
+    </main>
+
+    <script src="./report.js" defer></script>
+  </body>
+</html>

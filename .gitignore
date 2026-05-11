@@ -13,6 +13,7 @@ node_modules/
 20161116体系结构文献翻译汇总/
 DataSource/
 apps/web/dist/
+tools/ptest/dist/
 .data/
 .data/tool_hub/
 .data/application_modeling/
