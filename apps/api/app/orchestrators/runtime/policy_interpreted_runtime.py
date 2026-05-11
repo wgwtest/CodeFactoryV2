@@ -187,6 +187,7 @@ class PolicyInterpretedRuntime:
             next_focus=str(model_output.get("next_question") or ""),
         )
         decision_state = decision_state_result.decision_state
+        decision_state_change_summary = dict(decision_state_result.decision_state_change_summary)
         decision_state_document = decision_state_service.render_document(
             decision_state=decision_state,
             session_phase="analysis",
@@ -391,6 +392,27 @@ class PolicyInterpretedRuntime:
             next_interaction_plan=next_interaction_plan,
             next_interaction=next_interaction,
         )
+        if self._should_defer_open_questions_for_delivery(
+            next_interaction=next_interaction,
+            next_interaction_plan=next_interaction_plan,
+        ):
+            delivery_deferral = decision_state_service.defer_open_questions_for_delivery(
+                decision_state=decision_state,
+                reason="交付模式下未闭合问题转入草案待确认事项。",
+            )
+            decision_state = delivery_deferral.decision_state
+            lifecycle_counts = dict(decision_state_change_summary.get("question_lifecycle_counts") or {})
+            for key, value in dict(
+                delivery_deferral.decision_state_change_summary.get("question_lifecycle_counts") or {}
+            ).items():
+                lifecycle_counts[key] = int(lifecycle_counts.get(key) or 0) + int(value or 0)
+            decision_state_change_summary["question_lifecycle_counts"] = lifecycle_counts
+            decision_state_document = decision_state_service.render_document(
+                decision_state=decision_state,
+                session_phase="analysis",
+            )
+            stage_output_slots.set("decision_state", decision_state)
+            stage_output_slots.set("decision_state_document", decision_state_document)
         structured_update["questions"] = self.next_interaction_service.ensure_next_open_question(
             questions=structured_update["questions"],
             next_question=model_output["next_question"],
@@ -479,7 +501,7 @@ class PolicyInterpretedRuntime:
             "stage_task_definition": stage_task_definition,
             "stage_quality_constraints": stage_quality_constraints,
             "decision_state_delta": decision_state_result.decision_state_delta,
-            "decision_state_change_summary": decision_state_result.decision_state_change_summary,
+            "decision_state_change_summary": decision_state_change_summary,
             "decision_state_document": decision_state_service.render_document(
                 decision_state=decision_state,
                 session_phase="analysis",
@@ -617,6 +639,18 @@ class PolicyInterpretedRuntime:
         }
 
     def _next_interaction_from_plan(self, *, plan: dict, focus_spec_node: dict, turn_index: int) -> dict:
+        should_ask_user = self._bool_value(plan.get("should_ask_user", True), default=True)
+        interaction_mode = str(plan.get("interaction_mode") or "").strip()
+        if not should_ask_user:
+            prompt = str(plan.get("user_message") or plan.get("delivery_message") or "").strip()
+            return {
+                "interaction_id": f"interaction-{turn_index:04d}",
+                "type": interaction_mode or "deliverable",
+                "prompt": prompt,
+                "options": [],
+                "target_spec_node_ids": [],
+                "reason": str(plan.get("plan_reason") or plan.get("review_acknowledgement") or ""),
+            }
         options = self.next_interaction_service.input_normalizer.normalize_quick_options(plan.get("quick_options"))
         question = str(plan.get("next_question") or "").strip()
         if not question:
@@ -669,6 +703,10 @@ class PolicyInterpretedRuntime:
         user_message = str(next_interaction_plan.get("user_message") or "").strip()
         next_question = str(next_interaction_plan.get("next_question") or next_interaction.get("prompt") or "").strip()
         quick_options = list(next_interaction_plan.get("quick_options") or next_interaction.get("options") or [])
+        should_ask_user = PolicyInterpretedRuntime._bool_value(next_interaction_plan.get("should_ask_user", True), default=True)
+        if not should_ask_user:
+            next_question = ""
+            quick_options = []
         assistant_message = PolicyInterpretedRuntime._assistant_message_after_planning(
             model_output=model_output,
             planning_user_message=user_message,
@@ -687,7 +725,17 @@ class PolicyInterpretedRuntime:
             "next_suggestion": next_suggestion,
             "next_question": next_question,
             "quick_options": quick_options,
-            "open_questions_delta": [next_question] if next_question else [],
+            "open_questions_delta": [next_question] if should_ask_user and next_question else [],
+        }
+
+    @staticmethod
+    def _should_defer_open_questions_for_delivery(*, next_interaction: dict, next_interaction_plan: dict) -> bool:
+        if not PolicyInterpretedRuntime._bool_value(next_interaction_plan.get("should_ask_user", True), default=True):
+            return True
+        return str(next_interaction.get("type") or "").strip() in {
+            "deliverable",
+            "draft_delivery",
+            "draft_with_gaps",
         }
 
     @staticmethod
@@ -747,6 +795,20 @@ class PolicyInterpretedRuntime:
             return base
         separator = "" if base.endswith(("。", "！", "？", ".", "!", "?")) else "。"
         return f"{base}{separator}{addition}"
+
+    @staticmethod
+    def _bool_value(value: object, *, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y"}:
+                return True
+            if normalized in {"false", "0", "no", "n"}:
+                return False
+        if value is None:
+            return default
+        return bool(value)
 
     def _build_provider_logs(
         self,

@@ -6,6 +6,11 @@
       "type": "object",
       "properties": {
         "planning_strategy": { "type": "string" },
+        "interaction_mode": {
+          "type": "string",
+          "enum": ["ask_user", "deliverable", "draft_delivery", "free_continue", "whole_document_review"]
+        },
+        "should_ask_user": { "type": "boolean" },
         "user_message": { "type": "string" },
         "next_question": { "type": "string" },
         "quick_options": {

@@ -4,6 +4,8 @@
     "organizer_interpretation",
     "assistant_message",
     "decision_state_delta",
+    "target_anchor_plan",
+    "document_patch",
     "confidence"
   ],
   "properties": {
@@ -23,6 +25,9 @@
         "confirmed_decisions",
         "tentative_assumptions",
         "open_questions",
+        "closed_question_refs",
+        "deferred_question_refs",
+        "superseded_question_refs",
         "rejected_directions",
         "chapter_projections",
         "next_focus"
@@ -32,6 +37,9 @@
         "confirmed_decisions": { "$ref": "#/$defs/decision_state_items" },
         "tentative_assumptions": { "$ref": "#/$defs/decision_state_items" },
         "open_questions": { "$ref": "#/$defs/decision_state_items" },
+        "closed_question_refs": { "$ref": "#/$defs/question_lifecycle_refs" },
+        "deferred_question_refs": { "$ref": "#/$defs/question_lifecycle_refs" },
+        "superseded_question_refs": { "$ref": "#/$defs/question_lifecycle_refs" },
         "rejected_directions": { "$ref": "#/$defs/decision_state_items" },
         "chapter_projections": { "$ref": "#/$defs/decision_state_items" },
         "next_focus": { "type": "string" }
@@ -86,6 +94,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "required": ["plan_ref", "operation", "content", "template_clause_id", "display_heading", "anchor_path"],
         "properties": {
           "plan_ref": { "type": "string" },
           "operation": {
@@ -93,6 +102,10 @@
             "enum": ["append_or_update", "append_to_block", "replace", "replace_range", "delete", "delete_range"]
           },
           "content": { "type": "string" },
+          "target_section": { "type": "string" },
+          "template_clause_id": { "type": "string" },
+          "display_heading": { "type": "string" },
+          "anchor_path": { "type": "string" },
           "write_policy": { "type": "string" }
         }
       }
@@ -112,6 +125,18 @@
           "target_section": { "type": "string" },
           "status": { "type": "string" },
           "source_turn_id": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "question_lifecycle_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item_id": { "type": "string" },
+          "content": { "type": "string" },
+          "status": { "type": "string" },
+          "reason": { "type": "string" }
         }
       }
     }

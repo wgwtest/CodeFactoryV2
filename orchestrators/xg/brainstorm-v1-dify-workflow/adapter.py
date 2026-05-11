@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ class BrainstormV1DifyWorkflowAdapter:
         context = self._workflow_context(request)
         remote_trace = self._call_remote_dify(request)
         normalized = self._normalize_remote_result(context=context, trace=remote_trace)
+        provider_logs = [self._provider_log(request=request, trace=remote_trace, normalized=normalized)]
         result = OrchestratorRunResult(
             contract_version=request.contract_version,
             plugin={
@@ -57,6 +59,8 @@ class BrainstormV1DifyWorkflowAdapter:
                 "quick_options": normalized["quick_options"],
                 "suggested_focus": {
                     "planning_strategy": "decision_state_loop",
+                    "interaction_mode": normalized["interaction_mode"],
+                    "should_ask_user": normalized["should_ask_user"],
                     "target_spec_node_ids": [context["active_spec_node_id"]] if context["active_spec_node_id"] else [],
                 },
             },
@@ -64,7 +68,7 @@ class BrainstormV1DifyWorkflowAdapter:
                 "stage_results": [],
                 "stage_audits": [],
                 "decision_trace": normalized["decision_trace"],
-                "provider_logs": [],
+                "provider_logs": provider_logs,
                 "review_after_apply_result": {},
                 "annotations": normalized["annotations"],
                 "risks": normalized["risks"],
@@ -111,9 +115,10 @@ class BrainstormV1DifyWorkflowAdapter:
             "response_mode": response_mode,
             "user": "codefactoryv2",
         }
+        url = f"{base_url}/v1/workflows/run"
         try:
             response = httpx.post(
-                f"{base_url}/v1/workflows/run",
+                url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -129,10 +134,23 @@ class BrainstormV1DifyWorkflowAdapter:
         except ValueError as exc:
             raise ValueError("remote dify workflow returned non-JSON response") from exc
         outputs = dict(dict(remote_payload.get("data") or {}).get("outputs") or {})
+        data = dict(remote_payload.get("data") or {})
+        workflow_status = str(data.get("status") or "").strip()
+        workflow_error = str(data.get("error") or "").strip()
+        workflow_run_id = str(remote_payload.get("workflow_run_id") or data.get("id") or "").strip()
+        if workflow_status == "failed" or workflow_error:
+            detail = workflow_error or "workflow status failed"
+            raise ValueError(f"remote dify workflow failed ({workflow_run_id}): {detail}")
         result_json = outputs.get("result_json")
         if not isinstance(result_json, str) or not result_json.strip():
             raise ValueError("remote dify workflow did not return data.outputs.result_json")
         return {
+            "request": {
+                "url": url,
+                "response_mode": response_mode,
+                "user": "codefactoryv2",
+                "inputs": payload["inputs"],
+            },
             "payload": remote_payload,
             "result_json": result_json,
             "workflow_trace": {
@@ -154,6 +172,53 @@ class BrainstormV1DifyWorkflowAdapter:
             },
         }
 
+    def _provider_log(self, *, request: OrchestratorRunRequest, trace: dict, normalized: dict) -> dict:
+        turn = dict(request.turn or {})
+        session = dict(request.session or {})
+        workflow_trace = dict(normalized.get("raw_workflow_trace") or {})
+        payload = dict(trace.get("payload") or {})
+        data = dict(payload.get("data") or {})
+        return {
+            "call_id": f"{turn.get('turn_id') or 'turn-0001'}-dify-workflow",
+            "turn_id": str(turn.get("turn_id") or ""),
+            "stage_id": "dify_workflow",
+            "stage_type": "external_workflow",
+            "provider_id": "dify",
+            "orchestrator_id": self.manifest.plugin_id,
+            "orchestrator_mode": "dify_workflow",
+            "model": str(session.get("model") or ""),
+            "status": str(data.get("status") or workflow_trace.get("status") or "completed"),
+            "created_at": "",
+            "audit": {
+                "user_input": str(turn.get("user_input") or ""),
+                "normalized_input": dict(turn.get("normalized_input") or {}),
+                "provider_request": dict(trace.get("request") or {}),
+                "provider_response": {
+                    "workflow_run_id": str(payload.get("workflow_run_id") or data.get("id") or ""),
+                    "status": str(data.get("status") or ""),
+                    "outputs": dict(data.get("outputs") or {}),
+                    "raw_workflow_trace": workflow_trace,
+                },
+                "provider_normalized_output": {
+                    "assistant_message": str(normalized.get("assistant_message") or ""),
+                    "next_question": str(normalized.get("next_question") or ""),
+                    "quick_options": list(normalized.get("quick_options") or []),
+                    "interaction_mode": str(normalized.get("interaction_mode") or ""),
+                    "should_ask_user": normalized.get("should_ask_user"),
+                    "document_patch": list(normalized.get("document_patch") or []),
+                    "decision_state_delta": dict(normalized.get("decision_state_delta") or {}),
+                    "raw_workflow_trace": workflow_trace,
+                },
+                "service_output": {
+                    "completion_status": str(normalized.get("completion_status") or ""),
+                    "confidence": str(normalized.get("confidence") or ""),
+                    "changed_sections": list(normalized.get("changed_sections") or []),
+                    "annotations": list(normalized.get("annotations") or []),
+                    "risks": list(normalized.get("risks") or []),
+                },
+            },
+        }
+
     def _normalize_remote_result(self, *, context: dict, trace: dict) -> dict:
         try:
             parsed = json.loads(str(trace["result_json"]))
@@ -162,25 +227,41 @@ class BrainstormV1DifyWorkflowAdapter:
         if not isinstance(parsed, dict):
             raise ValueError("remote dify result_json is not a JSON object")
 
-        decision_state_delta = dict(parsed.get("decision_state_delta") or {})
+        decision_state_delta = self._normalize_delta_for_current_turn(
+            dict(parsed.get("decision_state_delta") or {}),
+            turn_id=str(context.get("turn_id") or "turn-0001"),
+        )
         raw_workflow_trace = dict(parsed.get("raw_workflow_trace") or {})
+        completion_status = str(parsed.get("completion_status") or "partial")
+        is_draft_delivery = (
+            raw_workflow_trace.get("branch_taken") == "draft_compose"
+            or completion_status == "completed"
+            or str(decision_state_delta.get("next_focus") or "").strip() == "等待用户审阅草案后主动提出修改意见。"
+        )
+        next_question = str(parsed.get("next_question") or "")
+        if not next_question and not is_draft_delivery:
+            next_question = context["active_question"]
         decision_state, change_summary = self._apply_decision_delta(
             current_state=context["decision_state"],
             delta=decision_state_delta,
-            next_focus=str(decision_state_delta.get("next_focus") or parsed.get("next_question") or ""),
+            next_focus=str(decision_state_delta.get("next_focus") or next_question or ""),
             replace_open_questions=raw_workflow_trace.get("branch_taken") == "draft_compose",
         )
+        document_patch = self._normalize_remote_document_patch(list(parsed.get("document_patch") or []))
+        filled_document_text = self._clean_remote_text(str(parsed.get("filled_document_text") or ""))
         return {
             "assistant_message": str(parsed.get("assistant_message") or ""),
-            "next_question": str(parsed.get("next_question") or context["active_question"]),
-            "quick_options": list(parsed.get("quick_options") or []),
-            "filled_document_text": str(parsed.get("filled_document_text") or ""),
-            "document_patch": list(parsed.get("document_patch") or []),
+            "next_question": next_question,
+            "quick_options": [] if is_draft_delivery else list(parsed.get("quick_options") or []),
+            "interaction_mode": "draft_delivery" if is_draft_delivery else str(parsed.get("interaction_mode") or "ask_user"),
+            "should_ask_user": False if is_draft_delivery else bool(parsed.get("should_ask_user", True)),
+            "filled_document_text": filled_document_text,
+            "document_patch": document_patch,
             "changed_sections": list(parsed.get("changed_sections") or ([context["active_section"]] if context["active_section"] else [])),
-            "completion_status": str(parsed.get("completion_status") or "partial"),
+            "completion_status": completion_status,
             "confidence": str(parsed.get("confidence") or "medium"),
             "confirmed_facts_delta": list(parsed.get("confirmed_facts_delta") or []),
-            "open_questions_delta": list(parsed.get("open_questions_delta") or []),
+            "open_questions_delta": [] if is_draft_delivery else list(parsed.get("open_questions_delta") or []),
             "decision_state_delta": decision_state_delta,
             "decision_state": decision_state,
             "decision_state_change_summary": change_summary,
@@ -193,6 +274,30 @@ class BrainstormV1DifyWorkflowAdapter:
                 **dict(trace.get("workflow_trace") or {}),
             },
         }
+
+    @classmethod
+    def _normalize_remote_document_patch(cls, patches: list[Any]) -> list[dict]:
+        normalized: list[dict] = []
+        for patch in patches:
+            if not isinstance(patch, dict):
+                continue
+            next_patch = dict(patch)
+            next_patch["content"] = cls._clean_remote_text(str(next_patch.get("content") or ""))
+            normalized.append(next_patch)
+        return normalized
+
+    @staticmethod
+    def _clean_remote_text(text: str) -> str:
+        value = str(text or "")
+        replacements = [
+            (r"这个我还没完全想清楚[，,但目前倾向于]*", ""),
+            (r"我还没完全想清楚[，,但目前倾向于]*", ""),
+            (r"但目前倾向于", ""),
+            (r"目前倾向于", ""),
+        ]
+        for pattern, replacement in replacements:
+            value = re.sub(pattern, replacement, value)
+        return value.strip("，,、:： \n")
 
     def _remote_inputs(self, request: OrchestratorRunRequest) -> dict:
         session = dict(request.session or {})
@@ -289,9 +394,16 @@ class BrainstormV1DifyWorkflowAdapter:
             "chapter_projections",
         ]:
             if key == "open_questions" and replace_open_questions:
-                state[key] = list(delta.get(key, []))
+                state[key] = self._uniquify_item_ids(
+                    list(delta.get(key, [])),
+                    prefix=self._prefix_for_section(key),
+                )
                 continue
-            state[key] = self._append_unique_items(list(state.get(key, [])), list(delta.get(key, [])))
+            state[key] = self._append_unique_items(
+                list(state.get(key, [])),
+                list(delta.get(key, [])),
+                prefix=self._prefix_for_section(key),
+            )
         state["next_focus"] = next_focus
         after_counts = self._counts(state)
         return state, {
@@ -308,26 +420,176 @@ class BrainstormV1DifyWorkflowAdapter:
         state = dict(value) if isinstance(value, dict) else {}
         return {
             "topic": str(state.get("topic") or ""),
-            "confirmed_facts": list(state.get("confirmed_facts") or []),
-            "confirmed_decisions": list(state.get("confirmed_decisions") or []),
-            "tentative_assumptions": list(state.get("tentative_assumptions") or []),
-            "open_questions": list(state.get("open_questions") or []),
-            "rejected_directions": list(state.get("rejected_directions") or []),
+            "confirmed_facts": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("confirmed_facts") or []),
+                prefix="DS-F",
+            ),
+            "confirmed_decisions": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("confirmed_decisions") or []),
+                prefix="DS-D",
+            ),
+            "tentative_assumptions": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("tentative_assumptions") or []),
+                prefix="DS-A",
+            ),
+            "open_questions": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("open_questions") or []),
+                prefix="DS-Q",
+            ),
+            "rejected_directions": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("rejected_directions") or []),
+                prefix="DS-R",
+            ),
             "next_focus": str(state.get("next_focus") or ""),
-            "chapter_projections": list(state.get("chapter_projections") or []),
+            "chapter_projections": BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(
+                list(state.get("chapter_projections") or []),
+                prefix="DS-P",
+            ),
         }
 
     @staticmethod
-    def _append_unique_items(current: list[dict], additions: list[dict]) -> list[dict]:
+    def _append_unique_items(current: list[dict], additions: list[dict], *, prefix: str = "DS-I") -> list[dict]:
         result = list(current)
         seen = {str(item.get("content") or "") for item in result if isinstance(item, dict)}
         for item in additions:
             content = str(item.get("content") or "")
             if not content or content in seen:
                 continue
-            result.append(item)
+            result.append(dict(item))
             seen.add(content)
+        return BrainstormV1DifyWorkflowAdapter._uniquify_item_ids(result, prefix=prefix)
+
+    @staticmethod
+    def _uniquify_item_ids(items: list[dict], *, prefix: str) -> list[dict]:
+        result: list[dict] = []
+        used: set[str] = set()
+        next_index = 1
+        for item in items:
+            normalized = dict(item) if isinstance(item, dict) else {}
+            item_id = str(normalized.get("item_id") or "").strip()
+            if not item_id or item_id in used:
+                item_id = BrainstormV1DifyWorkflowAdapter._next_item_id(
+                    prefix=prefix,
+                    used=used,
+                    start_index=next_index,
+                )
+            used.add(item_id)
+            normalized["item_id"] = item_id
+            result.append(normalized)
+            next_index = BrainstormV1DifyWorkflowAdapter._next_index_from_id(item_id, default=next_index) + 1
         return result
+
+    @staticmethod
+    def _next_item_id(*, prefix: str, used: set[str], start_index: int = 1) -> str:
+        index = max(1, start_index)
+        while True:
+            candidate = f"{prefix}-{index:03d}"
+            if candidate not in used:
+                return candidate
+            index += 1
+
+    @staticmethod
+    def _next_index_from_id(item_id: str, *, default: int) -> int:
+        try:
+            return int(str(item_id).rsplit("-", 1)[-1])
+        except ValueError:
+            return default
+
+    @staticmethod
+    def _prefix_for_section(section_id: str) -> str:
+        return {
+            "confirmed_facts": "DS-F",
+            "confirmed_decisions": "DS-D",
+            "tentative_assumptions": "DS-A",
+            "open_questions": "DS-Q",
+            "rejected_directions": "DS-R",
+            "chapter_projections": "DS-P",
+        }.get(section_id, "DS-I")
+
+    @classmethod
+    def _normalize_delta_for_current_turn(cls, delta: dict, *, turn_id: str) -> dict:
+        normalized = dict(delta)
+        for key in [
+            "confirmed_facts",
+            "confirmed_decisions",
+            "tentative_assumptions",
+            "open_questions",
+            "rejected_directions",
+            "chapter_projections",
+        ]:
+            items = []
+            for item in list(normalized.get(key) or []):
+                if not isinstance(item, dict):
+                    continue
+                next_item = dict(item)
+                if not str(next_item.get("source_turn_id") or "").strip() or str(next_item.get("source_turn_id")) == "turn-0001":
+                    next_item["source_turn_id"] = turn_id
+                items.append(next_item)
+            normalized[key] = cls._uniquify_item_ids(items, prefix=cls._prefix_for_section(key))
+        normalized["confirmed_decisions"] = cls._append_promoted_decisions(
+            current=list(normalized.get("confirmed_decisions") or []),
+            facts=list(normalized.get("confirmed_facts") or []),
+            turn_id=turn_id,
+        )
+        return normalized
+
+    @classmethod
+    def _append_promoted_decisions(cls, *, current: list[dict], facts: list[dict], turn_id: str) -> list[dict]:
+        result = [dict(item) for item in current if isinstance(item, dict)]
+        seen = {str(item.get("content") or "") for item in result}
+        for fact in facts:
+            if not isinstance(fact, dict) or not cls._is_decision_like_item(fact):
+                continue
+            content = str(fact.get("content") or "").strip()
+            if not content or content in seen:
+                continue
+            result.append(
+                {
+                    "content": content,
+                    "source_turn_id": turn_id,
+                    "target_section": str(fact.get("target_section") or ""),
+                    "status": str(fact.get("status") or "active"),
+                }
+            )
+            seen.add(content)
+        return cls._uniquify_item_ids(result, prefix=cls._prefix_for_section("confirmed_decisions"))
+
+    @staticmethod
+    def _is_decision_like_item(item: dict) -> bool:
+        section = str(item.get("target_section") or "")
+        content = str(item.get("content") or "")
+        if section in {
+            "2 项目概述 / 软件定位",
+            "3 功能需求 / 用户与角色",
+            "3 功能需求 / 核心业务流程",
+            "3 功能需求 / 结果输出与共享",
+            "4 数据需求 / 输入数据",
+            "4 数据需求 / 输出数据与报表",
+            "5 非功能需求 / 性能与可靠性",
+            "5 非功能需求 / 安全与权限",
+            "5 非功能需求 / 部署与运行环境",
+            "5 非功能需求 / 精度与质量约束",
+            "6 验收准则 / 验收准则",
+        }:
+            return True
+        return any(
+            marker in content
+            for marker in [
+                "第一阶段",
+                "主要用户",
+                "核心流程",
+                "不做",
+                "不承诺",
+                "辅助判断",
+                "数据接入",
+                "验收",
+                "权限",
+                "审计",
+                "部署",
+                "精度",
+                "性能",
+            ]
+        )
 
     @staticmethod
     def _counts(state: dict) -> dict[str, int]:

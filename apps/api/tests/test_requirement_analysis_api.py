@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_analysis.deepseek_client import DeepSeekRequirementAnalysisClient
 from app.requirement_analysis import deepseek_client as requirement_analysis_client_module
+from app.requirement_analysis.provider_call_service import RequirementAnalysisProviderCallService
 from app.main import create_app
 from app.orchestrators.plugin_contracts import OrchestratorRunResult
 from app.orchestrators.plugin_discovery import OrchestratorPluginDiscovery
@@ -52,6 +53,36 @@ def assert_new_turn_contract(turn: dict) -> None:
         "assistant_message",
     ]:
         assert removed_field not in turn
+
+
+def test_requirement_analysis_turn_returns_400_when_provider_call_fails(monkeypatch) -> None:
+    def fail_provider(self, *args, **kwargs):
+        raise ValueError("DeepSeek provider request failed: Error code: 402 - Insufficient Balance")
+
+    monkeypatch.setattr(RequirementAnalysisProviderCallService, "run_provider", fail_provider)
+    client = TestClient(create_app())
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "态势分析系统需求规格探索",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "deepseek",
+            "model": "provider-default",
+            "template_id": "xg-template-81433-默认运算软件需求规格说明模板实例-v1-0",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+
+    response = client.post(
+        f"/api/requirement-analysis/sessions/{created.json()['session_id']}/turns",
+        json={"user_input": "我希望创建一个态势分析系统。"},
+    )
+
+    assert response.status_code == 400
+    assert "DeepSeek provider request failed" in response.json()["detail"]
+    assert "Insufficient Balance" in response.json()["detail"]
 
 
 def _write_reload_test_plugin(
@@ -972,6 +1003,67 @@ def test_requirement_analysis_lab_runs_brainstorm_v1_as_plugin() -> None:
     assert payload["session"]["decision_state"]["confirmed_facts"]
     assert payload["session"]["decision_state_document"]["title"] == "需求分析结构化状态"
     assert payload["session"]["provider_logs"][1]["stage_id"] == "decision_state_delta"
+
+
+def test_requirement_analysis_lab_brainstorm_v1_convergence_delivers_draft_without_next_question() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "空域运算软件需求规格探索",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": "81433号",
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    first_turn = client.post(
+        f"/api/requirement-analysis/sessions/{session_id}/turns",
+        json={"user_input": "这个系统叫空域运算软件，主要解决空域计算分析需求"},
+    )
+    assert first_turn.status_code == 200
+    first_question_count = len(first_turn.json()["session"]["questions"])
+
+    convergence_turn = client.post(
+        f"/api/requirement-analysis/sessions/{session_id}/turns",
+        json={
+            "user_input": "强制停止追问，基于当前所有信息输出完整需求规格说明草案，并列出仍需后续确认事项。"
+        },
+    )
+
+    assert convergence_turn.status_code == 200
+    payload = convergence_turn.json()
+    assert_new_turn_contract(payload["turn"])
+    assert payload["turn"]["intent_understanding_result"]["input_type"] == "convergence_command"
+    assert payload["turn"]["intent_understanding_result"]["document_strategy"] == "consolidate_and_output"
+    assert payload["turn"]["next_interaction_plan"]["should_ask_user"] is False
+    assert payload["turn"]["next_interaction_plan"]["interaction_mode"] == "draft_delivery"
+    assert payload["turn"]["next_interaction_plan"]["next_question"] == ""
+    assert payload["turn"]["next_interaction_plan"]["quick_options"] == []
+    assert payload["turn"]["next_interaction"]["type"] == "draft_delivery"
+    assert payload["turn"]["next_interaction"]["options"] == []
+    assert "已基于当前结构化状态生成需求规格说明草案" in payload["turn"]["next_interaction"]["prompt"]
+    assert payload["turn"]["spec_execution"]["state_changes"]["created_question_ids"] == []
+    assert payload["turn"]["spec_execution"]["document_patch"][0]["operation"] == "replace"
+    assert "## 需求规格说明草案" in payload["turn"]["spec_execution"]["document_patch"][0]["content"]
+    assert len(payload["session"]["questions"]) == first_question_count
+    assert payload["session"]["open_questions"] == first_turn.json()["session"]["open_questions"]
+    decision_questions = payload["session"]["decision_state"]["open_questions"]
+    assert decision_questions
+    assert all(str(item.get("status")) != "open" for item in decision_questions)
+    assert {
+        str(item.get("resolution_reason") or "")
+        for item in decision_questions
+    } == {"交付模式下未闭合问题转入草案待确认事项。"}
+    assert payload["turn"]["decision_state_change_summary"]["question_lifecycle_counts"]["deferred"] == len(
+        decision_questions
+    )
 
 
 def test_requirement_analysis_lab_runs_brainstorm_v1_dify_workflow_plugin() -> None:
@@ -2248,6 +2340,8 @@ def test_deepseek_prompt_uses_user_input_turn_contract() -> None:
 
 
 def test_deepseek_client_run_stage_parses_write_json_response_without_network() -> None:
+    captured_kwargs = {}
+
     class DummyClient(DeepSeekRequirementAnalysisClient):
         def __init__(self) -> None:
             self.model = "deepseek-chat"
@@ -2302,6 +2396,7 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
 
     class FakeCompletions:
         def create(self, **kwargs):
+            captured_kwargs.update(kwargs)
             return FakeResponse()
 
     class FakeChat:
@@ -2337,3 +2432,192 @@ def test_deepseek_client_run_stage_parses_write_json_response_without_network() 
     assert "已更新需求规格" in output["raw_model_response"]["provider_response"]["raw_content"]
     assert output["raw_model_response"]["provider_response"]["parsed_json"]["assistant_message"] == "已更新需求规格。"
     assert output["raw_model_response"]["provider_normalized_output"]["assistant_message"] == "已更新需求规格。"
+    assert captured_kwargs["max_tokens"] >= 8192
+
+
+def test_deepseek_client_retries_once_when_json_response_is_truncated() -> None:
+    captured_messages = []
+
+    class DummyClient(DeepSeekRequirementAnalysisClient):
+        def __init__(self) -> None:
+            self.model = "deepseek-chat"
+            self.runner_host = None
+            self.client = FakeOpenAIClient()
+
+        def _build_prompt_bundle(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict | None = None,
+            stage_input: dict | None = None,
+        ) -> dict:
+            return {
+                "orchestrator_id": orchestrator_id,
+                "mode": "policy_interpreted",
+                "stage_id": str((stage or {}).get("stage_id") or "decision_state_delta"),
+                "prompt_id": str((stage or {}).get("prompt_id") or "decision_state_delta"),
+                "assembled_prompt": "请返回符合 schema 的 JSON。",
+                "context_json": "{}",
+                "schema_json": '{"assistant_message":"string"}',
+                "policy_text": "policy",
+                "prompt_text": "prompt text",
+            }
+
+    class FakeMessage:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content: str) -> None:
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content: str) -> None:
+            self.choices = [FakeChoice(content)]
+
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs):
+            self.calls += 1
+            captured_messages.append(kwargs["messages"])
+            if self.calls == 1:
+                return FakeResponse('{"assistant_message":"这段 JSON 被截断了')
+            return FakeResponse(
+                '{"assistant_message":"已压缩并返回合法 JSON。","document_patch":[],"confidence":"medium"}'
+            )
+
+    class FakeChat:
+        def __init__(self) -> None:
+            self.completions = FakeCompletions()
+
+    class FakeOpenAIClient:
+        def __init__(self) -> None:
+            self.chat = FakeChat()
+
+    class DummySession:
+        orchestrator_id = "brainstorm-v1"
+        write_policy = "patch_suggestion_only"
+
+    output = DummyClient().run_stage(
+        session=DummySession(),
+        user_input="强制停止追问，输出草案。",
+        normalized={"input_type": "free_text", "semantic": "强制停止追问，输出草案。"},
+        orchestrator_id="brainstorm-v1",
+        stage={"stage_id": "decision_state_delta", "stage_kind": "decision_state_delta", "prompt_id": "decision_state_delta"},
+        stage_input={},
+    )
+
+    assert output["assistant_message"] == "已压缩并返回合法 JSON。"
+    assert len(captured_messages) == 2
+    assert "上一次返回的内容不是合法 JSON" in captured_messages[1][0]["content"]
+    assert "只返回合法 JSON" in captured_messages[1][0]["content"]
+
+
+def test_deepseek_client_uses_compact_retry_after_second_json_truncation() -> None:
+    captured_messages = []
+
+    class DummyClient(DeepSeekRequirementAnalysisClient):
+        def __init__(self) -> None:
+            self.model = "deepseek-chat"
+            self.runner_host = None
+            self.client = FakeOpenAIClient()
+
+        def _build_prompt_bundle(
+            self,
+            *,
+            session,
+            user_input: str,
+            normalized: dict,
+            orchestrator_id: str,
+            stage: dict | None = None,
+            stage_input: dict | None = None,
+        ) -> dict:
+            return {
+                "orchestrator_id": orchestrator_id,
+                "mode": "policy_interpreted",
+                "stage_id": str((stage or {}).get("stage_id") or "decision_state_delta"),
+                "prompt_id": str((stage or {}).get("prompt_id") or "decision_state_delta"),
+                "assembled_prompt": "请输出完整需求规格说明草案 JSON。",
+                "context_json": "{}",
+                "schema_json": '{"document_patch":"array"}',
+                "policy_text": "policy",
+                "prompt_text": "prompt text",
+            }
+
+    class FakeMessage:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content: str) -> None:
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        def __init__(self, content: str) -> None:
+            self.choices = [FakeChoice(content)]
+
+    class FakeCompletions:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create(self, **kwargs):
+            self.calls += 1
+            captured_messages.append(kwargs["messages"])
+            if self.calls <= 2:
+                return FakeResponse('{"assistant_message":"第二次仍然被截断')
+            return FakeResponse(
+                '{"assistant_message":"已输出压缩草案。","document_patch":[],"confidence":"medium"}'
+            )
+
+    class FakeChat:
+        def __init__(self) -> None:
+            self.completions = FakeCompletions()
+
+    class FakeOpenAIClient:
+        def __init__(self) -> None:
+            self.chat = FakeChat()
+
+    class DummySession:
+        orchestrator_id = "brainstorm-v1"
+        write_policy = "patch_suggestion_only"
+
+    output = DummyClient().run_stage(
+        session=DummySession(),
+        user_input="强制停止追问，基于当前所有已确认信息输出完整需求规格说明草案。",
+        normalized={"input_type": "free_text", "semantic": "强制停止追问，输出草案。"},
+        orchestrator_id="brainstorm-v1",
+        stage={"stage_id": "decision_state_delta", "stage_kind": "decision_state_delta", "prompt_id": "decision_state_delta"},
+        stage_input={},
+    )
+
+    assert output["assistant_message"] == "已输出压缩草案。"
+    assert len(captured_messages) == 3
+    assert "极度压缩模式" in captured_messages[2][0]["content"]
+    assert "document_patch 最多 3 条" in captured_messages[2][0]["content"]
+
+
+def test_deepseek_client_preserves_next_interaction_delivery_contract() -> None:
+    plan = DeepSeekRequirementAnalysisClient._normalize_next_interaction_plan(
+        {
+            "planning_strategy": "consolidate_and_output",
+            "interaction_mode": "deliverable",
+            "should_ask_user": False,
+            "user_message": "已交付当前草案。",
+            "next_question": "",
+            "quick_options": [],
+            "plan_reason": "用户要求停止追问。",
+            "review_acknowledgement": "已承接收束指令。",
+            "target_spec_nodes": ["REQ-1.1"],
+        }
+    )
+
+    assert plan["planning_strategy"] == "consolidate_and_output"
+    assert plan["interaction_mode"] == "deliverable"
+    assert plan["should_ask_user"] is False
+    assert plan["next_question"] == ""
+    assert plan["quick_options"] == []

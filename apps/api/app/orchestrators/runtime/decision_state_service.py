@@ -75,10 +75,22 @@ class DecisionStateService:
             "rejected_directions",
             "chapter_projections",
         ]:
-            state[key] = self._append_unique_items(list(state.get(key, [])), list(normalized_delta.get(key, [])))
+            state[key] = self._append_unique_items(
+                list(state.get(key, [])),
+                list(normalized_delta.get(key, [])),
+                prefix=self._prefix_for_section(key),
+            )
         if normalized_delta.get("next_focus"):
             state["next_focus"] = str(normalized_delta["next_focus"])
         after_counts = self._counts(state)
+        lifecycle_counts = self._apply_question_lifecycle(
+            state,
+            lifecycle_refs={
+                "closed": normalized_delta.get("closed_question_refs", []),
+                "deferred": normalized_delta.get("deferred_question_refs", []),
+                "superseded": normalized_delta.get("superseded_question_refs", []),
+            },
+        )
         return DecisionStateApplyResult(
             decision_state=state,
             decision_state_delta=normalized_delta,
@@ -88,6 +100,21 @@ class DecisionStateService:
                     key: max(0, after_counts.get(key, 0) - before_counts.get(key, 0))
                     for key in after_counts
                 },
+                "question_lifecycle_counts": lifecycle_counts,
+                "next_focus": state.get("next_focus") or "",
+            },
+        )
+
+    def defer_open_questions_for_delivery(self, *, decision_state: dict, reason: str) -> DecisionStateApplyResult:
+        state = self.normalize_state(decision_state)
+        counts = self._defer_current_open_questions(state, reason=reason)
+        return DecisionStateApplyResult(
+            decision_state=state,
+            decision_state_delta={},
+            decision_state_change_summary={
+                "turn_id": "",
+                "added_counts": {key: 0 for key in self._counts(state)},
+                "question_lifecycle_counts": counts,
                 "next_focus": state.get("next_focus") or "",
             },
         )
@@ -113,13 +140,31 @@ class DecisionStateService:
         state = dict(value) if isinstance(value, dict) else {}
         return {
             "topic": str(state.get("topic") or ""),
-            "confirmed_facts": self._item_list(state.get("confirmed_facts")),
-            "confirmed_decisions": self._item_list(state.get("confirmed_decisions")),
-            "tentative_assumptions": self._item_list(state.get("tentative_assumptions")),
-            "open_questions": self._item_list(state.get("open_questions")),
-            "rejected_directions": self._item_list(state.get("rejected_directions")),
+            "confirmed_facts": self._uniquify_item_ids(
+                self._item_list(state.get("confirmed_facts")),
+                prefix=self._prefix_for_section("confirmed_facts"),
+            ),
+            "confirmed_decisions": self._uniquify_item_ids(
+                self._item_list(state.get("confirmed_decisions")),
+                prefix=self._prefix_for_section("confirmed_decisions"),
+            ),
+            "tentative_assumptions": self._uniquify_item_ids(
+                self._item_list(state.get("tentative_assumptions")),
+                prefix=self._prefix_for_section("tentative_assumptions"),
+            ),
+            "open_questions": self._uniquify_item_ids(
+                self._item_list(state.get("open_questions")),
+                prefix=self._prefix_for_section("open_questions"),
+            ),
+            "rejected_directions": self._uniquify_item_ids(
+                self._item_list(state.get("rejected_directions")),
+                prefix=self._prefix_for_section("rejected_directions"),
+            ),
             "next_focus": str(state.get("next_focus") or ""),
-            "chapter_projections": self._item_list(state.get("chapter_projections")),
+            "chapter_projections": self._uniquify_item_ids(
+                self._item_list(state.get("chapter_projections")),
+                prefix=self._prefix_for_section("chapter_projections"),
+            ),
         }
 
     def normalize_delta(
@@ -168,6 +213,12 @@ class DecisionStateService:
                 turn_id=turn_id,
                 target_spec_node=target_spec_node,
                 prefix="DS-P",
+            ),
+            "closed_question_refs": self._question_lifecycle_ref_list(delta.get("closed_question_refs"), default_status="closed"),
+            "deferred_question_refs": self._question_lifecycle_ref_list(delta.get("deferred_question_refs"), default_status="deferred"),
+            "superseded_question_refs": self._question_lifecycle_ref_list(
+                delta.get("superseded_question_refs"),
+                default_status="superseded",
             ),
             "next_focus": str(delta.get("next_focus") or next_focus or ""),
         }
@@ -279,16 +330,129 @@ class DecisionStateService:
         return items
 
     @staticmethod
-    def _append_unique_items(current: list[dict], additions: list[dict]) -> list[dict]:
+    def _append_unique_items(current: list[dict], additions: list[dict], *, prefix: str = "DS-I") -> list[dict]:
         result = list(current)
         seen = {str(item.get("content") or "") for item in result if isinstance(item, dict)}
         for item in additions:
             content = str(item.get("content") or "")
             if not content or content in seen:
                 continue
-            result.append(item)
+            result.append(dict(item))
             seen.add(content)
+        return DecisionStateService._uniquify_item_ids(result, prefix=prefix)
+
+    @staticmethod
+    def _uniquify_item_ids(items: list[dict], *, prefix: str) -> list[dict]:
+        result: list[dict] = []
+        used: set[str] = set()
+        next_index = 1
+        for item in items:
+            normalized = dict(item)
+            item_id = str(normalized.get("item_id") or "").strip()
+            if not item_id or item_id in used:
+                item_id = DecisionStateService._next_item_id(prefix=prefix, used=used, start_index=next_index)
+            used.add(item_id)
+            normalized["item_id"] = item_id
+            result.append(normalized)
+            next_index = DecisionStateService._next_index_from_id(item_id, default=next_index) + 1
         return result
+
+    @staticmethod
+    def _next_item_id(*, prefix: str, used: set[str], start_index: int = 1) -> str:
+        index = max(1, start_index)
+        while True:
+            candidate = f"{prefix}-{index:03d}"
+            if candidate not in used:
+                return candidate
+            index += 1
+
+    @staticmethod
+    def _next_index_from_id(item_id: str, *, default: int) -> int:
+        try:
+            return int(str(item_id).rsplit("-", 1)[-1])
+        except ValueError:
+            return default
+
+    @staticmethod
+    def _prefix_for_section(section_id: str) -> str:
+        return {
+            "confirmed_facts": "DS-F",
+            "confirmed_decisions": "DS-D",
+            "tentative_assumptions": "DS-A",
+            "open_questions": "DS-Q",
+            "rejected_directions": "DS-R",
+            "chapter_projections": "DS-P",
+        }.get(section_id, "DS-I")
+
+    @staticmethod
+    def _question_lifecycle_ref_list(value: object, *, default_status: str) -> list[dict]:
+        if not isinstance(value, list):
+            return []
+        refs: list[dict] = []
+        for item in value:
+            if isinstance(item, dict):
+                item_id = str(item.get("item_id") or "").strip()
+                content = str(item.get("content") or "").strip()
+                if not item_id and not content:
+                    continue
+                refs.append(
+                    {
+                        "item_id": item_id,
+                        "content": content,
+                        "status": str(item.get("status") or default_status),
+                        "reason": str(item.get("reason") or item.get("resolution_reason") or ""),
+                    }
+                )
+                continue
+            content = str(item).strip()
+            if content:
+                refs.append({"item_id": "", "content": content, "status": default_status, "reason": ""})
+        return refs
+
+    @staticmethod
+    def _apply_question_lifecycle(state: dict, *, lifecycle_refs: dict[str, list[dict]]) -> dict[str, int]:
+        counts = {"closed": 0, "deferred": 0, "superseded": 0}
+        questions = list(state.get("open_questions") or [])
+        for target_status, refs in lifecycle_refs.items():
+            for ref in refs:
+                matched = DecisionStateService._find_question_ref_match(questions, ref)
+                if matched is None:
+                    continue
+                matched["status"] = str(ref.get("status") or target_status)
+                reason = str(ref.get("reason") or "").strip()
+                if reason:
+                    matched["resolution_reason"] = reason
+                counts[target_status] += 1
+        state["open_questions"] = questions
+        return counts
+
+    @staticmethod
+    def _defer_current_open_questions(state: dict, *, reason: str) -> dict[str, int]:
+        counts = {"closed": 0, "deferred": 0, "superseded": 0}
+        questions = list(state.get("open_questions") or [])
+        for question in questions:
+            if str(question.get("status") or "open").strip() != "open":
+                continue
+            question["status"] = "deferred"
+            if reason.strip():
+                question["resolution_reason"] = reason.strip()
+            counts["deferred"] += 1
+        state["open_questions"] = questions
+        return counts
+
+    @staticmethod
+    def _find_question_ref_match(questions: list[dict], ref: dict) -> dict | None:
+        item_id = str(ref.get("item_id") or "").strip()
+        if item_id:
+            for question in questions:
+                if str(question.get("item_id") or "").strip() == item_id:
+                    return question
+        content = str(ref.get("content") or "").strip()
+        if content:
+            for question in questions:
+                if str(question.get("content") or "").strip() == content:
+                    return question
+        return None
 
     @staticmethod
     def _counts(state: dict) -> dict[str, int]:
