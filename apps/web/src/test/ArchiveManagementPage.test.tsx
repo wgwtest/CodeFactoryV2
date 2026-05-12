@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, test, vi } from "vitest";
 
 import { ArchiveManagementPage } from "../pages/ArchiveManagementPage";
@@ -11,6 +12,7 @@ import type {
   ArchiveDocumentRuntimeStatus,
   KnowledgeArchive,
 } from "../lib/api";
+import type { DocumentRuntimeSnapshot, P1ResponseEnvelope } from "../features/p1/contracts";
 
 const refreshArchivesMock = vi.fn();
 const setActiveArchiveIdMock = vi.fn();
@@ -20,6 +22,16 @@ const getArchivePolicyConfigMock = vi.fn();
 const updateArchivePolicyConfigMock = vi.fn();
 const getArchiveDocumentRuntimeMock = vi.fn();
 const subscribeArchiveDocumentRuntimeMock = vi.fn();
+const getP1DocumentRuntimeSnapshotMock = vi.fn();
+const subscribeP1DocumentRuntimeSnapshotMock = vi.fn();
+
+function renderPage(initialEntries = ["/archives"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <ArchiveManagementPage />
+    </MemoryRouter>,
+  );
+}
 
 function buildArchive(overrides: Partial<KnowledgeArchive> = {}): KnowledgeArchive {
   return {
@@ -308,6 +320,155 @@ function buildRuntimeContract(overrides: Partial<ArchiveDocumentRuntimeContract>
   };
 }
 
+function buildP1RuntimeSnapshot(overrides: Partial<DocumentRuntimeSnapshot> = {}): DocumentRuntimeSnapshot {
+  return {
+    archive_id: "kb-1",
+    document_id: "doc-1",
+    run_id: "RUN-P1-R0-001",
+    status: "running",
+    current_stage_id: "quality_gate",
+    current_stage_message: "质量门禁正在执行证据覆盖率规则",
+    stream_status: "connected",
+    policy_snapshot: {
+      snapshot_id: "RS-P1-R0-001",
+      archive_id: "kb-1",
+      run_id: "RUN-P1-R0-001",
+      policy_package_id: "PKG-CONTRACT-GENERAL",
+      policy_package_version_id: "PKGV-20260508-R0",
+      policy_package_version_hash: "sha256:p1r0policy0001",
+      frozen_at: "2026-05-08T10:00:00+08:00",
+      stage_contract_refs: ["unified_document", "quality_gate"],
+      rule_contract_refs: ["RL-QG-COVERAGE-001@r1.0"],
+    },
+    stage_snapshots: [
+      {
+        stage_id: "unified_document",
+        stage_name: "统一文档对象",
+        status: "completed",
+        input_object_count: 1,
+        output_object_count: 128,
+        rule_execution_record_ids: ["RECORD-DOC-STRUCT-001"],
+        graph_projection_id: "GRAPH-P1-R0-001",
+      },
+      {
+        stage_id: "quality_gate",
+        stage_name: "质量门禁",
+        status: "running",
+        input_object_count: 24,
+        output_object_count: 6,
+        rule_execution_record_ids: ["RECORD-QG-001"],
+        graph_projection_id: "GRAPH-P1-R0-001",
+      },
+      {
+        stage_id: "publication_candidate",
+        stage_name: "发布候选",
+        status: "pending",
+        input_object_count: 6,
+        output_object_count: 0,
+        rule_execution_record_ids: [],
+        graph_projection_id: "GRAPH-P1-R0-001",
+      },
+    ],
+    graph_projection: {
+      graph_projection_id: "GRAPH-P1-R0-001",
+      archive_id: "kb-1",
+      document_id: "doc-1",
+      view_mode: "semantic_aggregate",
+      layout_strategy: "layered_dag",
+      highlighted_node_ids: ["node-rule-coverage"],
+      highlighted_edge_ids: ["edge-rule-to-output"],
+      nodes: [
+        {
+          node_id: "node-input-candidates",
+          label: "候选知识集合 24",
+          node_type: "input_object",
+          stage_id: "quality_gate",
+          status: "running",
+          semantic_role: "input",
+          object_count: 24,
+        },
+        {
+          node_id: "node-rule-coverage",
+          label: "证据覆盖率门禁",
+          node_type: "rule",
+          stage_id: "quality_gate",
+          status: "running",
+          semantic_role: "basis",
+          payload_ref: "RL-QG-COVERAGE-001@r1.0",
+        },
+        {
+          node_id: "node-output-publication",
+          label: "发布候选输入包 6",
+          node_type: "output_object",
+          stage_id: "quality_gate",
+          status: "pending",
+          semantic_role: "output",
+          object_count: 6,
+        },
+      ],
+      edges: [
+        {
+          edge_id: "edge-input-to-rule",
+          source: "node-input-candidates",
+          target: "node-rule-coverage",
+          relation: "evaluated_by",
+          stage_id: "quality_gate",
+          evidence: "evidence_coverage actual=0.91",
+        },
+        {
+          edge_id: "edge-rule-to-output",
+          source: "node-rule-coverage",
+          target: "node-output-publication",
+          relation: "warn_continue",
+          stage_id: "quality_gate",
+          evidence: "threshold >= 0.90",
+        },
+      ],
+    },
+    rule_execution_records: [
+      {
+        execution_id: "RECORD-QG-001",
+        run_id: "RUN-P1-R0-001",
+        archive_id: "kb-1",
+        document_id: "doc-1",
+        stage_id: "quality_gate",
+        rule_id: "RL-QG-COVERAGE-001",
+        rule_version: "r1.0",
+        rule_hash: "sha256:rulecoverage001",
+        input_artifact_refs: [{ artifact_id: "candidate-knowledge", artifact_type: "knowledge_candidate" }],
+        output_artifact_refs: [{ artifact_id: "publication-candidate", artifact_type: "publication_candidate" }],
+        input_hash: "sha256:input001",
+        output_hash: "sha256:output001",
+        affected_object_ids: ["K-24", "K-31", "P-24"],
+        affected_relation_ids: ["R-11"],
+        metrics: { evidence_coverage: 0.91 },
+        decision: "warn_continue",
+        executed_at: "2026-05-08T10:00:00+08:00",
+      },
+    ],
+    event_trace: [
+      {
+        trace_id: "TRACE-QG-001",
+        source_kind: "runtime",
+        object_ids: ["RL-QG-COVERAGE-001", "K-24"],
+        summary: "质量门禁命中证据覆盖率规则，输出带警告发布候选。",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function buildP1RuntimeEnvelope(
+  overrides: Partial<DocumentRuntimeSnapshot> = {},
+): P1ResponseEnvelope<DocumentRuntimeSnapshot> {
+  return {
+    contract_version: "p1.document_runtime.r0",
+    source_kind: "fixture",
+    generated_at: "2026-05-08T10:00:00+08:00",
+    data: buildP1RuntimeSnapshot(overrides),
+  };
+}
+
 function buildPolicyConfig(overrides: Partial<ArchivePolicyConfig> = {}): ArchivePolicyConfig {
   return {
     archive_id: "kb-1",
@@ -584,6 +745,11 @@ vi.mock("../lib/archiveKnowledge", () => ({
   subscribeArchiveDocumentRuntime: (...args: unknown[]) => subscribeArchiveDocumentRuntimeMock(...args),
 }));
 
+vi.mock("../features/p1/api/p1RefactorApi", () => ({
+  getP1DocumentRuntimeSnapshot: (...args: unknown[]) => getP1DocumentRuntimeSnapshotMock(...args),
+  subscribeP1DocumentRuntimeSnapshot: (...args: unknown[]) => subscribeP1DocumentRuntimeSnapshotMock(...args),
+}));
+
 beforeEach(() => {
   archiveContextValue.activeArchiveId = "kb-1";
   archiveContextValue.activeArchive = buildArchive();
@@ -610,8 +776,11 @@ beforeEach(() => {
   updateArchivePolicyConfigMock.mockReset();
   getArchiveDocumentRuntimeMock.mockReset();
   subscribeArchiveDocumentRuntimeMock.mockReset();
+  getP1DocumentRuntimeSnapshotMock.mockReset();
+  subscribeP1DocumentRuntimeSnapshotMock.mockReset();
 
   getArchiveDocumentRuntimeMock.mockResolvedValue({ data: buildRuntimeContract() });
+  getP1DocumentRuntimeSnapshotMock.mockResolvedValue(buildP1RuntimeEnvelope());
   getArchivePolicyConfigMock.mockResolvedValue({ data: buildPolicyConfig() });
   updateArchivePolicyConfigMock.mockResolvedValue({ data: buildPolicyConfig() });
   subscribeArchiveDocumentRuntimeMock.mockImplementation(
@@ -620,13 +789,24 @@ beforeEach(() => {
       return { close: vi.fn() };
     },
   );
+  subscribeP1DocumentRuntimeSnapshotMock.mockImplementation(
+    (
+      _archiveId: string,
+      _documentId: string,
+      handlers: { onRuntime: (runtime: DocumentRuntimeSnapshot, envelope: P1ResponseEnvelope<DocumentRuntimeSnapshot>) => void },
+    ) => {
+      const envelope = buildP1RuntimeEnvelope();
+      handlers.onRuntime(envelope.data, envelope);
+      return { close: vi.fn() };
+    },
+  );
 });
 
 test("renders overview workspace with archive table", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
-  expect((await screen.findAllByRole("heading", { name: "知识库运行总览" })).length).toBeGreaterThan(0);
-  expect(screen.getByText("知识库管理")).toBeInTheDocument();
+  expect((await screen.findAllByRole("heading", { name: "知识库总览与抽取启动" })).length).toBeGreaterThan(0);
+  expect(screen.getByText(/P1 业务知识库控制台/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "新建知识库" })).toBeInTheDocument();
   expect(screen.getAllByText("知识库一").length).toBeGreaterThan(0);
   expect(screen.getAllByText("知识库二").length).toBeGreaterThan(0);
@@ -635,7 +815,7 @@ test("renders overview workspace with archive table", async () => {
 test("shows retry action when archive list loading fails", async () => {
   archiveContextValue.error = "Network Error";
 
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   expect(await screen.findByText("知识库列表加载失败")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "重新加载知识库列表" }));
@@ -643,7 +823,7 @@ test("shows retry action when archive list loading fails", async () => {
 });
 
 test("enters single archive and single document views with runtime stream data", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click((await screen.findAllByRole("button", { name: "进入单知识库" }))[0]);
   expect(await screen.findByRole("heading", { name: /单知识库运行/ })).toBeInTheDocument();
@@ -652,13 +832,13 @@ test("enters single archive and single document views with runtime stream data",
 
   fireEvent.click(screen.getAllByRole("button", { name: "进入单文档" })[0]);
 
-  expect(await screen.findByRole("heading", { name: /单文档下钻/ })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /单文档实时工作台/ })).toBeInTheDocument();
   expect(await screen.findByText("对象观察窗")).toBeInTheDocument();
   expect(await screen.findByTestId("document-runtime-summary-strip")).toBeInTheDocument();
   expect(await screen.findByTestId("document-graph-control-panel")).toBeInTheDocument();
-  expect(subscribeArchiveDocumentRuntimeMock).toHaveBeenCalledWith(
-    "doc-1",
+  expect(subscribeP1DocumentRuntimeSnapshotMock).toHaveBeenCalledWith(
     "kb-1",
+    "doc-1",
     expect.objectContaining({
       onRuntime: expect.any(Function),
       onError: expect.any(Function),
@@ -671,43 +851,41 @@ test("enters single archive and single document views with runtime stream data",
   expect(screen.getByText("策略版本")).toBeInTheDocument();
   expect(screen.getByText("运行策略快照")).toBeInTheDocument();
   expect(screen.getAllByText("持久化运行态").length).toBeGreaterThan(0);
-  expect(screen.getByText(/13 \/ 13/)).toBeInTheDocument();
+  expect(screen.getByText(/2 \/ 3/)).toBeInTheDocument();
 });
 
 test("falls back to snapshot polling when runtime stream fails before first payload", async () => {
-  subscribeArchiveDocumentRuntimeMock.mockImplementation(
-    (_documentId: string, _archiveId: string, handlers: { onError: (error: Event | Error) => void }) => {
+  subscribeP1DocumentRuntimeSnapshotMock.mockImplementation(
+    (_archiveId: string, _documentId: string, handlers: { onError: (error: Event | Error) => void }) => {
       handlers.onError(new Event("error"));
       return { close: vi.fn() };
     },
   );
-  getArchiveDocumentRuntimeMock.mockResolvedValue({ data: buildRuntimeContract() });
+  getP1DocumentRuntimeSnapshotMock.mockResolvedValue(buildP1RuntimeEnvelope());
 
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click((await screen.findAllByRole("button", { name: "进入单知识库" }))[0]);
   fireEvent.click(screen.getAllByRole("button", { name: "进入单文档" })[0]);
 
   await waitFor(() => {
-    expect(getArchiveDocumentRuntimeMock).toHaveBeenCalledWith("doc-1", "kb-1");
+    expect(getP1DocumentRuntimeSnapshotMock).toHaveBeenCalledWith("kb-1", "doc-1");
   });
   expect((await screen.findAllByText(/已回退轮询/)).length).toBeGreaterThan(0);
   expect(await screen.findByTestId("document-graph-control-panel")).toBeInTheDocument();
 });
 
 test("keeps live current stage pinned while allowing completed-stage snapshot review", async () => {
-  const { container } = render(<ArchiveManagementPage />);
+  const { container } = renderPage();
 
   fireEvent.click((await screen.findAllByRole("button", { name: "进入单知识库" }))[0]);
   fireEvent.click(screen.getAllByRole("button", { name: "进入单文档" })[0]);
 
   await screen.findByTestId("document-runtime-summary-strip");
 
-  const pendingStageButton = container.querySelector<HTMLButtonElement>('[data-stage-id="indexes_snapshots_apis"]');
-  const currentStageButton = container.querySelector<HTMLButtonElement>(
-    '[data-stage-id="quality_policy_evaluation_governance_gate"]',
-  );
-  const completedStageButton = container.querySelector<HTMLButtonElement>('[data-stage-id="unified_document_object"]');
+  const pendingStageButton = container.querySelector<HTMLButtonElement>('[data-stage-id="publication_candidate"]');
+  const currentStageButton = container.querySelector<HTMLButtonElement>('[data-stage-id="quality_gate"]');
+  const completedStageButton = container.querySelector<HTMLButtonElement>('[data-stage-id="unified_document"]');
 
   expect(pendingStageButton).not.toBeNull();
   expect(currentStageButton).not.toBeNull();
@@ -719,14 +897,12 @@ test("keeps live current stage pinned while allowing completed-stage snapshot re
 
   expect(currentStageButton?.dataset.stageView).toBe("live");
   expect(completedStageButton?.dataset.stageView).toBe("snapshot");
-  expect(screen.getByTestId("runtime-live-current-stage").textContent).toContain(
-    "quality_policy_evaluation_governance_gate",
-  );
-  expect(screen.getByTestId("runtime-inspected-stage").textContent).toContain("unified_document_object");
+  expect(screen.getByTestId("runtime-live-current-stage").textContent).toContain("quality_gate");
+  expect(screen.getByTestId("runtime-inspected-stage").textContent).toContain("unified_document");
 });
 
 test.skip("opens policy view from overview", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "策略与配置" }));
   expect(await screen.findByRole("heading", { name: "规则与质量工作台" })).toBeInTheDocument();
@@ -735,7 +911,7 @@ test.skip("opens policy view from overview", async () => {
 });
 
 test.skip("opens stage-based policy workbench from overview", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "策略/质量" }));
   expect(await screen.findByRole("heading", { name: "策略与配置工作台" })).toBeInTheDocument();
@@ -746,7 +922,7 @@ test.skip("opens stage-based policy workbench from overview", async () => {
 });
 
 test.skip("opens configured stage workbench from overview", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "策略与配置" }));
   expect(await screen.findByRole("heading", { name: "策略与配置工作台" })).toBeInTheDocument();
@@ -757,7 +933,7 @@ test.skip("opens configured stage workbench from overview", async () => {
 });
 
 test.skip("opens policy configuration workspace from overview", async () => {
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "策略与配置" }));
   expect(await screen.findByRole("heading", { name: "策略与配置工作台" })).toBeInTheDocument();
@@ -770,7 +946,7 @@ test("creates archive through modal", async () => {
   createKnowledgeArchiveMock.mockResolvedValue({ data: buildArchive({ archive_id: "kb-3", name: "知识库三" }) });
   refreshArchivesMock.mockResolvedValue(undefined);
 
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "新建知识库" }));
   const dialog = await screen.findByRole("dialog");
@@ -795,9 +971,11 @@ test("runs extract action and switches to archive view immediately", async () =>
   extractKnowledgeArchiveMock.mockResolvedValue({ data: buildArchive() });
   refreshArchivesMock.mockResolvedValue(undefined);
 
-  render(<ArchiveManagementPage />);
+  renderPage();
 
   fireEvent.click((await screen.findAllByRole("button", { name: "立即抽取" }))[0]);
+  const dialog = await screen.findByRole("dialog", { name: "启动抽取并冻结策略快照" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认并启动抽取" }));
 
   await waitFor(() => {
     expect(extractKnowledgeArchiveMock).toHaveBeenCalledWith("kb-1");

@@ -22,7 +22,10 @@ describe("vite proxy config", () => {
     const config = typeof configFactory === "function" ? await configFactory({ command: "serve", mode: "development" }) : configFactory;
     const repoRoot = resolve(process.cwd(), "../..");
     const repoEnv = loadEnv("development", repoRoot, "");
-    const expectedProxyTarget = repoEnv.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8020";
+    const expectedApiHost = repoEnv.CF_API_HOST ?? "127.0.0.1";
+    const expectedApiPort = repoEnv.CF_API_PORT ?? "8020";
+    const expectedProxyTarget =
+      repoEnv.VITE_API_PROXY_TARGET ?? repoEnv.VITE_DEV_API_PROXY_TARGET ?? `http://${expectedApiHost}:${expectedApiPort}`;
     const expectedHost = repoEnv.VITE_WEB_HOST ?? "127.0.0.1";
     const expectedPort = Number.parseInt(repoEnv.VITE_WEB_PORT ?? "5173", 10);
 

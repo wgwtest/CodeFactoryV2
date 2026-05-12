@@ -1,0 +1,69 @@
+.quality-page-stack,
+.quality-card-stack {
+  width: 100%;
+}
+
+.quality-decision-card .ant-alert {
+  margin-bottom: 16px;
+}
+
+.quality-descriptions {
+  margin-top: 16px;
+}
+
+.quality-card-heading {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.quality-metric-card .ant-statistic-content {
+  color: #0f172a;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.quality-metric-card .ant-typography {
+  margin-bottom: 0;
+}
+
+.quality-summary-cell,
+.quality-issue-cell {
+  display: flex;
+  min-height: 136px;
+  height: 100%;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.quality-summary-cell strong {
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.quality-summary-cell span,
+.quality-issue-cell .ant-typography {
+  margin-bottom: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.quality-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.quality-explainability-graph {
+  min-height: 180px;
+  margin-bottom: 16px;
+}
+
+.quality-empty {
+  padding: 48px 0;
+}

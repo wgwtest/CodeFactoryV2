@@ -155,6 +155,10 @@ test("renders archive-only document workspace and opens archive knowledge drawer
   expect(await screen.findByText("当前知识库文档")).toBeInTheDocument();
   expect(await screen.findByText("NAS AV-1")).toBeInTheDocument();
   expect(await screen.findByText("NAS Roadmap")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "进入实时抽取" })[0]).toHaveAttribute(
+    "href",
+    "/archives?archive_id=20161116-nas&document_id=doc-1",
+  );
   expect(await screen.findByRole("button", { name: "从当前知识库移出" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "纳入当前知识库" })).toBeInTheDocument();
   expect(getMock).not.toHaveBeenCalledWith("/documents");

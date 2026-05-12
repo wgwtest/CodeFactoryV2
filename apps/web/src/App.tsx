@@ -2,20 +2,15 @@ import { Layout, Menu, Select, Space, Typography } from "antd";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useArchiveContext } from "./context/ArchiveContext";
-import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
+import { P1CleanApp, P1KnowledgeBaseGateway } from "./features/p1Clean/P1CleanApp";
+import { P1RefactorShell } from "./features/p1/shell/P1RefactorShell";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
-import { RequirementAnalysisLabPage } from "./pages/RequirementAnalysisLabPage";
+import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
 import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
-import { P6ObservationPage } from "./pages/P6ObservationPage";
-import { P6PortalDataPage } from "./pages/P6PortalDataPage";
-import { P6PortalPage } from "./pages/P6PortalPage";
-import { P6SimulatorPage } from "./pages/P6SimulatorPage";
-import { P3DesignLabPage } from "./pages/P3DesignLabPage";
-import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
 import {
   PublicationCandidatePage,
   QualityGateExplanationPage,
@@ -25,20 +20,28 @@ import {
   StrategyDiffPage,
   StrategyLibraryPage,
 } from "./pages/P1PrototypeWorkflowPages";
-import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
+import "./pages/P1Workbench.css";
+import { P3DesignLabPage } from "./pages/P3DesignLabPage";
+import { P3TemplateDetailPage } from "./pages/P3TemplateDetailPage";
+import { P6ObservationPage } from "./pages/P6ObservationPage";
+import { P6PortalDataPage } from "./pages/P6PortalDataPage";
+import { P6PortalPage } from "./pages/P6PortalPage";
+import { P6SimulatorPage } from "./pages/P6SimulatorPage";
+import { RequirementAnalysisLabPage } from "./pages/RequirementAnalysisLabPage";
 import { RequirementAuthoringAdminPage } from "./pages/RequirementAuthoringAdminPage";
+import { RequirementAuthoringPage } from "./pages/RequirementAuthoringPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { XXP1SimPage } from "./pages/XXP1SimPage";
 import { XXP2SimPage } from "./pages/XXP2SimPage";
-import { XXP3Page } from "./pages/XXP3Page";
 import { XXP3DocSimPage } from "./pages/XXP3DocSimPage";
+import { XXP3Page } from "./pages/XXP3Page";
 import { XXP3SimPage } from "./pages/XXP3SimPage";
 import { XXP4Page } from "./pages/XXP4Page";
 import { XXP4SupplySimPage } from "./pages/XXP4SupplySimPage";
 import { XXP5SimPage } from "./pages/XXP5SimPage";
-import "./pages/P1Workbench.css";
 
 const items = [
+  { key: "/p1", label: <Link to="/p1">P1 业务入口</Link> },
   { key: "/archives", label: <Link to="/archives">知识库管理</Link> },
   { key: "/documents", label: <Link to="/documents">知识库文档</Link> },
   { key: "/documents/intake", label: <Link to="/documents/intake">接入解析验证</Link> },
@@ -63,7 +66,7 @@ const items = [
   },
   { key: "/governance", label: <Link to="/governance">知识审核发布</Link> },
   { key: "/graph", label: <Link to="/graph">知识图谱</Link> },
-  { key: "/requirement-authoring/admin", label: <Link to="/requirement-authoring/admin">P2配置台</Link> },
+  { key: "/requirement-authoring/admin", label: <Link to="/requirement-authoring/admin">P2 配置台</Link> },
   { key: "/requirements", label: <Link to="/requirements">需求规格</Link> },
   { key: "/modeling", label: <Link to="/modeling">建模引导</Link> },
 ];
@@ -149,6 +152,24 @@ export default function App() {
 
   if (location.pathname === "/") {
     return <Navigate to="/portal" replace />;
+  }
+
+  if (location.pathname.startsWith("/p1-legacy")) {
+    return (
+      <Routes>
+        <Route path="/p1-legacy/*" element={<P1RefactorShell />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith("/p1")) {
+    return (
+      <Routes>
+        <Route path="/p1" element={<P1KnowledgeBaseGateway />} />
+        <Route path="/p1/archives/:archiveId/*" element={<P1CleanApp />} />
+        <Route path="/p1/*" element={<Navigate to="/p1" replace />} />
+      </Routes>
+    );
   }
 
   if (location.pathname.startsWith("/portal-data")) {

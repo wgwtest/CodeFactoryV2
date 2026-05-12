@@ -106,6 +106,7 @@ export type KnowledgeArchiveBuildWarning = {
   file_path: string;
   file_type: string;
   message: string;
+  reason?: string | null;
 };
 
 export type KnowledgeArchiveBuildState = {
@@ -354,6 +355,7 @@ export type ArchivePolicyRuntimeSnapshotStage = {
 
 export type ArchivePolicyRuntimeSnapshot = {
   snapshot_id: string;
+  run_id?: string | null;
   captured_at: string | null;
   archive_id: string;
   policy_package_id?: string | null;
@@ -765,6 +767,9 @@ export type ArchiveDocumentRuntimeContract = {
   persisted_stage_ids?: string[];
   source_document: Record<string, unknown>;
   policy_snapshot?: ArchivePolicyRuntimeSnapshot | null;
+  policy_package_id?: string | null;
+  policy_version?: string | null;
+  policy_snapshot_id?: string | null;
   stages: ArchiveDocumentRuntimeStageSnapshot[];
   rule_execution_records?: ArchiveRuleExecutionRecord[];
 };

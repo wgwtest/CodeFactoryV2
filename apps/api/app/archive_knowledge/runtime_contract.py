@@ -57,6 +57,33 @@ class RuntimeEvent(BaseModel):
     timestamp: str | None = None
 
 
+class RuntimeRealtimeEvent(BaseModel):
+    event_id: str
+    event_type: Literal[
+        "run_started",
+        "document_started",
+        "parse_snapshot_ready",
+        "rule_started",
+        "rule_hit",
+        "object_candidate_created",
+        "relation_candidate_created",
+        "merge_candidate_created",
+        "quality_metric_updated",
+        "run_completed",
+        "run_failed",
+    ]
+    level: Literal["neutral", "success", "warning", "danger", "info"] = "info"
+    message: str
+    document_id: str | None = None
+    stage_id: str | None = None
+    rule_id: str | None = None
+    object_id: str | None = None
+    relation_id: str | None = None
+    candidate_id: str | None = None
+    timestamp: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class RuntimeGraphNode(BaseModel):
     node_id: str
     label: str
@@ -97,6 +124,19 @@ class RuntimeStageGraph(BaseModel):
     edges: list[RuntimeGraphEdge] = Field(default_factory=list)
     primary_node_ids: list[str] = Field(default_factory=list)
     primary_edge_ids: list[str] = Field(default_factory=list)
+
+
+class RuntimeGraphProjection(BaseModel):
+    nodes: list[RuntimeGraphNode] = Field(default_factory=list)
+    edges: list[RuntimeGraphEdge] = Field(default_factory=list)
+    node_count: int = 0
+    edge_count: int = 0
+    current_stage_id: str | None = None
+    current_node_ids: list[str] = Field(default_factory=list)
+    current_edge_ids: list[str] = Field(default_factory=list)
+    changed_node_ids: list[str] = Field(default_factory=list)
+    changed_edge_ids: list[str] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class RuleExecutionRecord(BaseModel):
@@ -169,6 +209,7 @@ class RuntimePolicySnapshotStage(BaseModel):
 
 class RuntimePolicySnapshot(BaseModel):
     snapshot_id: str
+    run_id: str | None = None
     policy_snapshot_id: str | None = None
     captured_at: str | None = None
     archive_id: str
@@ -192,26 +233,48 @@ class RuntimePolicySnapshot(BaseModel):
     stages: list[RuntimePolicySnapshotStage] = Field(default_factory=list)
 
 
+class RuntimeGeneratedCandidate(BaseModel):
+    candidate_id: str
+    candidate_type: str
+    label: str
+    source_document_id: str
+    stage_id: str
+    status: RuntimeStatus = RuntimeStatus.RUNNING
+    evidence_count: int = 0
+    relation_count: int = 0
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
 class DocumentRuntimeContract(BaseModel):
     archive_id: str
     document_id: str
     document_title: str
+    document_set_id: str | None = None
+    runtime_snapshot_id: str | None = None
+    stream_status: Literal["streaming", "polling", "unavailable", "error"] = "polling"
+    current_document_id: str | None = None
+    current_stage_or_rule_id: str | None = None
     current_stage_id: str
     current_stage_label: str
     current_stage_status: RuntimeStatus | None = None
     current_stage_message: str | None = None
     status: RuntimeStatus
+    runtime_status: RuntimeStatus | None = None
     runtime_mode: Literal["persisted", "hybrid", "derived", "legacy_fallback"] = "derived"
     persisted_stage_ids: list[str] = Field(default_factory=list)
     source_document: dict[str, Any] = Field(default_factory=dict)
     policy_snapshot: RuntimePolicySnapshot | None = None
     policy_package_id: str | None = None
+    policy_package_version_id: str | None = None
     policy_version: str | None = None
     policy_snapshot_id: str | None = None
     stage_statuses: dict[str, str] = Field(default_factory=dict)
     rule_hits: list[dict[str, Any]] = Field(default_factory=list)
     quality_gate: dict[str, Any] = Field(default_factory=dict)
     publication_candidate_status: dict[str, Any] = Field(default_factory=dict)
+    runtime_events: list[RuntimeRealtimeEvent] = Field(default_factory=list)
+    graph_projection: RuntimeGraphProjection = Field(default_factory=RuntimeGraphProjection)
+    generated_candidates: list[RuntimeGeneratedCandidate] = Field(default_factory=list)
     stages: list[RuntimeStageSnapshot] = Field(default_factory=list)
     rule_execution_records: list[RuleExecutionRecord] = Field(default_factory=list)
 

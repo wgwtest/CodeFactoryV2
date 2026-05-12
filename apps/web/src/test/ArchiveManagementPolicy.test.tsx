@@ -290,6 +290,11 @@ vi.mock("../lib/archiveKnowledge", () => ({
   subscribeArchiveDocumentRuntime: (...args: unknown[]) => subscribeArchiveDocumentRuntimeMock(...args),
 }));
 
+vi.mock("../features/p1/api/p1RefactorApi", () => ({
+  getP1DocumentRuntimeSnapshot: (...args: unknown[]) => getArchiveDocumentRuntimeMock(...args),
+  subscribeP1DocumentRuntimeSnapshot: (...args: unknown[]) => subscribeArchiveDocumentRuntimeMock(...args),
+}));
+
 beforeEach(() => {
   archiveContextValue.activeArchiveId = "kb-1";
   archiveContextValue.activeArchive = buildArchive();
@@ -325,6 +330,75 @@ test("loads policy config from backend and shows editable stage form", async () 
   expect(screen.getByText("蓝图元信息")).toBeInTheDocument();
   expect(screen.getByDisplayValue("13 阶段抽取蓝图 v1")).toBeInTheDocument();
   expect(screen.getByText("当前阶段配置 · 素材接入")).toBeInTheDocument();
+});
+
+test("opens single document workbench from archive document query parameters", async () => {
+  archiveContextValue.activeArchive = buildArchive({
+    build_state: {
+      archive_id: "kb-1",
+      archive_name: "知识库一",
+      mode: "formal",
+      status: "completed",
+      started_at: "2026-04-22T09:00:00.000Z",
+      updated_at: "2026-04-22T09:05:00.000Z",
+      expected_document_count: 1,
+      completed_document_ids: ["doc-query"],
+      skipped_document_ids: [],
+      pending_document_ids: [],
+      failed_document_id: null,
+      failed_message: null,
+      current_document_id: null,
+      current_document_title: null,
+      current_document_path: null,
+      current_chunk: null,
+      current_stage_id: "indexes_snapshots_apis",
+      current_stage_label: "发布/API",
+      current_stage_status: "completed",
+      current_stage_message: "机器已生成发布候选，等待治理确认。",
+      policy_snapshot: {
+        snapshot_id: "snap-query",
+        run_id: "RUN-QUERY-1",
+        captured_at: "2026-04-22T09:00:00.000Z",
+        archive_id: "kb-1",
+        version_label: "合同通用抽取 v3.12",
+        scope_label: "合同通用抽取",
+        ai_autoadapt_enabled: true,
+        config_updated_at: "2026-04-22T08:30:00.000Z",
+        stage_order: ["asset_intake", "indexes_snapshots_apis"],
+        stages: [],
+      },
+      warning_count: 0,
+      warnings: [],
+      documents: [
+        {
+          document_id: "doc-query",
+          path: "manual_uploads/doc-query.pdf",
+          title: "Query Runtime Document",
+          file_type: "pdf",
+          source_archive: "kb-1",
+          state: "completed",
+        },
+      ],
+    },
+  });
+  archiveContextValue.archives = [archiveContextValue.activeArchive];
+  getArchiveDocumentRuntimeMock.mockImplementation(() => new Promise(() => {}));
+
+  render(
+    <MemoryRouter
+      initialEntries={["/archives?archive_id=kb-1&document_id=doc-query&run_id=RUN-QUERY-1"]}
+      future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+    >
+      <ArchiveManagementPage />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText(/archive_id=kb-1/)).toBeInTheDocument();
+  expect(screen.getByText(/document_id=doc-query/)).toBeInTheDocument();
+  expect(screen.getByText(/run_id=RUN-QUERY-1/)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(getArchiveDocumentRuntimeMock).toHaveBeenCalledWith("kb-1", "doc-query");
+  });
 });
 
 test("saves edited policy config back to backend contract", async () => {

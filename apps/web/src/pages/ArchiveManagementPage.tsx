@@ -26,6 +26,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import cytoscape from "cytoscape";
+import { useSearchParams } from "react-router-dom";
 import ReactFlow, {
   Background,
   ConnectionLineType,
@@ -40,13 +41,28 @@ import ReactFlow, {
   useReactFlow,
 } from "react-flow-renderer";
 import type { Edge as FlowEdge, Node as FlowNode } from "react-flow-renderer";
-import "react-flow-renderer/dist/style.css";
 import "./archiveManagementGraph.css";
+import "react-flow-renderer/dist/style.css";
 
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
-import { getArchiveDocumentRuntime, subscribeArchiveDocumentRuntime } from "../lib/archiveKnowledge";
+import {
+  createP1DeepLinkedDocument,
+  getP1UserDataSourceLabel,
+  resolveP1RunId,
+} from "../features/p1/userFlow/runtimeEntry";
+import { getP1DocumentRuntimeSnapshot, subscribeP1DocumentRuntimeSnapshot } from "../features/p1/api/p1RefactorApi";
+import type {
+  DocumentRuntimeSnapshot,
+  P1RunStatus,
+  P1StageStatus,
+  P1TraceRef,
+  RuleExecutionRecord,
+  RuntimeGraphEdge,
+  RuntimeGraphNode,
+  StageSnapshot,
+} from "../features/p1/contracts";
 import {
   createKnowledgeArchive,
   extractKnowledgeArchive,
@@ -60,11 +76,13 @@ import type {
   ArchiveStagePolicyConfig,
   ArchiveStagePolicyRule,
   ArchiveDocumentRuntimeContract,
+  ArchiveDocumentRuntimeGraphEdge,
   ArchiveDocumentRuntimeGraphNode,
   ArchiveDocumentRuntimeMode,
   ArchiveDocumentRuntimeObserverPayload,
   ArchiveDocumentRuntimeStageSnapshot,
   ArchiveDocumentRuntimeStatus,
+  ArchiveRuleExecutionRecord,
   CreateKnowledgeArchiveInput,
   KnowledgeArchive,
   KnowledgeArchiveBuildStateDocument,
@@ -178,6 +196,483 @@ const runtimeTransportMeta: Record<RuntimeTransportState, { color: string; label
   stream_connected: { color: "success", label: "已连接 Stream", hint: "流程与图谱正在通过服务端推流实时刷新" },
   polling_fallback: { color: "warning", label: "已回退轮询", hint: "Stream 不可用，当前以定时快照拉取兜底" },
 };
+
+function mapP1RunStatus(status: P1RunStatus): ArchiveDocumentRuntimeStatus {
+  if (status === "blocked" || status === "failed") return "blocked";
+  if (status === "warning") return "warning";
+  if (status === "completed") return "completed";
+  if (status === "running") return "running";
+  return "pending";
+}
+
+function mapP1StageStatus(status: P1StageStatus): ArchiveDocumentRuntimeStatus {
+  if (status === "blocked") return "blocked";
+  if (status === "warning") return "warning";
+  if (status === "completed") return "completed";
+  if (status === "running") return "running";
+  if (status === "skipped") return "unavailable";
+  return "pending";
+}
+
+function getP1RuntimeMode(snapshot: DocumentRuntimeSnapshot): ArchiveDocumentRuntimeMode {
+  if (snapshot.stream_status === "connected") return "persisted";
+  if (snapshot.stream_status === "fallback_polling") return "hybrid";
+  if (snapshot.stream_status === "disconnected") return "derived";
+  return "legacy_fallback";
+}
+
+function p1ObserverField(
+  key: string,
+  label: string,
+  value: unknown,
+  tone: ArchiveDocumentRuntimeObserverPayload["sections"][number]["fields"][number]["tone"] = "neutral",
+) {
+  const normalized = value === null || value === undefined || String(value).trim() === "" ? "未记录" : String(value);
+  return { key, label, value: normalized, tone };
+}
+
+function formatP1ArtifactRef(ref: RuleExecutionRecord["input_artifact_refs"][number]) {
+  return [ref.stage_id, ref.artifact_type, ref.artifact_id].filter(Boolean).join(" / ");
+}
+
+function formatP1RuleRecord(record: RuleExecutionRecord) {
+  return `${record.rule_id}@${record.rule_version} · ${record.decision}`;
+}
+
+function formatP1TraceEvent(
+  trace: P1TraceRef,
+  index: number,
+): ArchiveDocumentRuntimeObserverPayload["stream"][number] {
+  return {
+    event_id: trace.trace_id || `p1-trace-${index}`,
+    kind: "info",
+    level: "info",
+    message: trace.summary ?? trace.object_ids.join(" / ") ?? trace.trace_id,
+    object_id: trace.object_ids[0] ?? null,
+    object_kind: "document",
+    timestamp: null,
+  };
+}
+
+function buildP1ObserverStream(snapshot: DocumentRuntimeSnapshot, stage: StageSnapshot) {
+  const events = snapshot.event_trace.map(formatP1TraceEvent);
+  if (stage.stage_id === snapshot.current_stage_id && snapshot.current_stage_message) {
+    events.unshift({
+      event_id: `${snapshot.run_id}:${stage.stage_id}:current-message`,
+      kind: "progress",
+      level: stage.status === "blocked" ? "danger" : stage.status === "warning" ? "warning" : "info",
+      message: snapshot.current_stage_message,
+      object_id: stage.stage_id,
+      object_kind: "stage",
+      timestamp: null,
+    });
+  }
+  return events;
+}
+
+function buildP1PolicyRuntimeSnapshot(snapshot: DocumentRuntimeSnapshot): ArchivePolicyRuntimeSnapshot {
+  return {
+    snapshot_id: snapshot.policy_snapshot.snapshot_id,
+    captured_at: snapshot.policy_snapshot.frozen_at,
+    archive_id: snapshot.archive_id,
+    policy_package_id: snapshot.policy_snapshot.policy_package_id,
+    policy_package_name: snapshot.policy_snapshot.policy_package_id,
+    policy_package_version_id: snapshot.policy_snapshot.policy_package_version_id,
+    policy_package_version_status: "published",
+    policy_package_version_hash: snapshot.policy_snapshot.policy_package_version_hash,
+    version_label: snapshot.policy_snapshot.policy_package_version_id,
+    scope_label: "P1 DocumentRuntimeSnapshot",
+    ai_autoadapt_enabled: false,
+    config_updated_at: snapshot.policy_snapshot.frozen_at,
+    stage_order: snapshot.stage_snapshots.map((stage) => stage.stage_id),
+    stages: snapshot.stage_snapshots.map((stage) => ({
+      stage_id: stage.stage_id,
+      label: stage.stage_name,
+      enabled: stage.status !== "skipped",
+      ai_mode: "合同驱动运行态",
+      default_action: stage.status === "blocked" ? "block_return" : stage.status === "warning" ? "warn_continue" : "auto_pass",
+      rule_count: stage.rule_execution_record_ids.length,
+    })),
+  };
+}
+
+function adaptP1RuleExecutionRecord(record: RuleExecutionRecord): ArchiveRuleExecutionRecord {
+  return {
+    execution_id: record.execution_id,
+    archive_id: record.archive_id,
+    document_id: record.document_id,
+    stage_id: record.stage_id,
+    rule_id: record.rule_id,
+    rule_version: record.rule_version,
+    rule_hash: record.rule_hash,
+    snapshot_id: null,
+    input_artifact_refs: record.input_artifact_refs.map(formatP1ArtifactRef),
+    input_hash: record.input_hash,
+    output_artifact_refs: record.output_artifact_refs.map(formatP1ArtifactRef),
+    output_hash: record.output_hash,
+    affected_object_ids: record.affected_object_ids,
+    affected_relation_ids: record.affected_relation_ids,
+    decision: record.decision,
+    metrics: record.metrics,
+    executed_at: record.executed_at,
+    source: "runtime_trace",
+  };
+}
+
+function nodeRecords(node: RuntimeGraphNode, records: RuleExecutionRecord[]) {
+  const payloadRef = node.payload_ref ?? "";
+  return records.filter(
+    (record) =>
+      record.stage_id === node.stage_id &&
+      (payloadRef.includes(record.rule_id) ||
+        record.affected_object_ids.includes(node.node_id) ||
+        record.affected_relation_ids.includes(node.node_id)),
+  );
+}
+
+function edgeRecords(edge: RuntimeGraphEdge, records: RuleExecutionRecord[]) {
+  return records.filter(
+    (record) =>
+      record.stage_id === edge.stage_id &&
+      (record.affected_relation_ids.includes(edge.edge_id) ||
+        record.affected_object_ids.includes(edge.source) ||
+        record.affected_object_ids.includes(edge.target)),
+  );
+}
+
+function buildP1StageObserver(
+  snapshot: DocumentRuntimeSnapshot,
+  stage: StageSnapshot,
+  nodes: RuntimeGraphNode[],
+  edges: RuntimeGraphEdge[],
+  records: RuleExecutionRecord[],
+): ArchiveDocumentRuntimeObserverPayload {
+  const stageRecords = records.filter((record) => stage.rule_execution_record_ids.includes(record.execution_id));
+  const missingBasisCount = edges.filter((edge) => !edge.evidence).length;
+  return {
+    mode: "stage",
+    title: `阶段视角 · ${stage.stage_name}`,
+    subtitle: snapshot.current_stage_id === stage.stage_id ? snapshot.current_stage_message ?? "后端快照标记的当前阶段" : "历史阶段快照",
+    status: mapP1StageStatus(stage.status),
+    stream: buildP1ObserverStream(snapshot, stage),
+    sections: [
+      {
+        section_id: "runtime-contract",
+        title: "DocumentRuntimeSnapshot",
+        fields: [
+          p1ObserverField("run_id", "运行批次", snapshot.run_id),
+          p1ObserverField("stage_id", "阶段 ID", stage.stage_id),
+          p1ObserverField("stream_status", "Stream 状态", snapshot.stream_status),
+          p1ObserverField("input_count", "输入对象", stage.input_object_count, "info"),
+          p1ObserverField("output_count", "输出对象", stage.output_object_count, "info"),
+        ],
+      },
+      {
+        section_id: "rule-basis",
+        title: "规则与证据",
+        fields: [
+          p1ObserverField(
+            "rule_records",
+            "规则记录",
+            stageRecords.length ? stageRecords.map(formatP1RuleRecord).join("；") : "没有规则执行记录",
+            stageRecords.length ? "success" : "warning",
+          ),
+          p1ObserverField("missing_basis", "缺失依据边", missingBasisCount ? `${missingBasisCount} 条` : "0", missingBasisCount ? "warning" : "success"),
+          p1ObserverField("graph_projection", "图谱投影", stage.graph_projection_id ?? snapshot.graph_projection.graph_projection_id),
+        ],
+      },
+      {
+        section_id: "graph-impact",
+        title: "上下游影响",
+        fields: [
+          p1ObserverField("nodes", "聚合节点", `${nodes.length} 个`),
+          p1ObserverField("edges", "聚合边", `${edges.length} 条`),
+          p1ObserverField("view_mode", "图谱模式", snapshot.graph_projection.view_mode),
+          p1ObserverField("layout", "布局策略", snapshot.graph_projection.layout_strategy),
+        ],
+      },
+    ],
+    actions: [{ action_id: "view-graph", label: "查看阶段图谱", target_kind: "graph", target_id: stage.stage_id }],
+  };
+}
+
+function buildP1NodeObserver(
+  snapshot: DocumentRuntimeSnapshot,
+  stage: StageSnapshot,
+  node: RuntimeGraphNode,
+  graphNodes: RuntimeGraphNode[],
+  graphEdges: RuntimeGraphEdge[],
+  records: RuleExecutionRecord[],
+): ArchiveDocumentRuntimeObserverPayload {
+  const matchedRecords = nodeRecords(node, records);
+  const incoming = graphEdges.filter((edge) => edge.target === node.node_id);
+  const outgoing = graphEdges.filter((edge) => edge.source === node.node_id);
+  const evidenceValues = [...incoming, ...outgoing].map((edge) => edge.evidence ?? "依据缺失");
+  return {
+    mode: "node",
+    title: `节点视角 · ${node.label}`,
+    subtitle: node.payload_ref ?? `语义角色：${node.semantic_role}`,
+    status: mapP1StageStatus(node.status),
+    stream: buildP1ObserverStream(snapshot, stage),
+    sections: [
+      {
+        section_id: "node-payload",
+        title: "对象载荷",
+        fields: [
+          p1ObserverField("node_id", "节点 ID", node.node_id),
+          p1ObserverField("node_type", "对象类型", node.node_type),
+          p1ObserverField("semantic_role", "语义角色", node.semantic_role),
+          p1ObserverField("object_count", "对象数量", node.object_count ?? "未记录"),
+          p1ObserverField("payload_ref", "载荷引用", node.payload_ref ?? "未绑定"),
+        ],
+      },
+      {
+        section_id: "node-evidence",
+        title: "规则与证据",
+        fields: [
+          p1ObserverField(
+            "rules",
+            "规则记录",
+            matchedRecords.length
+              ? matchedRecords.map(formatP1RuleRecord).join("；")
+              : node.semantic_role === "basis"
+                ? "规则节点未绑定 RuleExecutionRecord"
+                : "当前对象无直接规则记录",
+            matchedRecords.length ? "success" : "warning",
+          ),
+          p1ObserverField("evidence", "边证据", evidenceValues.length ? evidenceValues.join("；") : "没有相邻证据边", evidenceValues.some((item) => item === "依据缺失") ? "warning" : "info"),
+        ],
+      },
+      {
+        section_id: "node-impact",
+        title: "上下游影响",
+        fields: [
+          p1ObserverField("upstream", "上游", incoming.map((edge) => graphNodes.find((item) => item.node_id === edge.source)?.label ?? edge.source).join("；") || "无"),
+          p1ObserverField("downstream", "下游", outgoing.map((edge) => graphNodes.find((item) => item.node_id === edge.target)?.label ?? edge.target).join("；") || "无"),
+          p1ObserverField("status", "状态", node.status),
+        ],
+      },
+    ],
+    actions: [{ action_id: "select-node", label: "聚焦节点", target_kind: "node", target_id: node.node_id }],
+  };
+}
+
+function buildP1EdgeObserver(
+  snapshot: DocumentRuntimeSnapshot,
+  stage: StageSnapshot,
+  edge: RuntimeGraphEdge,
+  graphNodes: RuntimeGraphNode[],
+  records: RuleExecutionRecord[],
+): ArchiveDocumentRuntimeObserverPayload {
+  const source = graphNodes.find((node) => node.node_id === edge.source);
+  const target = graphNodes.find((node) => node.node_id === edge.target);
+  const matchedRecords = edgeRecords(edge, records);
+  const evidenceMissing = !edge.evidence;
+  return {
+    mode: "edge",
+    title: `边视角 · ${source?.label ?? edge.source} → ${target?.label ?? edge.target}`,
+    subtitle: edge.relation,
+    status: evidenceMissing ? "warning" : mapP1StageStatus(stage.status),
+    stream: buildP1ObserverStream(snapshot, stage),
+    sections: [
+      {
+        section_id: "edge-payload",
+        title: "关系载荷",
+        fields: [
+          p1ObserverField("edge_id", "边 ID", edge.edge_id),
+          p1ObserverField("relation", "关系", edge.relation),
+          p1ObserverField("source", "输入对象", source?.label ?? edge.source, "info"),
+          p1ObserverField("target", "输出对象", target?.label ?? edge.target, "info"),
+        ],
+      },
+      {
+        section_id: "edge-evidence",
+        title: "规则与证据",
+        fields: [
+          p1ObserverField("evidence", "动作依据", edge.evidence ?? "依据缺失", evidenceMissing ? "warning" : "success"),
+          p1ObserverField(
+            "rules",
+            "关联规则",
+            matchedRecords.length ? matchedRecords.map(formatP1RuleRecord).join("；") : "没有直接 RuleExecutionRecord",
+            matchedRecords.length ? "success" : "warning",
+          ),
+        ],
+      },
+      {
+        section_id: "edge-impact",
+        title: "上下游影响",
+        fields: [
+          p1ObserverField("stage_id", "所属阶段", edge.stage_id),
+          p1ObserverField("source_status", "输入状态", source?.status ?? "未记录"),
+          p1ObserverField("target_status", "输出状态", target?.status ?? "未记录"),
+        ],
+      },
+    ],
+    actions: [{ action_id: "select-edge", label: "聚焦关系", target_kind: "edge", target_id: edge.edge_id }],
+  };
+}
+
+function adaptP1GraphNode(
+  node: RuntimeGraphNode,
+  highlightedNodeIds: Set<string>,
+  records: RuleExecutionRecord[],
+): ArchiveDocumentRuntimeGraphNode {
+  const matchedRecords = nodeRecords(node, records);
+  const hasMissingBasis = node.semantic_role === "basis" && !node.payload_ref && matchedRecords.length === 0;
+  return {
+    node_id: node.node_id,
+    label: node.label,
+    node_type: node.node_type,
+    stage_id: node.stage_id,
+    status: hasMissingBasis ? "warning" : mapP1StageStatus(node.status),
+    origin: "source",
+    is_primary: ["input", "basis", "action", "output"].includes(node.semantic_role),
+    is_focus: highlightedNodeIds.has(node.node_id),
+    metrics: {
+      object_count: node.object_count ?? null,
+      rule_record_count: matchedRecords.length,
+    },
+    attributes: {
+      semantic_role: node.semantic_role,
+      payload_ref: node.payload_ref ?? null,
+      rule_records: matchedRecords.map(formatP1RuleRecord),
+      evidence_state: hasMissingBasis ? "依据缺失" : "已投影",
+    },
+  };
+}
+
+function adaptP1GraphEdge(
+  edge: RuntimeGraphEdge,
+  highlightedEdgeIds: Set<string>,
+  records: RuleExecutionRecord[],
+): ArchiveDocumentRuntimeGraphEdge {
+  const matchedRecords = edgeRecords(edge, records);
+  return {
+    edge_id: edge.edge_id,
+    source: edge.source,
+    target: edge.target,
+    relation: edge.relation,
+    stage_id: edge.stage_id,
+    status: edge.evidence ? "completed" : "warning",
+    origin: "source",
+    is_primary: highlightedEdgeIds.has(edge.edge_id) || Boolean(edge.evidence),
+    attributes: {
+      evidence: edge.evidence ?? "依据缺失",
+      rule_records: matchedRecords.map(formatP1RuleRecord),
+      evidence_state: edge.evidence ? "已记录" : "依据缺失",
+    },
+  };
+}
+
+function adaptP1DocumentRuntimeSnapshot(
+  snapshot: DocumentRuntimeSnapshot,
+  document: KnowledgeArchiveBuildStateDocument | null | undefined,
+): ArchiveDocumentRuntimeContract {
+  const highlightedNodeIds = new Set(snapshot.graph_projection.highlighted_node_ids);
+  const highlightedEdgeIds = new Set(snapshot.graph_projection.highlighted_edge_ids);
+  const graphNodesByStage = new Map<string, RuntimeGraphNode[]>();
+  const graphEdgesByStage = new Map<string, RuntimeGraphEdge[]>();
+  snapshot.graph_projection.nodes.forEach((node) => {
+    graphNodesByStage.set(node.stage_id, [...(graphNodesByStage.get(node.stage_id) ?? []), node]);
+  });
+  snapshot.graph_projection.edges.forEach((edge) => {
+    graphEdgesByStage.set(edge.stage_id, [...(graphEdgesByStage.get(edge.stage_id) ?? []), edge]);
+  });
+
+  const stageIds = new Set([
+    ...snapshot.stage_snapshots.map((stage) => stage.stage_id),
+    ...snapshot.graph_projection.nodes.map((node) => node.stage_id),
+    ...snapshot.graph_projection.edges.map((edge) => edge.stage_id),
+  ]);
+  const stageById = new Map(snapshot.stage_snapshots.map((stage) => [stage.stage_id, stage]));
+  const currentStageId =
+    snapshot.current_stage_id ??
+    snapshot.stage_snapshots.find((stage) => stage.status === "running")?.stage_id ??
+    snapshot.stage_snapshots[0]?.stage_id ??
+    "";
+
+  const stages = [...stageIds].map((stageId, index) => {
+    const contractStage =
+      stageById.get(stageId) ??
+      ({
+        stage_id: stageId,
+        stage_name: getStageDisplayLabel(stageId),
+        status: stageId === currentStageId ? "running" : "pending",
+        input_object_count: 0,
+        output_object_count: 0,
+        rule_execution_record_ids: [],
+        graph_projection_id: snapshot.graph_projection.graph_projection_id,
+      } satisfies StageSnapshot);
+    const graphNodes = graphNodesByStage.get(stageId) ?? [];
+    const graphEdges = graphEdgesByStage.get(stageId) ?? [];
+    const adaptedNodes = graphNodes.map((node) => adaptP1GraphNode(node, highlightedNodeIds, snapshot.rule_execution_records));
+    const adaptedEdges = graphEdges.map((edge) => adaptP1GraphEdge(edge, highlightedEdgeIds, snapshot.rule_execution_records));
+    const primaryNodeIds = adaptedNodes.filter((node) => node.is_primary).map((node) => node.node_id);
+    const primaryEdgeIds = adaptedEdges.filter((edge) => edge.is_primary).map((edge) => edge.edge_id);
+    const order = snapshot.stage_snapshots.findIndex((stage) => stage.stage_id === stageId);
+
+    return {
+      stage_id: stageId,
+      label: contractStage.stage_name,
+      group: "合同运行态",
+      order: order >= 0 ? order + 1 : snapshot.stage_snapshots.length + index + 1,
+      status: mapP1StageStatus(contractStage.status),
+      is_current: stageId === currentStageId,
+      graph: {
+        nodes: adaptedNodes,
+        edges: adaptedEdges,
+        primary_node_ids: primaryNodeIds,
+        primary_edge_ids: primaryEdgeIds,
+      },
+      stage_observer: buildP1StageObserver(
+        snapshot,
+        contractStage,
+        graphNodes,
+        graphEdges,
+        snapshot.rule_execution_records,
+      ),
+      node_observers: Object.fromEntries(
+        graphNodes.map((node) => [
+          node.node_id,
+          buildP1NodeObserver(snapshot, contractStage, node, graphNodes, graphEdges, snapshot.rule_execution_records),
+        ]),
+      ),
+      edge_observers: Object.fromEntries(
+        graphEdges.map((edge) => [
+          edge.edge_id,
+          buildP1EdgeObserver(snapshot, contractStage, edge, graphNodes, snapshot.rule_execution_records),
+        ]),
+      ),
+      rule_execution_records: snapshot.rule_execution_records
+        .filter((record) => record.stage_id === stageId)
+        .map(adaptP1RuleExecutionRecord),
+    } satisfies ArchiveDocumentRuntimeStageSnapshot;
+  });
+
+  return {
+    archive_id: snapshot.archive_id,
+    document_id: snapshot.document_id,
+    document_title: document?.title ?? snapshot.document_id,
+    current_stage_id: currentStageId,
+    current_stage_label: stages.find((stage) => stage.stage_id === currentStageId)?.label ?? currentStageId,
+    status: mapP1RunStatus(snapshot.status),
+    runtime_mode: getP1RuntimeMode(snapshot),
+    persisted_stage_ids: stages
+      .filter((stage) => stage.status !== "pending" && stage.status !== "unavailable")
+      .map((stage) => stage.stage_id),
+    source_document: {
+      title: document?.title ?? snapshot.document_id,
+      file_type: document?.file_type ?? "unknown",
+      source_archive: snapshot.archive_id,
+      run_id: snapshot.run_id,
+      runtime_contract: "DocumentRuntimeSnapshot",
+      graph_projection_id: snapshot.graph_projection.graph_projection_id,
+    },
+    policy_snapshot: buildP1PolicyRuntimeSnapshot(snapshot),
+    stages: stages.sort((left, right) => left.order - right.order),
+    rule_execution_records: snapshot.rule_execution_records.map(adaptP1RuleExecutionRecord),
+  };
+}
 
 const policyActionMeta: Record<ArchivePolicyAction, { label: string; color: string }> = {
   auto_pass: { label: "自动放行", color: "success" },
@@ -3045,6 +3540,76 @@ function DocumentFlowFigureNavigation({
 }) {
   const stageMap = new Map(runtime.stages.map((stage) => [stage.stage_id, stage]));
   const liveCurrentStage = getLiveCurrentStage(runtime);
+  const usesContractDrivenStages = runtime.stages.some((stage) => !flowNodeLayout[stage.stage_id]);
+
+  if (usesContractDrivenStages) {
+    const orderedStages = [...runtime.stages].sort((left, right) => left.order - right.order);
+    return (
+      <Card
+        title="流程导航"
+        extra={<Text type="secondary">按后端 DocumentRuntimeSnapshot 阶段顺序展示；点击已完成阶段只回看快照。</Text>}
+        styles={{ body: { padding: 14 } }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {orderedStages.map((stage, index) => {
+            const inspectable = isStageInspectable(stage, liveCurrentStage);
+            const isCurrent = stage.stage_id === liveCurrentStage.stage_id;
+            const isSnapshot = inspectedStageId === stage.stage_id && !isCurrent;
+            const nodeState = getFlowNodeState(stage, liveCurrentStage);
+            const borderColor =
+              isCurrent ? "#de7c63" : isSnapshot ? "#1677ff" : nodeState === "pending" ? "#b8c1cf" : statusStroke(stage.status);
+            const stageLabel = getStageDisplayLabel(stage.stage_id, stage.label);
+
+            return (
+              <button
+                key={stage.stage_id}
+                type="button"
+                disabled={!inspectable}
+                onClick={() => onSelectStage(isCurrent ? null : stage.stage_id)}
+                data-stage-id={stage.stage_id}
+                data-stage-state={nodeState}
+                data-stage-view={isSnapshot ? "snapshot" : isCurrent ? "live" : inspectable ? "completed" : "pending"}
+                aria-label={stageLabel}
+                style={{
+                  minHeight: 92,
+                  padding: "14px 16px",
+                  borderRadius: 16,
+                  border: `2px solid ${borderColor}`,
+                  background: isCurrent ? "rgba(255, 247, 237, 0.96)" : isSnapshot ? "rgba(239, 246, 255, 0.96)" : "#fff",
+                  cursor: inspectable ? "pointer" : "not-allowed",
+                  opacity: inspectable ? 1 : 0.62,
+                  textAlign: "left",
+                }}
+              >
+                <Space direction="vertical" size={6} style={{ display: "flex" }}>
+                  <Space wrap size={[6, 6]}>
+                    <Tag color={runtimeStatusMeta[stage.status].color}>{runtimeStatusMeta[stage.status].label}</Tag>
+                    <Tag color={isCurrent ? "orange" : isSnapshot ? "blue" : "default"}>
+                      {isCurrent ? "当前阶段" : isSnapshot ? "查看快照" : `#${index + 1}`}
+                    </Tag>
+                  </Space>
+                  <Text strong style={{ color: isCurrent ? "#9a4e25" : "#1f2937" }}>
+                    {stageLabel}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    输入 {stage.graph.nodes.filter((node) => node.attributes.semantic_role === "input").length} / 依据{" "}
+                    {stage.graph.nodes.filter((node) => node.attributes.semantic_role === "basis").length} / 输出{" "}
+                    {stage.graph.nodes.filter((node) => node.attributes.semantic_role === "output").length}
+                  </Text>
+                </Space>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  }
 
   function edgeColor(fromStageId: string, toStageId: string) {
     const fromStage = stageMap.get(fromStageId);
@@ -4938,8 +5503,10 @@ function ArchiveView(props: {
 }
 
 function DocumentView(props: {
+  archiveId: string;
   document: KnowledgeArchiveBuildStateDocument;
   runtime: ArchiveDocumentRuntimeContract | null;
+  runtimeEntryRunId?: string | null;
   policyConfig: ArchivePolicyConfig | null;
   runtimeTransportState: RuntimeTransportState;
   loading: boolean;
@@ -4988,6 +5555,13 @@ function DocumentView(props: {
   const currentStageLabel = props.runtime
     ? getStageDisplayLabel(props.runtime.current_stage_id, props.runtime.current_stage_label)
       : "运行中";
+  const displayDocumentTitle = props.runtime?.document_title ?? props.document.title;
+  const displayRunId =
+    props.runtimeEntryRunId ??
+    (typeof props.runtime?.source_document.run_id === "string" ? props.runtime.source_document.run_id : null) ??
+    props.runtime?.policy_snapshot?.snapshot_id ??
+    "--";
+  const runtimeDataSource = props.runtime ? "live" : "mock_fallback";
   const transportMeta = runtimeTransportMeta[props.runtimeTransportState];
   const focusLabel =
     props.observerMode === "node" && selectedNode
@@ -5061,8 +5635,8 @@ function DocumentView(props: {
 
   return (
     <ValidationWorkspace
-      title={`${props.document.title} · 单文档下钻 · ${currentStageLabel} ${liveCurrentStage ? runtimeStatusMeta[liveCurrentStage.status].label : ""}`.trim()}
-      description="当前视图展示：13 阶段切换 + 当前阶段图谱 + 对象观察窗。"
+      title={`${displayDocumentTitle} · 单文档实时工作台 · ${currentStageLabel} ${liveCurrentStage ? runtimeStatusMeta[liveCurrentStage.status].label : ""}`.trim()}
+      description={`当前视图展示抽取进度、策略快照、质量门禁和发布候选边界。入口参数：archive_id=${props.archiveId} / document_id=${props.document.document_id} / run_id=${displayRunId}`}
       actions={
         <Space wrap>
           <Button onClick={props.onOpenPolicy}>查看规则</Button>
@@ -5079,6 +5653,17 @@ function DocumentView(props: {
         <Empty description="当前没有可展示的单文档运行数据" />
       ) : (
         <Space direction="vertical" size={16} style={{ display: "flex" }}>
+          <Card size="small">
+            <Space wrap size={[8, 8]}>
+              <Tag color={runtimeDataSource === "live" ? "green" : "orange"}>
+                数据来源 {getP1UserDataSourceLabel(runtimeDataSource)}
+              </Tag>
+              <Tag>archive_id {props.runtime?.archive_id ?? props.archiveId}</Tag>
+              <Tag>document_id {props.document.document_id}</Tag>
+              <Tag>run_id {displayRunId}</Tag>
+              <Tag>runtime_mode {props.runtime?.runtime_mode ?? "not_started"}</Tag>
+            </Space>
+          </Card>
           <DocumentFlowFigureNavigation
             runtime={props.runtime}
             inspectedStageId={props.inspectedStageId}
@@ -6318,6 +6903,7 @@ function PolicyView({ onBackOverview, onOpenGlobal }: { onBackOverview: () => vo
 
 export function ArchiveManagementPage() {
   const { archives, activeArchiveId, activeArchive, loading, error, refreshArchives, setActiveArchiveId } = useArchiveContext();
+  const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [view, setView] = useState<WorkspaceView>("overview");
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(activeArchiveId);
@@ -6335,27 +6921,71 @@ export function ArchiveManagementPage() {
   const [extractingArchiveId, setExtractingArchiveId] = useState<string | null>(null);
   const [extractConfirm, setExtractConfirm] = useState<ExtractConfirmState | null>(null);
   const [createForm] = Form.useForm<CreateKnowledgeArchiveInput>();
+  const appliedRuntimeEntryRef = useRef<string | null>(null);
+  const runtimeEntryArchiveId = searchParams.get("archive_id");
+  const runtimeEntryDocumentId = searchParams.get("document_id");
+  const runtimeEntryRunId = searchParams.get("run_id");
+  const runtimeEntryKey = `${runtimeEntryArchiveId ?? ""}|${runtimeEntryDocumentId ?? ""}|${runtimeEntryRunId ?? ""}`;
 
   useEffect(() => {
+    if (runtimeEntryArchiveId || runtimeEntryDocumentId) return;
     if (!selectedArchiveId) setSelectedArchiveId(activeArchiveId);
-  }, [activeArchiveId, selectedArchiveId]);
+  }, [activeArchiveId, runtimeEntryArchiveId, runtimeEntryDocumentId, selectedArchiveId]);
 
   const pendingItems = useMemo(() => buildPendingItems(archives), [archives]);
   const selectedArchive = archives.find((archive) => archive.archive_id === selectedArchiveId) ?? activeArchive ?? archives[0] ?? null;
-  const selectedDocument = selectedArchive?.build_state?.documents.find((item) => item.document_id === selectedDocumentId) ?? null;
+  const selectedDocumentFromBuildState =
+    selectedArchive?.build_state?.documents.find((item) => item.document_id === selectedDocumentId) ?? null;
+  const selectedDocument =
+    selectedDocumentFromBuildState ??
+    (selectedDocumentId ? createP1DeepLinkedDocument({ documentId: selectedDocumentId, archive: selectedArchive, runtime }) : null);
+  const selectedRunId = runtimeEntryRunId ?? resolveP1RunId(selectedArchive);
   const selectedDocumentIsCurrentRunning =
     selectedArchive?.build_state?.status === "running" &&
     Boolean(selectedDocumentId) &&
     selectedArchive.build_state.current_document_id === selectedDocumentId;
 
   useEffect(() => {
+    if (runtimeEntryArchiveId || runtimeEntryDocumentId) return;
     if (!activeArchiveId) return;
     setSelectedArchiveId((currentArchiveId) => (currentArchiveId === activeArchiveId ? currentArchiveId : activeArchiveId));
     setSelectedDocumentId(null);
     setRuntime(null);
     setRuntimeError(null);
     setRuntimeTransportState("snapshot");
-  }, [activeArchiveId]);
+  }, [activeArchiveId, runtimeEntryArchiveId, runtimeEntryDocumentId]);
+
+  useEffect(() => {
+    if (!runtimeEntryArchiveId && !runtimeEntryDocumentId) return;
+    if (appliedRuntimeEntryRef.current === runtimeEntryKey) return;
+    if (loading || archives.length === 0) return;
+
+    const targetArchive =
+      (runtimeEntryArchiveId ? archives.find((archive) => archive.archive_id === runtimeEntryArchiveId) : null) ??
+      activeArchive ??
+      archives[0] ??
+      null;
+    if (!targetArchive) return;
+
+    setSelectedArchiveId(targetArchive.archive_id);
+    setRuntime(null);
+    setRuntimeError(null);
+    setRuntimeTransportState("snapshot");
+    setInspectedStageId(null);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setObserverMode("stage");
+
+    if (runtimeEntryDocumentId) {
+      setSelectedDocumentId(runtimeEntryDocumentId);
+      setView("document");
+    } else {
+      setSelectedDocumentId(null);
+      setView("archive");
+    }
+
+    appliedRuntimeEntryRef.current = runtimeEntryKey;
+  }, [activeArchive, archives, loading, runtimeEntryArchiveId, runtimeEntryDocumentId, runtimeEntryKey]);
 
   useEffect(() => {
     if (view !== "document" || !selectedArchiveId) {
@@ -6478,15 +7108,16 @@ export function ArchiveManagementPage() {
       }
 
       try {
-        runtimeStream = subscribeArchiveDocumentRuntime(
-          selectedDocumentId,
+        runtimeStream = subscribeP1DocumentRuntimeSnapshot(
           selectedArchiveId,
+          selectedDocumentId,
           {
-            onRuntime: (nextRuntime) => {
+            onRuntime: (nextSnapshot) => {
               if (cancelled) return;
 
               clearStreamBootstrapTimer();
               setRuntimeTransportState("stream_connected");
+              const nextRuntime = adaptP1DocumentRuntimeSnapshot(nextSnapshot, selectedDocument);
               applyRuntime(nextRuntime);
 
               if (!selectedDocumentIsCurrentRunning && !runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
@@ -6528,14 +7159,15 @@ export function ArchiveManagementPage() {
       }
 
       try {
-        const response = await getArchiveDocumentRuntime(selectedDocumentId, selectedArchiveId);
+        const response = await getP1DocumentRuntimeSnapshot(selectedArchiveId, selectedDocumentId);
         if (cancelled) return;
 
-        applyRuntime(response.data);
+        const nextRuntime = adaptP1DocumentRuntimeSnapshot(response.data, selectedDocument);
+        applyRuntime(nextRuntime);
 
         if (
           allowStreamUpgrade &&
-          (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data))
+          (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime))
         ) {
           startRuntimeStream();
           return;
@@ -6544,7 +7176,7 @@ export function ArchiveManagementPage() {
         closeRuntimeStream();
         clearStreamBootstrapTimer();
 
-        if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, response.data)) {
+        if (selectedDocumentIsCurrentRunning || runtimeNeedsLiveUpdates(selectedDocument?.state, nextRuntime)) {
           schedulePoll(4000);
         } else {
           setRuntimeTransportState("snapshot");
@@ -6577,7 +7209,15 @@ export function ArchiveManagementPage() {
       clearStreamBootstrapTimer();
       closeRuntimeStream();
     };
-  }, [selectedArchiveId, selectedDocumentId, selectedDocument?.state, selectedDocumentIsCurrentRunning, view]);
+  }, [
+    selectedArchiveId,
+    selectedDocumentId,
+    selectedDocument?.file_type,
+    selectedDocument?.state,
+    selectedDocument?.title,
+    selectedDocumentIsCurrentRunning,
+    view,
+  ]);
 
   async function handleCreateArchive() {
     const values = await createForm.validateFields();
@@ -6734,8 +7374,10 @@ export function ArchiveManagementPage() {
       )}
       {view === "document" && selectedArchive && selectedDocument && (
         <DocumentView
+          archiveId={selectedArchive.archive_id}
           document={selectedDocument}
           runtime={runtime}
+          runtimeEntryRunId={selectedRunId}
           policyConfig={documentPolicyConfig}
           runtimeTransportState={runtimeTransportState}
           loading={runtimeLoading}

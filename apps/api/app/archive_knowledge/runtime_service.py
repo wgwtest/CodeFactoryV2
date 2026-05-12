@@ -18,11 +18,14 @@ from app.archive_knowledge.runtime_contract import (
     RuleExecutionRecord,
     RuntimeAction,
     RuntimeEvent,
+    RuntimeGeneratedCandidate,
     RuntimeGraphEdge,
     RuntimeGraphNode,
+    RuntimeGraphProjection,
     RuntimeObserverMode,
     RuntimeObserverPayload,
     RuntimeOrigin,
+    RuntimeRealtimeEvent,
     RuntimeStageDefinition,
     RuntimeStageGraph,
     RuntimeStageSnapshot,
@@ -42,7 +45,15 @@ class ArchiveDocumentRuntimeService:
         self.runtime_snapshot_service = DocumentRuntimeSnapshotService(self.output_root)
         self.knowledge_service = ArchiveKnowledgeService(self.output_root, published_repository=self.published_repository)
 
-    def get_document_runtime(self, archive_id: str, document_id: str) -> dict | None:
+    def get_document_runtime(
+        self,
+        archive_id: str,
+        document_id: str,
+        *,
+        document_set_id: str | None = None,
+        policy_package_version_id: str | None = None,
+        stream_status: str = "polling",
+    ) -> dict | None:
         build_state = self.artifact_repository.load_build_state(archive_id) or {}
         document_source = self.artifact_repository.get_document_source_info(archive_id, document_id)
         if document_source is None:
@@ -149,31 +160,60 @@ class ArchiveDocumentRuntimeService:
             for record in stage.rule_execution_records
         ]
         policy_refs = self._policy_refs(context.get("policy_snapshot"))
+        policy_refs = self._with_requested_policy_version(policy_refs, policy_package_version_id)
+        runtime_snapshot_id = self._runtime_snapshot_id(
+            archive_id=archive_id,
+            document_id=document_id,
+            policy_snapshot=context.get("policy_snapshot"),
+            policy_refs=policy_refs,
+        )
         quality_gate_summary = self._build_quality_gate_summary(
             stages,
             context,
             rule_execution_records,
         )
+        publication_candidate_status = self._build_publication_candidate_status(stages)
+        runtime_status = self._build_runtime_status(context, current_stage)
+        generated_candidates = self._build_generated_candidates(context, publication_candidate_status)
+        graph_projection = self._build_graph_projection(stages, current_stage)
+        runtime_events = self._build_runtime_events(
+            context=context,
+            current_stage=current_stage,
+            rule_execution_records=rule_execution_records,
+            quality_gate_summary=quality_gate_summary,
+            generated_candidates=generated_candidates,
+            runtime_status=runtime_status,
+        )
         return DocumentRuntimeContract(
             archive_id=archive_id,
             document_id=document_id,
             document_title=context["document_title"],
+            document_set_id=document_set_id or self._document_set_id(archive_id, build_state),
+            runtime_snapshot_id=runtime_snapshot_id,
+            stream_status=stream_status if stream_status in {"streaming", "polling", "unavailable", "error"} else "polling",
+            current_document_id=context.get("current_document_id") or document_id,
+            current_stage_or_rule_id=self._current_stage_or_rule_id(current_stage, rule_execution_records),
             current_stage_id=current_stage.stage_id,
             current_stage_label=context.get("current_stage_label") or current_stage.label,
             current_stage_status=current_stage.status,
             current_stage_message=context.get("current_stage_message"),
             status=current_stage.status,
+            runtime_status=runtime_status,
             runtime_mode=self._select_runtime_mode(used_legacy_source, persisted_stage_ids),
             persisted_stage_ids=persisted_stage_ids,
             source_document=context["source_document"],
             policy_snapshot=context.get("policy_snapshot"),
             policy_package_id=policy_refs.get("policy_package_id"),
+            policy_package_version_id=policy_refs.get("policy_package_version_id"),
             policy_version=policy_refs.get("policy_version"),
             policy_snapshot_id=policy_refs.get("policy_snapshot_id"),
             stage_statuses={stage.stage_id: stage.status.value for stage in stages},
             rule_hits=quality_gate_summary.get("rule_hits", []),
             quality_gate=quality_gate_summary,
-            publication_candidate_status=self._build_publication_candidate_status(stages),
+            publication_candidate_status=publication_candidate_status,
+            runtime_events=runtime_events,
+            graph_projection=graph_projection,
+            generated_candidates=generated_candidates,
             stages=stages,
             rule_execution_records=rule_execution_records,
         ).model_dump(mode="json")
@@ -390,6 +430,7 @@ class ArchiveDocumentRuntimeService:
             "publication": publication,
             "published_current_version": publication.get("current_version"),
             "is_current_build_document": is_current_build_document,
+            "current_document_id": build_state.get("current_document_id") if is_current_build_document else document_id,
             "current_chunk": build_state.get("current_chunk") if is_current_build_document else None,
             "build_warnings": build_state.get("warnings", []) if is_current_build_document else [],
             "build_state": build_state,
@@ -475,24 +516,57 @@ class ArchiveDocumentRuntimeService:
         return None
 
     @staticmethod
+    def _document_set_id(archive_id: str, build_state: dict[str, Any]) -> str:
+        return str(build_state.get("document_set_id") or f"{archive_id}:document-set")
+
+    @staticmethod
+    def _runtime_snapshot_id(
+        *,
+        archive_id: str,
+        document_id: str,
+        policy_snapshot: Any,
+        policy_refs: dict[str, str | None],
+    ) -> str:
+        if isinstance(policy_snapshot, dict):
+            run_id = policy_snapshot.get("run_id")
+            if run_id:
+                return str(run_id)
+        if policy_refs.get("policy_snapshot_id"):
+            return f"RUN-{policy_refs['policy_snapshot_id']}"
+        if policy_refs.get("policy_package_version_id"):
+            return f"{archive_id}:{document_id}:{policy_refs['policy_package_version_id']}:runtime"
+        return f"{archive_id}:{document_id}:runtime"
+
+    @staticmethod
     def _policy_refs(policy_snapshot: Any) -> dict[str, str | None]:
         if not isinstance(policy_snapshot, dict):
-            return {"policy_package_id": None, "policy_version": None, "policy_snapshot_id": None}
+            return {
+                "policy_package_id": None,
+                "policy_package_version_id": None,
+                "policy_version": None,
+                "policy_snapshot_id": None,
+            }
+        policy_package_version_id = (
+            str(policy_snapshot.get("policy_package_version_id"))
+            if policy_snapshot.get("policy_package_version_id")
+            else None
+        )
         return {
             "policy_package_id": (
                 str(policy_snapshot.get("policy_package_id"))
                 if policy_snapshot.get("policy_package_id")
                 else None
             ),
+            "policy_package_version_id": policy_package_version_id,
             "policy_version": (
                 str(
                     policy_snapshot.get("policy_version")
-                    or policy_snapshot.get("policy_package_version_id")
+                    or policy_package_version_id
                     or policy_snapshot.get("version_label")
                 )
                 if (
                     policy_snapshot.get("policy_version")
-                    or policy_snapshot.get("policy_package_version_id")
+                    or policy_package_version_id
                     or policy_snapshot.get("version_label")
                 )
                 else None
@@ -503,6 +577,336 @@ class ArchiveDocumentRuntimeService:
                 else None
             ),
         }
+
+    @staticmethod
+    def _with_requested_policy_version(
+        policy_refs: dict[str, str | None],
+        policy_package_version_id: str | None,
+    ) -> dict[str, str | None]:
+        if not policy_package_version_id:
+            return policy_refs
+        return {
+            **policy_refs,
+            "policy_package_version_id": policy_refs.get("policy_package_version_id") or policy_package_version_id,
+            "policy_version": policy_refs.get("policy_version") or policy_package_version_id,
+        }
+
+    @staticmethod
+    def _current_stage_or_rule_id(
+        current_stage: RuntimeStageSnapshot,
+        rule_execution_records: list[RuleExecutionRecord],
+    ) -> str:
+        current_stage_records = [
+            record
+            for record in rule_execution_records
+            if record.stage_id == current_stage.stage_id
+        ]
+        if current_stage_records:
+            return current_stage_records[0].rule_id
+        return current_stage.stage_id
+
+    @staticmethod
+    def _build_runtime_status(
+        context: dict[str, Any],
+        current_stage: RuntimeStageSnapshot,
+    ) -> RuntimeStatus:
+        build_state = context.get("build_state") or {}
+        build_status = str(build_state.get("status") or "").lower()
+        if context.get("is_current_build_document") and build_status == "running":
+            return RuntimeStatus.RUNNING
+        if build_status == "failed":
+            return RuntimeStatus.BLOCKED
+        return current_stage.status
+
+    def _build_generated_candidates(
+        self,
+        context: dict[str, Any],
+        publication_candidate_status: dict[str, Any],
+    ) -> list[RuntimeGeneratedCandidate]:
+        candidates: list[RuntimeGeneratedCandidate] = []
+        for item in context.get("all_items", [])[:20]:
+            evidence = item.get("evidence") or []
+            candidates.append(
+                RuntimeGeneratedCandidate(
+                    candidate_id=str(item.get("id") or f"{context['document_id']}:candidate:{len(candidates) + 1}"),
+                    candidate_type=str(item.get("kind") or "object"),
+                    label=str(item.get("name") or item.get("title") or "未命名候选对象"),
+                    source_document_id=context["document_id"],
+                    stage_id="concept_candidate_review",
+                    status=RuntimeStatus.RUNNING
+                    if context.get("is_current_build_document")
+                    else RuntimeStatus.COMPLETED,
+                    evidence_count=len(evidence),
+                    relation_count=0,
+                    attributes={
+                        "category": item.get("category"),
+                        "aliases": item.get("aliases", []),
+                        "review_status": item.get("review_status"),
+                    },
+                )
+            )
+
+        for index, relation in enumerate(context.get("relations", [])[:20]):
+            candidates.append(
+                RuntimeGeneratedCandidate(
+                    candidate_id=f"{context['document_id']}:relation:{index + 1}",
+                    candidate_type="relation",
+                    label=str(relation.get("type") or "未命名候选关系"),
+                    source_document_id=context["document_id"],
+                    stage_id="relation_review_family_normalization",
+                    status=RuntimeStatus.RUNNING
+                    if context.get("is_current_build_document")
+                    else RuntimeStatus.COMPLETED,
+                    evidence_count=1 if relation.get("evidence") else 0,
+                    relation_count=1,
+                    attributes={
+                        "source_name": relation.get("source_name"),
+                        "target_name": relation.get("target_name"),
+                        "confidence": relation.get("confidence"),
+                    },
+                )
+            )
+
+        candidate_snapshot_id = publication_candidate_status.get("candidate_snapshot_id")
+        if candidate_snapshot_id:
+            candidates.append(
+                RuntimeGeneratedCandidate(
+                    candidate_id=str(candidate_snapshot_id),
+                    candidate_type="publication_candidate_snapshot",
+                    label="发布候选快照",
+                    source_document_id=context["document_id"],
+                    stage_id="indexes_snapshots_apis",
+                    status=self._runtime_status_from_value(
+                        publication_candidate_status.get("stage_status"),
+                        RuntimeStatus.WARNING,
+                    ),
+                    attributes=publication_candidate_status.get("candidate_snapshot_attributes") or {},
+                )
+            )
+        return candidates
+
+    @staticmethod
+    def _build_graph_projection(
+        stages: list[RuntimeStageSnapshot],
+        current_stage: RuntimeStageSnapshot,
+    ) -> RuntimeGraphProjection:
+        node_map: dict[str, RuntimeGraphNode] = {}
+        edge_map: dict[str, RuntimeGraphEdge] = {}
+
+        def add_node(node: RuntimeGraphNode) -> None:
+            if node.node_id not in node_map:
+                node_map[node.node_id] = node
+
+        def add_edge(edge: RuntimeGraphEdge) -> None:
+            if edge.edge_id not in edge_map:
+                edge_map[edge.edge_id] = edge
+
+        for node in current_stage.graph.nodes:
+            add_node(node)
+        for edge in current_stage.graph.edges:
+            add_edge(edge)
+
+        visible_statuses = {
+            RuntimeStatus.RUNNING,
+            RuntimeStatus.COMPLETED,
+            RuntimeStatus.WARNING,
+            RuntimeStatus.BLOCKED,
+        }
+        for stage in stages:
+            if stage.status not in visible_statuses:
+                continue
+            for node in stage.graph.nodes:
+                if node.is_primary:
+                    add_node(node)
+            for edge in stage.graph.edges:
+                if edge.is_primary:
+                    add_edge(edge)
+
+        current_node_ids = [node.node_id for node in current_stage.graph.nodes if node.is_primary]
+        current_edge_ids = [edge.edge_id for edge in current_stage.graph.edges if edge.is_primary]
+        nodes = list(node_map.values())
+        edges = list(edge_map.values())
+        return RuntimeGraphProjection(
+            nodes=nodes[:80],
+            edges=edges[:120],
+            node_count=len(nodes),
+            edge_count=len(edges),
+            current_stage_id=current_stage.stage_id,
+            current_node_ids=current_node_ids,
+            current_edge_ids=current_edge_ids,
+            changed_node_ids=current_node_ids,
+            changed_edge_ids=current_edge_ids,
+            summary={
+                "current_stage_label": current_stage.label,
+                "current_stage_status": current_stage.status.value,
+                "projected_stage_count": sum(1 for stage in stages if stage.status in visible_statuses),
+            },
+        )
+
+    def _build_runtime_events(
+        self,
+        *,
+        context: dict[str, Any],
+        current_stage: RuntimeStageSnapshot,
+        rule_execution_records: list[RuleExecutionRecord],
+        quality_gate_summary: dict[str, Any],
+        generated_candidates: list[RuntimeGeneratedCandidate],
+        runtime_status: RuntimeStatus,
+    ) -> list[RuntimeRealtimeEvent]:
+        build_state = context.get("build_state") or {}
+        timestamp = build_state.get("updated_at") or build_state.get("started_at")
+        events: list[RuntimeRealtimeEvent] = []
+
+        def append(
+            event_type: str,
+            message: str,
+            *,
+            level: str = "info",
+            stage_id: str | None = None,
+            rule_id: str | None = None,
+            object_id: str | None = None,
+            relation_id: str | None = None,
+            candidate_id: str | None = None,
+            payload: dict[str, Any] | None = None,
+        ) -> None:
+            events.append(
+                RuntimeRealtimeEvent(
+                    event_id=f"{context['document_id']}:{len(events) + 1}:{event_type}",
+                    event_type=event_type,  # type: ignore[arg-type]
+                    level=level,  # type: ignore[arg-type]
+                    message=message,
+                    document_id=context["document_id"],
+                    stage_id=stage_id,
+                    rule_id=rule_id,
+                    object_id=object_id,
+                    relation_id=relation_id,
+                    candidate_id=candidate_id,
+                    timestamp=timestamp,
+                    payload=payload or {},
+                )
+            )
+
+        append(
+            "run_started",
+            "运行已接收 documentSetId 与 policyPackageVersionId，开始构建运行快照",
+            level="success",
+            stage_id="asset_intake",
+            payload={
+                "document_set_id": build_state.get("document_set_id"),
+                "policy_snapshot_id": (context.get("policy_snapshot") or {}).get("policy_snapshot_id")
+                if isinstance(context.get("policy_snapshot"), dict)
+                else None,
+            },
+        )
+        append(
+            "document_started",
+            f"开始处理文档：{context['document_title']}",
+            level="success",
+            stage_id="asset_intake",
+            object_id=context["document_id"],
+        )
+
+        source = context.get("source_document") or {}
+        if source.get("parser_name") or source.get("segment_count"):
+            append(
+                "parse_snapshot_ready",
+                f"解析快照已就绪：{source.get('parser_name') or 'parser'}，段落 {source.get('segment_count') or 0}",
+                level="success",
+                stage_id="unified_document_object",
+                payload={
+                    "parser_name": source.get("parser_name"),
+                    "segment_count": source.get("segment_count") or 0,
+                },
+            )
+
+        current_stage_records = [
+            record
+            for record in rule_execution_records
+            if record.stage_id == current_stage.stage_id
+        ]
+        if current_stage_records:
+            first_record = current_stage_records[0]
+            append(
+                "rule_started",
+                f"开始执行规则：{first_record.rule_id}",
+                level="info",
+                stage_id=first_record.stage_id,
+                rule_id=first_record.rule_id,
+                payload={"rule_version": first_record.rule_version},
+            )
+
+        for hit in quality_gate_summary.get("rule_hits", [])[:6]:
+            append(
+                "rule_hit",
+                f"规则命中：{hit.get('rule_id') or hit.get('rule_key')}",
+                level="warning" if not hit.get("passed") else "success",
+                stage_id=quality_gate_summary.get("stage_id"),
+                rule_id=hit.get("rule_id") or hit.get("rule_key"),
+                object_id=hit.get("node_id"),
+                payload=hit,
+            )
+
+        for candidate in generated_candidates:
+            if candidate.candidate_type == "relation":
+                append(
+                    "relation_candidate_created",
+                    f"关系候选生成：{candidate.label}",
+                    level="success",
+                    stage_id=candidate.stage_id,
+                    relation_id=candidate.candidate_id,
+                    candidate_id=candidate.candidate_id,
+                    payload=candidate.model_dump(mode="json"),
+                )
+                continue
+            if candidate.candidate_type == "publication_candidate_snapshot":
+                continue
+            append(
+                "object_candidate_created",
+                f"对象候选生成：{candidate.label}",
+                level="success",
+                stage_id=candidate.stage_id,
+                object_id=candidate.candidate_id,
+                candidate_id=candidate.candidate_id,
+                payload=candidate.model_dump(mode="json"),
+            )
+
+        if context.get("all_items"):
+            append(
+                "merge_candidate_created",
+                f"规范合并候选已更新：{len(context.get('all_items') or [])} 个对象",
+                level="info",
+                stage_id="canonical_knowledge",
+                payload={
+                    "object_count": len(context.get("all_items") or []),
+                    "relation_count": len(context.get("relations") or []),
+                },
+            )
+
+        metrics = quality_gate_summary.get("metrics") or {}
+        if metrics:
+            append(
+                "quality_metric_updated",
+                "质量指标已更新",
+                level="warning" if quality_gate_summary.get("stage_status") in {"warning", "blocked"} else "success",
+                stage_id=quality_gate_summary.get("stage_id"),
+                payload=metrics,
+            )
+
+        if runtime_status == RuntimeStatus.COMPLETED:
+            append(
+                "run_completed",
+                "运行已完成并产出 runtimeSnapshotId",
+                level="success",
+                stage_id=current_stage.stage_id,
+            )
+        if str(build_state.get("status") or "").lower() == "failed":
+            append(
+                "run_failed",
+                str(build_state.get("failed_message") or "运行失败"),
+                level="danger",
+                stage_id=current_stage.stage_id,
+            )
+        return events[-80:]
 
     @staticmethod
     def _runtime_status_from_value(value: Any, fallback: RuntimeStatus) -> RuntimeStatus:

@@ -36,21 +36,21 @@ def test_get_archive_policy_config_returns_default_contract(tmp_path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["archive_id"] == "20161116-nas"
-    assert payload["version_label"] == "13 阶段抽取蓝图 v1"
-    assert payload["scope_label"] == "单文档抽取过程"
+    assert payload["version_label"] == "architecture_midterm_default v1"
+    assert payload["scope_label"] == "Mid Term 体系结构文档：AV-1、OV-1、OV-2、OV-5、OV-7、SV-1、SV-2、SV-4"
     assert payload["ai_autoadapt_enabled"] is True
     assert payload["stage_order"][0] == "asset_intake"
-    assert payload["stages"]["asset_intake"]["label"] == "素材接入"
+    assert payload["stages"]["asset_intake"]["label"] == "Mid Term 文档接入"
     assert payload["stages"]["quality_policy_evaluation_governance_gate"]["default_action"] == "block_return"
-    assert payload["policy_package_id"] == "20161116-nas:default-policy-package"
-    assert payload["policy_package_version_id"] == "20161116-nas:policy:v1"
+    assert payload["policy_package_id"] == "architecture_midterm_default"
+    assert payload["policy_package_version_id"] == "20161116-nas:architecture_midterm_default:policy:v1"
     assert payload["policy_package_version_hash"].startswith("sha256:")
     assert payload["policy_contract_version"] == "p1.policy_contract.v1"
     assert payload["policy_contract_status"] == "valid"
-    assert payload["policy_package_versions"][0]["version_id"] == "20161116-nas:policy:v1"
+    assert payload["policy_package_versions"][0]["version_id"] == "20161116-nas:architecture_midterm_default:policy:v1"
 
     first_rule = payload["stages"]["asset_intake"]["rules"][0]
-    assert first_rule["rule_id"] == first_rule["key"]
+    assert first_rule["rule_id"] == "architecture_midterm_default.doc-type-summary"
     assert first_rule["rule_version"]
     assert first_rule["effect_kind"]
     assert first_rule["action_mapping"]["effect_kind"] == first_rule["effect_kind"]
@@ -63,7 +63,7 @@ def test_get_archive_policy_config_returns_default_contract(tmp_path) -> None:
         "affected_object_ids",
         "output_hash",
     }
-    assert {"rule_id", "rule_version", "input_hash", "output_hash"}.issubset(first_rule["trace_fields"])
+    assert {"rule_id", "rule_version", "rule_hash", "input_hash", "output_hash"}.issubset(first_rule["trace_fields"])
 
 
 def test_put_archive_policy_config_persists_updates(tmp_path) -> None:
@@ -76,8 +76,8 @@ def test_put_archive_policy_config_persists_updates(tmp_path) -> None:
     assert original.status_code == 200
     payload = original.json()
 
-    payload["version_label"] = "13 阶段抽取蓝图 v2"
-    payload["scope_label"] = "单文档抽取过程 / 严格模式"
+    payload["version_label"] = "architecture_midterm_default v2"
+    payload["scope_label"] = "Mid Term 体系结构文档 / 严格模式"
     payload["ai_autoadapt_enabled"] = False
     payload["stages"]["asset_intake"]["objective"] = "先完成接入质量判断，再决定是否进入正式抽取链路。"
     payload["stages"]["asset_intake"]["default_action"] = "manual_review"
@@ -104,26 +104,26 @@ def test_put_archive_policy_config_persists_updates(tmp_path) -> None:
 
     assert response.status_code == 200
     updated = response.json()
-    assert updated["version_label"] == "13 阶段抽取蓝图 v2"
-    assert updated["scope_label"] == "单文档抽取过程 / 严格模式"
+    assert updated["version_label"] == "architecture_midterm_default v2"
+    assert updated["scope_label"] == "Mid Term 体系结构文档 / 严格模式"
     assert updated["ai_autoadapt_enabled"] is False
     assert updated["updated_at"] is not None
     assert updated["stages"]["asset_intake"]["objective"] == "先完成接入质量判断，再决定是否进入正式抽取链路。"
     assert updated["stages"]["asset_intake"]["default_action"] == "manual_review"
     assert updated["stages"]["asset_intake"]["rules"][-1]["key"] == "asset-extra"
     assert updated["stages"]["asset_intake"]["rules"][-1]["contract_status"] == "valid"
-    assert updated["policy_package_version_id"] == "20161116-nas:policy:v2"
-    assert updated["previous_policy_package_version_id"] == "20161116-nas:policy:v1"
+    assert updated["policy_package_version_id"] == "20161116-nas:architecture_midterm_default:policy:v2"
+    assert updated["previous_policy_package_version_id"] == "20161116-nas:architecture_midterm_default:policy:v1"
 
     follow_up = client.get("/api/archives/20161116-nas/policy-config")
     assert follow_up.status_code == 200
     persisted = follow_up.json()
-    assert persisted["version_label"] == "13 阶段抽取蓝图 v2"
+    assert persisted["version_label"] == "architecture_midterm_default v2"
     assert persisted["stages"]["asset_intake"]["default_action"] == "manual_review"
     assert persisted["stages"]["asset_intake"]["rules"][-1]["action"] == "manual_review"
     assert {entry["version_id"] for entry in persisted["policy_package_versions"]} == {
-        "20161116-nas:policy:v1",
-        "20161116-nas:policy:v2",
+        "20161116-nas:architecture_midterm_default:policy:v1",
+        "20161116-nas:architecture_midterm_default:policy:v2",
     }
 
 
@@ -175,8 +175,8 @@ def test_put_archive_policy_config_recomputes_rule_and_package_hash(tmp_path) ->
     updated_rule = updated["stages"]["asset_intake"]["rules"][0]
     assert updated_rule["rule_hash"] != original_rule_hash
     assert updated["policy_package_version_hash"] != original_package_hash
-    assert updated["policy_package_version_id"] == "20161116-nas:policy:v2"
-    assert updated["previous_policy_package_version_id"] == "20161116-nas:policy:v1"
+    assert updated["policy_package_version_id"] == "20161116-nas:architecture_midterm_default:policy:v2"
+    assert updated["previous_policy_package_version_id"] == "20161116-nas:architecture_midterm_default:policy:v1"
     assert updated_rule["rule_version"] == "r1.1"
     assert updated_rule["contract_status"] == "valid"
 
@@ -222,6 +222,7 @@ def test_put_archive_policy_config_reports_missing_contract_fields(tmp_path) -> 
     assert "missing input_schema.input_hash" in updated_rule["contract_errors"]
     assert "missing output_schema.affected_object_ids" in updated_rule["contract_errors"]
     assert "missing trace_fields.rule_id" in updated_rule["contract_errors"]
+    assert "missing trace_fields.rule_hash" in updated_rule["contract_errors"]
     assert updated["policy_contract_errors"][0]["rule_id"] == updated_rule["rule_id"]
 
 
@@ -339,8 +340,8 @@ def test_extract_archive_freezes_policy_snapshot_for_running_build(tmp_path) -> 
     registry_service.update_policy_config(
         "kb-policy",
         {
-            "version_label": "13 阶段抽取蓝图 v3",
-            "scope_label": "单文档抽取过程 / 快照验证",
+            "version_label": "architecture_midterm_default v3",
+            "scope_label": "Mid Term 体系结构文档 / 快照验证",
             "ai_autoadapt_enabled": True,
             "stage_order": current_config["stage_order"],
             "stages": {
@@ -358,11 +359,11 @@ def test_extract_archive_freezes_policy_snapshot_for_running_build(tmp_path) -> 
             assert archive_id == "kb-policy"
             assert archive_name == "策略快照测试库"
             assert policy_snapshot is not None
-            assert policy_snapshot["version_label"] == "13 阶段抽取蓝图 v3"
-            assert policy_snapshot["scope_label"] == "单文档抽取过程 / 快照验证"
+            assert policy_snapshot["version_label"] == "architecture_midterm_default v3"
+            assert policy_snapshot["scope_label"] == "Mid Term 体系结构文档 / 快照验证"
             assert policy_snapshot["snapshot_id"]
-            assert policy_snapshot["policy_package_version_id"] == "kb-policy:policy:v2"
-            assert policy_snapshot["previous_policy_package_version_id"] == "kb-policy:policy:v1"
+            assert policy_snapshot["policy_package_version_id"] == "kb-policy:architecture_midterm_default:policy:v2"
+            assert policy_snapshot["previous_policy_package_version_id"] == "kb-policy:architecture_midterm_default:policy:v1"
             assert policy_snapshot["policy_package_version_hash"].startswith("sha256:")
             assert policy_snapshot["stages"][0]["stage_id"] == "asset_intake"
             assert policy_snapshot["stages"][0]["default_action"] == "manual_review"

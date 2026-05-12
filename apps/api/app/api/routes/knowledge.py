@@ -9,11 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.archive_knowledge.contracts import P1CleanSystemOutputContract
 from app.archive_knowledge.service import ArchiveKnowledgeService
 from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
 from app.config import settings
 from app.db.session import get_session
 from app.query.service import QueryService
+from app.requirement_exchange.p1_knowledge_adapter import P1KnowledgeAdapter
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -52,6 +54,10 @@ def get_archive_knowledge_service() -> ArchiveKnowledgeService:
 
 def get_archive_document_runtime_service() -> ArchiveDocumentRuntimeService:
     return ArchiveDocumentRuntimeService(settings.knowledge_output_root)
+
+
+def get_p1_knowledge_adapter() -> P1KnowledgeAdapter:
+    return P1KnowledgeAdapter()
 
 
 def parse_document_ids(document_ids: str | None) -> list[str] | None:
@@ -310,6 +316,19 @@ def get_archive_publication(
     service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
 ):
     return service.get_publication_overview(archive_id)
+
+
+@router.get("/archive/{archive_id}/system-output", response_model=P1CleanSystemOutputContract)
+def get_archive_system_output_contract(
+    archive_id: str,
+    publication_snapshot_id: str = Query(...),
+    service: ArchiveKnowledgeService = Depends(get_archive_knowledge_service),
+    adapter: P1KnowledgeAdapter = Depends(get_p1_knowledge_adapter),
+):
+    try:
+        return adapter.get_clean_system_output_contract(archive_id, publication_snapshot_id, service)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/archive/{archive_id}/search")

@@ -22,5 +22,8 @@ tools/ptest/dist/
 .data/knowledge_output/ui-test-kb-*
 .logs/
 .run-logs/
+.codex-runtime/
+.codex-*.log
+.npm-cache/
 graphify-out/
 graphify-out/cache/

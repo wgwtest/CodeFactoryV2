@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 import app.archive_knowledge.builder as builder_module
+from app.api.routes.archives import get_archive_runtime_service
 from app.api.routes.knowledge import get_archive_document_runtime_service
 from app.archive_knowledge.builder import _build_formal_archive_contributions
 from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
@@ -154,6 +155,26 @@ def test_archive_document_runtime_endpoint_returns_13_stage_contract(tmp_path: P
     assert payload["current_stage_id"] == "quality_policy_evaluation_governance_gate"
     assert payload["runtime_mode"] == "persisted"
     assert len(payload["persisted_stage_ids"]) == 13
+    assert payload["document_set_id"] == "nas-a:document-set"
+    assert payload["runtime_snapshot_id"] == "nas-a:doc-1:runtime"
+    assert payload["stream_status"] == "polling"
+    assert payload["current_document_id"] == "doc-1"
+    assert payload["current_stage_or_rule_id"]
+    assert payload["runtime_status"] in {"running", "warning", "completed", "blocked"}
+    assert payload["runtime_events"]
+    assert payload["graph_projection"]["nodes"]
+    assert payload["generated_candidates"]
+    assert {
+        "run_started",
+        "document_started",
+        "parse_snapshot_ready",
+        "rule_hit",
+        "object_candidate_created",
+        "relation_candidate_created",
+        "merge_candidate_created",
+        "quality_metric_updated",
+    }.issubset({event["event_type"] for event in payload["runtime_events"]})
+    assert "policy_package_version_id" in payload
 
     asset_intake = payload["stages"][0]
     assert asset_intake["stage_id"] == "asset_intake"
@@ -484,6 +505,72 @@ def test_archive_document_runtime_stream_endpoint_emits_initial_runtime_event(tm
     assert payload["document_id"] == "doc-1"
     assert payload["current_stage_id"] == "quality_policy_evaluation_governance_gate"
     assert len(payload["stages"]) == 13
+
+
+def test_p1_archive_runtime_endpoint_consumes_document_set_and_policy_version(tmp_path: Path) -> None:
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.upsert("nas-a", _sample_contribution(), included_in_archive=True)
+
+    app = create_app()
+    app.dependency_overrides[get_archive_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/archives/nas-a/runtime",
+        params={
+            "document_id": "doc-1",
+            "document_set_id": "midterm-document-set",
+            "policy_package_version_id": "policy-package-v7",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["document_set_id"] == "midterm-document-set"
+    assert payload["policy_package_version_id"] == "policy-package-v7"
+    assert payload["runtime_snapshot_id"] == "nas-a:doc-1:policy-package-v7:runtime"
+    assert payload["stream_status"] == "polling"
+    assert payload["runtime_status"]
+    assert payload["current_document_id"] == "doc-1"
+    assert payload["current_stage_or_rule_id"]
+    assert payload["runtime_events"]
+    assert payload["graph_projection"]["node_count"] >= len(payload["graph_projection"]["nodes"])
+    assert any(candidate["candidate_type"] == "relation" for candidate in payload["generated_candidates"])
+
+
+def test_p1_archive_runtime_stream_endpoint_emits_equivalent_runtime_payload(tmp_path: Path) -> None:
+    repository = DocumentArtifactRepository(tmp_path)
+    repository.upsert("nas-a", _sample_contribution(), included_in_archive=True)
+
+    app = create_app()
+    app.dependency_overrides[get_archive_runtime_service] = lambda: ArchiveDocumentRuntimeService(tmp_path)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/archives/nas-a/runtime/stream",
+        params={
+            "document_id": "doc-1",
+            "document_set_id": "midterm-document-set",
+            "policy_package_version_id": "policy-package-v7",
+            "interval_ms": 1000,
+            "heartbeat_ms": 1000,
+            "max_events": 1,
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    first_event = response.text.split("\n\n", 1)[0]
+    assert "event: runtime" in first_event
+    data_line = next(line for line in first_event.splitlines() if line.startswith("data: "))
+    payload = json.loads(data_line.removeprefix("data: "))
+
+    assert payload["document_set_id"] == "midterm-document-set"
+    assert payload["policy_package_version_id"] == "policy-package-v7"
+    assert payload["stream_status"] == "streaming"
+    assert payload["runtime_events"]
+    assert payload["graph_projection"]["nodes"]
+    assert payload["generated_candidates"]
 
 
 def test_archive_document_runtime_stream_endpoint_returns_404_for_missing_runtime(tmp_path: Path) -> None:

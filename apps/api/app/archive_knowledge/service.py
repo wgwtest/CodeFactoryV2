@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+from app.archive_knowledge.contracts import (
+    DownstreamConsumptionGuide,
+    FormalKnowledgeInterface,
+    FormalKnowledgeVersionRule,
+    P1CleanSystemOutputContract,
+    SystemOutputAdapterContract,
+)
 from app.archive_knowledge.document_artifacts import DocumentArtifactRepository
 from app.archive_knowledge.repository import JsonPublishedKnowledgeRepository
 from app.archive_knowledge.artifact_catalog import build_interpretation
@@ -331,6 +339,118 @@ class ArchiveKnowledgeService:
             )
         )
         return overview
+
+    def get_system_output_contract(self, archive_id: str, publication_snapshot_id: str) -> P1CleanSystemOutputContract:
+        published_payload, current_version = self.published_repository.load_latest(archive_id)
+        if published_payload is None or current_version is None:
+            raise ValueError("No governed publication snapshot is available for formal system output")
+
+        canonical_snapshot_id = self._build_publication_snapshot_id(archive_id, current_version)
+        if not self._matches_publication_snapshot_id(
+            publication_snapshot_id,
+            archive_id=archive_id,
+            current_version=current_version,
+            canonical_snapshot_id=canonical_snapshot_id,
+        ):
+            raise ValueError(
+                "publicationSnapshotId does not match the governed current publication version: "
+                f"{publication_snapshot_id!r}"
+            )
+
+        formal_version = str(current_version["version_label"])
+        source_summary = self._normalize_summary(
+            published_payload.get("summary") or current_version.get("summary") or {}
+        )
+
+        return P1CleanSystemOutputContract(
+            contract_version="P1CleanSystemOutputContract.v1",
+            archive_id=archive_id,
+            publication_snapshot_id=publication_snapshot_id,
+            canonical_publication_snapshot_id=canonical_snapshot_id,
+            formal_version=formal_version,
+            governed_by=str(current_version.get("publisher") or "governance-confirmation"),
+            published_at=current_version.get("published_at"),
+            generated_at=datetime.now(UTC).isoformat(),
+            source_kind="governed_publication_snapshot",
+            boundary="formal output reads only the governed publication snapshot; candidate and runtime temporary nodes are excluded",
+            source_summary=source_summary,
+            formal_interfaces=[
+                FormalKnowledgeInterface(
+                    method="GET",
+                    path=f"/api/knowledge/archive/{archive_id}/summary",
+                    purpose="Read the formal knowledge summary from the governed publication snapshot.",
+                    source="formal_publication_snapshot",
+                ),
+                FormalKnowledgeInterface(
+                    method="GET",
+                    path=f"/api/knowledge/archive/{archive_id}/graph",
+                    purpose="Read the formal graph projection from the governed publication snapshot.",
+                    source="formal_publication_snapshot",
+                ),
+                FormalKnowledgeInterface(
+                    method="GET",
+                    path=f"/api/knowledge/archive/{archive_id}/publication",
+                    purpose="Read publication version metadata and governance confirmation state.",
+                    source="formal_publication_snapshot",
+                ),
+                FormalKnowledgeInterface(
+                    method="GET",
+                    path=f"/api/knowledge/archive/{archive_id}/items/{{item_id}}",
+                    purpose="Read formal entity, event, or process details by stable item id.",
+                    source="formal_publication_snapshot",
+                ),
+            ],
+            version_selection_rules=[
+                FormalKnowledgeVersionRule(
+                    rule_id="current-governed-publication",
+                    description="Use the archive current_version selected by governance confirmation; reject unmatched publicationSnapshotId values.",
+                    selected_publication_snapshot_id=canonical_snapshot_id,
+                    selected_version_label=formal_version,
+                    governance_boundary="post_publication_confirmation",
+                )
+            ],
+            adapter_contract=SystemOutputAdapterContract(
+                adapter_name="P1CleanSystemOutputAdapter",
+                contract_version="P1CleanSystemOutputContract.v1",
+                input_keys=["archiveId", "publicationSnapshotId"],
+                output_keys=[
+                    "formalInterfaces",
+                    "versionSelectionRules",
+                    "adapterContract",
+                    "downstreamConsumers",
+                ],
+                allowed_backend_calls=[
+                    "getArchiveSummary",
+                    "getArchiveGraph",
+                    "getArchivePublication",
+                    "getSystemOutputContract",
+                ],
+                forbidden_sources=[
+                    "runtime_temporary_nodes",
+                    "publication_candidate_snapshot",
+                    "unconfirmed_candidate_knowledge",
+                    "modules/publication/internal_state",
+                ],
+            ),
+            downstream_consumers=[
+                DownstreamConsumptionGuide(
+                    consumer="P2",
+                    read_pattern="Bind requirements to formal item ids from the governed publication snapshot only.",
+                    notes=[
+                        "Treat publicationSnapshotId as the version selector.",
+                        "Do not hydrate requirement drafts from candidate-only APIs.",
+                    ],
+                ),
+                DownstreamConsumptionGuide(
+                    consumer="P3",
+                    read_pattern="Use formal graph and item detail APIs as read-only design context.",
+                    notes=[
+                        "Keep graph traversal read-only.",
+                        "Use formal_version for traceable design package provenance.",
+                    ],
+                ),
+            ],
+        )
 
     def publish_snapshot(self, archive_id: str, *, version_label: str, publisher: str) -> dict:
         payload = self._load_for_edit(archive_id)
@@ -694,6 +814,43 @@ class ArchiveKnowledgeService:
             "formal_entry_status": "admitted" if formally_admitted else "not_admitted",
             "formal_entry_label": "已正式入库" if formally_admitted else "尚未正式入库",
             "review_summary": review_summary,
+        }
+
+    @staticmethod
+    def _build_publication_snapshot_id(archive_id: str, current_version: dict) -> str:
+        return str(
+            current_version.get("publication_snapshot_id")
+            or current_version.get("published_snapshot_id")
+            or f"{archive_id}:{current_version['version_label']}"
+        )
+
+    @classmethod
+    def _matches_publication_snapshot_id(
+        cls,
+        publication_snapshot_id: str,
+        *,
+        archive_id: str,
+        current_version: dict,
+        canonical_snapshot_id: str,
+    ) -> bool:
+        normalized = publication_snapshot_id.strip()
+        version_label = str(current_version["version_label"])
+        accepted_ids = {
+            canonical_snapshot_id,
+            f"{archive_id}:latest-publication",
+            "latest-publication",
+            version_label,
+            f"{archive_id}:{version_label}",
+        }
+        return normalized in accepted_ids
+
+    @staticmethod
+    def _normalize_summary(summary: dict) -> dict[str, int]:
+        return {
+            "document_count": int(summary.get("document_count", 0)),
+            "entity_count": int(summary.get("entity_count", 0)),
+            "event_count": int(summary.get("event_count", 0)),
+            "process_count": int(summary.get("process_count", 0)),
         }
 
     @staticmethod

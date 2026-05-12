@@ -7,6 +7,12 @@ import { EvidenceList } from "../components/EvidenceList";
 import { ValidationWorkspace } from "../components/ValidationWorkspace";
 import { WorkspaceOverviewStrip } from "../components/WorkspaceOverviewStrip";
 import { useArchiveContext } from "../context/ArchiveContext";
+import {
+  buildP1RuntimeWorkbenchUrl,
+  describeP1UserDocumentState,
+  getP1UserDataSourceLabel,
+  resolveP1RunId,
+} from "../features/p1/userFlow/runtimeEntry";
 import { getArchiveDocumentDetail, getArchiveDocuments, getArchiveSummary } from "../lib/archiveKnowledge";
 import { formalizeArchiveDocument, removeArchiveDocument } from "../lib/archives";
 import type {
@@ -151,6 +157,8 @@ export function DocumentsPage() {
     () => new Map((activeArchive?.build_state?.documents ?? []).map((item) => [item.document_id, item])),
     [activeArchive?.build_state?.documents],
   );
+  const runtimeRunId = resolveP1RunId(activeArchive);
+  const policyDataSource = activeArchive?.build_state?.policy_snapshot ? "live" : "mock_fallback";
   const currentMutationDocument = documentMutation
     ? documents.find((item) => item.id === documentMutation.documentId) ?? null
     : null;
@@ -245,6 +253,11 @@ export function DocumentsPage() {
           title="知识库文档总览"
           tags={[
             { label: `当前知识库：${activeArchive?.name ?? "未选择"}` },
+            { label: `数据来源：${getP1UserDataSourceLabel("live")}`, color: "green" },
+            {
+              label: `策略摘要：${getP1UserDataSourceLabel(policyDataSource)}`,
+              color: policyDataSource === "live" ? "green" : "orange",
+            },
             {
               label: currentMutationDocument
                 ? `正式任务：${documentMutationStatus} · ${currentMutationDocument.title}`
@@ -430,6 +443,10 @@ export function DocumentsPage() {
                       width: 150,
                       render: (_: unknown, record: ArchiveKnowledgeDocument) => {
                         const runtimeDocument = buildStateDocumentsById.get(record.id);
+                        const userState = describeP1UserDocumentState({
+                          includedInArchive: record.included_in_archive,
+                          runtimeDocument,
+                        });
                         const isRunning = runtimeDocument?.state === "running";
                         const stageLabel =
                           isRunning && activeArchive?.build_state?.current_stage_label
@@ -443,6 +460,7 @@ export function DocumentsPage() {
                             <Typography.Text type={isRunning ? "warning" : record.included_in_archive !== false ? undefined : "secondary"}>
                               {stageLabel}
                             </Typography.Text>
+                            <Tag color={userState.color}>{userState.label}</Tag>
                             <Progress percent={percent} size="small" showInfo={false} />
                           </Space>
                         );
@@ -461,11 +479,13 @@ export function DocumentsPage() {
                     {
                       title: "输入状态",
                       width: 120,
-                      render: (_: unknown, record: ArchiveKnowledgeDocument) => (
-                        <Tag color={record.included_in_archive !== false ? "green" : "default"}>
-                          {record.included_in_archive !== false ? "已纳入知识库" : "未纳入"}
-                        </Tag>
-                      ),
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => {
+                        const userState = describeP1UserDocumentState({
+                          includedInArchive: record.included_in_archive,
+                          runtimeDocument: buildStateDocumentsById.get(record.id),
+                        });
+                        return <Tag color={userState.color}>{userState.label}</Tag>;
+                      },
                     },
                     {
                       title: "候选知识数",
@@ -485,8 +505,19 @@ export function DocumentsPage() {
                     {
                       title: "发布候选状态",
                       width: 140,
-                      render: (_: unknown, record: ArchiveKnowledgeDocument) =>
-                        record.included_in_archive !== false ? <Tag color="purple">候选 / 待治理</Tag> : <Tag>未生成</Tag>,
+                      render: (_: unknown, record: ArchiveKnowledgeDocument) => {
+                        const runtimeDocument = buildStateDocumentsById.get(record.id);
+                        if (record.included_in_archive === true) {
+                          return <Tag color="green">正式入库</Tag>;
+                        }
+                        if (runtimeDocument?.state === "completed") {
+                          return <Tag color="purple">机器候选 / 待治理</Tag>;
+                        }
+                        if (runtimeDocument?.state === "running") {
+                          return <Tag color="processing">生成中</Tag>;
+                        }
+                        return <Tag>未生成</Tag>;
+                      },
                     },
                     {
                       title: "操作",
@@ -494,12 +525,17 @@ export function DocumentsPage() {
                       render: (_: unknown, record: ArchiveKnowledgeDocument) => {
                         const isIncluded = record.included_in_archive !== false;
                         const isMutating = documentMutation?.documentId === record.id;
+                        const runtimeHref = buildP1RuntimeWorkbenchUrl({
+                          archiveId: activeArchiveId,
+                          documentId: record.id,
+                          runId: runtimeRunId,
+                        });
                         return (
                           <Space size={4} wrap>
                             <Button type="link" onClick={() => setSelectedDocumentId(record.id)}>
                               查看
                             </Button>
-                            <Link to="/archives">
+                            <Link to={runtimeHref}>
                               <Button type="link">进入实时抽取</Button>
                             </Link>
                             <Button
@@ -546,6 +582,12 @@ export function DocumentsPage() {
                       {activeArchive?.build_state?.policy_snapshot?.scope_label ?? "合同通用抽取"} ·{" "}
                       {activeArchive?.build_state?.policy_snapshot?.version_label ?? "未冻结"}
                     </Descriptions.Item>
+                    <Descriptions.Item label="运行入口参数">
+                      archive_id={activeArchiveId ?? "--"} · document_id={documentDetail.document.id} · run_id={runtimeRunId ?? "--"}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="数据来源">
+                      文档清单 {getP1UserDataSourceLabel("live")} · 策略摘要 {getP1UserDataSourceLabel(policyDataSource)}
+                    </Descriptions.Item>
                     <Descriptions.Item label="候选知识">{documentDetail.document.knowledge_item_count}</Descriptions.Item>
                     <Descriptions.Item label="实体 / 事件 / 流程">
                       {documentDetail.document.entity_count} / {documentDetail.document.event_count} / {documentDetail.document.process_count}
@@ -569,7 +611,13 @@ export function DocumentsPage() {
                     description="若策略已升级，可从策略差异页生成影响面并启动增量重算。"
                   />
                   <Space wrap>
-                    <Link to="/archives">
+                    <Link
+                      to={buildP1RuntimeWorkbenchUrl({
+                        archiveId: activeArchiveId,
+                        documentId: documentDetail.document.id,
+                        runId: runtimeRunId,
+                      })}
+                    >
                       <Button type="primary">进入实时抽取</Button>
                     </Link>
                     <Link to="/policies">

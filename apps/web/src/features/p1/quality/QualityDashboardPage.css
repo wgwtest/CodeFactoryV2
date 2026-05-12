@@ -1,0 +1,46 @@
+.p1-quality-page {
+  min-height: 100vh;
+  background: #f5f7fb;
+  padding: 24px;
+}
+
+.p1-quality-hero {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.p1-quality-title {
+  margin: 8px 0 4px !important;
+}
+
+.p1-quality-summary {
+  margin-bottom: 16px;
+}
+
+.p1-quality-card-note {
+  margin: 12px 0 8px;
+}
+
+.p1-quality-panel {
+  margin-bottom: 16px;
+}
+
+.p1-quality-lineage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .p1-quality-page {
+    padding: 16px;
+  }
+
+  .p1-quality-hero {
+    flex-direction: column;
+  }
+}

@@ -67,6 +67,7 @@ EFFECT_KIND_SEMANTICS: dict[str, dict[str, Any]] = {
 REQUIRED_TRACE_FIELDS = [
     "rule_id",
     "rule_version",
+    "rule_hash",
     "stage_id",
     "snapshot_id",
     "input_hash",
@@ -658,12 +659,14 @@ def _next_policy_package_version_id(archive_id: str, previous_config: dict[str, 
         for entry in previous_config.get("policy_package_versions", [])
         if isinstance(entry, dict)
     )
-    numbers = [
-        int(match.group("number"))
+    matches = [
+        match
         for version_id in version_ids
         if (match := PACKAGE_VERSION_RE.match(version_id))
     ]
-    return f"{archive_id}:policy:v{(max(numbers) if numbers else 1) + 1}"
+    numbers = [int(match.group("number")) for match in matches]
+    prefix = matches[0].group("prefix") if matches else f"{archive_id}:{ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID}:policy:v"
+    return f"{prefix}{(max(numbers) if numbers else 1) + 1}"
 
 
 def _next_version_label(label: str, version_id: str) -> str:
@@ -1030,17 +1033,656 @@ STAGE_POLICY_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 
+ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID = "architecture_midterm_default"
+ARCHITECTURE_MIDTERM_DOCUMENT_TYPES = [
+    "AV-1",
+    "OV-1",
+    "OV-2",
+    "OV-5",
+    "OV-7",
+    "SV-1",
+    "SV-2",
+    "SV-4",
+]
+ARCHITECTURE_MIDTERM_DOCUMENT_TYPE_SUMMARY = "、".join(ARCHITECTURE_MIDTERM_DOCUMENT_TYPES)
+
+
+def _midterm_field(field_name: str, field_type: str, validation: str, example: str) -> dict[str, Any]:
+    return _field_contract(
+        field_name=field_name,
+        source_artifact="midterm_policy_runtime.metric",
+        field_type=field_type,
+        validation=validation,
+        example=example,
+        business_meaning=f"Mid Term policy metric: {field_name}",
+        missing_action="warn_continue",
+    )
+
+
+def _midterm_input_schema(
+    *,
+    stage_id: str,
+    threshold: str,
+    metric_fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        _field_contract(
+            field_name="archive_id",
+            source_artifact="archive_context",
+            field_type="string",
+            validation="non_empty",
+            example="midterm-architecture",
+            business_meaning="archive that owns the frozen policy package",
+        ),
+        _field_contract(
+            field_name="document_set_id",
+            source_artifact="archive_context",
+            field_type="string",
+            validation="non_empty",
+            example="midterm-architecture:document-set",
+            business_meaning="document set consumed by this policy package",
+        ),
+        _field_contract(
+            field_name="document_type_summary",
+            source_artifact="document_inventory",
+            field_type="string[]",
+            validation="contains AV-1/OV/SV view summary",
+            example="AV-1,OV-1,OV-2,OV-5,OV-7,SV-1,SV-2,SV-4",
+            business_meaning="Mid Term architecture document type coverage",
+        ),
+        _field_contract(
+            field_name="source_view_type",
+            source_artifact="unified_document_object",
+            field_type="string",
+            validation="one_of Mid Term view types",
+            example="OV-5",
+            business_meaning="DoDAF/MODAF-style view type inferred from document title or content",
+            missing_action="block_return",
+        ),
+        *metric_fields,
+        _field_contract(
+            field_name="source_anchor_ids",
+            source_artifact="evidence_anchor",
+            field_type="string[]",
+            validation="len >= 1",
+            example="[OV-5:2.1, SV-2:Table-3]",
+            business_meaning="source anchors used by the rule",
+            missing_action="warn_continue",
+        ),
+        _field_contract(
+            field_name="policy_snapshot_id",
+            source_artifact="policy_snapshot",
+            field_type="string",
+            validation="non_empty",
+            example="RS-MIDTERM-001",
+            business_meaning="frozen policy snapshot for this run",
+        ),
+        _field_contract(
+            field_name="rule_threshold",
+            source_artifact="policy_rule",
+            field_type="string",
+            validation="non_empty",
+            example=threshold,
+            business_meaning=f"threshold expression for {stage_id}",
+        ),
+        _field_contract(
+            field_name="input_hash",
+            source_artifact="runtime_snapshot",
+            field_type="string",
+            validation="sha256",
+            example="sha256:input-midterm",
+            business_meaning="stable digest used for impact and incremental recompute",
+        ),
+    ]
+
+
+def _midterm_output_schema(effect_kind: str, extra_fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        *extra_fields,
+        *_default_output_schema(effect_kind),
+    ]
+
+
+def _midterm_output(field_name: str, target_artifact: str, field_type: str, example: str) -> dict[str, Any]:
+    return _output_contract(
+        field_name=field_name,
+        target_artifact=target_artifact,
+        field_type=field_type,
+        used_for_impact=True,
+        example=example,
+        business_meaning=f"Mid Term policy output: {field_name}",
+    )
+
+
+def _midterm_rule(
+    *,
+    stage_id: str,
+    key: str,
+    name: str,
+    meaning: str,
+    threshold: str,
+    action: str,
+    effect_kind: str,
+    metric_fields: list[dict[str, Any]],
+    output_fields: list[dict[str, Any]],
+    object_types: list[str],
+    relation_types: list[str] | None = None,
+) -> dict[str, Any]:
+    output_schema = _midterm_output_schema(effect_kind, output_fields)
+    rule_id = f"{ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID}.{key}"
+    return {
+        "key": key,
+        "rule_id": rule_id,
+        "name": name,
+        "meaning": meaning,
+        "threshold": threshold,
+        "action": action,
+        "rule_version": "r1.0",
+        "effect_kind": effect_kind,
+        "scope_selector": {
+            "policy_package_id": ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID,
+            "source_stage_id": stage_id,
+            "document_types": ARCHITECTURE_MIDTERM_DOCUMENT_TYPES,
+            "object_types": object_types,
+            "relation_types": relation_types or [],
+            "requires_source_anchor": True,
+            "min_confidence": 0.0,
+        },
+        "input_schema": _midterm_input_schema(
+            stage_id=stage_id,
+            threshold=threshold,
+            metric_fields=metric_fields,
+        ),
+        "output_schema": output_schema,
+        "parameters": {
+            "match_mode": "all",
+            "conditions": [
+                {
+                    "condition_id": f"{rule_id}:threshold",
+                    "left": "actual",
+                    "operator": "matches",
+                    "right": threshold,
+                    "description": meaning,
+                }
+            ],
+            "document_types": ARCHITECTURE_MIDTERM_DOCUMENT_TYPES,
+            "source_kind": "live_or_policy_snapshot",
+        },
+        "trace_fields": REQUIRED_TRACE_FIELDS[:],
+        "action_mapping": _default_action_mapping(effect_kind, action, output_schema),
+    }
+
+
+def _architecture_midterm_stage_policy_defaults() -> dict[str, dict[str, Any]]:
+    return {
+        "asset_intake": _stage(
+            stage_id="asset_intake",
+            label="Mid Term 文档接入",
+            group="体系结构文档预检",
+            objective="确认 Mid Term 样例的 AV、OV、SV 文档集合和 documentSetId 已绑定到策略运行上下文。",
+            ai_mode="文档类型摘要识别 + 规则兜底",
+            default_action="block_return",
+            inputs=["archiveId", "documentSetId", "Mid Term 文档类型摘要"],
+            ai_adaptation="AI 只辅助识别标题中的视图编号，最终由策略字段合同判定是否进入抽取链路。",
+            rules=[
+                _midterm_rule(
+                    stage_id="asset_intake",
+                    key="doc-type-summary",
+                    name="Mid Term 文档类型覆盖",
+                    meaning="策略包必须绑定 AV、OV、SV 文档类型摘要，至少命中一个 Mid Term 视图编号。",
+                    threshold="source_view_type in midterm_view_types",
+                    action="block_return",
+                    effect_kind="filter",
+                    metric_fields=[
+                        _midterm_field("source_view_type", "string", "one_of Mid Term view types", "OV-2"),
+                        _midterm_field("document_type_supported", "boolean", "true", "true"),
+                    ],
+                    output_fields=[
+                        _midterm_output("accepted_document_type", "policy_runtime_context", "string", "OV-2"),
+                    ],
+                    object_types=["document"],
+                ),
+                _midterm_rule(
+                    stage_id="asset_intake",
+                    key="document-set-bound",
+                    name="documentSetId 绑定",
+                    meaning="运行态必须带有 documentSetId，W3/W4 不从策略编辑状态反查。",
+                    threshold="document_set_bound = true",
+                    action="block_return",
+                    effect_kind="filter",
+                    metric_fields=[
+                        _midterm_field("document_set_bound", "boolean", "true", "true"),
+                    ],
+                    output_fields=[
+                        _midterm_output("policy_context_ref", "policy_runtime_context", "string", "archiveId/documentSetId"),
+                    ],
+                    object_types=["document_set"],
+                ),
+            ],
+            branches=["文档类型命中 -> 结构识别", "documentSetId 缺失 -> 阻断并退回接入预检"],
+            outputs=["Mid Term 文档类型摘要", "策略运行上下文", "接入阻断原因"],
+            observability=["source_view_type", "document_type_supported", "document_set_bound"],
+        ),
+        "parser_router": _stage(
+            stage_id="parser_router",
+            label="AV/OV/SV 路由",
+            group="体系结构文档预检",
+            objective="按 AV、OV、SV 视图族选择结构识别和字段抽取规则族。",
+            ai_mode="视图族路由建议",
+            default_action="auto_pass",
+            inputs=["Mid Term 文档类型摘要", "解析器能力矩阵"],
+            ai_adaptation="AI 可以建议视图族，但 action_mapping 只输出可消费的路由决策。",
+            rules=[
+                _midterm_rule(
+                    stage_id="parser_router",
+                    key="view-family-routing",
+                    name="视图族路由",
+                    meaning="AV、OV、SV 文档必须进入对应规则族，避免通用规则吞掉体系结构字段。",
+                    threshold="document_type_supported = true",
+                    action="auto_pass",
+                    effect_kind="normalize",
+                    metric_fields=[
+                        _midterm_field("document_type_supported", "boolean", "true", "true"),
+                        _midterm_field("view_family_count", "number", ">= 1", "3"),
+                    ],
+                    output_fields=[
+                        _midterm_output("view_family_route", "parser_router.output", "string", "operational_view"),
+                    ],
+                    object_types=["document"],
+                ),
+            ],
+            branches=["AV -> 概述结构识别", "OV -> 作战视图结构识别", "SV -> 系统视图结构识别"],
+            outputs=["view_family_route", "parser_profile_id"],
+            observability=["source_view_type", "view_family_count", "parser_profile_id"],
+        ),
+        "parser_execution": _stage(
+            stage_id="parser_execution",
+            label="文档结构识别",
+            group="体系结构文档结构化",
+            objective="识别章节、表格、段落、视图编号和原文锚点，形成可追踪结构层。",
+            ai_mode="结构修复辅助",
+            default_action="warn_continue",
+            inputs=["文档正文", "表格解析结果", "视图编号"],
+            ai_adaptation="AI 可辅助修复表格和章节层级，合同字段仍由规则输出。",
+            rules=[
+                _midterm_rule(
+                    stage_id="parser_execution",
+                    key="section-table-paragraph",
+                    name="章节表格段落识别",
+                    meaning="每份体系结构文档需要可追踪的章节、表格或段落结构。",
+                    threshold="structure_element_count >= 1",
+                    action="block_return",
+                    effect_kind="split",
+                    metric_fields=[
+                        _midterm_field("structure_element_count", "number", ">= 1", "18"),
+                        _midterm_field("section_count", "number", ">= 0", "6"),
+                        _midterm_field("table_count", "number", ">= 0", "4"),
+                        _midterm_field("paragraph_count", "number", ">= 0", "22"),
+                    ],
+                    output_fields=[
+                        _midterm_output("document_structure_units", "unified_document_object", "object", "sections/tables/paragraphs"),
+                    ],
+                    object_types=["section", "table", "paragraph"],
+                ),
+                _midterm_rule(
+                    stage_id="parser_execution",
+                    key="view-number-anchor",
+                    name="视图编号与锚点识别",
+                    meaning="AV/OV/SV 视图编号和原文锚点必须进入 trace_fields 和后续证据层。",
+                    threshold="view_number_present = true && anchor_count >= 1",
+                    action="block_return",
+                    effect_kind="normalize",
+                    metric_fields=[
+                        _midterm_field("view_number_present", "boolean", "true", "true"),
+                        _midterm_field("anchor_count", "number", ">= 1", "12"),
+                    ],
+                    output_fields=[
+                        _midterm_output("source_anchor_map", "evidence_anchor", "object", "OV-5:2.1 -> paragraph"),
+                    ],
+                    object_types=["source_anchor"],
+                ),
+            ],
+            branches=["结构完整 -> 统一文档对象", "视图编号缺失 -> 阻断", "锚点不足 -> 回退结构修复"],
+            outputs=["document_structure_units", "source_anchor_map", "view_number_index"],
+            observability=["structure_element_count", "section_count", "table_count", "paragraph_count", "anchor_count"],
+        ),
+        "unified_document_object": _stage(
+            stage_id="unified_document_object",
+            label="体系结构文档对象",
+            group="体系结构文档结构化",
+            objective="把结构识别结果冻结为统一文档对象，供对象、关系和证据规则消费。",
+            ai_mode="字段对齐辅助",
+            default_action="auto_pass",
+            inputs=["document_structure_units", "source_anchor_map", "view_number_index"],
+            ai_adaptation="AI 只辅助补齐字段含义，不能替代字段合同校验。",
+            rules=[
+                _midterm_rule(
+                    stage_id="unified_document_object",
+                    key="architecture-document-object",
+                    name="统一体系结构文档对象",
+                    meaning="统一对象需要带 document type、view number、source anchors 和 input_hash。",
+                    threshold="unified_document_score >= 0.75",
+                    action="warn_continue",
+                    effect_kind="normalize",
+                    metric_fields=[
+                        _midterm_field("unified_document_score", "number", ">= 0.75", "0.92"),
+                    ],
+                    output_fields=[
+                        _midterm_output("architecture_document_object", "unified_document_object", "object", "OV-2 document object"),
+                    ],
+                    object_types=["architecture_document"],
+                ),
+            ],
+            branches=["统一对象完整 -> 证据构造", "字段不足 -> 告警并继续候选链"],
+            outputs=["architecture_document_object", "document_contract_errors"],
+            observability=["unified_document_score", "source_view_type", "anchor_count"],
+        ),
+        "evidence_constructor": _stage(
+            stage_id="evidence_constructor",
+            label="证据锚点构造",
+            group="证据与候选生成",
+            objective="把章节、表格和段落锚点转换为对象与关系抽取可消费的证据片段。",
+            ai_mode="证据片段定位",
+            default_action="auto_pass",
+            inputs=["architecture_document_object", "source_anchor_map"],
+            ai_adaptation="AI 可建议上下文窗口，但锚点和输出哈希由规则合同生成。",
+            rules=[
+                _midterm_rule(
+                    stage_id="evidence_constructor",
+                    key="evidence-anchor-coverage",
+                    name="证据锚点覆盖",
+                    meaning="候选对象或关系必须至少能回查到一个源文档锚点。",
+                    threshold="anchor_count >= 1",
+                    action="block_return",
+                    effect_kind="filter",
+                    metric_fields=[
+                        _midterm_field("anchor_count", "number", ">= 1", "12"),
+                        _midterm_field("evidence_count", "number", ">= 1", "20"),
+                    ],
+                    output_fields=[
+                        _midterm_output("evidence_anchor_refs", "evidence_pack", "string[]", "[OV-2:Table-1]"),
+                    ],
+                    object_types=["evidence_anchor"],
+                ),
+            ],
+            branches=["锚点充分 -> 证据图谱", "锚点缺失 -> 阻断"],
+            outputs=["evidence_anchor_refs", "evidence_span_index"],
+            observability=["anchor_count", "evidence_count", "source_view_type"],
+        ),
+        "evidence_graph_chunk_layer": _stage(
+            stage_id="evidence_graph_chunk_layer",
+            label="证据图谱切块",
+            group="证据与候选生成",
+            objective="按章节和视图编号切分证据，保护跨文档合并所需的锚点边界。",
+            ai_mode="图谱切块编排",
+            default_action="auto_pass",
+            inputs=["evidence_anchor_refs", "document_structure_units"],
+            ai_adaptation="AI 可调整 chunk 粒度，但不得丢弃 source_anchor_ids。",
+            rules=[
+                _midterm_rule(
+                    stage_id="evidence_graph_chunk_layer",
+                    key="chunk-anchor-retention",
+                    name="切块锚点保留",
+                    meaning="每个证据 chunk 必须保留文档类型、视图编号和原文锚点。",
+                    threshold="chunk_anchor_retention >= 0.9",
+                    action="warn_continue",
+                    effect_kind="split",
+                    metric_fields=[
+                        _midterm_field("chunk_anchor_retention", "number", ">= 0.9", "0.96"),
+                    ],
+                    output_fields=[
+                        _midterm_output("evidence_chunk_refs", "evidence_graph", "string[]", "[chunk-OV5-01]"),
+                    ],
+                    object_types=["evidence_chunk"],
+                ),
+            ],
+            branches=["锚点保留达标 -> 证据包", "锚点保留不足 -> 告警"],
+            outputs=["evidence_chunk_refs", "chunk_anchor_retention"],
+            observability=["chunk_anchor_retention", "anchor_count"],
+        ),
+        "evidence_pack": _stage(
+            stage_id="evidence_pack",
+            label="证据包",
+            group="证据与候选生成",
+            objective="把 AV/OV/SV 证据包冻结为对象抽取、关系抽取和质量门禁可消费输入。",
+            ai_mode="证据包压缩",
+            default_action="auto_pass",
+            inputs=["evidence_chunk_refs", "source_anchor_ids"],
+            ai_adaptation="AI 可摘要证据，但必须保留 source_anchor_ids 和 output_hash。",
+            rules=[
+                _midterm_rule(
+                    stage_id="evidence_pack",
+                    key="evidence-pack-ready",
+                    name="证据包可消费",
+                    meaning="证据包需要具备对象候选、关系候选和质量门禁共同消费的字段。",
+                    threshold="evidence_coverage_rate >= 0.75",
+                    action="warn_continue",
+                    effect_kind="normalize",
+                    metric_fields=[
+                        _midterm_field("evidence_coverage_rate", "number", ">= 0.75", "0.88"),
+                    ],
+                    output_fields=[
+                        _midterm_output("evidence_pack_id", "evidence_pack", "string", "epack-midterm-001"),
+                    ],
+                    object_types=["evidence_pack"],
+                ),
+            ],
+            branches=["证据包达标 -> 对象抽取", "覆盖不足 -> 告警并记录质量风险"],
+            outputs=["evidence_pack_id", "evidence_coverage_rate"],
+            observability=["evidence_coverage_rate", "evidence_count", "anchor_count"],
+        ),
+        "concept_candidate_review": _stage(
+            stage_id="concept_candidate_review",
+            label="体系结构对象抽取",
+            group="对象与关系生成",
+            objective="抽取 Operational Node、System、Capability、Activity 和 Information Exchange 候选。",
+            ai_mode="体系结构对象候选生成",
+            default_action="manual_review",
+            inputs=["evidence_pack_id", "体系结构对象词表"],
+            ai_adaptation="AI 可生成候选，但每类对象必须由规则字段合同记录来源和输出。",
+            rules=[
+                _midterm_rule(
+                    stage_id="concept_candidate_review",
+                    key="object-operational-node",
+                    name="Operational Node 抽取",
+                    meaning="OV-2/OV-5 中的作战节点候选必须带名称、类型和锚点。",
+                    threshold="operational_node_count >= 1",
+                    action="warn_continue",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("operational_node_count", "number", ">= 1", "4")],
+                    output_fields=[_midterm_output("operational_node_candidates", "candidate_knowledge", "object", "Operational Node")],
+                    object_types=["Operational Node"],
+                ),
+                _midterm_rule(
+                    stage_id="concept_candidate_review",
+                    key="object-system",
+                    name="System 抽取",
+                    meaning="SV-1/SV-2/SV-4 中的系统候选必须能映射到证据锚点。",
+                    threshold="system_count >= 1",
+                    action="warn_continue",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("system_count", "number", ">= 1", "5")],
+                    output_fields=[_midterm_output("system_candidates", "candidate_knowledge", "object", "System")],
+                    object_types=["System"],
+                ),
+                _midterm_rule(
+                    stage_id="concept_candidate_review",
+                    key="object-capability",
+                    name="Capability 抽取",
+                    meaning="AV/OV 文档中的能力候选需要保留视图编号和证据片段。",
+                    threshold="capability_count >= 1",
+                    action="warn_continue",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("capability_count", "number", ">= 1", "3")],
+                    output_fields=[_midterm_output("capability_candidates", "candidate_knowledge", "object", "Capability")],
+                    object_types=["Capability"],
+                ),
+                _midterm_rule(
+                    stage_id="concept_candidate_review",
+                    key="object-activity",
+                    name="Activity 抽取",
+                    meaning="OV-5 活动节点需要抽取为 Activity 候选并进入关系规则。",
+                    threshold="activity_count >= 1",
+                    action="warn_continue",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("activity_count", "number", ">= 1", "7")],
+                    output_fields=[_midterm_output("activity_candidates", "candidate_knowledge", "object", "Activity")],
+                    object_types=["Activity"],
+                ),
+                _midterm_rule(
+                    stage_id="concept_candidate_review",
+                    key="object-information-exchange",
+                    name="Information Exchange 抽取",
+                    meaning="OV-2/SV-2/SV-4 中的信息交换候选必须连接至少两个对象。",
+                    threshold="information_exchange_count >= 1",
+                    action="warn_continue",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("information_exchange_count", "number", ">= 1", "6")],
+                    output_fields=[_midterm_output("information_exchange_candidates", "candidate_knowledge", "object", "Information Exchange")],
+                    object_types=["Information Exchange"],
+                ),
+            ],
+            branches=["对象候选达标 -> 关系抽取", "低置信对象 -> 候选复核池"],
+            outputs=["object_candidates", "object_type_distribution", "low_confidence_candidates"],
+            observability=["operational_node_count", "system_count", "capability_count", "activity_count", "information_exchange_count"],
+        ),
+        "relation_review_family_normalization": _stage(
+            stage_id="relation_review_family_normalization",
+            label="关系抽取",
+            group="对象与关系生成",
+            objective="抽取 performs、exchanges、part_of、supports、mapped_to、depends_on 关系。",
+            ai_mode="关系方向与家族归一",
+            default_action="warn_continue",
+            inputs=["object_candidates", "evidence_pack_id", "关系 schema"],
+            ai_adaptation="AI 可建议关系方向，规则合同负责 action_mapping 和输出字段。",
+            rules=[
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-performs", name="performs 关系抽取", meaning="Operational Node 或 System 执行 Activity 的关系需要证据锚点。", threshold="performs_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("performs_count", "number", ">= 1", "4")], output_fields=[_midterm_output("performs_relations", "runtime_relation", "object", "node performs activity")], object_types=["Activity"], relation_types=["performs"]),
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-exchanges", name="exchanges 关系抽取", meaning="Information Exchange 需要连接源、目标和交换内容。", threshold="exchanges_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("exchanges_count", "number", ">= 1", "6")], output_fields=[_midterm_output("exchanges_relations", "runtime_relation", "object", "system exchanges information")], object_types=["Information Exchange"], relation_types=["exchanges"]),
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-part-of", name="part_of 关系抽取", meaning="节点、系统、能力和活动层级关系需要跨文档合并前归一。", threshold="part_of_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("part_of_count", "number", ">= 1", "3")], output_fields=[_midterm_output("part_of_relations", "runtime_relation", "object", "system part_of system-of-systems")], object_types=["Operational Node", "System", "Capability", "Activity"], relation_types=["part_of"]),
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-supports", name="supports 关系抽取", meaning="系统或能力支持作战活动的关系需要保留证据覆盖。", threshold="supports_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("supports_count", "number", ">= 1", "3")], output_fields=[_midterm_output("supports_relations", "runtime_relation", "object", "system supports activity")], object_types=["System", "Capability", "Activity"], relation_types=["supports"]),
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-mapped-to", name="mapped_to 关系抽取", meaning="OV 与 SV 之间的对象映射需要 source_view_type 和 source_anchor_ids。", threshold="mapped_to_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("mapped_to_count", "number", ">= 1", "2")], output_fields=[_midterm_output("mapped_to_relations", "runtime_relation", "object", "OV activity mapped_to SV function")], object_types=["Activity", "System"], relation_types=["mapped_to"]),
+                _midterm_rule(stage_id="relation_review_family_normalization", key="relation-depends-on", name="depends_on 关系抽取", meaning="系统或活动依赖关系需要进入影响面分析。", threshold="depends_on_count >= 1", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("depends_on_count", "number", ">= 1", "2")], output_fields=[_midterm_output("depends_on_relations", "runtime_relation", "object", "system depends_on interface")], object_types=["System", "Activity"], relation_types=["depends_on"]),
+            ],
+            branches=["关系完整 -> 跨文档合并", "关系缺证据 -> 告警并记录质量风险"],
+            outputs=["relation_candidates", "relation_family_labels", "direction_fix_log"],
+            observability=["performs_count", "exchanges_count", "part_of_count", "supports_count", "mapped_to_count", "depends_on_count"],
+        ),
+        "definition_summary_conflict_consolidation": _stage(
+            stage_id="definition_summary_conflict_consolidation",
+            label="定义与冲突整理",
+            group="跨文档合并",
+            objective="整理对象定义、别名、证据冲突和跨视图命名差异。",
+            ai_mode="定义摘要与冲突诊断",
+            default_action="manual_review",
+            inputs=["object_candidates", "relation_candidates", "evidence_anchor_refs"],
+            ai_adaptation="AI 可摘要冲突，但冲突数和合并建议必须写入规则输出。",
+            rules=[
+                _midterm_rule(
+                    stage_id="definition_summary_conflict_consolidation",
+                    key="merge-conflict-density",
+                    name="定义冲突密度",
+                    meaning="同名或近似对象的定义冲突过高时进入候选复核。",
+                    threshold="conflict_count <= 2",
+                    action="manual_review",
+                    effect_kind="score",
+                    metric_fields=[_midterm_field("conflict_count", "number", "<= 2", "1")],
+                    output_fields=[_midterm_output("definition_conflict_report", "merge_candidate", "object", "conflict report")],
+                    object_types=["candidate_knowledge"],
+                ),
+            ],
+            branches=["冲突可控 -> 规范知识", "冲突过高 -> 候选复核"],
+            outputs=["definition_conflict_report", "merge_recommendations"],
+            observability=["conflict_count", "semantic_similarity", "alias_overlap"],
+        ),
+        "canonical_knowledge": _stage(
+            stage_id="canonical_knowledge",
+            label="跨文档合并",
+            group="跨文档合并",
+            objective="按同名、别名、视图编号、证据锚点和语义相似度合并候选对象与关系。",
+            ai_mode="合并建议生成",
+            default_action="auto_pass",
+            inputs=["definition_conflict_report", "object_candidates", "relation_candidates"],
+            ai_adaptation="AI 可建议合并，规则合同决定是否进入规范候选。",
+            rules=[
+                _midterm_rule(stage_id="canonical_knowledge", key="merge-same-name", name="同名合并", meaning="同名候选在证据不冲突时合并为同一规范对象。", threshold="same_name_match = true", action="auto_pass", effect_kind="merge", metric_fields=[_midterm_field("same_name_match", "boolean", "true", "true")], output_fields=[_midterm_output("same_name_merge_candidates", "canonical_knowledge", "object", "same-name merge")], object_types=["candidate_knowledge"]),
+                _midterm_rule(stage_id="canonical_knowledge", key="merge-alias", name="别名合并", meaning="别名重合达到阈值时合并候选对象并保留别名来源。", threshold="alias_overlap >= 0.65", action="auto_pass", effect_kind="merge", metric_fields=[_midterm_field("alias_overlap", "number", ">= 0.65", "0.78")], output_fields=[_midterm_output("alias_merge_candidates", "canonical_knowledge", "object", "alias merge")], object_types=["candidate_knowledge"]),
+                _midterm_rule(stage_id="canonical_knowledge", key="merge-view-number", name="视图编号合并", meaning="相同视图编号和相邻锚点可增强合并置信度。", threshold="view_number_match = true", action="auto_pass", effect_kind="merge", metric_fields=[_midterm_field("view_number_match", "boolean", "true", "true")], output_fields=[_midterm_output("view_number_merge_candidates", "canonical_knowledge", "object", "OV-5 merge")], object_types=["candidate_knowledge"]),
+                _midterm_rule(stage_id="canonical_knowledge", key="merge-evidence-anchor", name="证据锚点合并", meaning="跨文档合并必须保留每个来源锚点，不允许丢失证据链。", threshold="merge_anchor_coverage >= 0.9", action="warn_continue", effect_kind="merge", metric_fields=[_midterm_field("merge_anchor_coverage", "number", ">= 0.9", "0.95")], output_fields=[_midterm_output("merge_anchor_map", "canonical_knowledge", "object", "merged anchor map")], object_types=["candidate_knowledge"]),
+                _midterm_rule(stage_id="canonical_knowledge", key="merge-semantic-similarity", name="语义相似度合并", meaning="语义相似但名称不同的候选只进入候选合并，不直接覆盖正式知识。", threshold="semantic_similarity >= 0.82", action="manual_review", effect_kind="merge", metric_fields=[_midterm_field("semantic_similarity", "number", ">= 0.82", "0.87")], output_fields=[_midterm_output("semantic_merge_candidates", "canonical_knowledge", "object", "semantic merge")], object_types=["candidate_knowledge"]),
+            ],
+            branches=["合并命中 -> 规范候选", "语义合并 -> 候选复核", "锚点不足 -> 告警"],
+            outputs=["canonical_candidates", "merge_anchor_map", "merge_decisions"],
+            observability=["same_name_match", "alias_overlap", "view_number_match", "merge_anchor_coverage", "semantic_similarity"],
+        ),
+        "quality_policy_evaluation_governance_gate": _stage(
+            stage_id="quality_policy_evaluation_governance_gate",
+            label="质量门禁",
+            group="质量治理",
+            objective="执行证据覆盖率、关系完整性、冲突数、孤立节点比例和低置信候选比例门禁。",
+            ai_mode="质量门禁规则执行",
+            default_action="block_return",
+            inputs=["canonical_candidates", "relation_candidates", "merge_decisions"],
+            ai_adaptation="AI 只整理风险信号，最终由门禁阈值决定 pass、warning 或 block。",
+            rules=[
+                _midterm_rule(stage_id=QUALITY_GATE_STAGE_ID, key="gate-evidence-coverage", name="证据覆盖率门禁", meaning="规范候选证据覆盖率不足时不得进入发布候选。", threshold="evidence_coverage_rate >= 0.8", action="block_return", effect_kind="score", metric_fields=[_midterm_field("evidence_coverage_rate", "number", ">= 0.8", "0.88")], output_fields=[_midterm_output("quality_gate_decision", "gate_decision", "enum", "pass")], object_types=["canonical_knowledge"]),
+                _midterm_rule(stage_id=QUALITY_GATE_STAGE_ID, key="gate-relation-integrity", name="关系完整性门禁", meaning="关系两端对象和证据链必须完整。", threshold="relation_integrity >= 0.75", action="block_return", effect_kind="score", metric_fields=[_midterm_field("relation_integrity", "number", ">= 0.75", "0.84")], output_fields=[_midterm_output("relation_integrity_report", "gate_decision", "object", "relation gate")], object_types=["runtime_relation"]),
+                _midterm_rule(stage_id=QUALITY_GATE_STAGE_ID, key="gate-conflict-count", name="冲突数门禁", meaning="硬冲突超过阈值时阻断发布候选。", threshold="conflict_count <= 2", action="block_return", effect_kind="score", metric_fields=[_midterm_field("conflict_count", "number", "<= 2", "1")], output_fields=[_midterm_output("conflict_gate_report", "gate_decision", "object", "conflict gate")], object_types=["canonical_knowledge"]),
+                _midterm_rule(stage_id=QUALITY_GATE_STAGE_ID, key="gate-orphan-node-ratio", name="孤立节点比例门禁", meaning="孤立节点比例过高表示关系抽取不完整。", threshold="orphan_node_ratio <= 0.18", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("orphan_node_ratio", "number", "<= 0.18", "0.12")], output_fields=[_midterm_output("orphan_node_report", "gate_decision", "object", "orphan node report")], object_types=["canonical_knowledge"]),
+                _midterm_rule(stage_id=QUALITY_GATE_STAGE_ID, key="gate-low-confidence-ratio", name="低置信候选比例门禁", meaning="低置信候选比例过高时只输出候选重算结果。", threshold="low_confidence_candidate_ratio <= 0.25", action="warn_continue", effect_kind="score", metric_fields=[_midterm_field("low_confidence_candidate_ratio", "number", "<= 0.25", "0.16")], output_fields=[_midterm_output("low_confidence_report", "gate_decision", "object", "confidence report")], object_types=["candidate_knowledge"]),
+            ],
+            branches=["门禁通过 -> 发布候选", "告警 -> 候选发布并保留解释", "阻断 -> 回退候选层"],
+            outputs=["quality_gate_decision", "quality_explanations", "blocked_reason"],
+            observability=["evidence_coverage_rate", "relation_integrity", "conflict_count", "orphan_node_ratio", "low_confidence_candidate_ratio"],
+        ),
+        "indexes_snapshots_apis": _stage(
+            stage_id="indexes_snapshots_apis",
+            label="候选发布快照",
+            group="质量治理",
+            objective="只生成可治理的候选发布快照，不直接写正式知识。",
+            ai_mode="发布候选范围建议",
+            default_action="defer_publish",
+            inputs=["quality_gate_decision", "quality_explanations"],
+            ai_adaptation="AI 可建议发布范围，但系统输出仍标记为候选态。",
+            rules=[
+                _midterm_rule(
+                    stage_id="indexes_snapshots_apis",
+                    key="candidate-publication-only",
+                    name="候选发布边界",
+                    meaning="策略变更和机器抽取结果只能生成候选快照，等待治理确认。",
+                    threshold="candidate_publication_ready = true",
+                    action="defer_publish",
+                    effect_kind="publish_candidate",
+                    metric_fields=[
+                        _midterm_field("candidate_publication_ready", "boolean", "true", "true"),
+                    ],
+                    output_fields=[
+                        _midterm_output("publication_candidate_snapshot_id", "publication_snapshot", "string", "pub-candidate-midterm-001"),
+                    ],
+                    object_types=["publication_candidate"],
+                ),
+            ],
+            branches=["候选就绪 -> 生成候选快照", "未就绪 -> 延迟发布"],
+            outputs=["publication_candidate_snapshot_id", "publication_scope", "candidate_status"],
+            observability=["candidate_publication_ready", "quality_gate_decision"],
+        ),
+    }
+
+
+def _default_stage_policy_defaults() -> dict[str, dict[str, Any]]:
+    return _architecture_midterm_stage_policy_defaults()
+
+
 def build_default_archive_policy_config(archive_id: str) -> dict[str, Any]:
-    stages = deepcopy(STAGE_POLICY_DEFAULTS)
+    stages = deepcopy(_default_stage_policy_defaults())
     for stage_id, stage in stages.items():
         stage["rules"] = _enrich_stage_rules(stage_id, stage.get("rules", []))
 
     config = {
         "archive_id": archive_id,
         "policy_contract_version": POLICY_CONTRACT_VERSION,
-        "policy_package_id": f"{archive_id}:default-policy-package",
-        "policy_package_name": "合同通用抽取",
-        "policy_package_version_id": f"{archive_id}:policy:v1",
+        "policy_package_id": ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID,
+        "policy_package_name": "Mid Term 体系结构默认策略包",
+        "policy_package_version_id": f"{archive_id}:{ARCHITECTURE_MIDTERM_POLICY_PACKAGE_ID}:policy:v1",
         "policy_package_version_status": "published",
         "policy_package_version_hash": None,
         "policy_package_version_created_at": None,
@@ -1048,8 +1690,8 @@ def build_default_archive_policy_config(archive_id: str) -> dict[str, Any]:
         "policy_package_versions": [],
         "policy_contract_status": "valid",
         "policy_contract_errors": [],
-        "version_label": "13 阶段抽取蓝图 v1",
-        "scope_label": "单文档抽取过程",
+        "version_label": "architecture_midterm_default v1",
+        "scope_label": f"Mid Term 体系结构文档：{ARCHITECTURE_MIDTERM_DOCUMENT_TYPE_SUMMARY}",
         "ai_autoadapt_enabled": True,
         "updated_at": None,
         "stage_order": DEFAULT_STAGE_ORDER[:],
@@ -1101,7 +1743,7 @@ def _normalize_rules(stage_id: str, raw_rules: Any, fallback: list[dict[str, Any
 
 
 def _normalize_quality_gate_stage(stage: dict[str, Any]) -> dict[str, Any]:
-    default_stage = STAGE_POLICY_DEFAULTS[QUALITY_GATE_STAGE_ID]
+    default_stage = _default_stage_policy_defaults()[QUALITY_GATE_STAGE_ID]
     stage["ai_mode"] = default_stage["ai_mode"]
 
     if "人工" in str(stage.get("objective", "")) or "复核" in str(stage.get("objective", "")):
@@ -1130,6 +1772,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
     config = build_default_archive_policy_config(archive_id)
     if not raw_config:
         return config
+    default_stages = _default_stage_policy_defaults()
 
     config["version_label"] = str(raw_config.get("version_label") or config["version_label"])
     config["scope_label"] = str(raw_config.get("scope_label") or config["scope_label"])
@@ -1147,7 +1790,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
     config["ai_autoadapt_enabled"] = bool(raw_config.get("ai_autoadapt_enabled", config["ai_autoadapt_enabled"]))
     config["updated_at"] = raw_config.get("updated_at")
 
-    candidate_stage_order = [stage_id for stage_id in raw_config.get("stage_order", []) if stage_id in STAGE_POLICY_DEFAULTS]
+    candidate_stage_order = [stage_id for stage_id in raw_config.get("stage_order", []) if stage_id in default_stages]
     if candidate_stage_order:
         remaining_stage_ids = [stage_id for stage_id in DEFAULT_STAGE_ORDER if stage_id not in candidate_stage_order]
         config["stage_order"] = candidate_stage_order + remaining_stage_ids
@@ -1157,7 +1800,7 @@ def normalize_archive_policy_config(archive_id: str, raw_config: dict[str, Any] 
         return _finalize_policy_config(config, raw_versions=raw_config.get("policy_package_versions"))
 
     for stage_id in DEFAULT_STAGE_ORDER:
-        stage_default = deepcopy(STAGE_POLICY_DEFAULTS[stage_id])
+        stage_default = deepcopy(default_stages[stage_id])
         raw_stage = raw_stages.get(stage_id, {})
         if not isinstance(raw_stage, dict):
             stage_default["rules"] = _enrich_stage_rules(stage_id, stage_default.get("rules", []))
@@ -1237,6 +1880,7 @@ def build_policy_run_snapshot(
     return {
         "snapshot_id": snapshot_id,
         "policy_snapshot_id": snapshot_id,
+        "run_id": f"RUN-{snapshot_id}",
         "captured_at": captured_at,
         **snapshot_payload,
     }

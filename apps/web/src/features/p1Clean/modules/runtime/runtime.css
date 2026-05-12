@@ -1,0 +1,215 @@
+.p1-runtime-stack {
+  width: 100%;
+}
+
+.p1-runtime-row {
+  margin-top: 16px;
+}
+
+.p1-runtime-field {
+  display: grid;
+  gap: 6px;
+}
+
+.p1-runtime-kv {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.p1-runtime-kv span {
+  color: #64748b;
+}
+
+.p1-runtime-kv strong,
+.p1-runtime-kv .ant-typography {
+  min-width: 0;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.p1-runtime-kv.is-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.p1-runtime-pair {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.p1-runtime-message {
+  margin-bottom: 0;
+}
+
+.p1-runtime-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.p1-runtime-focus-grid > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.p1-runtime-focus-grid strong,
+.p1-runtime-focus-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.p1-runtime-focus-grid strong {
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.p1-runtime-focus-grid small {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.p1-runtime-sections .ant-list-item {
+  padding-inline: 0;
+}
+
+.p1-runtime-graph {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) 72px minmax(190px, 1fr) 72px minmax(170px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 220px;
+  padding: 24px;
+  border: 1px dashed #bfd1e8;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.82), rgba(255, 255, 255, 0.95));
+}
+
+.p1-runtime-graph-node {
+  display: grid;
+  gap: 8px;
+  min-height: 116px;
+  padding: 18px;
+  border-radius: 14px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.p1-runtime-graph-node span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.p1-runtime-graph-node strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.p1-runtime-graph-node small {
+  color: #475569;
+  line-height: 1.45;
+}
+
+.p1-runtime-graph-node.is-input {
+  border: 1px solid #86efac;
+  background: #ecfdf3;
+}
+
+.p1-runtime-graph-node.is-policy {
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+}
+
+.p1-runtime-graph-node.is-output {
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+}
+
+.p1-runtime-graph-edge {
+  position: relative;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.p1-runtime-graph-edge::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: #94a3b8;
+  transform: translateY(-50%);
+}
+
+.p1-runtime-graph-edge::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 5px);
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid #94a3b8;
+  border-right: 2px solid #94a3b8;
+  transform: rotate(45deg);
+}
+
+.p1-runtime-stage-graph {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .p1-runtime-kv {
+    grid-template-columns: 1fr;
+  }
+
+  .p1-runtime-graph,
+  .p1-runtime-stage-graph,
+  .p1-runtime-focus-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .p1-runtime-graph-edge {
+    min-height: 36px;
+  }
+
+  .p1-runtime-graph-edge::before {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    height: auto;
+  }
+
+  .p1-runtime-graph-edge::after {
+    top: auto;
+    right: calc(50% - 5px);
+    bottom: 0;
+    transform: rotate(135deg);
+  }
+}

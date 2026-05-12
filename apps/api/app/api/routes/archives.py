@@ -6,7 +6,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.archive_knowledge.coordination import ArchiveExtractionCoordinator, coordinator
@@ -18,6 +18,8 @@ from app.archive_knowledge.policy_config import (
 )
 from app.archive_knowledge.registry import ArchiveRegistryService
 from app.archive_knowledge.runtime_incremental_rebuild import ArchiveRuntimeIncrementalRebuildService
+from app.archive_knowledge.runtime_service import ArchiveDocumentRuntimeService
+from app.archive_knowledge.runtime_stream import build_document_runtime_stream_response
 from app.config import settings
 
 router = APIRouter(prefix="/archives", tags=["archives"])
@@ -110,6 +112,10 @@ def get_archive_extraction_service() -> ArchiveExtractionService:
 
 def get_archive_extraction_coordinator() -> ArchiveExtractionCoordinator:
     return coordinator
+
+
+def get_archive_runtime_service() -> ArchiveDocumentRuntimeService:
+    return ArchiveDocumentRuntimeService(settings.knowledge_output_root)
 
 
 def _raise_busy_archive_conflict(extraction_coordinator: ArchiveExtractionCoordinator) -> None:
@@ -257,6 +263,51 @@ def get_archive_incremental_rebuild_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Incremental rebuild task not found")
     return task
+
+
+@router.get("/{archive_id}/runtime")
+def get_archive_runtime(
+    archive_id: str,
+    document_id: str = Query(...),
+    document_set_id: str | None = Query(default=None),
+    policy_package_version_id: str | None = Query(default=None),
+    service: ArchiveDocumentRuntimeService = Depends(get_archive_runtime_service),
+):
+    runtime = service.get_document_runtime(
+        archive_id,
+        document_id,
+        document_set_id=document_set_id,
+        policy_package_version_id=policy_package_version_id,
+        stream_status="polling",
+    )
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Archive document runtime not found")
+    return runtime
+
+
+@router.get("/{archive_id}/runtime/stream")
+async def stream_archive_runtime(
+    archive_id: str,
+    request: Request,
+    document_id: str = Query(...),
+    document_set_id: str | None = Query(default=None),
+    policy_package_version_id: str | None = Query(default=None),
+    interval_ms: int = Query(default=2000, ge=250, le=30000),
+    heartbeat_ms: int = Query(default=15000, ge=1000, le=60000),
+    max_events: int | None = Query(default=None, ge=1, le=1000),
+    service: ArchiveDocumentRuntimeService = Depends(get_archive_runtime_service),
+):
+    return await build_document_runtime_stream_response(
+        archive_id=archive_id,
+        document_id=document_id,
+        request=request,
+        service=service,
+        interval_ms=interval_ms,
+        heartbeat_ms=heartbeat_ms,
+        max_events=max_events,
+        document_set_id=document_set_id,
+        policy_package_version_id=policy_package_version_id,
+    )
 
 
 @router.post("")
