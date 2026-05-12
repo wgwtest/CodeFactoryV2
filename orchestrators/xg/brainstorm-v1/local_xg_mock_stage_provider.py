@@ -520,7 +520,7 @@ class LocalXGMockStageProvider:
         decision_state = dict(stage_input.get("decision_state") or {})
         context = dict(stage_input.get("turn_context") or {})
         active_node = dict(context.get("active_spec_node") or {})
-        anchor = str(active_node.get("node_id") or "SPEC-REQ-6.3").removeprefix("SPEC-")
+        anchor = str(active_node.get("node_id") or "SPEC-REQ-7.3").removeprefix("SPEC-")
         confirmed = [
             str(item.get("content") or "")
             for item in list(decision_state.get("confirmed_facts") or [])
@@ -557,7 +557,7 @@ class LocalXGMockStageProvider:
                 "chapter_projections": [
                     {
                         "content": "需求规格说明草案已生成，待确认事项已随草案列出。",
-                        "target_section": "6 验收准则 / 待确认事项",
+                        "target_section": "7 验收准则 / 待确认事项",
                         "status": "projected",
                     }
                 ],
@@ -575,8 +575,8 @@ class LocalXGMockStageProvider:
                     "plan_id": "BRAINSTORM-DRAFT-001",
                     "decision_type": "append_existing_clause",
                     "template_clause_id": anchor,
-                    "canonical_clause_heading": str(active_node.get("target_section") or "6 验收准则 / 待确认事项"),
-                    "display_heading": str(active_node.get("target_section") or "6 验收准则 / 待确认事项"),
+                    "canonical_clause_heading": str(active_node.get("target_section") or "7 验收准则 / 待确认事项"),
+                    "display_heading": str(active_node.get("target_section") or "7 验收准则 / 待确认事项"),
                     "reason": "强制收束时将草案交付和待确认事项写入当前可用锚点。",
                     "confidence": "medium",
                     "anchor_path": anchor,

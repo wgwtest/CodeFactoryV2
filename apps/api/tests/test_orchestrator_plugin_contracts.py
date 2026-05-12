@@ -175,13 +175,18 @@ def test_brainstorm_v1_dify_workflow_projection_rules_use_current_81433_template
         "REQ-3.2",
         "REQ-3.3",
         "REQ-3.4",
-        "REQ-3.6",
-        "REQ-3.7",
+        "REQ-3.5",
+        "REQ-4.1",
+        "REQ-4.2",
+        "REQ-4.3",
         "REQ-5.1",
         "REQ-5.2",
         "REQ-5.3",
-        "REQ-5.4",
+        "REQ-6.1",
         "REQ-6.2",
+        "REQ-6.3",
+        "REQ-7.1",
+        "REQ-7.2",
     }.issubset(anchors)
     assert not {"REQ-3.UI", "REQ-3.COLLAB", "REQ-3.ERR"}.intersection(anchors)
     assert "3 功能需求 / 主要界面列表" not in target_sections
@@ -189,11 +194,11 @@ def test_brainstorm_v1_dify_workflow_projection_rules_use_current_81433_template
     assert "4 非功能需求 / 性能与可靠性" not in target_sections
     assert "5 验收准则 / 验收准则" not in target_sections
     assert any(
-        rule.get("target_section") == "4 数据需求 / 输入数据" and rule.get("anchor_path") == "REQ-4.1"
+        rule.get("target_section") == "5 数据与信息要求 / 输入数据" and rule.get("anchor_path") == "REQ-5.1"
         for rule in rules
     )
     assert any(
-        rule.get("target_section") == "5 非功能需求 / 性能与可靠性" and rule.get("anchor_path") == "REQ-5.1"
+        rule.get("target_section") == "3 工程需求 / 性能需求" and rule.get("anchor_path") == "REQ-3.3"
         for rule in rules
     )
 
@@ -224,13 +229,13 @@ def test_brainstorm_v1_dify_document_projection_draft_preserves_output_performan
     projection = json.loads(output["document_projection_json"])
     patch_by_anchor = {patch["anchor_path"]: patch for patch in projection["document_patch"]}
 
-    assert patch_by_anchor["REQ-3.6"]["operation"] == "replace"
-    assert "业务专家复核" in patch_by_anchor["REQ-3.6"]["content"]
-    assert "本章节待确认" not in patch_by_anchor["REQ-3.6"]["content"]
-    assert "可接受时间" in patch_by_anchor["REQ-5.1"]["content"]
-    assert "本章节待确认" not in patch_by_anchor["REQ-5.1"]["content"]
-    assert "分析工具使用" in patch_by_anchor["REQ-6.2"]["content"]
-    assert "成果导出复核" in patch_by_anchor["REQ-6.2"]["content"]
+    assert patch_by_anchor["REQ-5.2"]["operation"] == "replace"
+    assert "业务专家复核" in patch_by_anchor["REQ-5.2"]["content"]
+    assert "本章节待确认" not in patch_by_anchor["REQ-5.2"]["content"]
+    assert "可接受时间" in patch_by_anchor["REQ-3.3"]["content"]
+    assert "本章节待确认" not in patch_by_anchor["REQ-3.3"]["content"]
+    assert "分析工具使用" in patch_by_anchor["REQ-7.2"]["content"]
+    assert "成果导出复核" in patch_by_anchor["REQ-7.2"]["content"]
 
 
 def test_brainstorm_v1_dify_document_projection_draft_is_reviewable_and_retains_real_gaps() -> None:
@@ -270,15 +275,125 @@ def test_brainstorm_v1_dify_document_projection_draft_is_reviewable_and_retains_
     projection = json.loads(output["document_projection_json"])
     patch_by_anchor = {patch["anchor_path"]: patch for patch in projection["document_patch"]}
 
-    assert len(patch_by_anchor["REQ-3.1"]["content"]) >= 80
-    assert "主要用户" in patch_by_anchor["REQ-3.1"]["content"]
-    assert "业务专家" in patch_by_anchor["REQ-3.1"]["content"]
-    assert len(patch_by_anchor["REQ-3.4"]["content"]) >= 120
-    assert "通视分析" in patch_by_anchor["REQ-3.4"]["content"]
+    assert len(patch_by_anchor["REQ-3.2"]["content"]) >= 120
+    assert "主要用户" in patch_by_anchor["REQ-3.2"]["content"]
+    assert "业务专家" in patch_by_anchor["REQ-3.2"]["content"]
+    assert "通视分析" in patch_by_anchor["REQ-3.2"]["content"]
     retained_gaps = "\n".join(projection["retained_gaps"])
     assert "组织器策略问题" not in retained_gaps
     assert "报告模板字段仍需确认" in retained_gaps
     assert projection["decision_state_delta"]["open_questions"]
+
+
+def test_brainstorm_v1_dify_document_projection_draft_expands_section_facts_into_reviewable_paragraphs() -> None:
+    node_path = Path("orchestrators/xg/brainstorm-v1-dify-workflow/nodes/document_projection.py")
+    spec = importlib.util.spec_from_file_location("brainstorm_v1_dify_document_projection", node_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    context = {
+        "semantic": "停止追问，先输出草案。",
+        "normalized_context": {"draft_requested": True},
+        "write_policy": "patch_suggestion_only",
+        "decision_state": {
+            "confirmed_facts": [
+                {
+                    "content": "主要用户包括科研分析人员、业务专家和系统管理员，科研分析人员负责建模分析，业务专家负责成果复核，管理员负责账号权限和数据维护。",
+                    "target_section": "3 功能需求 / 用户与角色",
+                },
+                {
+                    "content": "核心流程从态势工程创建开始，导入底图和DEM数据，选择通视量算、坡度分析和部署影响分析工具，配置参数后生成结果图层和报告片段。",
+                    "target_section": "3 功能需求 / 核心业务流程",
+                },
+                {
+                    "content": "输入数据包括矢量底图、栅格DEM、业务对象数据和分析参数，输出数据包括结果图层、参数表、地图图片和简要报告。",
+                    "target_section": "4 数据需求 / 输入数据",
+                },
+                {
+                    "content": "系统部署在内网环境，要求角色权限、操作审计和结果可追溯，普通分析应在可接受时间内返回。",
+                    "target_section": "5 非功能需求 / 部署与运行环境",
+                },
+                {
+                    "content": "验收应覆盖从数据导入、态势编辑、分析执行、成果导出到权限审计的完整任务链。",
+                    "target_section": "6 验收准则 / 验收准则",
+                },
+            ],
+            "confirmed_decisions": [],
+        },
+    }
+
+    output = module.main(json.dumps(context, ensure_ascii=False), "{}")
+    projection = json.loads(output["document_projection_json"])
+    patch_by_anchor = {patch["anchor_path"]: patch for patch in projection["document_patch"]}
+
+    assert len(patch_by_anchor["REQ-3.2"]["content"]) >= 220
+    assert "角色" in patch_by_anchor["REQ-3.2"]["content"]
+    assert "输入" in patch_by_anchor["REQ-3.2"]["content"]
+    assert "输出" in patch_by_anchor["REQ-3.2"]["content"]
+    assert len(patch_by_anchor["REQ-5.1"]["content"]) >= 150
+    assert "来源" in patch_by_anchor["REQ-5.1"]["content"]
+    assert "质量" in patch_by_anchor["REQ-5.1"]["content"]
+    assert len(patch_by_anchor["REQ-7.2"]["content"]) >= 150
+    assert "通过标准" in patch_by_anchor["REQ-7.2"]["content"]
+
+
+def test_brainstorm_v1_dify_document_projection_draft_prioritizes_rich_engineering_requirements() -> None:
+    node_path = Path("orchestrators/xg/brainstorm-v1-dify-workflow/nodes/document_projection.py")
+    spec = importlib.util.spec_from_file_location("brainstorm_v1_dify_document_projection", node_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    context = {
+        "semantic": "停止追问，基于当前信息输出草案，工程需求章节要尽量丰富。",
+        "normalized_context": {"draft_requested": True},
+        "write_policy": "patch_suggestion_only",
+        "decision_state": {
+            "confirmed_facts": [
+                {
+                    "content": "接口需求第一阶段以文件导入导出和内网数据加载为主。输入接口包括底图服务或底图文件、DEM/DSM地形数据、遥感影像、矢量图层、任务区域、禁限区、部署点位、观察点、目标点和人工标注文件；支持GeoJSON、Shapefile、GeoPackage、GeoTIFF、CSV、XLSX和工程包等候选格式。输出接口包括态势工程包、专题图件、分析结果图层、结果参数表、审计记录和简化研判报告。接口失败时要提示失败原因，保留重新导入、重新导出、手工修正和人工复核入口。",
+                    "target_section": "3 工程需求 / 接口需求",
+                },
+                {
+                    "content": "功能需求按需求功能模块拆分：态势工程管理支持工程新建、打开、保存、另存为、关闭、工程坐标系、图层清单、标绘对象、分析参数、结果图层和版本说明管理；地图与态势展示支持缩放、平移、图层开关、透明度、对象选中、属性查看、时间戳显示、结果叠加和状态高亮；标绘与对象管理支持点、线、面、文字、观察点、目标点、部署点、任务区域、禁限区和影响范围编辑；基础量算支持距离、面积、坐标、高程、坡度坡向和高程剖面；通视与可视域分析输出可视结论、遮挡位置、剖面图和结果图层；部署分析支持覆盖范围、冲突检查、影响范围和可行性辅助判断，不做自动最优推荐。",
+                    "target_section": "3 工程需求 / 功能需求",
+                },
+                {
+                    "content": "性能需求按场景量化：地图浏览、缩放、平移、对象选中和图层开关在普通数据规模下目标小于2秒；属性查询和常规坐标读取小于2秒；距离面积量算、坐标查询小于5秒；坡度坡向、高程剖面和两点通视小于30秒；大范围可视域和部署影响分析允许1到3分钟并显示进度。第一阶段按30个并发用户和5个并发复杂分析任务作为暂定目标，超出时任务排队或提示。",
+                    "target_section": "3 工程需求 / 性能需求",
+                },
+                {
+                    "content": "安装和操作要求包括服务器端部署包、前端访问入口、初始化脚本、默认管理员账号、基础图层目录配置、算法参数默认值配置、日志目录配置、备份目录配置和导出目录配置。管理员应能在界面中维护用户、角色、默认参数、模板、字典、系统日志和数据目录。普通分析员不应直接编辑配置文件，应通过界面完成工程创建、数据加载、工具选择、参数调整、结果查看、保存和导出。升级时要保留工程文件、用户权限、参数配置、日志和历史结果。",
+                    "target_section": "3 工程需求 / 安装和操作要求",
+                },
+                {
+                    "content": "软件方面，服务器操作系统优先考虑国产化Linux或通用Linux，空间数据库可选PostgreSQL/PostGIS或同等能力数据库，前端支持主流现代浏览器，地图能力依赖二维WebGIS引擎、坐标转换库、栅格处理库和分析算法库，第三方GIS、离线瓦片和商用库授权后续确认。",
+                    "target_section": "4 运行环境要求 / 软件需求",
+                },
+                {
+                    "content": "验收细化为六条任务链：第一条是安装初始化链路，通过标准是普通用户能登录并看到授权菜单；第二条是工程创建链路，通过标准是图层、对象、坐标系、参数和版本说明均恢复；第三条是空间分析链路，通过标准是结果带单位、参数、来源和适用限制；第四条是异常链路，通过标准是系统提示原因、影响范围和可恢复动作；第五条是成果输出链路，通过标准是输出物可打开、内容完整、带水印或标识、可追溯；第六条是安全审计链路，通过标准是越权被阻断且关键操作可追溯。",
+                    "target_section": "7 验收准则 / 验收准则",
+                },
+            ],
+            "confirmed_decisions": [],
+        },
+    }
+
+    output = module.main(json.dumps(context, ensure_ascii=False), "{}")
+    projection = json.loads(output["document_projection_json"])
+    patch_by_anchor = {patch["anchor_path"]: patch for patch in projection["document_patch"]}
+
+    assert len(patch_by_anchor["REQ-3.1"]["content"]) >= 650
+    assert len(patch_by_anchor["REQ-3.2"]["content"]) >= 800
+    assert len(patch_by_anchor["REQ-3.3"]["content"]) >= 550
+    assert len(patch_by_anchor["REQ-3.4"]["content"]) >= 550
+    assert "PostgreSQL/PostGIS" in patch_by_anchor["REQ-4.2"]["content"]
+    assert "普通用户能登录并看到授权菜单" not in patch_by_anchor["REQ-4.2"]["content"]
+    assert "六条任务链" in patch_by_anchor["REQ-7.2"]["content"]
+    assert "通过标准" in patch_by_anchor["REQ-7.2"]["content"]
 
 
 def test_brainstorm_v1_dify_document_projection_status_review_filters_stale_strategy_gap() -> None:
@@ -393,9 +508,9 @@ def test_brainstorm_v1_dify_document_projection_draft_removes_bullet_prefix_and_
     patch_by_anchor = {patch["anchor_path"]: patch for patch in projection["document_patch"]}
 
     assert not patch_by_anchor["REQ-2.1"]["content"].startswith("- ")
-    assert not patch_by_anchor["REQ-3.1"]["content"].startswith("- ")
-    assert "这个我还没完全想清楚" not in patch_by_anchor["REQ-3.1"]["content"]
-    assert "科研分析人员" in patch_by_anchor["REQ-3.1"]["content"]
+    assert not patch_by_anchor["REQ-3.2"]["content"].startswith("- ")
+    assert "这个我还没完全想清楚" not in patch_by_anchor["REQ-3.2"]["content"]
+    assert "科研分析人员" in patch_by_anchor["REQ-3.2"]["content"]
 
 
 def test_brainstorm_v1_dify_document_projection_keeps_collecting_before_review_or_draft_when_core_gaps_remain() -> None:
@@ -1544,6 +1659,53 @@ def test_decision_state_service_applies_question_lifecycle_refs_without_semantic
         "deferred": 1,
         "superseded": 0,
     }
+    assert result.decision_state_change_summary["active_open_question_count"] == 0
+
+
+def test_decision_state_service_render_document_separates_active_and_resolved_questions() -> None:
+    service = DecisionStateService()
+    document = service.render_document(
+        session_phase="analysis",
+        decision_state={
+            "topic": "态势分析系统需求规格探索",
+            "confirmed_facts": [],
+            "confirmed_decisions": [],
+            "tentative_assumptions": [],
+            "open_questions": [
+                {
+                    "item_id": "DS-Q-001",
+                    "content": "仍需确认验收通过标准。",
+                    "source_turn_id": "turn-0004",
+                    "target_section": "6 验收准则 / 验收准则",
+                    "status": "open",
+                },
+                {
+                    "item_id": "DS-Q-002",
+                    "content": "软件名称是什么？",
+                    "source_turn_id": "turn-0001",
+                    "target_section": "1 总则 / 编写目的",
+                    "status": "deferred",
+                },
+                {
+                    "item_id": "DS-Q-003",
+                    "content": "用户角色有哪些？",
+                    "source_turn_id": "turn-0002",
+                    "target_section": "3 功能需求 / 用户与角色",
+                    "status": "closed",
+                },
+            ],
+            "rejected_directions": [],
+            "next_focus": "继续确认验收。",
+            "chapter_projections": [],
+        },
+    )
+
+    sections = {section["section_id"]: section for section in document["sections"]}
+    assert [item["content"] for item in sections["open_questions"]["items"]] == ["仍需确认验收通过标准。"]
+    assert [item["content"] for item in sections["resolved_questions"]["items"]] == [
+        "软件名称是什么？",
+        "用户角色有哪些？",
+    ]
 
 
 def test_decision_state_service_keeps_item_ids_unique_without_business_semantic_matching() -> None:
@@ -1667,6 +1829,7 @@ def test_decision_state_service_defers_open_questions_on_delivery_without_semant
         "deferred": 2,
         "superseded": 0,
     }
+    assert result.decision_state_change_summary["active_open_question_count"] == 0
 
 
 def test_plugin_turn_result_materializer_supports_delivery_interaction_without_open_question() -> None:

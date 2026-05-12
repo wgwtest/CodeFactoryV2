@@ -524,7 +524,11 @@ class DeepSeekRequirementAnalysisClient:
             if not plan_ref or not content:
                 continue
             plan_ref = plan_ref_aliases.get(plan_ref, plan_ref)
-            if known_plan_ids and plan_ref not in known_plan_ids:
+            has_structured_anchor = any(
+                str(item.get(key) or "").strip()
+                for key in ("template_clause_id", "anchor_path", "display_heading", "target_section")
+            )
+            if known_plan_ids and plan_ref not in known_plan_ids and not has_structured_anchor:
                 raise ValueError(f"document_patch.plan_ref does not match target_anchor_plan: {plan_ref}")
             normalized_patch = {
                 "plan_ref": plan_ref,

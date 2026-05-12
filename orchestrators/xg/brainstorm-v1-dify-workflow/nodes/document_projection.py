@@ -5,19 +5,42 @@ import re
 SECTION_ANCHORS = {
     "1 总则 / 编写目的": "REQ-1.1",
     "2 项目概述 / 软件定位": "REQ-2.1",
-    "3 功能需求 / 用户与角色": "REQ-3.1",
-    "3 功能需求 / 核心业务流程": "REQ-3.2",
-    "3 功能需求 / 功能分解总览": "REQ-3.3",
-    "3 功能需求 / 核心功能项说明": "REQ-3.4",
-    "3 功能需求 / 结果输出与共享": "REQ-3.6",
-    "3 功能需求 / 异常与补偿": "REQ-3.7",
-    "4 数据需求 / 输入数据": "REQ-4.1",
-    "4 数据需求 / 输出数据与报表": "REQ-4.2",
-    "5 非功能需求 / 性能与可靠性": "REQ-5.1",
-    "5 非功能需求 / 安全与权限": "REQ-5.2",
-    "5 非功能需求 / 部署与运行环境": "REQ-5.3",
-    "5 非功能需求 / 精度与质量约束": "REQ-5.4",
-    "6 验收准则 / 验收准则": "REQ-6.2",
+    "2 项目概述 / 使用场景": "REQ-2.3",
+    "2 项目概述 / 范围边界": "REQ-2.4",
+    "3 工程需求 / 接口需求": "REQ-3.1",
+    "3 工程需求 / 功能需求": "REQ-3.2",
+    "3 工程需求 / 性能需求": "REQ-3.3",
+    "3 工程需求 / 安装和操作要求": "REQ-3.4",
+    "3 工程需求 / 业务规则与异常补偿": "REQ-3.5",
+    "4 运行环境要求 / 硬件需求": "REQ-4.1",
+    "4 运行环境要求 / 软件需求": "REQ-4.2",
+    "4 运行环境要求 / 网络与部署环境": "REQ-4.3",
+    "5 数据与信息要求 / 输入数据": "REQ-5.1",
+    "5 数据与信息要求 / 输出数据与成果": "REQ-5.2",
+    "5 数据与信息要求 / 数据质量与追溯": "REQ-5.3",
+    "6 质量、安全与约束要求 / 安全与权限": "REQ-6.1",
+    "6 质量、安全与约束要求 / 可靠性与可用性": "REQ-6.2",
+    "6 质量、安全与约束要求 / 精度与质量约束": "REQ-6.3",
+    "7 验收准则 / 验收场景": "REQ-7.1",
+    "7 验收准则 / 验收准则": "REQ-7.2",
+    "7 验收准则 / 待确认事项": "REQ-7.3",
+}
+LEGACY_SECTION_MAP = {
+    "3 功能需求 / 用户与角色": "3 工程需求 / 功能需求",
+    "3 功能需求 / 核心业务流程": "3 工程需求 / 功能需求",
+    "3 功能需求 / 功能分解总览": "3 工程需求 / 功能需求",
+    "3 功能需求 / 核心功能项说明": "3 工程需求 / 功能需求",
+    "3 功能需求 / 结果输出与共享": "5 数据与信息要求 / 输出数据与成果",
+    "3 功能需求 / 异常与补偿": "3 工程需求 / 业务规则与异常补偿",
+    "4 数据需求 / 输入数据": "5 数据与信息要求 / 输入数据",
+    "4 数据需求 / 输出数据与报表": "5 数据与信息要求 / 输出数据与成果",
+    "5 非功能需求 / 性能与可靠性": "3 工程需求 / 性能需求",
+    "5 非功能需求 / 安全与权限": "6 质量、安全与约束要求 / 安全与权限",
+    "5 非功能需求 / 部署与运行环境": "4 运行环境要求 / 网络与部署环境",
+    "5 非功能需求 / 运行环境": "4 运行环境要求 / 网络与部署环境",
+    "5 非功能需求 / 精度与质量约束": "6 质量、安全与约束要求 / 精度与质量约束",
+    "6 验收准则 / 验收准则": "7 验收准则 / 验收准则",
+    "6 验收准则 / 待确认事项": "7 验收准则 / 待确认事项",
 }
 DRAFT_TRIGGERS = ["停止追问", "输出草案", "先成稿", "不要继续问", "先停止追问", "生成草案"]
 REVIEW_TRIGGERS = ["回看", "总结", "已闭合", "未闭合", "哪些关键决策", "不要急着写全文", "先检查"]
@@ -71,6 +94,31 @@ def _content_text(item):
 
 def _contains(text, words):
     return any(word in text for word in words)
+
+def _normalize_section(section, content=""):
+    value = str(section or "").strip()
+    if value in SECTION_ANCHORS:
+        return value
+    if value in LEGACY_SECTION_MAP:
+        return LEGACY_SECTION_MAP[value]
+    if value.startswith("3 功能需求"):
+        return "3 工程需求 / 功能需求"
+    if value.startswith("4 数据需求 / 输入"):
+        return "5 数据与信息要求 / 输入数据"
+    if value.startswith("4 数据需求 / 输出"):
+        return "5 数据与信息要求 / 输出数据与成果"
+    if value.startswith("5 非功能需求"):
+        text = f"{value} {content}"
+        if _contains(text, ["安全", "权限", "审计"]):
+            return "6 质量、安全与约束要求 / 安全与权限"
+        if _contains(text, ["部署", "运行环境", "内网", "专网", "离线"]):
+            return "4 运行环境要求 / 网络与部署环境"
+        if _contains(text, ["精度", "质量", "追溯"]):
+            return "6 质量、安全与约束要求 / 精度与质量约束"
+        return "3 工程需求 / 性能需求"
+    if value.startswith("6 验收准则"):
+        return "7 验收准则 / 待确认事项" if "待确认" in value else "7 验收准则 / 验收准则"
+    return value
 
 def _draft_requested(text, context):
     normalized = context.get("normalized_context") or {}
@@ -136,41 +184,81 @@ def _classify(text, active_section):
     t = str(text or "")
     if _contains(t, ["不做", "不希望", "不支持", "不包含", "不承诺", "边界", "范围", "只做", "排除", "不负责"]):
         return "2 项目概述 / 软件定位"
-    if _contains(t, ["导出验收", "验收", "验收标准", "通过条件", "准则", "测试口径", "判定标准", "任务链验收"]):
-        return "6 验收准则 / 验收准则"
+    if _contains(t, ["导出验收", "验收", "验收标准", "通过标准", "通过条件", "准则", "测试口径", "判定标准", "任务链验收"]):
+        return "7 验收准则 / 验收准则"
+    if _contains(t, ["接口", "外部系统", "文件导入导出", "内网数据加载", "人工移交", "交换", "GeoJSON", "Shapefile", "GeoPackage", "GeoTIFF", "CSV", "XLSX", "工程包"]):
+        return "3 工程需求 / 接口需求"
+    if _contains(t, ["安装", "初始化", "启动", "关闭", "升级", "备份", "恢复", "部署包", "默认管理员", "配置文件", "运维", "操作手册"]):
+        return "3 工程需求 / 安装和操作要求"
+    if _contains(t, ["服务器", "客户端", "工作站", "存储", "带宽", "CPU", "内存", "显卡", "显示屏", "硬件"]):
+        return "4 运行环境要求 / 硬件需求"
+    if _contains(t, ["操作系统", "数据库", "PostgreSQL", "PostGIS", "浏览器", "WebGIS", "GIS引擎", "GIS 引擎", "算法库", "坐标转换库", "栅格处理库", "第三方", "授权", "软件需求"]):
+        return "4 运行环境要求 / 软件需求"
     if _contains(t, ["异常", "失败", "补偿", "重试", "回滚", "告警处理", "错误"]):
-        return "3 功能需求 / 异常与补偿"
+        return "3 工程需求 / 业务规则与异常补偿"
     if _contains(t, ["主要界面", "界面", "页面", "入口", "态势总览", "列表", "看板"]):
-        return "3 功能需求 / 功能分解总览"
+        return "3 工程需求 / 功能需求"
     if _contains(t, ["部署分析", "部署影响分析"]) or ("部署" in t and _contains(t, ["覆盖", "冲突", "影响分析", "分析系统", "分析工具"])):
-        return "3 功能需求 / 核心功能项说明"
+        return "3 工程需求 / 功能需求"
     if _contains(t, ["业务专家复核", "成果导出复核", "导出地图", "导出结果", "导出参数", "导出说明", "给业务专家复核", "结果消费"]):
-        return "3 功能需求 / 结果输出与共享"
+        return "5 数据与信息要求 / 输出数据与成果"
     if _contains(t, ["协同", "共享", "任务接力", "批注", "协作", "共编", "多人"]):
-        return "3 功能需求 / 结果输出与共享"
+        return "5 数据与信息要求 / 输出数据与成果"
     if _contains(t, ["输入数据", "底图", "DEM", "地形数据", "矢量", "栅格", "业务对象数据", "分析参数", "内网数据加载", "文件导入", "数据接入", "导入"]):
-        return "4 数据需求 / 输入数据"
+        return "5 数据与信息要求 / 输入数据"
     if _contains(t, ["输出", "地图图片", "工程文件", "结果参数表", "结果图层", "简要报告", "报告片段", "专题图件", "导出形式", "导出格式", "PDF", "GeoPackage"]):
-        return "4 数据需求 / 输出数据与报表"
+        return "5 数据与信息要求 / 输出数据与成果"
     if _contains(t, ["安全", "权限", "认证", "审计", "账号", "角色权限", "日志"]):
-        return "5 非功能需求 / 安全与权限"
+        return "6 质量、安全与约束要求 / 安全与权限"
     if _contains(t, ["内网部署", "专网部署", "离线部署", "部署环境", "运行环境", "内网", "专网", "离线运行"]):
-        return "5 非功能需求 / 部署与运行环境"
+        return "4 运行环境要求 / 网络与部署环境"
     if _contains(t, ["性能", "并发", "响应时间", "刷新", "可靠性", "高可用", "容灾", "流畅", "可接受时间"]):
-        return "5 非功能需求 / 性能与可靠性"
+        return "3 工程需求 / 性能需求"
     if _contains(t, ["精度", "精度口径", "超精度", "误差", "分辨率", "准确性", "数据来源", "算法参数", "适用限制", "质量", "追溯", "可追溯"]):
-        return "5 非功能需求 / 精度与质量约束"
+        return "6 质量、安全与约束要求 / 精度与质量约束"
     if _contains(t, ["用户", "角色", "使用者", "下游", "指挥员", "参谋", "值班员", "管理员", "职责"]):
-        return "3 功能需求 / 用户与角色"
+        return "3 工程需求 / 功能需求"
     if _contains(t, ["通视", "量算", "坡度", "坡向", "高程剖面", "部署分析", "覆盖", "冲突", "影响分析", "分析工具", "大气光照", "态势工程管理", "态势编辑", "地图浏览", "图层控制", "标绘", "功能"]):
-        return "3 功能需求 / 核心功能项说明"
+        return "3 工程需求 / 功能需求"
     if _contains(t, ["流程", "场景", "实时", "展示", "GIS", "告警", "任务区", "标注", "报告导出", "报告"]):
-        return "3 功能需求 / 核心业务流程"
+        return "3 工程需求 / 功能需求"
     if _contains(t, ["软件名称", "系统叫", "叫", "名称", "领域", "编写目的", "目的", "背景", "系统名称", "主要解决", "解决", "平台", "软件"]):
         return "1 总则 / 编写目的"
     if active_section in SECTION_ANCHORS and active_section != "1 总则 / 编写目的":
         return active_section
     return ""
+
+def _primary_section_for_text(text, active_section=""):
+    value = str(text or "").strip()
+    prefix = value[:120]
+    if not value:
+        return ""
+    if _contains(prefix, ["接口需求", "输入接口", "输出接口"]):
+        return "3 工程需求 / 接口需求"
+    if _contains(prefix, ["功能需求", "功能模块", "空间分析模块", "结果管理与成果输出模块"]):
+        return "3 工程需求 / 功能需求"
+    if _contains(prefix, ["性能需求", "响应时间", "并发用户"]):
+        return "3 工程需求 / 性能需求"
+    if _contains(prefix, ["安装和操作要求", "安装要求", "操作要求"]):
+        return "3 工程需求 / 安装和操作要求"
+    if _contains(prefix, ["业务规则", "异常补偿", "异常处理"]):
+        return "3 工程需求 / 业务规则与异常补偿"
+    if _contains(prefix, ["硬件方面", "硬件需求"]):
+        return "4 运行环境要求 / 硬件需求"
+    if _contains(prefix, ["软件方面", "软件需求"]):
+        return "4 运行环境要求 / 软件需求"
+    if _contains(prefix, ["网络与部署环境", "部署环境"]):
+        return "4 运行环境要求 / 网络与部署环境"
+    if _contains(prefix, ["数据与信息要求", "输入数据"]):
+        return "5 数据与信息要求 / 输入数据"
+    if _contains(prefix, ["输出数据", "成果输出"]):
+        return "5 数据与信息要求 / 输出数据与成果"
+    if _contains(prefix, ["质量、安全", "安全和约束", "安全方面"]):
+        return "6 质量、安全与约束要求 / 安全与权限"
+    if _contains(prefix, ["验收任务链", "验收准则", "验收细化", "通过标准"]):
+        return "7 验收准则 / 验收准则"
+    normalized_active = _normalize_section(active_section, value)
+    return normalized_active if normalized_active in SECTION_ANCHORS else ""
 
 def _selected_option_fact(semantic, context):
     text = str(semantic or "").strip()
@@ -206,7 +294,7 @@ def _existing_fact_records(context):
             continue
         section = ""
         if isinstance(item, dict):
-            section = str(item.get("target_section") or "").strip()
+            section = _normalize_section(item.get("target_section"), content)
         if not section:
             section = _classify(content, str(context.get("active_section") or ""))
         if not section:
@@ -222,10 +310,10 @@ def _records_from_working_document(context):
     for block in working.get("blocks") or []:
         if not isinstance(block, dict):
             continue
-        section = str(block.get("target_section") or block.get("section") or block.get("heading") or "").strip()
         content = _clean_fact_text(_content_text(block))
         if not content or _is_uncertain_statement(content):
             continue
+        section = _normalize_section(block.get("target_section") or block.get("section") or block.get("heading"), content)
         if not section:
             section = _classify(content, str(context.get("active_section") or ""))
         if not section:
@@ -243,6 +331,21 @@ def _extract_records(context):
     option_fact = _selected_option_fact(semantic, context)
     source_text = option_fact or semantic
     records = []
+    full_content = _clean_fact_text(source_text)
+    full_section = _primary_section_for_text(full_content, active_section)
+    if (
+        full_section
+        and len(full_content) >= 90
+        and not _is_uncertain_statement(full_content)
+        and not any(trigger in full_content for trigger in DRAFT_TRIGGERS)
+    ):
+        records.append(
+            {
+                "content": full_content,
+                "target_section": full_section,
+                "anchor_path": SECTION_ANCHORS.get(full_section, context.get("anchor_path") or "REQ-1.1"),
+            }
+        )
     for clause in _split_clauses(source_text):
         if any(trigger in clause for trigger in DRAFT_TRIGGERS):
             continue
@@ -309,16 +412,24 @@ def _is_decision_record(record):
         return False
     if section in {
         "2 项目概述 / 软件定位",
-        "3 功能需求 / 用户与角色",
-        "3 功能需求 / 核心业务流程",
-        "3 功能需求 / 结果输出与共享",
-        "4 数据需求 / 输入数据",
-        "4 数据需求 / 输出数据与报表",
-        "5 非功能需求 / 性能与可靠性",
-        "5 非功能需求 / 安全与权限",
-        "5 非功能需求 / 部署与运行环境",
-        "5 非功能需求 / 精度与质量约束",
-        "6 验收准则 / 验收准则",
+        "2 项目概述 / 使用场景",
+        "2 项目概述 / 范围边界",
+        "3 工程需求 / 接口需求",
+        "3 工程需求 / 功能需求",
+        "3 工程需求 / 性能需求",
+        "3 工程需求 / 安装和操作要求",
+        "3 工程需求 / 业务规则与异常补偿",
+        "4 运行环境要求 / 硬件需求",
+        "4 运行环境要求 / 软件需求",
+        "4 运行环境要求 / 网络与部署环境",
+        "5 数据与信息要求 / 输入数据",
+        "5 数据与信息要求 / 输出数据与成果",
+        "5 数据与信息要求 / 数据质量与追溯",
+        "6 质量、安全与约束要求 / 安全与权限",
+        "6 质量、安全与约束要求 / 可靠性与可用性",
+        "6 质量、安全与约束要求 / 精度与质量约束",
+        "7 验收准则 / 验收场景",
+        "7 验收准则 / 验收准则",
     }:
         return True
     return _contains(
@@ -441,8 +552,8 @@ def _status_review(context):
 def _group_by_section(records):
     grouped = {section: [] for section in SECTION_ANCHORS}
     for record in records:
-        section = record.get("target_section") or ""
         content = _clean_fact_text(record.get("content") or "")
+        section = _normalize_section(record.get("target_section") or "", content)
         if section in grouped and content and not _is_uncertain_statement(content) and content not in grouped[section]:
             grouped[section].append(content)
     return grouped
@@ -459,36 +570,46 @@ def _retained_gaps(context, grouped):
         text = str(question or "").strip()
         if _is_stale_gap(text):
             continue
+        if _contains(text, ["模板字段", "报告模板", "字段仍需确认"]):
+            if text not in gaps:
+                gaps.append(text)
+            continue
         if _classify(text, "") in grouped and grouped.get(_classify(text, "")):
             continue
         if _contains(text, ["编写目的", "软件名称", "背景领域"]) and grouped.get("1 总则 / 编写目的"):
             continue
-        if _contains(text, ["用户角色", "主要用户", "使用者"]) and grouped.get("3 功能需求 / 用户与角色"):
+        if _contains(text, ["用户角色", "主要用户", "使用者"]) and grouped.get("3 工程需求 / 功能需求"):
             continue
-        if _contains(text, ["核心业务流程", "主线", "流程"]) and grouped.get("3 功能需求 / 核心业务流程"):
+        if _contains(text, ["核心业务流程", "主线", "流程"]) and grouped.get("3 工程需求 / 功能需求"):
             continue
         if _contains(text, ["软件定位", "领域边界", "不做"]) and grouped.get("2 项目概述 / 软件定位"):
             continue
-        if _contains(text, ["异常", "补偿", "失败", "缺数据"]) and grouped.get("3 功能需求 / 异常与补偿"):
+        if _contains(text, ["异常", "补偿", "失败", "缺数据"]) and grouped.get("3 工程需求 / 业务规则与异常补偿"):
             continue
-        if _contains(text, ["响应", "稳定性", "安全", "部署", "非功能"]) and grouped.get("5 非功能需求 / 性能与可靠性"):
+        if _contains(text, ["接口", "导入", "导出", "交换"]) and grouped.get("3 工程需求 / 接口需求"):
             continue
-        if _contains(text, ["验收", "可接受"]) and grouped.get("6 验收准则 / 验收准则"):
+        if _contains(text, ["响应", "稳定性", "安全", "部署", "非功能"]) and grouped.get("3 工程需求 / 性能需求"):
+            continue
+        if _contains(text, ["验收", "可接受"]) and grouped.get("7 验收准则 / 验收准则"):
             continue
         if text and not _is_stale_gap(text) and text not in gaps:
             gaps.append(text)
     defaults = [
-        ("3 功能需求 / 用户与角色", "需确认各类用户角色的权限边界和操作职责。"),
-        ("3 功能需求 / 核心业务流程", "需补充核心分析流程的输入、处理、输出和用户交互方式。"),
-        ("5 非功能需求 / 性能与可靠性", "需确认响应时间、并发规模、可靠性和安全要求。"),
-        ("6 验收准则 / 验收准则", "需确认验收场景、通过条件和测试数据口径。"),
+        ("3 工程需求 / 接口需求", "需确认接口对象、输入输出格式、交换方式和接口失败处理。"),
+        ("3 工程需求 / 功能需求", "需确认各类用户角色的权限边界和操作职责。"),
+        ("3 工程需求 / 功能需求", "需补充核心分析流程的输入、处理、输出和用户交互方式。"),
+        ("3 工程需求 / 性能需求", "需确认响应时间、并发规模、可靠性和安全要求。"),
+        ("3 工程需求 / 安装和操作要求", "需确认安装初始化、默认配置、升级备份和运维操作要求。"),
+        ("4 运行环境要求 / 硬件需求", "需确认服务器、客户端、存储和网络带宽等硬件条件。"),
+        ("4 运行环境要求 / 软件需求", "需确认操作系统、数据库、GIS 引擎、算法库和第三方授权。"),
+        ("7 验收准则 / 验收准则", "需确认验收场景、通过条件和测试数据口径。"),
     ]
     for section, question in defaults:
         if not grouped.get(section) and question not in gaps:
             gaps.append(question)
     return gaps[:8]
 
-def _join_facts(facts, limit=6):
+def _join_facts(facts, limit=12):
     cleaned = []
     for fact in facts:
         value = _clean_fact_text(fact)
@@ -496,40 +617,133 @@ def _join_facts(facts, limit=6):
             cleaned.append(value)
     return cleaned[:limit]
 
+def _fact_sentence(facts):
+    facts = _join_facts(facts)
+    if not facts:
+        return ""
+    return "；".join(facts) + "。"
+
+def _fact_list(facts, limit=18):
+    return _join_facts(facts, limit=limit)
+
+def _fact_paragraph(facts, limit=18):
+    values = _fact_list(facts, limit=limit)
+    return "；".join(values) + "。" if values else ""
+
+def _numbered_requirements(items, *, prefix, start=1):
+    lines = []
+    for index, item in enumerate(_fact_list(items, limit=16), start=start):
+        sentence = _ensure_sentence(item)
+        if sentence:
+            lines.append(f"{prefix}-{index:02d}：{sentence}")
+    return "\n".join(lines)
+
+def _ensure_minimum_detail(text, additions):
+    value = str(text or "").strip()
+    for addition in additions:
+        if addition and addition not in value:
+            value += addition
+    return value
+
+def _split_function_modules(facts):
+    joined = "；".join(_fact_list(facts, limit=20))
+    candidates = [
+        ("态势工程管理", "使用角色为科研分析人员、参谋分析员和管理员。输入包括工程名称、坐标系、底图目录、图层清单、任务编号和工程说明；系统应创建、打开、保存、另存为和关闭态势工程，维护图层引用、标绘对象、分析参数、结果图层、版本说明和复核状态；输出为可再次打开、可追溯的态势工程包。异常包括坐标系缺失、工程目录不可写、版本冲突和保存失败，系统应提示原因并保留重试或另存入口。"),
+        ("地图与态势展示", "使用角色为分析员、业务专家和普通查看者。输入包括底图、影像、矢量、态势对象、时间戳和结果图层；系统应支持缩放、平移、图层开关、透明度调整、对象选中、属性查看、态势对象高亮、结果叠加和当前视图保持；输出为可浏览、可截图、可复核的态势视图。"),
+        ("标绘与对象管理", "使用角色为分析员和数据管理员。输入包括点、线、面、文字、观察点、目标点、部署点、任务区域、禁限区和影响范围；系统应支持创建、编辑、删除、属性维护、样式设置、批量选择、撤销重做和对象合法性校验；输出为规范化标绘对象和属性表。"),
+        ("基础量算与地形分析", "使用角色为分析员。输入包括点线面对象、坐标、DEM、地图比例尺和分析参数；系统应提供距离、面积、坐标、高程、坡度坡向和高程剖面分析；输出应包含数值、单位、坐标系、输入对象编号、计算时间和适用限制。"),
+        ("通视与可视域分析", "使用角色为分析员和业务专家。输入包括观察点、目标点、观察高度、目标高度、分析半径、地形数据和遮挡参数；系统应计算两点通视、多点通视和可视域范围；输出包括可视或不可视结论、遮挡位置、剖面图、可视域栅格或矢量结果图层。异常时应提示 DEM 缺块、半径过大、点位无高程或参数不合法。"),
+        ("部署分析", "使用角色为参谋分析员和业务专家。输入包括部署点、任务区域、禁限区、影响半径、覆盖规则和冲突规则；系统应计算覆盖范围、冲突位置、影响范围和可行性辅助提示；输出包括风险清单、冲突对象、影响范围图层和说明片段。系统只提供辅助研判和风险提示，不输出自动最优部署方案。"),
+        ("结果管理与成果输出", "使用角色为分析员、业务专家和普通查看者。输入包括分析结果、参数记录、剖面图、风险清单、复核意见和导出格式；系统应支持结果查询、显示隐藏、重命名、复制、删除、锁定、复核标记、版本对比和导出；输出包括专题图、结果表、简要报告、候选结果图层和审计记录。"),
+    ]
+    selected = []
+    for name, description in candidates:
+        if name in joined or any(word in joined for word in name.split("与")):
+            selected.append(f"{name}：{description}")
+    return selected or [f"{name}：{description}" for name, description in candidates[:4]]
+
 def _compose_section_content(section, facts):
     facts = _join_facts(facts)
     if not facts:
         return "本章节待确认。"
+    joined = _fact_sentence(facts)
     if section == "1 总则 / 编写目的":
-        return "本文档用于明确本软件的需求范围、核心能力、运行约束和验收口径，为后续设计、开发、测试和交付提供依据。已确认材料包括：" + "；".join(facts) + "。"
+        return "本文档用于明确本软件的需求范围、核心能力、运行约束和验收口径，为后续设计、开发、测试和交付提供依据。已确认材料包括：" + joined + "后续成稿时，应继续把已确认事实转化为可设计、可开发、可测试的需求条款，并把仍未确认的业务背景、适用对象和约束条件列入待确认事项。"
     if section == "2 项目概述 / 软件定位":
-        return "本软件定位为态势展示、空间分析与阶段性成果汇报支撑工具。当前已确认的定位和边界包括：" + "；".join(facts) + "。后续仍可继续细化具体业务领域、第一阶段范围和不纳入范围。"
-    if section == "3 功能需求 / 用户与角色":
-        return "系统用户角色按当前已确认信息划分为以下几类：" + "；".join(facts) + "。需求规格后续应继续补齐各角色的权限边界、典型操作、协作关系和结果消费方式。"
-    if section == "3 功能需求 / 核心业务流程":
-        return "核心业务流程围绕态势工程准备、分析计算和结果输出展开。当前已确认流程信息为：" + "；".join(facts) + "。后续应把每条流程进一步拆成触发条件、输入、处理、输出和异常处理。"
-    if section == "3 功能需求 / 功能分解总览":
-        return "功能分解总览应覆盖态势管理、地图与图层操作、空间量算分析、结果管理和必要的系统管理能力。当前已确认功能范围包括：" + "；".join(facts) + "。"
-    if section == "3 功能需求 / 核心功能项说明":
-        return "核心功能项应逐项说明功能目标、输入对象、主要处理、输出结果和限制条件。当前已确认功能包括：" + "；".join(facts) + "。其中具体算法边界、参数默认值和分析结果解释口径仍可在后续继续细化。"
-    if section == "3 功能需求 / 结果输出与共享":
-        return "结果输出与共享用于支撑分析成果复核、汇报和后续追溯。当前已确认要求包括：" + "；".join(facts) + "。后续需继续明确导出格式、报告模板字段和共享权限。"
-    if section == "3 功能需求 / 异常与补偿":
-        return "系统应对用户操作、数据加载、计算执行、保存导出和权限校验中的异常提供提示与补偿。当前已确认异常处理要求包括：" + "；".join(facts) + "。"
-    if section == "4 数据需求 / 输入数据":
-        return "输入数据用于支撑地图展示、态势编辑和空间分析计算。当前已确认输入数据包括：" + "；".join(facts) + "。后续应继续明确数据格式、坐标系、更新方式和质量要求。"
-    if section == "4 数据需求 / 输出数据与报表":
-        return "输出数据与报表用于保存分析成果、支撑复核和汇报。当前已确认输出内容包括：" + "；".join(facts) + "。后续应继续明确文件格式、报告字段和版本追溯要求。"
-    if section == "5 非功能需求 / 性能与可靠性":
-        return "性能与可靠性应保证地图浏览、常规分析和结果输出具备可接受的用户体验。当前已确认约束包括：" + "；".join(facts) + "。后续应继续量化响应时间、并发规模和失败恢复口径。"
-    if section == "5 非功能需求 / 安全与权限":
-        return "安全与权限应支撑账号管理、角色授权、操作审计和结果追溯。当前已确认要求包括：" + "；".join(facts) + "。后续应继续细化权限矩阵、日志留存和导出控制。"
-    if section == "5 非功能需求 / 部署与运行环境":
-        return "部署与运行环境应满足当前数据安全、网络边界和运行维护要求。当前已确认约束包括：" + "；".join(facts) + "。后续应继续明确部署拓扑、硬件资源和外部依赖。"
-    if section == "5 非功能需求 / 精度与质量约束":
-        return "精度与质量约束用于说明分析结果的适用边界、数据来源和参数追溯要求。当前已确认约束包括：" + "；".join(facts) + "。后续应继续明确不同分析工具的精度口径和限制条件。"
-    if section == "6 验收准则 / 验收准则":
-        return "验收准则应围绕完整任务链、角色权限、异常提示、结果输出和追溯能力设计。当前已确认验收口径包括：" + "；".join(facts) + "。后续应继续转化为可执行测试用例和通过标准。"
+        return "本软件定位为态势展示、空间分析与阶段性成果汇报支撑工具。当前已确认的定位和边界包括：" + joined + "需求正文应据此说明系统服务对象、解决的问题、纳入范围和不纳入范围；仍未确认的具体业务领域、第一阶段边界和外部系统依赖，应作为后续澄清项保留。"
+    if section == "2 项目概述 / 使用场景":
+        return "主要使用场景应围绕用户要完成的任务链展开。当前已确认场景包括：" + joined + "正式需求中应继续说明每类场景的触发条件、参与角色、输入材料、主要操作、输出成果和使用频率，并说明哪些场景属于第一阶段必须覆盖。"
+    if section == "2 项目概述 / 范围边界":
+        return "范围边界用于说明本软件纳入和不纳入的能力。当前已确认边界包括：" + joined + "正式需求应把纳入范围、排除范围、外部依赖和责任边界分开描述；对自动决策、在线协同、实时接入、测绘级精度等高风险能力，应明确是否不做、暂不做或仅作为后续候选。"
+    if section == "3 工程需求 / 接口需求":
+        detail = (
+            "接口需求应覆盖外部系统、文件、服务、数据源、人工移交和导出成果之间的交换关系。"
+            "当前已确认接口信息包括：" + _fact_paragraph(facts, limit=18)
+            + "\n" + _numbered_requirements(facts, prefix="IR")
+            + "\n接口条款应按输入接口、输出接口、人工移交接口和失败补偿分别描述。输入接口需要说明数据来源、候选格式、坐标系、更新时间、质量校验和导入责任；输出接口需要说明输出对象、输出格式、输出时机、权限、水印或标识、版本和复核状态；人工移交接口需要说明谁提交、谁复核、如何记录以及如何补录。接口失败、数据格式错误、坐标系不一致、导入中断或导出失败时，系统应提示失败原因、影响范围和可恢复动作，并保留重新导入、重新导出、手工修正、人工复核和审计记录入口。第一阶段若不做在线接口，应明确以文件导入导出、内网目录加载、离线工程包或人工移交作为替代机制。"
+        )
+        return _ensure_minimum_detail(detail, [
+            "验收时应至少验证一种输入数据导入、一种成果导出、一种错误格式导入和一次人工复核流转，确保接口需求能够被测试和追溯。"
+        ])
+    if section == "3 工程需求 / 功能需求":
+        modules = "\n".join(f"FR-{idx:02d} {item}" for idx, item in enumerate(_split_function_modules(facts), 1))
+        detail = (
+            "功能需求应按需求功能模块而不是软件设计模块展开。当前已确认功能、角色和流程信息包括："
+            + _fact_paragraph(facts, limit=20)
+            + "\n" + modules
+            + "\n每个功能模块均应落到用户可感知的任务能力，不得把后端服务、类、数据库表或前端页面名称当作需求功能模块。正式成稿时，每个模块应至少说明使用角色、触发场景、输入对象、输入参数、前置条件、处理行为、输出结果、结果去向、权限约束、异常处理和验收要点。对于通视、可视域、坡度坡向、部署分析等分析类功能，应同时说明数据前提、参数边界、结果解释和不承诺范围；对于结果管理和成果输出，应说明复核、锁定、版本、导出和追溯要求。"
+        )
+        return _ensure_minimum_detail(detail, [
+            "功能验收不应只检查按钮或页面是否存在，而应检查用户能否按输入、处理、输出闭环完成任务，并能在异常条件下获得可理解的提示和恢复路径。"
+        ])
+    if section == "3 工程需求 / 性能需求":
+        detail = (
+            "性能需求应面向用户可感知操作和可验收任务链量化。当前已确认性能约束包括："
+            + _fact_paragraph(facts, limit=18)
+            + "\n" + _numbered_requirements(facts, prefix="PR")
+            + "\n性能条款应区分即时交互、普通分析、复杂分析和批量导出。地图缩放、平移、图层开关、对象选中、属性查询等即时操作应给出目标响应时间；距离面积量算、坐标查询、坡度坡向、高程剖面和两点通视等普通分析应给出目标耗时和适用数据规模；大范围可视域、部署影响分析、批量导入导出和报告生成等长耗时任务应说明异步执行、排队、进度提示、取消、超时、重试和结果保留策略。并发指标应同时说明并发用户数、并发复杂任务数、超出容量后的排队或拒绝策略。"
+        )
+        return _ensure_minimum_detail(detail, [
+            "暂不能量化的数据规模、网络条件和硬件配置应列为待确认指标，不能用“流畅”“较快”替代可验收性能要求。"
+        ])
+    if section == "3 工程需求 / 安装和操作要求":
+        detail = (
+            "安装和操作要求用于保证软件能够在目标环境中被部署、初始化、使用、升级和维护。当前已确认要求包括："
+            + _fact_paragraph(facts, limit=18)
+            + "\n" + _numbered_requirements(facts, prefix="OP")
+            + "\n安装要求应覆盖服务器端部署包、前端访问入口、初始化脚本、默认管理员账号、基础图层目录、算法参数默认值、日志目录、备份目录、导出目录和运行配置。操作要求应区分普通分析员、业务专家、管理员和运维人员：普通分析员应通过界面完成工程创建、数据加载、工具选择、参数调整、结果查看、保存和导出；业务专家应通过界面完成复核和批注；管理员应维护用户、角色、默认参数、模板、字典、数据目录和系统日志；运维人员应能够执行启动、停止、升级、备份、恢复、日志查看和故障定位。"
+        )
+        return _ensure_minimum_detail(detail, [
+            "升级和恢复时应明确需要保留的工程文件、用户权限、参数配置、历史结果、审计日志和模板实例；普通业务操作不应依赖直接修改配置文件。"
+        ])
+    if section == "5 数据与信息要求 / 输出数据与成果":
+        return "结果输出与共享用于支撑分析成果复核、汇报和后续追溯。当前已确认要求包括：" + joined + "正式需求应说明输出对象、导出格式、携带参数、版本信息、复核流转和访问控制，确保成果不仅能被导出，也能被解释、复核、追溯和再次使用。"
+    if section == "3 工程需求 / 业务规则与异常补偿":
+        return "系统应对用户操作、数据加载、计算执行、保存导出和权限校验中的异常提供提示与补偿。当前已确认异常处理要求包括：" + joined + "正式需求应把异常来源、触发条件、用户提示、自动恢复、人工处理和审计记录分开描述，避免只写“失败提示”而无法指导实现和验收。"
+    if section == "4 运行环境要求 / 硬件需求":
+        return "硬件需求应支撑地图数据、地形数据、影像数据、工程文件、分析结果和报告成果的存储与处理。当前已确认硬件约束包括：" + joined + "正式需求应区分服务器、客户端终端、存储、备份介质、网络带宽、显示设备和可能的专用设备，并说明普通二维分析、大范围栅格分析和可视域分析分别由客户端还是服务器承担。CPU、内存、存储和带宽尚未量化时，应作为待确认指标保留。"
+    if section == "4 运行环境要求 / 软件需求":
+        return "软件需求应说明系统运行依赖的操作系统、数据库、中间件、浏览器、地图能力和算法能力。当前已确认软件环境包括：" + joined + "正式需求应继续明确服务器操作系统、空间数据库、文件存储、现代浏览器、二维 WebGIS 引擎、坐标转换库、栅格处理库、分析算法库、第三方 GIS 服务、离线瓦片和商用库授权边界，并把版本兼容和授权限制列入部署验收依据。"
+    if section == "4 运行环境要求 / 网络与部署环境":
+        return "网络与部署环境应说明系统运行时的网络边界、访问路径和运维限制。当前已确认部署约束包括：" + joined + "正式需求应描述单机、内网、专网、离线或私有化部署形态，明确用户终端、服务器、数据源、地图服务、导出目录和备份目录之间的访问路径；若部署环境限制在线接口、实时数据或外部服务，应同步反映到接口需求和范围边界。"
+    if section == "5 数据与信息要求 / 输入数据":
+        return "输入数据用于支撑地图展示、态势编辑和空间分析计算。当前已确认输入数据包括：" + joined + "正式需求应继续说明数据来源、格式、坐标系、更新方式、质量要求、导入校验和缺失处理；对于会影响分析结果的数据，应记录来源和版本，便于结果解释和追溯。"
+    if section == "5 数据与信息要求 / 输出数据与成果":
+        return "输出数据与报表用于保存分析成果、支撑复核和汇报。当前已确认输出内容包括：" + joined + "正式需求应继续明确文件格式、字段组成、地图表达、参数记录、版本标识、导出权限和复核状态，使输出结果能够被用户理解、复验和归档。"
+    if section == "5 数据与信息要求 / 数据质量与追溯":
+        return "数据质量与追溯用于保证分析结果可解释、可复核、可定位问题。当前已确认追溯要求包括：" + joined + "正式需求应记录输入数据来源、坐标系、时间、版本、精度、质量说明、算法参数、操作者、执行时间和适用限制；当数据缺块、过期、坐标系不一致或质量不足时，应提示影响范围并要求用户确认或人工复核。"
+    if section == "6 质量、安全与约束要求 / 安全与权限":
+        return "安全与权限应支撑账号管理、角色授权、操作审计和结果追溯。当前已确认要求包括：" + joined + "正式需求应继续细化权限矩阵、菜单与数据授权、关键操作日志、日志留存、导出控制和异常访问处理，确保安全约束能够落到实现和测试。"
+    if section == "6 质量、安全与约束要求 / 可靠性与可用性":
+        return "可靠性与可用性要求应覆盖长耗时任务、用户操作、服务异常和数据保护。当前已确认要求包括：" + joined + "正式需求应说明任务进度、排队、失败提示、重试、自动保存、状态恢复、日志告警、故障定位和运维诊断；对超时、外部服务不可用、保存失败和导出失败等场景，应明确用户可执行的恢复动作。"
+    if section == "6 质量、安全与约束要求 / 精度与质量约束":
+        return "精度与质量约束用于说明分析结果的适用边界、数据来源和参数追溯要求。当前已确认约束包括：" + joined + "正式需求应区分数据质量、算法参数、分析精度、结果解释和适用限制，并要求关键结果保留输入数据、参数和版本信息，支撑复核和问题定位。"
+    if section == "7 验收准则 / 验收场景":
+        return "验收场景应覆盖从输入到输出的完整任务链。当前已确认场景包括：" + joined + "正式验收应至少选择一个典型态势工程，从数据加载、地图浏览、图层控制、对象标绘、空间分析、异常模拟、专题图导出、报告生成、权限校验、日志审计到历史追溯完整执行，并记录测试数据、环境、前置条件和通过证据。"
+    if section == "7 验收准则 / 验收准则":
+        return "验收准则应围绕完整任务链、角色权限、异常提示、结果输出和追溯能力设计。当前已确认验收口径包括：" + joined + "正式验收应把每条准则转化为可执行测试用例，明确测试前置条件、操作步骤、期望结果、通过标准和失败处理；未确认的业务口径应列入待确认事项，不能被默认通过。"
+    if section == "7 验收准则 / 待确认事项":
+        return "待确认事项用于保留当前不会阻塞草案形成、但可能影响后续设计、开发、测试或验收的问题。当前已确认缺口包括：" + joined + "正式需求应为每个待确认项说明当前影响、建议处理方式和优先级；影响软件定位、工程需求或验收准则的事项应优先回到探索阶段继续确认。"
     return "\n".join(f"- {_ensure_sentence(fact)}" for fact in facts if _ensure_sentence(fact))
 
 def _compose_draft(context, records, write_policy):
@@ -538,17 +752,17 @@ def _compose_draft(context, records, write_policy):
     all_record_texts = [item for item in all_record_texts if item]
     all_text = "；".join(all_record_texts)
     if _contains(all_text, ["导出地图", "导出结果", "导出参数", "导出说明", "业务专家复核", "成果导出复核"]):
-        result_facts = grouped.setdefault("3 功能需求 / 结果输出与共享", [])
+        result_facts = grouped.setdefault("5 数据与信息要求 / 输出数据与成果", [])
         result_content = "系统应支持导出地图、结果、参数和说明，并提交给业务专家复核。"
         if result_content not in result_facts:
             result_facts.append(result_content)
     if _contains(all_text, ["地图浏览", "流畅", "可接受时间", "响应时间"]):
-        performance_facts = grouped.setdefault("5 非功能需求 / 性能与可靠性", [])
+        performance_facts = grouped.setdefault("3 工程需求 / 性能需求", [])
         performance_content = "地图浏览应保持流畅，普通分析应在可接受时间内返回。"
         if performance_content not in performance_facts:
             performance_facts.append(performance_content)
     if _contains(all_text, ["验收时至少覆盖", "态势创建编辑", "分析工具使用", "成果导出复核", "结果追溯", "权限日志", "异常提示"]):
-        acceptance_facts = grouped.setdefault("6 验收准则 / 验收准则", [])
+        acceptance_facts = grouped.setdefault("7 验收准则 / 验收准则", [])
         acceptance_content = "验收应覆盖态势创建编辑、分析工具使用、成果导出复核、结果追溯、权限日志和异常提示。"
         if acceptance_content not in acceptance_facts:
             acceptance_facts.append(acceptance_content)
@@ -604,9 +818,10 @@ def _has_section(context, section, records=None):
     state = context.get("decision_state") if isinstance(context.get("decision_state"), dict) else {}
     for source in [state.get("confirmed_facts") or [], state.get("confirmed_decisions") or [], context.get("confirmed_facts") or []]:
         for item in source:
-            if isinstance(item, dict) and str(item.get("target_section") or "") == section:
+            item_text = _item_text(item)
+            if isinstance(item, dict) and _normalize_section(item.get("target_section"), item_text) == section:
                 return True
-            if section == _classify(_item_text(item), str(context.get("active_section") or "")):
+            if section == _classify(item_text, str(context.get("active_section") or "")):
                 return True
     working = context.get("working_document") if isinstance(context.get("working_document"), dict) else {}
     for block in working.get("blocks") or []:
@@ -638,22 +853,22 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
     def count_satisfied_core_sections():
         sections = [
             "2 项目概述 / 软件定位",
-            "3 功能需求 / 用户与角色",
-            "3 功能需求 / 核心业务流程",
-            "3 功能需求 / 核心功能项说明",
-            "3 功能需求 / 结果输出与共享",
-            "5 非功能需求 / 性能与可靠性",
+            "3 工程需求 / 功能需求",
+            "3 工程需求 / 功能需求",
+            "3 工程需求 / 功能需求",
+            "5 数据与信息要求 / 输出数据与成果",
+            "3 工程需求 / 性能需求",
         ]
         return sum(1 for section in sections if has_section(section))
     def has_conversation_base_for_exception_and_acceptance():
         return (
             has_section("2 项目概述 / 软件定位")
-            and has_section("3 功能需求 / 用户与角色")
-            and has_section("3 功能需求 / 核心业务流程")
-            and has_section("4 数据需求 / 输入数据")
+            and has_section("3 工程需求 / 功能需求")
+            and has_section("3 工程需求 / 功能需求")
+            and has_section("5 数据与信息要求 / 输入数据")
             and (
-                has_section("4 数据需求 / 输出数据与报表")
-                or has_section("3 功能需求 / 结果输出与共享")
+                has_section("5 数据与信息要求 / 输出数据与成果")
+                or has_section("5 数据与信息要求 / 输出数据与成果")
                 or has_keyword(["导出", "报告", "输出"])
             )
         )
@@ -710,10 +925,10 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
         len(records) >= 9
         and count_satisfied_core_sections() >= 4
         and has_section("2 项目概述 / 软件定位")
-        and has_section("3 功能需求 / 核心功能项说明")
+        and has_section("3 工程需求 / 功能需求")
         and (has_keyword(["导出", "报告"]) or has_keyword(["验收"]))
-        and has_section("3 功能需求 / 异常与补偿")
-        and has_section("6 验收准则 / 验收准则")
+        and has_section("3 工程需求 / 业务规则与异常补偿")
+        and has_section("7 验收准则 / 验收准则")
     )
     if can_review_or_draft:
         return review_or_draft_plan("已覆盖用户、流程、边界、协同、非功能或导出信息，避免在长轮次中继续细节追问。")
@@ -729,7 +944,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             "plan_reason": "软件定位和第一阶段边界尚未形成正文，不能直接进入回看或草案。",
         })
     base_ready_for_tail = has_conversation_base_for_exception_and_acceptance()
-    add_candidate("exception", base_ready_for_tail and not has_section("3 功能需求 / 异常与补偿"), {
+    add_candidate("exception", base_ready_for_tail and not has_section("3 工程需求 / 业务规则与异常补偿"), {
             "assistant_message": "已吸收本轮信息，下一步确认异常与补偿机制。",
             "next_question": "数据缺失、坐标系不一致、计算失败、保存失败、权限不足或导出失败时如何处理？",
             "quick_options": [
@@ -740,7 +955,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "定位、角色、流程和数据链路已具备，下一步应优先补齐异常与补偿，而不是继续追问低优先级章节缺口。",
         })
-    add_candidate("acceptance", base_ready_for_tail and has_section("3 功能需求 / 异常与补偿") and not has_section("6 验收准则 / 验收准则"), {
+    add_candidate("acceptance", base_ready_for_tail and has_section("3 工程需求 / 业务规则与异常补偿") and not has_section("7 验收准则 / 验收准则"), {
             "assistant_message": "已吸收本轮信息，下一步把能力和异常处理转换为可执行验收链路。",
             "next_question": "验收任务链和通过标准是什么？",
             "quick_options": [
@@ -751,7 +966,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "异常与补偿已形成正文，收束前应优先明确验收任务链和通过标准。",
         })
-    add_candidate("function", not has_section("3 功能需求 / 核心功能项说明"), {
+    add_candidate("function", not has_section("3 工程需求 / 功能需求"), {
             "assistant_message": "已吸收本轮信息，下一步补齐核心功能清单和能力边界。",
             "next_question": "核心功能清单和各功能的能力边界是什么？",
             "quick_options": [
@@ -762,7 +977,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "核心功能项说明尚未形成正文，不能仅凭流程、异常或验收信息进入回看或草案。",
         })
-    add_candidate("roles", not has_section("3 功能需求 / 用户与角色"), {
+    add_candidate("roles", not has_section("3 工程需求 / 功能需求"), {
             "assistant_message": "已吸收本轮信息，下一步优先补齐用户角色和消费方。",
             "next_question": "主要用户、下游使用者和主场景分别是什么？",
             "quick_options": [
@@ -773,7 +988,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "用户角色仍是需求规格的基础缺口。",
         })
-    add_candidate("core", not has_section("3 功能需求 / 核心业务流程") or not has_keyword(["数据接入", "导入", "流程", "实时接入"]), {
+    add_candidate("core", not has_section("3 工程需求 / 功能需求") or not has_keyword(["数据接入", "导入", "流程", "实时接入"]), {
             "assistant_message": "已吸收本轮信息，下一步补齐核心流程和数据接入模式。",
             "next_question": "核心流程和数据接入模式是什么？",
             "quick_options": [
@@ -795,7 +1010,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "边界范围尚未闭合，需先避免需求外延失控。",
         })
-    add_candidate("collab", not has_section("3 功能需求 / 结果输出与共享") and not has_keyword(["协同", "共享", "任务接力", "批注"]), {
+    add_candidate("collab", not has_section("5 数据与信息要求 / 输出数据与成果") and not has_keyword(["协同", "共享", "任务接力", "批注"]), {
             "assistant_message": "已吸收本轮信息，下一步确认协同与结果共享模式。",
             "next_question": "协同模式、结果共享、任务接力和批注要求是什么？",
             "quick_options": [
@@ -817,7 +1032,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "结果消费和导出形式仍需明确。",
         })
-    add_candidate("quality", not has_section("5 非功能需求 / 性能与可靠性") or not has_keyword(["秒", "并发", "精度", "安全", "审计"]), {
+    add_candidate("quality", not has_section("3 工程需求 / 性能需求") or not has_keyword(["秒", "并发", "精度", "安全", "审计"]), {
             "assistant_message": "已吸收本轮信息，下一步补齐性能、精度、安全或部署约束。",
             "next_question": "性能、刷新、精度、安全和部署约束分别是什么？",
             "quick_options": [
@@ -828,7 +1043,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "非功能质量约束仍未充分闭合。",
         })
-    add_candidate("exception", not base_ready_for_tail and not has_section("3 功能需求 / 异常与补偿"), {
+    add_candidate("exception", not base_ready_for_tail and not has_section("3 工程需求 / 业务规则与异常补偿"), {
             "assistant_message": "已吸收本轮信息，下一步确认异常与补偿机制。",
             "next_question": "数据缺失、坐标系不一致、计算失败或实时数据中断时如何处理？",
             "quick_options": [
@@ -839,7 +1054,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "异常与补偿机制尚未形成正文。",
         })
-    add_candidate("acceptance", not base_ready_for_tail and not has_section("6 验收准则 / 验收准则"), {
+    add_candidate("acceptance", not base_ready_for_tail and not has_section("7 验收准则 / 验收准则"), {
             "assistant_message": "已吸收本轮信息，下一步把能力转换为可执行验收链路。",
             "next_question": "验收任务链和通过标准是什么？",
             "quick_options": [
@@ -850,7 +1065,7 @@ def _next_gap_plan(context, changed_sections, draft_requested, records=None):
             ],
             "plan_reason": "验收准则仍需闭合为可验证任务链。",
         })
-    add_candidate("ui", not has_section("3 功能需求 / 功能分解总览"), {
+    add_candidate("ui", not has_section("3 工程需求 / 功能需求"), {
             "assistant_message": "已吸收本轮信息，下一步确认主要界面和交互入口。",
             "next_question": "主要界面包括哪些页面或工作区？",
             "quick_options": [

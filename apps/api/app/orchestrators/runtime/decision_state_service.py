@@ -8,6 +8,7 @@ DECISION_STATE_SECTIONS = (
     ("confirmed_decisions", "二、已确认决策"),
     ("tentative_assumptions", "三、暂定假设"),
     ("open_questions", "四、未闭合问题"),
+    ("resolved_questions", "四附、已关闭或已后置问题"),
     ("rejected_directions", "五、被否定方向"),
     ("next_focus", "六、下一步交互焦点"),
     ("chapter_projections", "七、章节投影"),
@@ -101,6 +102,7 @@ class DecisionStateService:
                     for key in after_counts
                 },
                 "question_lifecycle_counts": lifecycle_counts,
+                "active_open_question_count": self._active_open_question_count(state),
                 "next_focus": state.get("next_focus") or "",
             },
         )
@@ -115,6 +117,7 @@ class DecisionStateService:
                 "turn_id": "",
                 "added_counts": {key: 0 for key in self._counts(state)},
                 "question_lifecycle_counts": counts,
+                "active_open_question_count": self._active_open_question_count(state),
                 "next_focus": state.get("next_focus") or "",
             },
         )
@@ -126,6 +129,18 @@ class DecisionStateService:
             if section_id == "next_focus":
                 focus = str(state.get("next_focus") or "").strip()
                 items = [self._state_item(item_id="DS-FOCUS", content=focus, status="active")] if focus else []
+            elif section_id == "open_questions":
+                items = [
+                    item
+                    for item in list(state.get("open_questions", []))
+                    if str(item.get("status") or "open").strip() == "open"
+                ]
+            elif section_id == "resolved_questions":
+                items = [
+                    item
+                    for item in list(state.get("open_questions", []))
+                    if str(item.get("status") or "open").strip() != "open"
+                ]
             else:
                 items = list(state.get(section_id, []))
             sections.append({"section_id": section_id, "heading": heading, "items": items})
@@ -467,3 +482,13 @@ class DecisionStateService:
                 "chapter_projections",
             ]
         }
+
+    @staticmethod
+    def _active_open_question_count(state: dict) -> int:
+        return len(
+            [
+                item
+                for item in list(state.get("open_questions") or [])
+                if str(item.get("status") or "open").strip() == "open"
+            ]
+        )

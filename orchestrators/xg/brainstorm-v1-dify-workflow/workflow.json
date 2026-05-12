@@ -6,7 +6,7 @@
   "published_workflow_id": "9f82e359-07e2-4bbd-ae88-8ca0bb7272ef",
   "last_refactor_date": "2026-05-08",
   "last_20turn_remediation_date": "2026-05-10",
-  "last_template_anchor_alignment_date": "2026-05-10",
+  "last_template_anchor_alignment_date": "2026-05-11",
   "last_publish": {
     "published_workflow_id": "9f82e359-07e2-4bbd-ae88-8ca0bb7272ef",
     "hash": "80e3500495482f7502d25bac51a2b13e0effbfbb019c282092d096d658e8c4ab",
@@ -75,69 +75,84 @@
       "anchor_path": "REQ-2.1"
     },
     {
-      "fact_type": "用户角色、下游使用者、职责",
-      "target_section": "3 功能需求 / 用户与角色",
+      "fact_type": "接口对象、文件导入导出、外部系统、内网数据加载、人工移交",
+      "target_section": "3 工程需求 / 接口需求",
       "anchor_path": "REQ-3.1"
     },
     {
-      "fact_type": "核心流程、工具使用主线",
-      "target_section": "3 功能需求 / 核心业务流程",
+      "fact_type": "用户角色、核心流程、功能模块、分析工具、界面入口、功能行为",
+      "target_section": "3 工程需求 / 功能需求",
       "anchor_path": "REQ-3.2"
     },
     {
-      "fact_type": "功能域、主要界面、页面列表、交互入口",
-      "target_section": "3 功能需求 / 功能分解总览",
+      "fact_type": "响应时间、并发、刷新、长耗时任务、排队、恢复",
+      "target_section": "3 工程需求 / 性能需求",
       "anchor_path": "REQ-3.3"
     },
     {
-      "fact_type": "核心功能项、分析工具、功能行为",
-      "target_section": "3 功能需求 / 核心功能项说明",
+      "fact_type": "安装、初始化、默认配置、升级、备份、运维操作",
+      "target_section": "3 工程需求 / 安装和操作要求",
       "anchor_path": "REQ-3.4"
     },
     {
-      "fact_type": "协同模式、任务接力、批注、结果共享",
-      "target_section": "3 功能需求 / 结果输出与共享",
-      "anchor_path": "REQ-3.6"
+      "fact_type": "异常、失败、补偿、业务规则、人工复核",
+      "target_section": "3 工程需求 / 业务规则与异常补偿",
+      "anchor_path": "REQ-3.5"
     },
     {
-      "fact_type": "异常、失败、补偿",
-      "target_section": "3 功能需求 / 异常与补偿",
-      "anchor_path": "REQ-3.7"
-    },
-    {
-      "fact_type": "输入数据、数据接入、底图、DEM、矢量、栅格",
-      "target_section": "4 数据需求 / 输入数据",
+      "fact_type": "服务器、客户端、存储、网络设备、显卡、显示设备",
+      "target_section": "4 运行环境要求 / 硬件需求",
       "anchor_path": "REQ-4.1"
     },
     {
-      "fact_type": "输出数据、报表、导出文件",
-      "target_section": "4 数据需求 / 输出数据与报表",
+      "fact_type": "操作系统、数据库、浏览器、GIS 引擎、算法库、第三方授权",
+      "target_section": "4 运行环境要求 / 软件需求",
       "anchor_path": "REQ-4.2"
     },
     {
-      "fact_type": "性能、刷新、并发、可靠性",
-      "target_section": "5 非功能需求 / 性能与可靠性",
+      "fact_type": "内网、专网、离线、私有化部署、访问路径、安全隔离",
+      "target_section": "4 运行环境要求 / 网络与部署环境",
+      "anchor_path": "REQ-4.3"
+    },
+    {
+      "fact_type": "输入数据、数据接入、底图、DEM、矢量、栅格",
+      "target_section": "5 数据与信息要求 / 输入数据",
       "anchor_path": "REQ-5.1"
     },
     {
-      "fact_type": "安全、权限、认证、审计",
-      "target_section": "5 非功能需求 / 安全与权限",
+      "fact_type": "输出数据、报表、导出文件、成果复核、结果共享",
+      "target_section": "5 数据与信息要求 / 输出数据与成果",
       "anchor_path": "REQ-5.2"
     },
     {
-      "fact_type": "部署环境、内网、专网、离线运行",
-      "target_section": "5 非功能需求 / 部署与运行环境",
+      "fact_type": "数据来源、坐标系、版本、质量、追溯、参数记录",
+      "target_section": "5 数据与信息要求 / 数据质量与追溯",
       "anchor_path": "REQ-5.3"
     },
     {
+      "fact_type": "安全、权限、认证、审计、导出控制",
+      "target_section": "6 质量、安全与约束要求 / 安全与权限",
+      "anchor_path": "REQ-6.1"
+    },
+    {
+      "fact_type": "可靠性、可用性、失败恢复、日志告警、运维诊断",
+      "target_section": "6 质量、安全与约束要求 / 可靠性与可用性",
+      "anchor_path": "REQ-6.2"
+    },
+    {
       "fact_type": "精度口径、质量约束、适用限制",
-      "target_section": "5 非功能需求 / 精度与质量约束",
-      "anchor_path": "REQ-5.4"
+      "target_section": "6 质量、安全与约束要求 / 精度与质量约束",
+      "anchor_path": "REQ-6.3"
+    },
+    {
+      "fact_type": "验收任务链、验收场景",
+      "target_section": "7 验收准则 / 验收场景",
+      "anchor_path": "REQ-7.1"
     },
     {
       "fact_type": "验收链路、验收标准",
-      "target_section": "6 验收准则 / 验收准则",
-      "anchor_path": "REQ-6.2"
+      "target_section": "7 验收准则 / 验收准则",
+      "anchor_path": "REQ-7.2"
     }
   ],
   "latest_20turn_validation": {

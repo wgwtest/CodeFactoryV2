@@ -2,7 +2,7 @@
   "clauses": {
     "REQ-1.1": {
       "fact_template": "编写目的初步确认：{semantic}",
-      "patch_template": "本文档用于定义{semantic}相关的软件需求边界、功能行为和验收准则。",
+      "patch_template": "本文档用于定义{semantic}相关的软件需求边界、工程需求、运行环境要求和验收准则。",
       "quick_options": [
         { "key": "A", "label": "先定义软件名称和目标", "recommended": true },
         { "key": "B", "label": "先说明业务背景", "recommended": false },
@@ -64,156 +64,156 @@
       ]
     },
     "REQ-3.1": {
-      "fact_template": "用户与角色初步确认：{semantic}",
-      "patch_template": "本软件的主要使用对象和职责包括：{semantic}",
+      "fact_template": "接口需求初步确认：{semantic}",
+      "patch_template": "接口需求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "领域专家直接使用", "recommended": true },
-        { "key": "B", "label": "管理员配置后专家使用", "recommended": false },
-        { "key": "C", "label": "多角色协同使用", "recommended": false }
+        { "key": "A", "label": "先确认文件导入导出接口", "recommended": true },
+        { "key": "B", "label": "先确认外部系统接口", "recommended": false },
+        { "key": "C", "label": "先确认接口失败处理", "recommended": false }
       ]
     },
     "REQ-3.2": {
-      "fact_template": "核心业务流程初步确认：{semantic}",
-      "patch_template": "核心业务流程为：{semantic}",
+      "fact_template": "功能需求初步确认：{semantic}",
+      "patch_template": "功能需求模块包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "导入数据后计算分析", "recommended": true },
-        { "key": "B", "label": "配置任务后批量处理", "recommended": false },
-        { "key": "C", "label": "人工确认后生成报告", "recommended": false }
+        { "key": "A", "label": "先按需求功能模块拆分", "recommended": true },
+        { "key": "B", "label": "先细化输入处理输出", "recommended": false },
+        { "key": "C", "label": "先区分阶段范围", "recommended": false }
       ]
     },
     "REQ-3.3": {
-      "fact_template": "态势展示与浏览初步确认：{semantic}",
-      "patch_template": "态势展示与浏览能力为：{semantic}",
+      "fact_template": "性能需求初步确认：{semantic}",
+      "patch_template": "性能需求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先展示态势总览", "recommended": true },
-        { "key": "B", "label": "先展示地图对象", "recommended": false },
-        { "key": "C", "label": "先展示分析结果", "recommended": false }
+        { "key": "A", "label": "先确认响应时间", "recommended": true },
+        { "key": "B", "label": "先确认并发规模", "recommended": false },
+        { "key": "C", "label": "先确认复杂分析耗时", "recommended": false }
       ]
     },
     "REQ-3.4": {
-      "fact_template": "空间分析工具初步确认：{semantic}",
-      "patch_template": "空间分析工具要求为：{semantic}",
+      "fact_template": "安装和操作要求初步确认：{semantic}",
+      "patch_template": "安装和操作要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先做量算工具", "recommended": true },
-        { "key": "B", "label": "先做坡度分析", "recommended": false },
-        { "key": "C", "label": "先做地理查询", "recommended": false }
+        { "key": "A", "label": "先确认安装初始化", "recommended": true },
+        { "key": "B", "label": "先确认默认配置", "recommended": false },
+        { "key": "C", "label": "先确认运维操作", "recommended": false }
       ]
     },
     "REQ-3.5": {
-      "fact_template": "部署分析能力初步确认：{semantic}",
-      "patch_template": "部署分析能力要求为：{semantic}",
+      "fact_template": "业务规则与异常补偿初步确认：{semantic}",
+      "patch_template": "业务规则与异常补偿要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先分析部署位置", "recommended": true },
-        { "key": "B", "label": "先分析覆盖范围", "recommended": false },
-        { "key": "C", "label": "先分析冲突影响", "recommended": false }
-      ]
-    },
-    "REQ-3.6": {
-      "fact_template": "结果输出与共享初步确认：{semantic}",
-      "patch_template": "结果输出与共享要求为：{semantic}",
-      "quick_options": [
-        { "key": "A", "label": "先输出分析报告", "recommended": true },
-        { "key": "B", "label": "先输出数据文件", "recommended": false },
-        { "key": "C", "label": "先考虑共享流程", "recommended": false }
-      ]
-    },
-    "REQ-3.7": {
-      "fact_template": "异常与补偿初步确认：{semantic}",
-      "patch_template": "异常与补偿要求为：{semantic}",
-      "quick_options": [
-        { "key": "A", "label": "缺数据时阻断并提示", "recommended": true },
-        { "key": "B", "label": "异常时进入人工复核", "recommended": false },
-        { "key": "C", "label": "允许保存为待处理", "recommended": false }
+        { "key": "A", "label": "先确认异常类型", "recommended": true },
+        { "key": "B", "label": "先确认人工复核", "recommended": false },
+        { "key": "C", "label": "先确认禁止自动处理", "recommended": false }
       ]
     },
     "REQ-4.1": {
-      "fact_template": "输入数据初步确认：{semantic}",
-      "patch_template": "输入数据要求为：{semantic}",
+      "fact_template": "硬件需求初步确认：{semantic}",
+      "patch_template": "硬件需求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先确认数据来源", "recommended": true },
-        { "key": "B", "label": "先确认导入方式", "recommended": false },
-        { "key": "C", "label": "先确认数据质量", "recommended": false }
+        { "key": "A", "label": "先确认服务器终端", "recommended": true },
+        { "key": "B", "label": "先确认存储备份", "recommended": false },
+        { "key": "C", "label": "先确认专用设备", "recommended": false }
       ]
     },
     "REQ-4.2": {
-      "fact_template": "输出数据与报表初步确认：{semantic}",
-      "patch_template": "输出数据与报表要求为：{semantic}",
+      "fact_template": "软件需求初步确认：{semantic}",
+      "patch_template": "软件需求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先确认输出格式", "recommended": true },
-        { "key": "B", "label": "先确认报表内容", "recommended": false },
-        { "key": "C", "label": "先确认导出权限", "recommended": false }
+        { "key": "A", "label": "先确认操作系统", "recommended": true },
+        { "key": "B", "label": "先确认数据库中间件", "recommended": false },
+        { "key": "C", "label": "先确认 GIS 和算法依赖", "recommended": false }
       ]
     },
     "REQ-4.3": {
-      "fact_template": "外部接口初步确认：{semantic}",
-      "patch_template": "外部接口要求为：{semantic}",
+      "fact_template": "网络与部署环境初步确认：{semantic}",
+      "patch_template": "网络与部署环境要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先确认输入接口", "recommended": true },
-        { "key": "B", "label": "先确认输出接口", "recommended": false },
-        { "key": "C", "label": "先确认暂无接口", "recommended": false }
+        { "key": "A", "label": "先确认内网专网部署", "recommended": true },
+        { "key": "B", "label": "先确认网络访问路径", "recommended": false },
+        { "key": "C", "label": "先确认安全隔离", "recommended": false }
       ]
     },
     "REQ-5.1": {
-      "fact_template": "性能与可靠性初步确认：{semantic}",
-      "patch_template": "性能与可靠性要求为：{semantic}",
+      "fact_template": "输入数据初步确认：{semantic}",
+      "patch_template": "输入数据要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "优先保证可靠性", "recommended": true },
-        { "key": "B", "label": "优先保证响应速度", "recommended": false },
-        { "key": "C", "label": "先按单机部署约束", "recommended": false }
+        { "key": "A", "label": "先确认数据来源", "recommended": true },
+        { "key": "B", "label": "先确认格式坐标系", "recommended": false },
+        { "key": "C", "label": "先确认数据质量", "recommended": false }
       ]
     },
     "REQ-5.2": {
-      "fact_template": "安全与权限初步确认：{semantic}",
-      "patch_template": "安全与权限要求为：{semantic}",
+      "fact_template": "输出数据与成果初步确认：{semantic}",
+      "patch_template": "输出数据与成果要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先确认角色权限", "recommended": true },
-        { "key": "B", "label": "先确认数据安全", "recommended": false },
-        { "key": "C", "label": "先确认审计留痕", "recommended": false }
+        { "key": "A", "label": "先确认专题图和报告", "recommended": true },
+        { "key": "B", "label": "先确认导出格式", "recommended": false },
+        { "key": "C", "label": "先确认归档留痕", "recommended": false }
       ]
     },
     "REQ-5.3": {
-      "fact_template": "部署与运行环境初步确认：{semantic}",
-      "patch_template": "部署与运行环境要求为：{semantic}",
+      "fact_template": "数据质量与追溯初步确认：{semantic}",
+      "patch_template": "数据质量与追溯要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先确认部署形态", "recommended": true },
-        { "key": "B", "label": "先确认运行环境", "recommended": false },
-        { "key": "C", "label": "先确认网络约束", "recommended": false }
-      ]
-    },
-    "REQ-5.4": {
-      "fact_template": "精度与质量约束初步确认：{semantic}",
-      "patch_template": "精度与质量约束为：{semantic}",
-      "quick_options": [
-        { "key": "A", "label": "先确认分析精度", "recommended": true },
-        { "key": "B", "label": "先确认数据质量", "recommended": false },
-        { "key": "C", "label": "先确认结果校核", "recommended": false }
+        { "key": "A", "label": "先确认来源和参数", "recommended": true },
+        { "key": "B", "label": "先确认版本和审计", "recommended": false },
+        { "key": "C", "label": "先确认复核机制", "recommended": false }
       ]
     },
     "REQ-6.1": {
-      "fact_template": "验收场景初步确认：{semantic}",
-      "patch_template": "验收场景为：{semantic}",
+      "fact_template": "安全与权限初步确认：{semantic}",
+      "patch_template": "安全与权限要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "按典型任务验收", "recommended": true },
-        { "key": "B", "label": "按演示样例验收", "recommended": false },
-        { "key": "C", "label": "按专家评审验收", "recommended": false }
+        { "key": "A", "label": "先确认角色权限", "recommended": true },
+        { "key": "B", "label": "先确认审计留痕", "recommended": false },
+        { "key": "C", "label": "先确认成果导出控制", "recommended": false }
       ]
     },
     "REQ-6.2": {
-      "fact_template": "验收准则初步确认：{semantic}",
-      "patch_template": "验收准则为：{semantic}",
+      "fact_template": "可靠性与可用性初步确认：{semantic}",
+      "patch_template": "可靠性与可用性要求包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "按功能闭环验收", "recommended": true },
-        { "key": "B", "label": "按数据结果验收", "recommended": false },
-        { "key": "C", "label": "按非功能约束验收", "recommended": false }
+        { "key": "A", "label": "先确认失败恢复", "recommended": true },
+        { "key": "B", "label": "先确认日志告警", "recommended": false },
+        { "key": "C", "label": "先确认状态保存", "recommended": false }
       ]
     },
     "REQ-6.3": {
+      "fact_template": "精度与质量约束初步确认：{semantic}",
+      "patch_template": "精度与质量约束包括：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "先确认辅助研判边界", "recommended": true },
+        { "key": "B", "label": "先确认结果复核", "recommended": false },
+        { "key": "C", "label": "先确认免责声明", "recommended": false }
+      ]
+    },
+    "REQ-7.1": {
+      "fact_template": "验收场景初步确认：{semantic}",
+      "patch_template": "验收场景包括：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "按典型任务链验收", "recommended": true },
+        { "key": "B", "label": "按异常场景验收", "recommended": false },
+        { "key": "C", "label": "按环境和接口验收", "recommended": false }
+      ]
+    },
+    "REQ-7.2": {
+      "fact_template": "验收准则初步确认：{semantic}",
+      "patch_template": "验收准则包括：{semantic}",
+      "quick_options": [
+        { "key": "A", "label": "按功能和接口验收", "recommended": true },
+        { "key": "B", "label": "按性能和环境验收", "recommended": false },
+        { "key": "C", "label": "按安全和输出物验收", "recommended": false }
+      ]
+    },
+    "REQ-7.3": {
       "fact_template": "待确认事项初步确认：{semantic}",
       "patch_template": "待确认事项包括：{semantic}",
       "quick_options": [
-        { "key": "A", "label": "先列业务待确认", "recommended": true },
-        { "key": "B", "label": "先列技术待确认", "recommended": false },
-        { "key": "C", "label": "先列验收待确认", "recommended": false }
+        { "key": "A", "label": "先列工程需求缺口", "recommended": true },
+        { "key": "B", "label": "先列环境和数据缺口", "recommended": false },
+        { "key": "C", "label": "先列验收缺口", "recommended": false }
       ]
     }
   },

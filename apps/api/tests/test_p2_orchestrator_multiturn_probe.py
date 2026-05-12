@@ -156,6 +156,33 @@ def test_brainstorm_decision_state_prompt_forbids_readding_historical_or_example
     assert "不要生成“如军事、应急、城市规划等”" in prompt
 
 
+def test_brainstorm_decision_state_prompt_requires_closing_or_deferring_answered_historical_questions() -> None:
+    prompt = Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.system.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "只输出本轮增量" in prompt
+    assert "必须维护未闭合问题生命周期" in prompt
+    assert "本轮用户已经回答了某个历史问题" in prompt
+    assert "输出 `closed_question_refs`" in prompt
+    assert "本轮明确暂不回答或应留到草案缺口" in prompt
+    assert "输出 `deferred_question_refs`" in prompt
+    assert "不得把用户已回答的问题再次作为 open_questions 输出" in prompt
+    assert "不得为了追求问题完整性而累计同主题多个未闭合问题" in prompt
+
+
+def test_brainstorm_next_interaction_prompt_requires_single_focused_question() -> None:
+    prompt = Path("orchestrators/xg/brainstorm-v1/prompts/next_interaction_planning.system.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "下一轮主问题必须一问一事" in prompt
+    assert "不得在一个 next_question 中同时追问" in prompt
+    assert "最多只允许包含一个主问题" in prompt
+    assert "如果存在多个缺口" in prompt
+    assert "只选择当前最影响决策链推进的一个缺口" in prompt
+
+
 def test_brainstorm_next_interaction_prompt_keeps_terms_after_core_decisions() -> None:
     prompt = Path("orchestrators/xg/brainstorm-v1/prompts/next_interaction_planning.system.md").read_text(
         encoding="utf-8"
@@ -243,17 +270,52 @@ def test_brainstorm_draft_prompt_preserves_user_proposed_capabilities() -> None:
     assert "部署分析" in prompt
 
 
-def test_brainstorm_convergence_prompt_limits_provider_json_size() -> None:
+def test_brainstorm_convergence_prompt_uses_quality_gate_instead_of_short_summary() -> None:
     prompt = (
         Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.system.md").read_text(encoding="utf-8")
         + "\n"
         + Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.user.md").read_text(encoding="utf-8")
     )
 
-    assert "收束成稿模式下必须控制 provider JSON 尺寸" in prompt
-    assert "document_patch 最多输出 6 条" in prompt
-    assert "每条 content 控制在 500 字以内" in prompt
-    assert "不要在一个 JSON 字符串里输出整份长文档" in prompt
+    assert "仍应控制 provider JSON 尺寸" in prompt
+    assert "不得把成稿压缩成短摘要" in prompt
+    assert "接近一万字" in prompt
+    assert "工程需求章节应成为主要篇幅来源" in prompt
+    assert "document_patch 最多输出 6 条" not in prompt
+    assert "每条 content 控制在 500 字以内" not in prompt
+
+
+def test_brainstorm_convergence_prompt_uses_json_safe_incremental_draft_patches() -> None:
+    prompt = (
+        Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.system.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.user.md").read_text(encoding="utf-8")
+    )
+
+    assert "单条 document_patch.content 控制在 600 到 800 字" in prompt
+    assert "document_patch 输出 4 到 6 条" in prompt
+    assert "篇幅目标主要通过多轮过程累计正文达成" in prompt
+    assert "不得为了追求一万字在同一次 provider JSON 中输出超长正文" in prompt
+    assert "如果本轮无法一次达到篇幅目标" in prompt
+    assert "本轮先完成结构完整、工程需求补厚和待确认事项归档" in prompt
+    assert "不要输出会导致 JSON 截断的超长字符串" in prompt
+
+
+def test_brainstorm_convergence_prompt_requires_draft_body_in_document_patch_not_user_message() -> None:
+    prompt = (
+        Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.system.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path("orchestrators/xg/brainstorm-v1/prompts/decision_state_delta.user.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path("orchestrators/xg/brainstorm-v1/prompts/next_interaction_planning.system.md").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "草案正文必须进入 document_patch.content" in prompt
+    assert "不得把完整草案正文放入 user_message、next_question 或 assistant_message" in prompt
+    assert "user_message 只输出交付摘要" in prompt
+    assert "工程需求重点条款应优先加厚" in prompt
 
 
 def test_dynamic_examiner_does_not_repeat_review_request_after_review_domain_used() -> None:

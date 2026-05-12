@@ -15,6 +15,8 @@
 - `closed_question_refs`、`deferred_question_refs`、`superseded_question_refs` 必须引用当前 `decision_state.open_questions` 中已有问题的 `item_id`；只有确实没有 `item_id` 时才使用完全相同的 `content`。不要用相似问题、章节名或业务猜测做引用。
 - `open_questions` 只放本轮新增问题，不要重复输出历史未闭合问题。
 - 不得把历史 open_questions 原样重新输出到 open_questions；历史问题只能通过 `closed_question_refs`、`deferred_question_refs` 或 `superseded_question_refs` 更新生命周期。
+- 不得把用户已回答的问题再次作为 open_questions 输出；如果用户回答覆盖了历史问题的全部或主要部分，应关闭该问题，如果只覆盖一部分，应关闭原问题并新增一个更窄、更具体的问题。
+- 不得为了追求问题完整性而累计同主题多个未闭合问题；同一主题的新缺口必须合并、收窄或替代旧问题，而不是并列堆积。
 - 不得新增模板示例或常见领域示例型问题。具体应用领域待确认时，只能保留“具体应用领域待确认/业务领域待确认”这类中性缺口，不要生成“如军事、应急、城市规划等”候选示例。
 - 当用户只是提出可能性或不确定描述时，放入 `tentative_assumptions` 或 `open_questions`，不要伪装成已确认事实。
 - 当用户否定、收窄或推翻已有方向时，放入 `rejected_directions`，并在 `confirmed_decisions` 或 `tentative_assumptions` 中表达新的边界。
@@ -29,7 +31,14 @@
 - 本阶段不关闭规格节点，不决定会话是否进入落稿。
 - 当 `intent_understanding_result.input_type=convergence_command` 或 `intent_understanding_result.document_strategy=consolidate_and_output` 时，本阶段进入收束成稿模式。
 - 收束成稿模式下，`decision_state_delta` 可以为空增量，但 `document_patch` 必须基于完整 `decision_state`、已有 `working_document` 和模板结构生成覆盖主要条款的草案候选；未闭合问题写入待确认事项，不再作为本轮追问。
-- 收束成稿模式下必须控制 provider JSON 尺寸：document_patch 最多输出 6 条，每条 content 控制在 500 字以内；优先输出章节摘要、关键事实和待确认事项，不要在一个 JSON 字符串里输出整份长文档。
+- 收束成稿模式下仍应控制 provider JSON 尺寸，但不得用过度压缩替代成稿质量；应按模板条款拆分为多条 document_patch，避免单条 content 承载整份长文档。
+- 收束成稿模式下，草案正文必须进入 document_patch.content；不得把完整草案正文放入 user_message、next_question 或 assistant_message。
+- 收束成稿模式下，每条 document_patch.content 应达到对应模板条款的可审阅深度；重点工程需求条款应优先加厚，不要只输出一句摘要。
+- 如果用户或模板给出篇幅目标，应把篇幅目标作为交付质量约束。对于“接近一万字”这类目标，工程需求应成为主要篇幅来源，接口需求、功能需求、性能需求、安装和操作要求应分别形成可独立审查的段落或条目。
+- 工程需求条款的成稿应围绕“对象、条件、输入、处理行为、输出、约束、异常、验收口径”展开；不得只把已确认事实压缩成短清单。
+- 收束成稿不允许用单个超长 JSON 字符串承载全文。单条 document_patch.content 控制在 600 到 800 字，document_patch 输出 4 到 6 条，并按模板条款或相邻条款分摊。
+- 篇幅目标主要通过多轮过程累计正文达成，收束阶段只做有限补齐和归档。不得为了追求一万字在同一次 provider JSON 中输出超长正文；如果本轮无法一次达到篇幅目标，本轮先完成结构完整、工程需求补厚和待确认事项归档，把未达到的篇幅目标写入待确认事项或后续成稿建议。
+- 不要输出会导致 JSON 截断的超长字符串；如果某条内容过长，应缩短为条款级可审阅正文，优先保留工程需求重点条款。
 - 收束成稿模式下，历史未闭合问题不要重新加入 `open_questions`；如需要保留，应输出 `deferred_question_refs` 并在待确认事项 patch 中呈现。
 - 收束成稿模式下，优先使用 `replace` 或经过去重的 `append_or_update`，避免把已有正文和成稿正文重复堆叠。
 - 收束成稿模式下，正文内容必须服务于“交付可审阅草案”，不能只写“已停止追问”这类状态说明。

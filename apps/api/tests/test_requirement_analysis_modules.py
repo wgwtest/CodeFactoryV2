@@ -240,6 +240,47 @@ def test_deepseek_document_patch_normalization_preserves_structured_anchor_field
     ]
 
 
+def test_deepseek_document_patch_normalization_defers_structured_plan_ref_mismatch_to_anchor_materializer() -> None:
+    class DummySession:
+        write_policy = "patch_suggestion_only"
+
+    normalized = DeepSeekRequirementAnalysisClient._normalize_document_patch(
+        [
+            {
+                "plan_ref": "AP-REQ-7.2-002",
+                "operation": "replace",
+                "content": "验收准则应覆盖安装初始化、工程创建、空间分析、异常、成果输出和安全审计六条任务链。",
+                "target_section": "7.2 验收准则",
+                "display_heading": "7.2 验收准则",
+                "template_clause_id": "REQ-7.2",
+                "anchor_path": "REQ-7.2",
+            }
+        ],
+        session=DummySession(),
+        target_anchor_plan=[
+            {
+                "plan_id": "AP-REQ-3.5-002",
+                "template_clause_id": "REQ-3.5",
+                "display_heading": "3.5 业务规则与异常补偿",
+                "anchor_path": "REQ-3.5",
+            }
+        ],
+    )
+
+    assert normalized == [
+        {
+            "plan_ref": "AP-REQ-7.2-002",
+            "operation": "replace",
+            "content": "验收准则应覆盖安装初始化、工程创建、空间分析、异常、成果输出和安全审计六条任务链。",
+            "write_policy": "patch_suggestion_only",
+            "target_section": "7.2 验收准则",
+            "display_heading": "7.2 验收准则",
+            "template_clause_id": "REQ-7.2",
+            "anchor_path": "REQ-7.2",
+        }
+    ]
+
+
 def test_write_contract_rejects_patch_without_existing_plan_ref() -> None:
     validator = OrchestratorContractValidator()
 

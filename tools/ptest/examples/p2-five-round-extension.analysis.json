@@ -1,0 +1,806 @@
+{
+  "schema_version": "ptest.analysis.v1",
+  "title": "P2 组织器 5 轮扩展迭代测试分析",
+  "plan_ref": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/04_研制计划/02.07-WBS-P2-组织器5轮迭代升级扩展-研制计划.md",
+  "generated_at": "2026-05-11T15:55:00+08:00",
+  "analysis_method": {
+    "executor": "codex",
+    "mode": "plan_driven_dynamic_probe",
+    "notes": [
+      "本 analysis.json 基于 2026-05-11 P2 组织器 5 轮扩展总体测试分析报告和对应 .run-logs summary.json 整理。",
+      "横轴按本次 5 个迭代动作组织：基线、首次修复验证、Dify 发布与本地重启验证、状态统计修复、草案 patch 修复。",
+      "Dify 在第 4、5 个迭代动作中未执行完整有效复测，相关点位用 null 表示缺失，不用 0 代替未知。",
+      "第 3 个迭代动作中 Dify 第 2 Turn 发生远端 workflow 内部模型断连，按 external_workflow_error 记录。"
+    ]
+  },
+  "test_objects": [
+    {
+      "object_id": "brainstorm-v1",
+      "display_name": "Brainstorm V1",
+      "type": "p2_orchestrator"
+    },
+    {
+      "object_id": "brainstorm-v1-dify-workflow",
+      "display_name": "Brainstorm V1 Dify Workflow",
+      "type": "p2_orchestrator"
+    }
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "scope": "双组织器基线测试",
+      "changes_summary": "以态势分析系统样例执行受控动态多轮测试，建立正文长度、决策状态和考官动作基线。",
+      "evidence_links": ["round-1-baseline-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 2,
+      "scope": "首次修复后验证",
+      "changes_summary": "补充 Dify 段落展开、本地问题生命周期和单问聚焦提示词约束，并执行双组织器复测。",
+      "evidence_links": ["round-1-after-fixes-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 3,
+      "scope": "Dify 发布与本地后端重启验证",
+      "changes_summary": "确认 Dify 本地 node 修改必须发布到远端 workflow 才生效；重启后端验证本地提示词真实进入运行链路。",
+      "evidence_links": ["round-2-dify-after-publish-summary", "round-3-after-restart-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 4,
+      "scope": "开放问题生命周期统计修复",
+      "changes_summary": "调整通用状态统计和结构化状态页渲染，活跃未闭合问题只统计 status=open，已关闭或已后置问题保留为追溯记录。",
+      "evidence_links": ["round-4-brainstorm-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 5,
+      "scope": "收束草案 patch 写入修复",
+      "changes_summary": "强化收束阶段 Prompt，要求完整草案正文进入 document_patch.content，交互消息只保留交付摘要。",
+      "evidence_links": ["round-5-brainstorm-summary", "round-1-baseline-report"]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_id": "completed_turns",
+      "name": "完成 Turn 数",
+      "purpose": "观察组织器是否能完成受控动态多轮会话并进入收束。",
+      "type": "count",
+      "unit": "Turn",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 completed_turns。",
+      "visualization": "trend",
+      "limitations": "Turn 数只表示会话推进长度，不等同于质量。"
+    },
+    {
+      "metric_id": "turn_success_rate",
+      "name": "Turn 成功率",
+      "purpose": "观察 20 Turn 上限内实际完成率和中断情况。",
+      "type": "ratio",
+      "unit": "%",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 turn_success_rate。",
+      "visualization": "trend",
+      "limitations": "动态考官在收束后会提前停止，因此 55% 不代表失败。"
+    },
+    {
+      "metric_id": "contract_error_count",
+      "name": "合同或接口错误数",
+      "purpose": "观察 P2 API、插件合同、Dify workflow 或外部模型调用是否出现错误。",
+      "type": "count",
+      "unit": "次",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 error_count；具体类型见 error_type_distribution。",
+      "visualization": "bar",
+      "limitations": "该指标混合了平台错误和外部 workflow 错误，必须结合错误类型解释。"
+    },
+    {
+      "metric_id": "error_type_distribution",
+      "name": "错误类型分布",
+      "purpose": "区分无错误、外部 workflow 错误和其他合同错误。",
+      "type": "category",
+      "unit": "次",
+      "source": ".run-logs/*/<orchestrator>.summary.json 与 last_error.response_body",
+      "calculation": "按 none、external_workflow_error、contract_or_api_error 分类。",
+      "visualization": "stacked_bar",
+      "limitations": "只有发生错误的轮次才具备细分意义。"
+    },
+    {
+      "metric_id": "draft_delivery_success",
+      "name": "草案交付成功",
+      "purpose": "确认显式收束时是否进入可审阅草案交付状态。",
+      "type": "boolean",
+      "unit": "是/否",
+      "source": ".run-logs/*/<orchestrator>.summary.json 与 final-session.json",
+      "calculation": "完成收束并产生最终工作正文则为 true；外部错误中断则为 false。",
+      "visualization": "status_matrix",
+      "limitations": "成功交付不代表草案深度达标。"
+    },
+    {
+      "metric_id": "final_working_document_text_chars",
+      "name": "最终正文有效字数",
+      "purpose": "观察草案是否从偏薄逐步变厚。",
+      "type": "count",
+      "unit": "字",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 final_working_document_text_chars。",
+      "visualization": "trend",
+      "limitations": "字数增加可能是丰富，也可能是冗余，必须结合正文内容审阅。"
+    },
+    {
+      "metric_id": "final_working_document_block_count",
+      "name": "最终正文块数",
+      "purpose": "观察最终工作正文结构化块数量。",
+      "type": "count",
+      "unit": "块",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 final_working_document_block_count。",
+      "visualization": "trend",
+      "limitations": "块数受 patch 合并策略影响，不能单独代表质量。"
+    },
+    {
+      "metric_id": "avg_block_text_chars",
+      "name": "平均正文块有效字数",
+      "purpose": "观察每个正文块是否从短摘要变为可审阅段落。",
+      "type": "count",
+      "unit": "字/块",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "final_working_document_text_chars / final_working_document_block_count；块数缺失或为 0 时为 null。",
+      "visualization": "trend",
+      "limitations": "平均值会掩盖不同章节之间的详实度差异。"
+    },
+    {
+      "metric_id": "confirmed_facts_count",
+      "name": "已确认事实数",
+      "purpose": "观察用户事实是否被持续沉淀。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 confirmed_facts。",
+      "visualization": "trend",
+      "limitations": "事实多不代表关键决策充分。"
+    },
+    {
+      "metric_id": "confirmed_decisions_count",
+      "name": "已确认决策数",
+      "purpose": "观察组织器是否把事实推进为稳定决策。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 confirmed_decisions。",
+      "visualization": "trend",
+      "limitations": "决策粒度受 Prompt 和 schema 影响，需要结合原文复核。"
+    },
+    {
+      "metric_id": "decision_conversion_rate",
+      "name": "事实到决策转化率",
+      "purpose": "观察确认事实向确认决策的转化趋势。",
+      "type": "ratio",
+      "unit": "%",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "confirmed_decisions / confirmed_facts；事实数为 0 时为 null。",
+      "visualization": "trend",
+      "limitations": "比例高不直接等于质量高，可能是事实拆分粒度变化造成。"
+    },
+    {
+      "metric_id": "open_questions_remaining",
+      "name": "最终未闭合问题数",
+      "purpose": "观察开放问题是否有生命周期，是否在交付时保留活跃阻塞。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 open_questions；第 4、5 轮 brainstorm-v1 使用活跃 status=open 口径。",
+      "visualization": "trend",
+      "limitations": "低值可能是有效收束，也可能是过早后置；需要结合 open_questions_total_retained 审计。"
+    },
+    {
+      "metric_id": "tentative_assumptions_count",
+      "name": "暂定假设数",
+      "purpose": "观察模型把未确认内容标为暂定而非确定事实的情况。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 tentative_assumptions。",
+      "visualization": "trend",
+      "limitations": "假设数多可能是审慎，也可能是确认不足。"
+    },
+    {
+      "metric_id": "rejected_directions_count",
+      "name": "被否定方向数",
+      "purpose": "观察范围边界和排除方向是否被记录。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 rejected_directions。",
+      "visualization": "trend",
+      "limitations": "该指标依赖组织器是否显式建模否定方向。"
+    },
+    {
+      "metric_id": "chapter_projection_count",
+      "name": "章节投影数",
+      "purpose": "观察结构化状态是否能投影到需求规格章节。",
+      "type": "count",
+      "unit": "个",
+      "source": ".run-logs/*/<orchestrator>.summary.json final_decision_state_counts",
+      "calculation": "读取 chapter_projections。",
+      "visualization": "trend",
+      "limitations": "章节投影数不能替代章节内容质量。"
+    },
+    {
+      "metric_id": "observability_log_count",
+      "name": "可审计调用日志数",
+      "purpose": "观察模型或外部 workflow 调用过程是否可追溯。",
+      "type": "count",
+      "unit": "条",
+      "source": ".run-logs/*/<orchestrator>.summary.json",
+      "calculation": "读取 final_provider_log_count。",
+      "visualization": "trend",
+      "limitations": "日志数量多不代表质量高，只表示可观测程度。"
+    },
+    {
+      "metric_id": "examiner_action_distribution",
+      "name": "考官动作分布",
+      "purpose": "观察动态考官是否需要频繁小补充或轻量纠偏。",
+      "type": "category",
+      "unit": "次",
+      "source": ".run-logs/*/<orchestrator>.summary.json examiner_action_distribution",
+      "calculation": "读取 action 分布对象。",
+      "visualization": "stacked_bar",
+      "limitations": "考官动作受测试策略影响，只用于定位交互质量。"
+    },
+    {
+      "metric_id": "iteration_stage_judgment",
+      "name": "每轮阶段判断",
+      "purpose": "用文本解释每轮变化和下一步重点。",
+      "type": "text",
+      "unit": "",
+      "source": "260511-1543-P2-组织器5轮扩展总体测试分析报告.md",
+      "calculation": "摘取每轮诊断和结果。",
+      "visualization": "table",
+      "limitations": "文本判断用于解释趋势，不替代原始测试记录。"
+    }
+  ],
+  "series": [
+    {
+      "metric_id": "completed_turns",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 11, "evidence_refs": ["round-1-baseline-brainstorm-summary"]},
+        {"iteration": 2, "value": 11, "evidence_refs": ["round-1-after-fixes-brainstorm-summary"]},
+        {"iteration": 3, "value": 11, "evidence_refs": ["round-3-after-restart-brainstorm-summary"]},
+        {"iteration": 4, "value": 11, "evidence_refs": ["round-4-brainstorm-summary"]},
+        {"iteration": 5, "value": 11, "evidence_refs": ["round-5-brainstorm-summary"]}
+      ]
+    },
+    {
+      "metric_id": "completed_turns",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 11, "evidence_refs": ["round-1-baseline-dify-summary"]},
+        {"iteration": 2, "value": 11, "evidence_refs": ["round-1-after-fixes-dify-summary"]},
+        {"iteration": 3, "value": 11, "note": "Dify 发布后单独复测完成 11 Turn", "evidence_refs": ["round-2-dify-published-summary"]},
+        {"iteration": 4, "value": null, "note": "本轮未执行 Dify 完整有效复测"},
+        {"iteration": 5, "value": null, "note": "本轮未执行 Dify 完整有效复测"}
+      ]
+    },
+    {
+      "metric_id": "turn_success_rate",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 0.55},
+        {"iteration": 2, "value": 0.55},
+        {"iteration": 3, "value": 0.55},
+        {"iteration": 4, "value": 0.55},
+        {"iteration": 5, "value": 0.55}
+      ]
+    },
+    {
+      "metric_id": "turn_success_rate",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0.55},
+        {"iteration": 2, "value": 0.55},
+        {"iteration": 3, "value": 0.55, "note": "Dify 发布后单独复测"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "contract_error_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 0},
+        {"iteration": 2, "value": 0},
+        {"iteration": 3, "value": 0},
+        {"iteration": 4, "value": 0},
+        {"iteration": 5, "value": 0}
+      ]
+    },
+    {
+      "metric_id": "contract_error_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0},
+        {"iteration": 2, "value": 0},
+        {"iteration": 3, "value": 0, "note": "发布后单独复测为 0；同轮双组织器复测中曾出现 1 次远端 workflow 模型断连"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "error_type_distribution",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 2, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 3, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 4, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 5, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}}
+      ]
+    },
+    {
+      "metric_id": "error_type_distribution",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 2, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 0}},
+        {"iteration": 3, "value": {"none": 0, "contract_or_api_error": 0, "external_workflow_error": 1}, "note": "双组织器重启复测中 Dify 第 2 Turn 远端 workflow 内部模型断连；发布后单独复测为 0 错误"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "draft_delivery_success",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": true},
+        {"iteration": 2, "value": true},
+        {"iteration": 3, "value": true},
+        {"iteration": 4, "value": true},
+        {"iteration": 5, "value": true}
+      ]
+    },
+    {
+      "metric_id": "draft_delivery_success",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": true},
+        {"iteration": 2, "value": true},
+        {"iteration": 3, "value": true, "note": "Dify 发布后单独复测成功"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "final_working_document_text_chars",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 3312},
+        {"iteration": 2, "value": 2529, "note": "修复后未重启，数据仅用于暴露测试有效性问题"},
+        {"iteration": 3, "value": 2348},
+        {"iteration": 4, "value": 2321},
+        {"iteration": 5, "value": 4733}
+      ]
+    },
+    {
+      "metric_id": "final_working_document_text_chars",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 1771},
+        {"iteration": 2, "value": 1771, "note": "本地 node 修改未发布，真实远端结果不变"},
+        {"iteration": 3, "value": 2450, "note": "Dify workflow 发布后单独复测"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "final_working_document_block_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 23},
+        {"iteration": 2, "value": 20},
+        {"iteration": 3, "value": 20},
+        {"iteration": 4, "value": 21},
+        {"iteration": 5, "value": 21}
+      ]
+    },
+    {
+      "metric_id": "final_working_document_block_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 15},
+        {"iteration": 2, "value": 15},
+        {"iteration": 3, "value": 15},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "avg_block_text_chars",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 144},
+        {"iteration": 2, "value": 126},
+        {"iteration": 3, "value": 117},
+        {"iteration": 4, "value": 111},
+        {"iteration": 5, "value": 225}
+      ]
+    },
+    {
+      "metric_id": "avg_block_text_chars",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 118},
+        {"iteration": 2, "value": 118},
+        {"iteration": 3, "value": 163},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "confirmed_facts_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 42},
+        {"iteration": 2, "value": 32},
+        {"iteration": 3, "value": 37},
+        {"iteration": 4, "value": 42},
+        {"iteration": 5, "value": 34}
+      ]
+    },
+    {
+      "metric_id": "confirmed_facts_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 29},
+        {"iteration": 2, "value": 29},
+        {"iteration": 3, "value": 29},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "confirmed_decisions_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 18},
+        {"iteration": 2, "value": 14},
+        {"iteration": 3, "value": 14},
+        {"iteration": 4, "value": 12},
+        {"iteration": 5, "value": 12}
+      ]
+    },
+    {
+      "metric_id": "confirmed_decisions_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 25},
+        {"iteration": 2, "value": 25},
+        {"iteration": 3, "value": 25},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "decision_conversion_rate",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 0.4286},
+        {"iteration": 2, "value": 0.4375},
+        {"iteration": 3, "value": 0.3784},
+        {"iteration": 4, "value": 0.2857},
+        {"iteration": 5, "value": 0.3529}
+      ]
+    },
+    {
+      "metric_id": "decision_conversion_rate",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0.8621},
+        {"iteration": 2, "value": 0.8621},
+        {"iteration": 3, "value": 0.8621},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "open_questions_remaining",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 23, "note": "旧统计口径，包含未区分状态的问题"},
+        {"iteration": 2, "value": 24, "note": "旧统计口径，包含未区分状态的问题"},
+        {"iteration": 3, "value": 33, "note": "旧统计口径，暴露开放问题膨胀"},
+        {"iteration": 4, "value": 0, "note": "新统计口径，只统计 status=open 的活跃问题"},
+        {"iteration": 5, "value": 0, "note": "新统计口径，只统计 status=open 的活跃问题"}
+      ]
+    },
+    {
+      "metric_id": "open_questions_remaining",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0},
+        {"iteration": 2, "value": 0},
+        {"iteration": 3, "value": 0},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "tentative_assumptions_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 28},
+        {"iteration": 2, "value": 5},
+        {"iteration": 3, "value": 7},
+        {"iteration": 4, "value": 18},
+        {"iteration": 5, "value": 4}
+      ]
+    },
+    {
+      "metric_id": "tentative_assumptions_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0},
+        {"iteration": 2, "value": 0},
+        {"iteration": 3, "value": 0},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "rejected_directions_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 3},
+        {"iteration": 2, "value": 5},
+        {"iteration": 3, "value": 4},
+        {"iteration": 4, "value": 6},
+        {"iteration": 5, "value": 5}
+      ]
+    },
+    {
+      "metric_id": "rejected_directions_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 0},
+        {"iteration": 2, "value": 0},
+        {"iteration": 3, "value": 0},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "chapter_projection_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 27},
+        {"iteration": 2, "value": 30},
+        {"iteration": 3, "value": 29},
+        {"iteration": 4, "value": 26},
+        {"iteration": 5, "value": 24}
+      ]
+    },
+    {
+      "metric_id": "chapter_projection_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 29},
+        {"iteration": 2, "value": 29},
+        {"iteration": 3, "value": 29},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "observability_log_count",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": 33},
+        {"iteration": 2, "value": 33},
+        {"iteration": 3, "value": 33},
+        {"iteration": 4, "value": 33},
+        {"iteration": 5, "value": 33}
+      ]
+    },
+    {
+      "metric_id": "observability_log_count",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": 11},
+        {"iteration": 2, "value": 11},
+        {"iteration": 3, "value": 11},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "examiner_action_distribution",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": {"initial_intent": 1, "option_answer_with_supplement": 5, "small_guidance": 2, "small_supplement": 1, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 2, "value": {"initial_intent": 1, "option_answer_with_supplement": 3, "answer_question": 1, "small_supplement": 4, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 3, "value": {"initial_intent": 1, "option_answer_with_supplement": 5, "answer_question": 1, "small_supplement": 2, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 4, "value": {"initial_intent": 1, "option_answer_with_supplement": 4, "answer_question": 1, "small_supplement": 3, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 5, "value": {"initial_intent": 1, "option_answer_with_supplement": 1, "answer_question": 1, "small_guidance": 3, "small_supplement": 3, "review_request": 1, "convergence_request": 1}}
+      ]
+    },
+    {
+      "metric_id": "examiner_action_distribution",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": {"initial_intent": 1, "option_answer_with_supplement": 6, "small_supplement": 2, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 2, "value": {"initial_intent": 1, "option_answer_with_supplement": 6, "small_supplement": 2, "review_request": 1, "convergence_request": 1}},
+        {"iteration": 3, "value": {"initial_intent": 1, "option_answer_with_supplement": 6, "small_supplement": 2, "review_request": 1, "convergence_request": 1}, "note": "Dify 发布后单独复测"},
+        {"iteration": 4, "value": null},
+        {"iteration": 5, "value": null}
+      ]
+    },
+    {
+      "metric_id": "iteration_stage_judgment",
+      "object_id": "brainstorm-v1",
+      "points": [
+        {"iteration": 1, "value": "基线：正文较丰富但开放问题多，仍有多问合并和问题堆积。"},
+        {"iteration": 2, "value": "首次修复后未重启，数据暴露测试有效性问题；正文和状态未可靠改善。"},
+        {"iteration": 3, "value": "重启后轨迹变化，但正文仍偏短，旧口径开放问题膨胀到 33。"},
+        {"iteration": 4, "value": "状态生命周期统计修复后，活跃未闭合问题为 0，但正文仍偏短。"},
+        {"iteration": 5, "value": "草案 patch 修复后正文提升到 4733 字；副作用是中段 small_guidance/small_supplement 增多。"}
+      ]
+    },
+    {
+      "metric_id": "iteration_stage_judgment",
+      "object_id": "brainstorm-v1-dify-workflow",
+      "points": [
+        {"iteration": 1, "value": "基线：合同稳定，决策项稳定，但草案偏薄。"},
+        {"iteration": 2, "value": "本地 node 修复未发布，远端真实输出完全不变。"},
+        {"iteration": 3, "value": "发布 Dify workflow 后正文从 1771 提升到 2450；同轮双组织器复测曾发生一次远端模型断连。"},
+        {"iteration": 4, "value": "未执行完整有效复测。"},
+        {"iteration": 5, "value": "未执行完整有效复测。"}
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "iteration": 1,
+      "title": "基线测试",
+      "problem": "需要确认 5 轮扩展前两个组织器的真实状态。",
+      "change": "执行双组织器动态 20 Turn 上限测试。",
+      "result": "brainstorm-v1 正文 3312 字但开放问题多；Dify 正文 1771 字，稳定但偏薄。",
+      "evidence_refs": ["round-1-baseline-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 2,
+      "title": "首次修复后验证",
+      "problem": "Dify 草案偏薄，brainstorm-v1 存在历史问题堆积和多问合并。",
+      "change": "增强 Dify 本地 node 段落展开；补充本地提示词中问题生命周期和单问聚焦约束。",
+      "result": "Dify 指标完全不变，确认本地 node 未发布不会影响远端 workflow；本地组织器数据因重启链路问题可信度不足。",
+      "evidence_refs": ["round-1-after-fixes-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 3,
+      "title": "发布与重启链路验证",
+      "problem": "测试结果可能没有吃到本地修改或 Dify 远端发布。",
+      "change": "通过脚本同步并发布 Dify workflow，重启后端后复测。",
+      "result": "Dify 发布后正文提升到 2450；本地重启后轨迹变化但正文仍短。Dify 双组织器复测中出现远端 workflow 模型断连。",
+      "evidence_refs": ["round-2-dify-published-summary", "round-3-after-restart-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 4,
+      "title": "开放问题生命周期统计",
+      "problem": "closed/deferred/superseded 问题仍被数组总数计入 open_questions，污染未闭合问题指标。",
+      "change": "平台只做通用状态生命周期统计，不做业务语义判断；P-Test 探针只统计 status=open 的活跃问题。",
+      "result": "brainstorm-v1 活跃未闭合问题降为 0，历史问题仍可追溯；正文长度仍偏短。",
+      "evidence_refs": ["round-4-brainstorm-summary", "round-1-baseline-report"]
+    },
+    {
+      "iteration": 5,
+      "title": "草案 patch 写入",
+      "problem": "brainstorm-v1 收束时长草案进入交互消息，document_patch 只有短摘要。",
+      "change": "强化 Prompt：草案正文必须进入 document_patch.content，user_message 只做摘要。",
+      "result": "brainstorm-v1 最终正文提升到 4733 字，平均正文块字数提升到 225；但中段交互 small_guidance/small_supplement 增多。",
+      "evidence_refs": ["round-5-brainstorm-summary", "round-1-baseline-report"]
+    }
+  ],
+  "evidence_index": [
+    {
+      "evidence_id": "plan",
+      "label": "P2 组织器 5 轮迭代升级扩展研制计划",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/04_研制计划/02.07-WBS-P2-组织器5轮迭代升级扩展-研制计划.md",
+      "type": "plan"
+    },
+    {
+      "evidence_id": "round-1-baseline-report",
+      "label": "P2 组织器 5 轮扩展总体测试分析报告",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260511-1543-P2-组织器5轮扩展总体测试分析报告.md",
+      "type": "test_record"
+    },
+    {
+      "evidence_id": "round-1-baseline-summary",
+      "label": "R1 基线汇总",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-baseline/summary.json",
+      "type": "log",
+      "iteration": 1
+    },
+    {
+      "evidence_id": "round-1-baseline-brainstorm-summary",
+      "label": "R1 基线 Brainstorm V1 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-baseline/brainstorm-v1.summary.json",
+      "type": "log",
+      "iteration": 1,
+      "object_id": "brainstorm-v1"
+    },
+    {
+      "evidence_id": "round-1-baseline-dify-summary",
+      "label": "R1 基线 Dify summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-baseline/brainstorm-v1-dify-workflow.summary.json",
+      "type": "log",
+      "iteration": 1,
+      "object_id": "brainstorm-v1-dify-workflow"
+    },
+    {
+      "evidence_id": "round-1-after-fixes-summary",
+      "label": "R1 修复后未重启汇总",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-after-fixes/summary.json",
+      "type": "log",
+      "iteration": 2
+    },
+    {
+      "evidence_id": "round-1-after-fixes-brainstorm-summary",
+      "label": "R1 修复后 Brainstorm V1 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-after-fixes/brainstorm-v1.summary.json",
+      "type": "log",
+      "iteration": 2,
+      "object_id": "brainstorm-v1"
+    },
+    {
+      "evidence_id": "round-1-after-fixes-dify-summary",
+      "label": "R1 修复后 Dify summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round1-after-fixes/brainstorm-v1-dify-workflow.summary.json",
+      "type": "log",
+      "iteration": 2,
+      "object_id": "brainstorm-v1-dify-workflow"
+    },
+    {
+      "evidence_id": "round-2-dify-published-summary",
+      "label": "R2 Dify 发布后 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round2-dify-after-publish/brainstorm-v1-dify-workflow.summary.json",
+      "type": "log",
+      "iteration": 3,
+      "object_id": "brainstorm-v1-dify-workflow"
+    },
+    {
+      "evidence_id": "round-3-after-restart-summary",
+      "label": "R3 重启后汇总",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round3-after-restart/summary.json",
+      "type": "log",
+      "iteration": 3
+    },
+    {
+      "evidence_id": "round-3-after-restart-brainstorm-summary",
+      "label": "R3 重启后 Brainstorm V1 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round3-after-restart/brainstorm-v1.summary.json",
+      "type": "log",
+      "iteration": 3,
+      "object_id": "brainstorm-v1"
+    },
+    {
+      "evidence_id": "round-4-brainstorm-summary",
+      "label": "R4 状态统计修复 Brainstorm V1 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round4-brainstorm-after-state-count-fix/brainstorm-v1.summary.json",
+      "type": "log",
+      "iteration": 4,
+      "object_id": "brainstorm-v1"
+    },
+    {
+      "evidence_id": "round-5-brainstorm-summary",
+      "label": "R5 草案 patch 修复 Brainstorm V1 summary",
+      "path": "/home/wgw/CodexProject/CodeFactoryV2/.worktrees/p2-requirement-analysis-system/.run-logs/p2-iteration-260511-round5-brainstorm-after-draft-patch-prompt/brainstorm-v1.summary.json",
+      "type": "log",
+      "iteration": 5,
+      "object_id": "brainstorm-v1"
+    }
+  ],
+  "conclusions": [
+    "本批次最显著的正向变化是 brainstorm-v1 的最终正文从 R4 的 2321 字提升到 R5 的 4733 字，说明草案正文进入 document_patch 的约束有效。",
+    "Dify workflow 的正向变化依赖远端发布：本地 node 修改未发布时正文仍为 1771 字，发布后提升到 2450 字。",
+    "开放问题生命周期统计已从数组总数修正为活跃 status=open 口径，R4/R5 的 brainstorm-v1 活跃未闭合问题为 0，但历史后置问题仍保留用于审计。",
+    "当前剩余主要问题不是成稿长度，而是探索阶段下一问质量；R5 中 brainstorm-v1 出现 small_guidance=3、small_supplement=3，后续应重点优化 next_interaction_planning。",
+    "Dify 侧需要把 workflow 发布记录纳入测试前置检查，否则 analysis 数据会混入未发布导致的无效复测。"
+  ]
+}

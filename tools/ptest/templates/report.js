@@ -14,6 +14,16 @@ boot();
 async function boot() {
   nodes.loadInput.addEventListener("change", handleFileSelection);
 
+  const embeddedAnalysis = document.querySelector("#embedded-analysis");
+  if (embeddedAnalysis?.textContent?.trim()) {
+    try {
+      renderDataset(JSON.parse(embeddedAnalysis.textContent), "已读取内嵌 analysis.json");
+      return;
+    } catch (error) {
+      nodes.loadStatus.textContent = `内嵌 analysis.json 读取失败：${error.message}`;
+    }
+  }
+
   try {
     const response = await fetch("./analysis.json", { cache: "no-store" });
     if (!response.ok) {
