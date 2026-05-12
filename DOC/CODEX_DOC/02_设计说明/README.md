@@ -55,11 +55,11 @@
 5. `DOC/CODEX_DOC/02_设计说明/00_总纲/04-Orchestrator基础包壳与注册机制设计.md`
 6. `DOC/CODEX_DOC/02_设计说明/P1_业务知识库/P1-业务知识库设计.md`
 7. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
-8. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-可配置需求规格说明编写系统设计.md`
-9. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求规格编写系统原型设计.md`
+8. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260430-0016-可配置需求规格说明编写系统设计.md`
+9. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260430-0117-需求规格编写系统原型设计.md`
 10. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming能力原理验证与架构规划.md`
 11. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-Brainstorming-Turn引擎与状态机设计.md`
-12. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XG-Orchestrator组织器包规范设计.md`
+12. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260502-0022-XG-Orchestrator组织器包规范设计.md`
 13. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
 14. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
 15. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`

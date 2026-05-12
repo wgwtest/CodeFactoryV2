@@ -8,7 +8,7 @@
 
 - `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
 - `DOC/CODEX_DOC/02_设计说明/00_总纲/03-P1-P6数据互联互通与平台交换层设计.md`
-- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XG-Orchestrator组织器包规范设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260502-0022-XG-Orchestrator组织器包规范设计.md`
 
 ## 1. 设计结论
 

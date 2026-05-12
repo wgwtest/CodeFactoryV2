@@ -5,7 +5,7 @@
 **范围：**
 
 - `DOC/CODEX_DOC/02_设计说明/00_总纲/04-Orchestrator基础包壳与注册机制设计.md`
-- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-XG-Orchestrator组织器包规范设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260502-0022-XG-Orchestrator组织器包规范设计.md`
 - `DOC/CODEX_DOC/02_设计说明/README.md`
 - `DOC/CODEX_DOC/README.md`
 
@@ -44,5 +44,5 @@ git diff --check
 当前已经可以明确回答：
 
 - 基础组织器设计位于总纲文档 `04-Orchestrator基础包壳与注册机制设计.md`。
-- `P2-XG-Orchestrator组织器包规范设计.md` 只负责 XG 专用契约。
+- `P2-需求分析系统设计-260502-0022-XG-Orchestrator组织器包规范设计.md` 只负责 XG 专用契约。
 - 代码层基础注册器的中性化迁移仍是后续任务，不在本轮完成。

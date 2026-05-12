@@ -86,7 +86,7 @@ DOC/CODEX_DOC/03_规范与流程/
 | P2 多轮效果验证 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-1928-P2需求分析Lab-态势分析系统多轮效果验证报告.md` |
 | 真实 Codex Brainstorming 深化测试 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-2040-Codex真实BrainstormingSkill-态势分析系统深化测试报告.md` |
 | P2 与 Codex 20 回合对比 | `DOC/CODEX_DOC/06_测试文档/03_机测记录/2026-05测试/260506-2334-P2与Codex-Brainstorming-20回合决策模式对比测试报告.md` |
-| 决策模式整改策略 | `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260506-决策模式与组织器整改策略补充.md` |
+| 决策模式整改策略 | `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260506-2356-决策模式与组织器整改策略补充.md` |
 | 组织器插件输入输出合同 | `DOC/CODEX_DOC/03_规范与流程/01_数据规范/02-P2-组织器插件输入输出合同规范.md` |
 | Brainstorm v1 Dify 工作流规范 | `DOC/CODEX_DOC/03_规范与流程/02_组织器协作流程/02-P2-Brainstorm-v1-Dify工作流搭建规范.md` |
 | 态势分析系统样例目录 | `DOC/JB_DOC/03-项目实例与样例/P2-需求分析Lab样例-态势分析系统/README.md` |

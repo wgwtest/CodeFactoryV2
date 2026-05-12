@@ -12,7 +12,7 @@
 **参考事实源：**
 
 - `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
-- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求规格编写系统原型设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260430-0117-需求规格编写系统原型设计.md`
 - `apps/web/src/pages/RequirementAuthoringPage.tsx`
 - `apps/web/src/pages/P3DesignLabPage.tsx`
 
