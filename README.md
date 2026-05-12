@@ -218,6 +218,7 @@ git diff --check
 
 - 默认在仓库根目录开发、启动、验证，不把 `.worktrees/*` 当作正式运行现场。
 - `.worktrees/` 是历史和受控并行开发目录，不要删除；合并前必须逐一检查差异和提交状态。
+- P1 worktree 采用审阅与建议型定位：`.worktrees/p1-knowledge-base-review` / `feat/p1-knowledge-base-review` 主要用于审阅其他同志完成的 P1 工作、提出建议、做验证和风险提示；未经明确授权，不默认承担 P1 主实现的大规模修改。
 - `.data/` 是本地运行态数据，默认不提交。
 - 提交 summary 使用中文。
 - 推荐 Git 作者：`wgw <hugowangguowei@hotmail.com>`。

@@ -60,6 +60,7 @@
 
 | worktree | 分支 | 用途 |
 | --- | --- | --- |
+| `.worktrees/p1-knowledge-base-review` | `feat/p1-knowledge-base-review` | P1 业务知识库审阅与建议型辅助分支 |
 | `.worktrees/p2-requirement-analysis-system` | `feat/p2-requirement-analysis-system` | P2 需求分析系统辅助分支 |
 | `.worktrees/p3-software-design-system` | `feat/p3-software-design-system` | P3 软件设计系统历史集成分支工作树 |
 | `.worktrees/p4-tool-hub` | `feat/p4-tool-hub` | P4 工具仓库辅助分支 |
@@ -73,6 +74,13 @@
 - 如果 worktree 有独立提交，合入主线前先检查差异，不要盲目 merge。
 - 如果 worktree 只有旧基线，优先同步到最新 `main`。
 - `.data/` 是本地运行数据，默认不提交，除非用户明确要求。
+
+P1 特别规则：
+
+- `.worktrees/p1-knowledge-base-review` 是审阅与建议型 worktree，不是 P1 主实现分支。
+- P1 主要工作通常由其他同志主导完成；本分支默认承担差异审阅、运行验证、风险提示、验收反馈和建议文档整理。
+- 除非用户明确授权，本分支不主动大规模修改 P1 主实现；较大问题优先形成审阅意见和改造建议。
+- 新会话进入 P1 worktree 时，先读该目录下的 `WORKTREE_GUIDE.md`。
 
 ### 3.3 当前 P3 分支特别说明
 
