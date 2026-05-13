@@ -116,6 +116,7 @@ class SoftwareDesignV2Service:
         ]
         design_session["status"] = "patch_ready"
         design_session["updated_at"] = self._now()
+        self._refresh_related_designs(design_session)
         return {"turn": turn, "session": design_session}
 
     def run_check(self, session_id: str) -> dict | None:
@@ -140,6 +141,7 @@ class SoftwareDesignV2Service:
         }
         design_session["check_result"] = check_result
         design_session["updated_at"] = self._now()
+        self._refresh_related_designs(design_session)
         return {"session_id": session_id, "check_result": check_result}
 
     def _get_input_package(self, input_package_id: str) -> dict:

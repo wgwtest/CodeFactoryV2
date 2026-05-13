@@ -94,6 +94,11 @@ export function P3DesignLabPage() {
       });
       const generated = await generateSoftwareDesignV2Session(created.data.session_id);
       setDesignSession(generated.data);
+      setInputPackages((current) =>
+        current.map((item) =>
+          item.input_package_id === generated.data.input_package.input_package_id ? generated.data.input_package : item,
+        ),
+      );
       setActiveNavigationKey("workspace");
       setWorkspaceMode("document");
       setError(null);
