@@ -98,6 +98,18 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     assert generated_session["design_document"]["title"] == "空域协同规划软件设计说明"
     assert generated_session["design_baseline"]["architecture_mode"] == "unified_service"
     assert generated_session["workorder_projection"]["items"][0]["title"] == "规划任务管理模块实现"
+    packages_after_generation = client.get("/api/software-design-v2/input-packages")
+    related_designs = packages_after_generation.json()["items"][0]["related_designs"]
+    assert related_designs == [
+        {
+            "software_design_id": session["session_id"],
+            "title": "空域协同规划软件设计说明",
+            "version_label": "SoftwareDesignBaseline v2",
+            "status": "baseline_ready",
+            "created_at": session["created_at"],
+            "updated_at": generated_session["updated_at"],
+        }
+    ]
 
     turned = client.post(
         f"/api/software-design-v2/sessions/{session['session_id']}/turns",
