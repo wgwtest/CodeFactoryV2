@@ -17,13 +17,17 @@ import type {
   RequirementAnalysisSpecTreeNode,
   RequirementAnalysisTurn,
   RequirementAnalysisTurnStageAudit,
+  RequirementSpecWorkItem,
 } from "../lib/api";
 import {
+  configureRequirementSpecWorkItem,
   createRequirementAnalysisTemplate,
   createRequirementAnalysisSession,
   createRequirementAnalysisTurn,
+  createRequirementSpecWorkItem,
   deleteRequirementAnalysisTemplate,
   getRequirementAnalysisTemplate,
+  publishRequirementSpecWorkItem,
   reloadRequirementAnalysisOrchestrators,
   saveRequirementAnalysisTemplate,
   saveRequirementAnalysisTemplateAsBase,
@@ -39,10 +43,10 @@ import {
 import { useRequirementAnalysisLabBootstrap } from "../lib/useRequirementAnalysisLabBootstrap";
 import "./RequirementAnalysisLabPage.css";
 
-const { Text, Title } = Typography;
+const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
 
-type RequirementAnalysisLabTab = "config" | "session" | "turn" | "log";
+type RequirementAnalysisLabTab = "spec" | "config" | "session" | "turn" | "log";
 type WorkingDocumentFragment = RequirementAnalysisSession["working_document"]["revision_fragments"][number];
 
 function formatRequirementAnalysisTurnLabel(turnId: string) {
@@ -107,12 +111,59 @@ function formatPluginType(type?: string) {
   return "组织器";
 }
 
+function formatRequirementSpecWorkItemStatus(status: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    configured: "已进入配置",
+    revision_draft: "修订草稿",
+    published_to_p3: "已发布到 P3",
+    archived: "已归档",
+  };
+  return labels[status] ?? status;
+}
+
+function requirementSpecWorkItemStatusColor(status: string) {
+  if (status === "published_to_p3") {
+    return "green";
+  }
+  if (status === "configured") {
+    return "blue";
+  }
+  if (status === "revision_draft") {
+    return "gold";
+  }
+  return "default";
+}
+
+function formatRequirementSpecWorkItemDate(value: string) {
+  if (!value) {
+    return "-";
+  }
+  return value.replace("T", " ").slice(0, 16);
+}
+
 export function RequirementAnalysisLabPage() {
-  const { labConfig, orchestratorsEnvelope: bootstrappedOrchestratorsEnvelope, providers, templates: bootstrappedTemplates, templateBases, loading, error: bootstrapError } =
+  const {
+    labConfig,
+    orchestratorsEnvelope: bootstrappedOrchestratorsEnvelope,
+    providers,
+    templates: bootstrappedTemplates,
+    templateBases,
+    specItems: bootstrappedSpecItems,
+    loading,
+    error: bootstrapError,
+  } =
     useRequirementAnalysisLabBootstrap();
   const [orchestratorsEnvelope, setOrchestratorsEnvelope] = useState<RequirementAnalysisOrchestratorEnvelope | null>(null);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [baseTemplates, setBaseTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
+  const [specItems, setSpecItems] = useState<RequirementSpecWorkItem[]>([]);
+  const [selectedSpecItemId, setSelectedSpecItemId] = useState("");
+  const [createSpecItemModalOpen, setCreateSpecItemModalOpen] = useState(false);
+  const [newSpecTitle, setNewSpecTitle] = useState("");
+  const [newSpecDescription, setNewSpecDescription] = useState("");
+  const [specItemActingId, setSpecItemActingId] = useState<string | null>(null);
+  const [specItemCreating, setSpecItemCreating] = useState(false);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -129,7 +180,7 @@ export function RequirementAnalysisLabPage() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [reloadingOrchestrators, setReloadingOrchestrators] = useState(false);
   const [topic, setTopic] = useState("");
-  const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("config");
+  const [activeTab, setActiveTab] = useState<RequirementAnalysisLabTab>("spec");
   const [session, setSession] = useState<RequirementAnalysisSession | null>(null);
   const [currentTurn, setCurrentTurn] = useState<RequirementAnalysisTurn | null>(null);
   const [userInput, setUserInput] = useState("");
@@ -147,8 +198,21 @@ export function RequirementAnalysisLabPage() {
   }, [templateBases]);
 
   useEffect(() => {
+    setSpecItems(bootstrappedSpecItems);
+  }, [bootstrappedSpecItems]);
+
+  useEffect(() => {
     setOrchestratorsEnvelope(bootstrappedOrchestratorsEnvelope);
   }, [bootstrappedOrchestratorsEnvelope]);
+
+  useEffect(() => {
+    setSelectedSpecItemId((current) => {
+      if (current && specItems.some((item) => item.spec_item_id === current)) {
+        return current;
+      }
+      return specItems[0]?.spec_item_id ?? "";
+    });
+  }, [specItems]);
 
   useEffect(() => {
     if (!labConfig || !orchestratorsEnvelope) {
@@ -176,6 +240,11 @@ export function RequirementAnalysisLabPage() {
     setSelectedBaseTemplateId((current) => current || baseTemplates[0]?.template_id || "81433号");
     setNewTemplateName((current) => current || buildDefaultRequirementAnalysisTemplateName(topic || labConfig.defaults.topic));
   }, [labConfig, orchestratorsEnvelope, providers, templates, baseTemplates, topic]);
+
+  const selectedSpecItem = useMemo(
+    () => specItems.find((item) => item.spec_item_id === selectedSpecItemId) ?? null,
+    [specItems, selectedSpecItemId],
+  );
 
   useEffect(() => {
     if (!selectedTemplateId) {
@@ -237,6 +306,7 @@ export function RequirementAnalysisLabPage() {
   }, [labConfig?.defaults.provider_id, providers, selectedProviderId]);
 
   const logCount = session?.provider_logs.length ?? 0;
+  const publishedSpecItemCount = specItems.filter((item) => item.p3_consumable).length;
   const defaultWritePolicyLabel = labConfig
     ? resolveRequirementAnalysisWritePolicyLabel(labConfig.defaults.write_policy, labConfig.write_policies)
     : "写入策略加载中";
@@ -279,6 +349,101 @@ export function RequirementAnalysisLabPage() {
       setError(startError instanceof Error ? startError.message : "启动 XG 需求分析会话失败");
     } finally {
       setActing(false);
+    }
+  }
+
+  function updateSpecItem(nextItem: RequirementSpecWorkItem) {
+    setSpecItems((current) => {
+      const exists = current.some((item) => item.spec_item_id === nextItem.spec_item_id);
+      if (!exists) {
+        return [nextItem, ...current];
+      }
+      return current.map((item) => (item.spec_item_id === nextItem.spec_item_id ? nextItem : item));
+    });
+    setSelectedSpecItemId(nextItem.spec_item_id);
+  }
+
+  function applySpecItemToConfig(item: RequirementSpecWorkItem) {
+    setSelectedSpecItemId(item.spec_item_id);
+    setTopic(item.title);
+    if (item.template_id) {
+      setSelectedTemplateId(item.template_id);
+      setStartupTemplateId(item.template_id);
+    }
+    setActiveTab("config");
+  }
+
+  function handleOpenCreateSpecItem() {
+    const defaultTitle = topic.trim() && topic !== labConfig?.defaults.topic ? topic : "未命名需求规格说明";
+    setNewSpecTitle(defaultTitle);
+    setNewSpecDescription("");
+    setCreateSpecItemModalOpen(true);
+  }
+
+  function handleCloseCreateSpecItem() {
+    setNewSpecTitle("");
+    setNewSpecDescription("");
+    setCreateSpecItemModalOpen(false);
+  }
+
+  async function handleCreateSpecItem() {
+    const templateId = selectedTemplateId || startupTemplateId || templates[0]?.template_id || bootstrappedTemplates[0]?.template_id || "";
+    if (!templateId) {
+      setError("当前没有可用的需求规格说明模板实例，请先创建模板实例。");
+      return;
+    }
+    try {
+      setSpecItemCreating(true);
+      const response = await createRequirementSpecWorkItem({
+        title: newSpecTitle.trim() || "未命名需求规格说明",
+        initial_description: newSpecDescription.trim(),
+        template_id: templateId,
+        create_action: "enter_config",
+      });
+      updateSpecItem(response.data);
+      handleCloseCreateSpecItem();
+      applySpecItemToConfig(response.data);
+      setError(null);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "新建需求规格说明失败");
+    } finally {
+      setSpecItemCreating(false);
+    }
+  }
+
+  async function handleEnterSpecItemConfig(item: RequirementSpecWorkItem) {
+    applySpecItemToConfig(item);
+    try {
+      setSpecItemActingId(item.spec_item_id);
+      const response = await configureRequirementSpecWorkItem(item.spec_item_id, {
+        topic: item.title,
+        orchestrator_id: selectedOrchestratorId,
+        provider_id: selectedProviderId,
+        model: labConfig?.defaults.model ?? "",
+        template_id: item.template_id || selectedTemplateId,
+        knowledge_package_id: labConfig?.defaults.knowledge_package_id,
+        write_policy: labConfig?.defaults.write_policy,
+      });
+      updateSpecItem(response.data);
+      applySpecItemToConfig(response.data);
+      setError(null);
+    } catch (configureError) {
+      setError(configureError instanceof Error ? configureError.message : "进入需规配置失败");
+    } finally {
+      setSpecItemActingId(null);
+    }
+  }
+
+  async function handlePublishSpecItem(item: RequirementSpecWorkItem) {
+    try {
+      setSpecItemActingId(item.spec_item_id);
+      const response = await publishRequirementSpecWorkItem(item.spec_item_id);
+      updateSpecItem(response.data);
+      setError(null);
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "发布需求规格说明失败");
+    } finally {
+      setSpecItemActingId(null);
     }
   }
 
@@ -496,8 +661,15 @@ export function RequirementAnalysisLabPage() {
         <section className="requirement-analysis-lab-layout">
           <aside className="requirement-analysis-lab-sidebar" aria-label="XG 需求分析组织器 Lab 视图导航" role="tablist">
             <TabNode
+              active={activeTab === "spec"}
+              badge={`${specItems.length} 条`}
+              onClick={() => setActiveTab("spec")}
+              subtitle="RequirementSpecWorkItem"
+              title="需求规格说明管理"
+            />
+            <TabNode
               active={activeTab === "config"}
-              badge="配置"
+              badge={selectedSpecItem ? "4.2" : "配置"}
               onClick={() => setActiveTab("config")}
               subtitle="RequirementAnalysisOrchestrator 插槽"
               title="组织器配置"
@@ -526,6 +698,27 @@ export function RequirementAnalysisLabPage() {
           </aside>
 
           <section className="requirement-analysis-lab-workspace">
+            {activeTab === "spec" ? (
+              <SpecManagementTab
+                actingId={specItemActingId}
+                createModalOpen={createSpecItemModalOpen}
+                creating={specItemCreating}
+                newDescription={newSpecDescription}
+                newTitle={newSpecTitle}
+                onCloseCreate={handleCloseCreateSpecItem}
+                onCreate={() => void handleCreateSpecItem()}
+                onDescriptionChange={setNewSpecDescription}
+                onEnterConfig={(item) => void handleEnterSpecItemConfig(item)}
+                onOpenCreate={handleOpenCreateSpecItem}
+                onPublish={(item) => void handlePublishSpecItem(item)}
+                onSelect={setSelectedSpecItemId}
+                onTitleChange={setNewSpecTitle}
+                publishedCount={publishedSpecItemCount}
+                selectedItemId={selectedSpecItemId}
+                specItems={specItems}
+                templates={templates}
+              />
+            ) : null}
             {activeTab === "config" ? (
               <ConfigTab
                 activeProvider={activeProvider}
@@ -624,6 +817,152 @@ function TabNode({
       </span>
       <Tag>{badge}</Tag>
     </button>
+  );
+}
+
+function SpecManagementTab({
+  actingId,
+  createModalOpen,
+  creating,
+  newDescription,
+  newTitle,
+  onCloseCreate,
+  onCreate,
+  onDescriptionChange,
+  onEnterConfig,
+  onOpenCreate,
+  onPublish,
+  onSelect,
+  onTitleChange,
+  publishedCount,
+  selectedItemId,
+  specItems,
+  templates,
+}: {
+  actingId: string | null;
+  createModalOpen: boolean;
+  creating: boolean;
+  newDescription: string;
+  newTitle: string;
+  onCloseCreate: () => void;
+  onCreate: () => void;
+  onDescriptionChange: (value: string) => void;
+  onEnterConfig: (item: RequirementSpecWorkItem) => void;
+  onOpenCreate: () => void;
+  onPublish: (item: RequirementSpecWorkItem) => void;
+  onSelect: (itemId: string) => void;
+  onTitleChange: (value: string) => void;
+  publishedCount: number;
+  selectedItemId: string;
+  specItems: RequirementSpecWorkItem[];
+  templates: RequirementAnalysisTemplateSummary[];
+}) {
+  return (
+    <>
+      <div className="requirement-analysis-lab-tab-grid is-spec-management">
+        <section className="requirement-analysis-lab-panel requirement-analysis-lab-spec-management">
+          <div className="requirement-analysis-lab-spec-management-head">
+            <PanelHead
+              title="4.1 需求规格说明管理"
+              subtitle="管理一条需求输入到一份需求规格说明的业务对象，后续配置、分析与发布都从这里进入。"
+            />
+            <Space wrap>
+              <Tag>{specItems.length} 条需规</Tag>
+              <Tag color="green">{publishedCount} 条 P3 可接收</Tag>
+              <Button onClick={onOpenCreate} type="primary">
+                新建需规
+              </Button>
+            </Space>
+          </div>
+          {specItems.length ? (
+            <div className="requirement-analysis-lab-spec-list" role="list">
+              {specItems.map((item) => {
+                const templateName = templates.find((template) => template.template_id === item.template_id)?.name ?? item.template_id;
+                return (
+                  <article
+                    className={
+                      item.spec_item_id === selectedItemId
+                        ? "requirement-analysis-lab-spec-row is-selected"
+                        : "requirement-analysis-lab-spec-row"
+                    }
+                    key={item.spec_item_id}
+                    role="listitem"
+                  >
+                    <button className="requirement-analysis-lab-spec-row-main" onClick={() => onSelect(item.spec_item_id)} type="button">
+                      <span className="requirement-analysis-lab-spec-row-title">
+                        <Text strong>{item.title}</Text>
+                        <Space wrap>
+                          <Tag color={requirementSpecWorkItemStatusColor(item.status)}>{formatRequirementSpecWorkItemStatus(item.status)}</Tag>
+                          <Tag>v{item.version}</Tag>
+                          {item.p3_consumable ? <Tag color="green">P3 可接收</Tag> : null}
+                        </Space>
+                      </span>
+                      <Paragraph ellipsis={{ rows: 2 }} type="secondary">
+                        {item.initial_description || "暂无初始需求输入。"}
+                      </Paragraph>
+                      <span className="requirement-analysis-lab-spec-row-meta">
+                        <Text type="secondary">模板：{templateName}</Text>
+                        <Text type="secondary">更新：{formatRequirementSpecWorkItemDate(item.updated_at)}</Text>
+                      </span>
+                    </button>
+                    <div className="requirement-analysis-lab-spec-row-actions">
+                      <Button loading={actingId === item.spec_item_id} onClick={() => onEnterConfig(item)}>
+                        进入配置
+                      </Button>
+                      <Button
+                        aria-label="发布"
+                        disabled={item.status === "published_to_p3"}
+                        loading={actingId === item.spec_item_id}
+                        onClick={() => onPublish(item)}
+                        type="primary"
+                      >
+                        发布
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="requirement-analysis-lab-empty">
+              <Text type="secondary">暂无需求规格说明。点击“新建需规”创建第一条输入对象。</Text>
+            </div>
+          )}
+        </section>
+      </div>
+      <Modal
+        cancelText="取消"
+        destroyOnHidden
+        okButtonProps={{ disabled: !newTitle.trim(), loading: creating }}
+        okText="创建并进入配置"
+        onCancel={onCloseCreate}
+        onOk={onCreate}
+        open={createModalOpen}
+        title="新建需求规格说明"
+      >
+        <div className="requirement-analysis-lab-spec-modal-body">
+          <label className="requirement-analysis-lab-field">
+            <Text strong>需规标题</Text>
+            <Input
+              aria-label="需规标题"
+              onChange={(event) => onTitleChange(event.target.value)}
+              placeholder="例如：空域协同规划软件需求规格说明"
+              value={newTitle}
+            />
+          </label>
+          <label className="requirement-analysis-lab-field">
+            <Text strong>初始需求输入</Text>
+            <TextArea
+              aria-label="初始需求输入"
+              autoSize={{ minRows: 4, maxRows: 8 }}
+              onChange={(event) => onDescriptionChange(event.target.value)}
+              placeholder="填写这份需规的初始业务输入，后续组织器配置和分析会围绕它展开。"
+              value={newDescription}
+            />
+          </label>
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -2105,7 +2444,9 @@ function DecisionStateDeltaSummary({ turn }: { turn: RequirementAnalysisTurn }) 
           </div>
         ) : null,
       )}
-      {delta?.next_focus || changeSummary?.next_focus ? <Text type="secondary">下一步焦点：{delta?.next_focus || changeSummary?.next_focus}</Text> : null}
+      {delta?.next_focus || changeSummary?.next_focus ? (
+        <Text type="secondary">下一步焦点：{String(delta?.next_focus || changeSummary?.next_focus)}</Text>
+      ) : null}
     </div>
   );
 }

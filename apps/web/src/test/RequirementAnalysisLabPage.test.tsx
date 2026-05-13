@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
 import App from "../App";
-import type { RequirementAnalysisSession, RequirementAnalysisTurnEnvelope } from "../lib/api";
+import type { RequirementAnalysisSession, RequirementAnalysisTurnEnvelope, RequirementSpecWorkItem } from "../lib/api";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
@@ -32,11 +32,152 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 });
 
+test("adds a simple requirement spec management tab before orchestrator configuration", async () => {
+  let specItems: RequirementSpecWorkItem[] = [buildRequirementSpecWorkItem()];
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: specItems } });
+    }
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { provider_id: "mock", name: "Mock Provider", status: "active" },
+            { provider_id: "deepseek", name: "DeepSeek", status: "active" },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({ data: { items: [buildRequirementAnalysisTemplateSummary()] } });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({ data: buildRequirementAnalysisTemplateDetail() });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-analysis/spec-items") {
+      expect(body).toMatchObject({
+        title: "空域冲突处置软件需求规格说明",
+        initial_description: "面向运行协调员的冲突处置闭环。",
+        template_id: "xg-template-81433-attitude-analysis",
+        create_action: "enter_config",
+      });
+      const created: RequirementSpecWorkItem = {
+        ...buildRequirementSpecWorkItem(),
+        spec_item_id: "spec-item-002",
+        title: "空域冲突处置软件需求规格说明",
+        initial_description: "面向运行协调员的冲突处置闭环。",
+        next_action: "enter_config",
+      };
+      specItems = [created, ...specItems];
+      return Promise.resolve({ data: created });
+    }
+    if (url === "/requirement-analysis/spec-items/spec-item-001/configure") {
+      return Promise.resolve({
+        data: {
+          ...buildRequirementSpecWorkItem(),
+          status: "configured",
+          analysis_session_id: "ra-configured-001",
+        },
+      });
+    }
+    if (url === "/requirement-analysis/spec-items/spec-item-001/publish") {
+      const published: RequirementSpecWorkItem = {
+        ...buildRequirementSpecWorkItem(),
+        status: "published_to_p3",
+        p3_consumable: true,
+        published_requirement_spec_id: "req-spec-001",
+        published_package_id: "p3-input-req-spec-001",
+        available_actions: ["enter_config", "revision"],
+      };
+      specItems = [published];
+      return Promise.resolve({ data: published });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  const specManagementTab = screen.getByRole("tab", { name: /需求规格说明管理/ });
+  expect(specManagementTab).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "false");
+  expect(screen.getByText("4.1 需求规格说明管理")).toBeInTheDocument();
+  expect(screen.getByText("空域协同规划软件需求规格说明")).toBeInTheDocument();
+  expect(screen.getByText("草稿")).toBeInTheDocument();
+  expect(screen.getByText("v1")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "新建需规" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "进入配置" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "发布" })).toBeInTheDocument();
+  expect(screen.queryByText("当前需规")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "新建需规" }));
+  expect(screen.getByText("新建需求规格说明")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("需规标题"), {
+    target: { value: "空域冲突处置软件需求规格说明" },
+  });
+  fireEvent.change(screen.getByLabelText("初始需求输入"), {
+    target: { value: "面向运行协调员的冲突处置闭环。" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建并进入配置" }));
+
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items", expect.any(Object)));
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByDisplayValue("空域冲突处置软件需求规格说明")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /需求规格说明管理/ }));
+  let originalSpecRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  fireEvent.click(within(originalSpecRow).getByRole("button", { name: "进入配置" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/configure", expect.any(Object)),
+  );
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
+
+  fireEvent.click(screen.getByRole("tab", { name: /需求规格说明管理/ }));
+  originalSpecRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  fireEvent.click(within(originalSpecRow).getByRole("button", { name: "发布" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/publish"));
+  expect(screen.getByText("已发布到 P3")).toBeInTheDocument();
+  expect(screen.getByText("P3 可接收")).toBeInTheDocument();
+});
+
 test("keeps XG requirement analysis lab view tabs explicit while business state changes", async () => {
   let session = buildSession("created");
   const deferredTurn = createDeferred<{ data: RequirementAnalysisTurnEnvelope }>();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
@@ -185,11 +326,14 @@ test("keeps XG requirement analysis lab view tabs explicit while business state 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 
-  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.getByRole("tab", { name: /会话管理/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.getByRole("tab", { name: /当前 Turn/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.getByRole("tab", { name: /调用日志/ })).toHaveAttribute("aria-selected", "false");
 
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("RequirementAnalysisOrchestrator 插槽")).toBeInTheDocument();
   expect(screen.getByText("可替换组织器")).toBeInTheDocument();
   expect(screen.getByText("启动参数")).toBeInTheDocument();
@@ -501,6 +645,7 @@ test("switches to session tab immediately while startup request is still pending
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
@@ -533,6 +678,7 @@ test("shows empty structured state instead of blanking when new session has no d
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
 
   expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
@@ -549,6 +695,9 @@ test("falls back to active mock provider when DeepSeek is not configured during 
   };
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
@@ -638,6 +787,7 @@ test("falls back to active mock provider when DeepSeek is not configured during 
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   await waitFor(() => expect(screen.getByText(/当前 Provider：Mock Provider/)).toBeInTheDocument());
 
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
@@ -658,6 +808,9 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   const malformedEnvelope = buildMalformedTurnEnvelope();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
@@ -738,6 +891,7 @@ test("shows a protocol error instead of blanking when Current Turn misses requir
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
@@ -766,6 +920,9 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
   const envelope = buildTurnEnvelopeWithSparseReviewArrays();
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
@@ -846,6 +1003,7 @@ test("renders Current Turn without blanking when review arrays are omitted", asy
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
@@ -885,6 +1043,7 @@ test("shows limited-observability plugin fallback when Dify turn has no stage au
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
 
@@ -940,6 +1099,9 @@ test("reloads orchestrator plugins from backend response without hardcoded plugi
   } as const;
 
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
@@ -1000,6 +1162,8 @@ test("reloads orchestrator plugins from backend response without hardcoded plugi
     </MemoryRouter>,
   );
 
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   expect(await screen.findByText("XG Heuristic Orchestrator")).toBeInTheDocument();
   expect(screen.queryByText("XG Custom Plugin Orchestrator")).not.toBeInTheDocument();
 
@@ -1076,6 +1240,7 @@ test("renders one right-side revision marker per turn even when the turn edits m
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
   fireEvent.click(screen.getByRole("button", { name: "启动验证" }));
   await screen.findByText("会话 ra-airspace-001");
   fireEvent.click(screen.getByRole("tab", { name: "临时正文" }));
@@ -1433,8 +1598,32 @@ function buildRequirementAnalysisTemplateDetail() {
   };
 }
 
+function buildRequirementSpecWorkItem(): RequirementSpecWorkItem {
+  return {
+    spec_item_id: "spec-item-001",
+    title: "空域协同规划软件需求规格说明",
+    initial_description: "面向运行协调员和体系架构师的协同规划工具。",
+    status: "draft",
+    template_id: "xg-template-81433-attitude-analysis",
+    knowledge_binding: null,
+    authoring_document_id: "authoring-doc-001",
+    analysis_session_id: null,
+    published_requirement_spec_id: null,
+    published_package_id: null,
+    version: 1,
+    p3_consumable: false,
+    next_action: null,
+    available_actions: ["enter_config", "publish"],
+    created_at: "2026-05-13T10:00:00",
+    updated_at: "2026-05-13T10:00:00",
+  };
+}
+
 function mockRequirementAnalysisBootstrap() {
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
+    }
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({ data: buildLabConfig() });
     }
