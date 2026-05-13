@@ -72,16 +72,16 @@
 | superpowers 文档 | 正式文档 | 说明 |
 | --- | --- | --- |
 | `docs/superpowers/specs/2026-04-15-xx-p4-tool-hub-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md` | `P4` 总体设计已正式归档 |
-| `docs/superpowers/specs/2026-04-16-p4-tool-demand-sheet-lifecycle-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md` | 工具需求单生命周期已归入 `P4` 总体设计与输入链闭环正文 |
-| `docs/superpowers/specs/2026-04-15-p4-tool-hub-unified-data-snapshot-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md` | 统一数据快照已归入总体设计与投影模型正文 |
-| `docs/superpowers/specs/2026-04-16-p4-input-chain-closed-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md` | 输入链闭环已归入 `P4` 正式设计正文 |
-| `docs/superpowers/specs/2026-04-17-p4-simulated-manufacture-executor-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-30-Runtime协调器与队列设计.md` | 模拟研制执行器已归入 `P4` 总体设计与运行时设计 |
+| `docs/superpowers/specs/2026-04-16-p4-tool-demand-sheet-lifecycle-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md` | 工具需求单生命周期已归入 `P4` 总体设计与输入链闭环正文 |
+| `docs/superpowers/specs/2026-04-15-p4-tool-hub-unified-data-snapshot-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1040-数据与投影模型补充.md` | 统一数据快照已归入总体设计与投影模型正文 |
+| `docs/superpowers/specs/2026-04-16-p4-input-chain-closed-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md` | 输入链闭环已归入 `P4` 正式设计正文 |
+| `docs/superpowers/specs/2026-04-17-p4-simulated-manufacture-executor-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1020-Runtime协调器与队列补充.md` | 模拟研制执行器已归入 `P4` 总体设计与运行时设计 |
 | `docs/superpowers/specs/2026-04-17-p4-tool-registry-reset-and-p3-multi-scenario-generator-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md` | 工具仓测试治理与 `P3-sim` 联调输入台已归入 `P4` 正式设计 |
-| `docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md` | `P4` 后端核心业务循环正式归档 |
-| `docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-30-Runtime协调器与队列设计.md` | `P4` 运行时协调器、Worker、Queue 正式归档 |
-| `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md` | `P4 backend service` 分域与边界正式归档 |
-| `docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md` | `P4` 数据模型与投影模型正式归档 |
-| `docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md` | 自演进巡检闭环已拆分归入 `P4` 总体、循环、边界和投影设计 |
+| `docs/superpowers/specs/2026-04-18-p4-core-business-cycle-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md` | `P4` 后端核心业务循环正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-runtime-coordinator-worker-queue-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1020-Runtime协调器与队列补充.md` | `P4` 运行时协调器、Worker、Queue 正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-backend-service-boundary-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1030-Backend服务边界补充.md` | `P4 backend service` 分域与边界正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-data-and-projection-model-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1040-数据与投影模型补充.md` | `P4` 数据模型与投影模型正式归档 |
+| `docs/superpowers/specs/2026-04-18-p4-evolution-inspection-closed-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1030-Backend服务边界补充.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1040-数据与投影模型补充.md` | 自演进巡检闭环已拆分归入 `P4` 总体、循环、边界和投影设计 |
 | `docs/superpowers/issues/2026-04-15-p4-tool-hub-issue-tree-mirror.md` | `DOC/CODEX_DOC/04_研制计划/04-WBS-P4-工具仓库-研制计划.md` | `P4` issue tree mirror 的正式映射 |
 
 ## 7. P6 门户与平台入口
@@ -96,7 +96,7 @@
 
 | superpowers 文档 | 正式文档 | 说明 |
 | --- | --- | --- |
-| `docs/superpowers/specs/2026-04-19-xx-p5-software-construction-system-design.md` | `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/04_研制计划/05-WBS-P5-软件构建系统-研制计划.md`<br/>`DOC/CODEX_DOC/07_过程文档/04_历史分析/03-P5详细设计前置分析-临时.md`<br/>`DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-10-核心业务循环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-40-Backend服务边界设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-50-数据与投影模型设计.md` | `P5` 当前确认的总体设计细节已正式迁入 `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`；前置分析文件保留为历史桥接材料，`P3/P4` 正式设计保留跨节点约束的交叉引用 |
+| `docs/superpowers/specs/2026-04-19-xx-p5-software-construction-system-design.md` | `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/04_研制计划/05-WBS-P5-软件构建系统-研制计划.md`<br/>`DOC/CODEX_DOC/07_过程文档/04_历史分析/03-P5详细设计前置分析-临时.md`<br/>`DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1030-Backend服务边界补充.md`<br/>`DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1040-数据与投影模型补充.md` | `P5` 当前确认的总体设计细节已正式迁入 `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`；前置分析文件保留为历史桥接材料，`P3/P4` 正式设计保留跨节点约束的交叉引用 |
 | `docs/superpowers/specs/2026-04-20-p5-1-minimal-build-loop-design.md` | `DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5.1-最小构建闭环设计.md`<br/>`DOC/CODEX_DOC/02_设计说明/P5_软件构建系统/P5-软件构建系统设计.md`<br/>`DOC/CODEX_DOC/04_研制计划/05-WBS-P5-软件构建系统-研制计划.md` | `P5.1` 专项设计、模拟输入命名、订单/批阅对象、页面分区以及风格继承/节点例外已正式归档 |
 
 ## 9. 后续维护规则
