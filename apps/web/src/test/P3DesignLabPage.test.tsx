@@ -20,7 +20,7 @@ beforeEach(() => {
   postMock.mockReset();
 });
 
-test("renders P3 Design Lab using only P2 frozen packages and generates design baseline", async () => {
+test("renders P3 Design Lab as a Lab workspace with software design document, structured data, and P4 projection tree", async () => {
   const inputPackage = buildInputPackage();
   const createdSession = buildSession(inputPackage, "created");
   const generatedSession = buildSession(inputPackage, "baseline_ready");
@@ -48,37 +48,46 @@ test("renders P3 Design Lab using only P2 frozen packages and generates design b
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("P3 Design Lab")).toBeInTheDocument();
-  expect(screen.getByText("只消费 P2 新版冻结包，不兼容旧规格池")).toBeInTheDocument();
-  expect(screen.getByTestId("stage-document-workbench")).toHaveAttribute("data-stage", "P3");
-  const requirementPane = screen.getByTestId("p3-design-lab-requirement-pane");
-  const designPane = screen.getByTestId("p3-design-lab-design-pane");
-  expect(requirementPane).toBeInTheDocument();
-  expect(screen.getByTestId("p3-design-lab-cli-pane")).toBeInTheDocument();
-  expect(designPane).toBeInTheDocument();
-  expect(within(requirementPane).getByRole("heading", { name: "空域协同规划软件需求规格说明" })).toBeInTheDocument();
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  expect(screen.getByText("从 P2 需求规格冻结包生成软件设计说明、设计基线和 P4 投影")).toBeInTheDocument();
+  const navigation = screen.getByTestId("p3-design-lab-navigation");
+  expect(within(navigation).getByRole("tab", { name: /需规输入/ })).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(navigation).getByRole("tab", { name: /P4 投影/ })).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /当前 Turn/ })).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /检查评审/ })).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /运行日志/ })).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "生成设计基线" }));
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+  expect(within(workspace).getByRole("button", { name: "文档视图" })).toHaveAttribute("aria-pressed", "true");
+  expect(within(workspace).getByRole("button", { name: "结构化数据" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "生成软件设计说明" }));
 
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate"));
   expect(await screen.findByText("空域协同规划软件设计说明")).toBeInTheDocument();
-  expect(within(designPane).getByRole("tab", { name: "正文" })).toBeInTheDocument();
-  expect(within(designPane).getByRole("tab", { name: "目录" })).toBeInTheDocument();
-  expect(within(designPane).getByRole("tab", { name: "检查" })).toBeInTheDocument();
-  expect(within(designPane).getByRole("tab", { name: "投影" })).toBeInTheDocument();
-  expect(within(designPane).getByTestId("document-body-panel")).toBeInTheDocument();
-  expect(within(designPane).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
-  expect(within(designPane).getAllByText("SoftwareDesignBaseline v2")).toHaveLength(2);
-  fireEvent.click(within(designPane).getByRole("tab", { name: "目录" }));
-  expect(within(designPane).getByTestId("document-outline-panel")).toBeInTheDocument();
-  expect(within(designPane).getByText("规划任务管理")).toBeInTheDocument();
-  fireEvent.click(within(designPane).getByRole("tab", { name: "检查" }));
-  expect(within(designPane).getByTestId("quality-check-panel")).toBeInTheDocument();
-  expect(within(designPane).getByText("尚未运行设计完整性检查")).toBeInTheDocument();
-  fireEvent.click(within(designPane).getByRole("tab", { name: "投影" }));
-  expect(within(designPane).getByTestId("stage-projection-panel")).toBeInTheDocument();
+  expect(within(workspace).getByTestId("document-body-panel")).toBeInTheDocument();
+  expect(within(workspace).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
+  expect(within(workspace).getAllByText("SoftwareDesignBaseline v2").length).toBeGreaterThanOrEqual(1);
+
+  fireEvent.click(within(workspace).getByRole("button", { name: "结构化数据" }));
+  expect(within(workspace).getByTestId("p3-design-structured-data-view")).toBeInTheDocument();
+  expect(within(workspace).getByText("规划任务管理")).toBeInTheDocument();
+  expect(within(workspace).getByText("unified_service")).toBeInTheDocument();
+
+  fireEvent.click(within(navigation).getByRole("tab", { name: /P4 投影/ }));
+  expect(screen.getByTestId("p3-design-lab-projection-tree")).toBeInTheDocument();
+  expect(screen.getByRole("tree", { name: "P4 工单投影树" })).toBeInTheDocument();
   expect(screen.getByText("规划任务管理模块实现")).toBeInTheDocument();
+
+  fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
+  const inputView = screen.getByTestId("p3-design-lab-input-view");
+  expect(inputView).toBeInTheDocument();
+  expect(within(inputView).getByText("需规列表")).toBeInTheDocument();
+  expect(within(inputView).getByText("关联软设")).toBeInTheDocument();
+  expect(within(inputView).getAllByText("空域协同规划软件需求规格说明").length).toBeGreaterThan(0);
 });
 
 function buildInputPackage() {

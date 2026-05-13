@@ -29,8 +29,8 @@ export function buildP3DesignLabWorkbenchViewModel({
       downstreamStage: "P4",
     },
     header: {
-      title: "P3 Design Lab",
-      subtitle: "只消费 P2 新版冻结包，不兼容旧规格池",
+      title: "P3 Software Design Lab",
+      subtitle: "从 P2 需求规格冻结包生成软件设计说明、设计基线和 P4 投影",
       statusLabel: session ? `状态：${session.status}` : "状态：待生成",
       sourceLabel: "输入：P2 authoring frozen_package",
       providerLabel: "Provider：Mock Design Provider",
@@ -57,7 +57,7 @@ export function buildP3DesignLabWorkbenchViewModel({
     interaction: {
       mode: "cli",
       title: "自然语言配置 / CLI",
-      description: "用于控制转换策略和校正输出，不替代虚规输入",
+      description: "用于控制转换策略和校正输出，不替代需规输入",
       runline: [
         { key: "input", label: "P2 冻结包", state: visiblePackage ? "done" : "idle" },
         { key: "generation", label: "设计生成", state: session ? "done" : "active" },
@@ -70,13 +70,13 @@ export function buildP3DesignLabWorkbenchViewModel({
         { key: "output_style", label: "输出风格", value: policy.output_style ?? "" },
       ],
       message: session
-        ? "已生成设计基线。可继续输入：细化模块 / 重生成接口 / 增加状态机 / 保守一点。"
+        ? "已生成软件设计说明和设计基线。可继续输入：细化模块 / 重生成接口 / 增加状态机 / 保守一点。"
         : "选择 P2 冻结包后，可直接生成软件设计说明、设计基线和 P4 工单投影。",
       feed: [
         {
           id: "input-facts",
           speaker: "P3",
-          content: "读取虚规正文、结构化字段和标注，保持只读。",
+          content: "读取需规正文、结构化字段和标注，保持只读。",
         },
         {
           id: "system-status",
@@ -142,7 +142,7 @@ export function buildP3DesignLabWorkbenchViewModel({
             })),
           }
         : undefined,
-      emptyDescription: "生成设计基线后显示目录和模块映射",
+      emptyDescription: "生成软件设计说明后显示目录和模块映射",
     },
     quality: buildQualityGateViewModel(session?.check_result ?? null),
     projection: {
@@ -159,7 +159,7 @@ export function buildP3DesignLabWorkbenchViewModel({
           traceRefs: item.module_id ? [item.module_id] : [],
           readiness: "ready",
         })) ?? [],
-      emptyDescription: "生成设计基线后显示工单预览。",
+      emptyDescription: "生成软件设计说明后显示 P4 投影预览。",
     },
     freeze: {
       status: designDocument && designBaseline && projection ? "candidate" : "not_ready",
@@ -169,7 +169,7 @@ export function buildP3DesignLabWorkbenchViewModel({
     actions: [
       {
         key: "generate",
-        label: "生成设计基线",
+        label: "生成软件设计说明",
         disabled: !inputPackage,
         loading: false,
       },
