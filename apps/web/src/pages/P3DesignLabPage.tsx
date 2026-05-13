@@ -11,9 +11,16 @@ import { DocumentBodyPanel } from "../components/stageWorkbench/panels/DocumentB
 import { QualityCheckPanel } from "../components/stageWorkbench/panels/QualityCheckPanel";
 import type { P3DesignLabInputPackage, P3DesignLabSession } from "../lib/api";
 import {
+  appendSoftwareDesignV2Turn,
   createSoftwareDesignV2Session,
+  deleteSoftwareDesignV2Session,
+  freezeSoftwareDesignV2Session,
   generateSoftwareDesignV2Session,
+  generateSoftwareDesignV2Projection,
   getSoftwareDesignV2InputPackages,
+  getSoftwareDesignV2Session,
+  runSoftwareDesignV2Check,
+  saveSoftwareDesignV2Draft,
 } from "../lib/softwareDesignV2";
 import { buildP3DesignLabWorkbenchViewModel } from "./adapters/p3DesignLabWorkbenchAdapter";
 import "./P3DesignLabPage.css";
@@ -82,6 +89,14 @@ export function P3DesignLabPage() {
     [designSession, selectedPackage],
   );
 
+  function mergeSessionIntoInputPackages(session: P3DesignLabSession) {
+    setInputPackages((current) =>
+      current.map((item) =>
+        item.input_package_id === session.input_package.input_package_id ? session.input_package : item,
+      ),
+    );
+  }
+
   async function handleGenerate() {
     if (!selectedPackage) {
       return;
@@ -94,16 +109,139 @@ export function P3DesignLabPage() {
       });
       const generated = await generateSoftwareDesignV2Session(created.data.session_id);
       setDesignSession(generated.data);
-      setInputPackages((current) =>
-        current.map((item) =>
-          item.input_package_id === generated.data.input_package.input_package_id ? generated.data.input_package : item,
-        ),
-      );
+      mergeSessionIntoInputPackages(generated.data);
       setActiveNavigationKey("workspace");
       setWorkspaceMode("document");
       setError(null);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "生成软件设计说明失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleOpenDesignSession(sessionId: string) {
+    try {
+      setSubmitting(true);
+      const response = await getSoftwareDesignV2Session(sessionId);
+      setDesignSession(response.data);
+      mergeSessionIntoInputPackages(response.data);
+      setActiveNavigationKey("workspace");
+      setWorkspaceMode("document");
+      setError(null);
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : "打开软件设计说明失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteDesignSession(sessionId: string) {
+    try {
+      setSubmitting(true);
+      await deleteSoftwareDesignV2Session(sessionId);
+      setInputPackages((current) =>
+        current.map((item) => ({
+          ...item,
+          related_designs: item.related_designs?.filter((design) => design.software_design_id !== sessionId) ?? [],
+        })),
+      );
+      if (designSession?.session_id === sessionId) {
+        setDesignSession(null);
+      }
+      setError(null);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "删除软件设计说明失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSubmitTurn() {
+    if (!designSession || !cliInput.trim()) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const response = await appendSoftwareDesignV2Turn(designSession.session_id, { user_input: cliInput.trim() });
+      setDesignSession(response.data.session);
+      mergeSessionIntoInputPackages(response.data.session);
+      setError(null);
+    } catch (turnError) {
+      setError(turnError instanceof Error ? turnError.message : "提交设计回合失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRunCheck() {
+    if (!designSession) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const response = await runSoftwareDesignV2Check(designSession.session_id);
+      if (response.data.session) {
+        setDesignSession(response.data.session);
+        mergeSessionIntoInputPackages(response.data.session);
+      } else {
+        setDesignSession((current) => (current ? { ...current, check_result: response.data.check_result ?? null } : current));
+      }
+      setError(null);
+    } catch (checkError) {
+      setError(checkError instanceof Error ? checkError.message : "运行设计检查失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSaveDraft() {
+    if (!designSession) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const response = await saveSoftwareDesignV2Draft(designSession.session_id);
+      setDesignSession(response.data);
+      mergeSessionIntoInputPackages(response.data);
+      setError(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存软件设计说明草稿失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGenerateProjection() {
+    if (!designSession) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const response = await generateSoftwareDesignV2Projection(designSession.session_id);
+      setDesignSession(response.data);
+      mergeSessionIntoInputPackages(response.data);
+      setActiveNavigationKey("projection");
+      setError(null);
+    } catch (projectionError) {
+      setError(projectionError instanceof Error ? projectionError.message : "生成 P4 投影候选失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleFreeze() {
+    if (!designSession) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const response = await freezeSoftwareDesignV2Session(designSession.session_id);
+      setDesignSession(response.data);
+      mergeSessionIntoInputPackages(response.data);
+      setError(null);
+    } catch (freezeError) {
+      setError(freezeError instanceof Error ? freezeError.message : "冻结设计包失败");
     } finally {
       setSubmitting(false);
     }
@@ -130,6 +268,13 @@ export function P3DesignLabPage() {
     setCliInput,
     setSelectedPackageId,
     setWorkspaceMode,
+    onDeleteDesignSession: (sessionId) => void handleDeleteDesignSession(sessionId),
+    onFreeze: () => void handleFreeze(),
+    onGenerateProjection: () => void handleGenerateProjection(),
+    onOpenDesignSession: (sessionId) => void handleOpenDesignSession(sessionId),
+    onRunCheck: () => void handleRunCheck(),
+    onSaveDraft: () => void handleSaveDraft(),
+    onSubmitTurn: () => void handleSubmitTurn(),
     workbench,
     workspaceMode,
   });
@@ -228,6 +373,13 @@ function renderWorkspace({
   setCliInput,
   setSelectedPackageId,
   setWorkspaceMode,
+  onDeleteDesignSession,
+  onFreeze,
+  onGenerateProjection,
+  onOpenDesignSession,
+  onRunCheck,
+  onSaveDraft,
+  onSubmitTurn,
   workbench,
   workspaceMode,
 }: {
@@ -238,6 +390,13 @@ function renderWorkspace({
   setCliInput: (value: string) => void;
   setSelectedPackageId: (value: string) => void;
   setWorkspaceMode: (value: P3DesignWorkspaceMode) => void;
+  onDeleteDesignSession: (sessionId: string) => void;
+  onFreeze: () => void;
+  onGenerateProjection: () => void;
+  onOpenDesignSession: (sessionId: string) => void;
+  onRunCheck: () => void;
+  onSaveDraft: () => void;
+  onSubmitTurn: () => void;
   workbench: StageDocumentWorkbenchViewModel;
   workspaceMode: P3DesignWorkspaceMode;
 }) {
@@ -248,22 +407,49 @@ function renderWorkspace({
         inputPackages={inputPackages}
         selectedPackageId={selectedPackageId}
         workbench={workbench}
+        onDeleteDesignSession={onDeleteDesignSession}
+        onOpenDesignSession={onOpenDesignSession}
         onSelectPackage={setSelectedPackageId}
       />
     );
   }
 
   if (activeNavigationKey === "projection") {
-    return <ProjectionTreeView workbench={workbench} />;
+    return <ProjectionTreeView workbench={workbench} onGenerateProjection={onGenerateProjection} />;
   }
 
   if (activeNavigationKey === "turn") {
-    return <CurrentTurnView cliInput={cliInput} interaction={workbench.interaction} onCliInputChange={setCliInput} />;
+    return (
+      <CurrentTurnView
+        cliInput={cliInput}
+        interaction={workbench.interaction}
+        onCliInputChange={setCliInput}
+        onSubmitTurn={onSubmitTurn}
+      />
+    );
   }
 
   if (activeNavigationKey === "review") {
     return (
-      <WorkspacePanel title="检查评审" subtitle="检查评审只负责门禁、证据和冻结候选，不生成设计内容。">
+      <WorkspacePanel
+        actions={
+          <>
+            <Button aria-label="运行检查" disabled={workbench.product.status === "empty"} onClick={onRunCheck}>
+              运行检查
+            </Button>
+            <Button
+              aria-label="冻结设计包"
+              disabled={workbench.quality.status === "not_run" || workbench.quality.summary.blockingCount > 0}
+              type="primary"
+              onClick={onFreeze}
+            >
+              冻结设计包
+            </Button>
+          </>
+        }
+        title="检查评审"
+        subtitle="检查评审只负责门禁、证据和冻结候选，不生成设计内容。"
+      >
         <QualityCheckPanel quality={workbench.quality} />
       </WorkspacePanel>
     );
@@ -277,7 +463,9 @@ function renderWorkspace({
     <SoftwareDesignWorkspaceView
       mode={workspaceMode}
       workbench={workbench}
+      onGenerateProjection={onGenerateProjection}
       onModeChange={setWorkspaceMode}
+      onSaveDraft={onSaveDraft}
     />
   );
 }
@@ -287,12 +475,16 @@ function InputPackageView({
   inputPackages,
   selectedPackageId,
   workbench,
+  onDeleteDesignSession,
+  onOpenDesignSession,
   onSelectPackage,
 }: {
   inputFacts: StageInputFactsViewModel;
   inputPackages: P3DesignLabInputPackage[];
   selectedPackageId: string | null;
   workbench: StageDocumentWorkbenchViewModel;
+  onDeleteDesignSession: (sessionId: string) => void;
+  onOpenDesignSession: (sessionId: string) => void;
   onSelectPackage: (value: string) => void;
 }) {
   return (
@@ -376,8 +568,12 @@ function InputPackageView({
                   <Space wrap>
                     <Tag color={design.status === "baseline_ready" ? "green" : "default"}>{design.status}</Tag>
                     <Tag>{formatDateTime(design.updated_at)}</Tag>
-                    <Button size="small">进入编辑</Button>
-                    <Button danger size="small">删除</Button>
+                    <Button aria-label="进入编辑" size="small" onClick={() => onOpenDesignSession(design.software_design_id)}>
+                      进入编辑
+                    </Button>
+                    <Button aria-label="删除" danger size="small" onClick={() => onDeleteDesignSession(design.software_design_id)}>
+                      删除
+                    </Button>
                   </Space>
                 </article>
               ))
@@ -407,11 +603,15 @@ function InputPackageView({
 function SoftwareDesignWorkspaceView({
   mode,
   workbench,
+  onGenerateProjection,
   onModeChange,
+  onSaveDraft,
 }: {
   mode: P3DesignWorkspaceMode;
   workbench: StageDocumentWorkbenchViewModel;
+  onGenerateProjection: () => void;
   onModeChange: (value: P3DesignWorkspaceMode) => void;
+  onSaveDraft: () => void;
 }) {
   return (
     <WorkspacePanel
@@ -423,7 +623,9 @@ function SoftwareDesignWorkspaceView({
           <Button aria-pressed={mode === "structured"} type={mode === "structured" ? "primary" : "default"} onClick={() => onModeChange("structured")}>
             结构化数据
           </Button>
-          <Button disabled={workbench.product.status === "empty"}>保存草稿</Button>
+          <Button aria-label="保存草稿" disabled={workbench.product.status === "empty"} onClick={onSaveDraft}>
+            保存草稿
+          </Button>
         </>
       }
       subtitle="同一份软件设计说明在这里以 A4 正文和结构化基线两种形态展示。"
@@ -449,13 +651,19 @@ function SoftwareDesignWorkspaceView({
           <DocumentBodyPanel document={workbench.product} />
         </div>
       ) : (
-        <StructuredDesignDataView workbench={workbench} />
+        <StructuredDesignDataView workbench={workbench} onGenerateProjection={onGenerateProjection} />
       )}
     </WorkspacePanel>
   );
 }
 
-function StructuredDesignDataView({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
+function StructuredDesignDataView({
+  workbench,
+  onGenerateProjection,
+}: {
+  workbench: StageDocumentWorkbenchViewModel;
+  onGenerateProjection: () => void;
+}) {
   const baseline = workbench.outline.baseline;
   return (
     <div className="p3-design-lab-structured-view" data-testid="p3-design-structured-data-view">
@@ -497,15 +705,28 @@ function StructuredDesignDataView({ workbench }: { workbench: StageDocumentWorkb
             <span>当前样例未返回细粒度追溯关系。</span>
           )}
         </div>
+        <Button disabled={!baseline} type="primary" onClick={onGenerateProjection}>
+          生成投影候选
+        </Button>
       </section>
     </div>
   );
 }
 
-function ProjectionTreeView({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
+function ProjectionTreeView({
+  workbench,
+  onGenerateProjection,
+}: {
+  workbench: StageDocumentWorkbenchViewModel;
+  onGenerateProjection: () => void;
+}) {
   return (
     <WorkspacePanel
-      actions={<Button disabled={workbench.projection.status === "empty"}>生成投影候选</Button>}
+      actions={
+        <Button aria-label="生成投影候选" disabled={workbench.product.status === "empty"} onClick={onGenerateProjection}>
+          生成投影候选
+        </Button>
+      }
       subtitle="P4 投影就是从 P3 设计基线派生出的下游工单组织树。"
       title="P4 投影"
     >
@@ -516,7 +737,9 @@ function ProjectionTreeView({ workbench }: { workbench: StageDocumentWorkbenchVi
             <Tag>{workbench.projection.status}</Tag>
           </div>
           <div role="group">
-            {workbench.projection.items.length ? (
+            {workbench.projection.tree ? (
+              <ProjectionTreeNode node={workbench.projection.tree} />
+            ) : workbench.projection.items.length ? (
               workbench.projection.items.map((item) => (
                 <div className="p3-design-lab-projection-node" key={item.itemId} role="treeitem">
                   <span>{item.title}</span>
@@ -542,14 +765,32 @@ function ProjectionTreeView({ workbench }: { workbench: StageDocumentWorkbenchVi
   );
 }
 
+function ProjectionTreeNode({ node }: { node: NonNullable<StageDocumentWorkbenchViewModel["projection"]["tree"]> }) {
+  return (
+    <div className="p3-design-lab-projection-node" role="treeitem">
+      <span>{node.title}</span>
+      <Tag>{node.nodeType}</Tag>
+      {node.children?.length ? (
+        <div role="group">
+          {node.children.map((child) => (
+            <ProjectionTreeNode key={child.nodeId} node={child} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CurrentTurnView({
   interaction,
   cliInput,
   onCliInputChange,
+  onSubmitTurn,
 }: {
   interaction: StageInteractionViewModel;
   cliInput: string;
   onCliInputChange: (value: string) => void;
+  onSubmitTurn: () => void;
 }) {
   return (
     <WorkspacePanel title="当前 Turn" subtitle="用回合列表解释从需规到软设的生成和修订过程。">
@@ -591,7 +832,9 @@ function CurrentTurnView({
               value={cliInput}
               onChange={(event) => onCliInputChange(event.target.value)}
             />
-            <Button disabled={interaction.composer.disabled}>{interaction.composer.submitLabel}</Button>
+            <Button aria-label={interaction.composer.submitLabel} disabled={interaction.composer.disabled} onClick={onSubmitTurn}>
+              {interaction.composer.submitLabel}
+            </Button>
           </div>
         </section>
       </div>
@@ -600,16 +843,16 @@ function CurrentTurnView({
 }
 
 function RuntimeLogView({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
-  const logRows = [
-    { time: "09:00", scope: "GET", content: "读取 P2 需求规格冻结包" },
-    { time: "09:01", scope: "ADAPTER", content: "构建 P3 Design Lab ViewModel" },
-    ...(workbench.product.status === "empty"
-      ? []
-      : [
-          { time: "09:02", scope: "POST", content: "生成软件设计说明和结构化设计基线" },
-          { time: "09:03", scope: "PROJECTION", content: "生成 P4 投影候选" },
-        ]),
-  ];
+  const logRows = workbench.runtimeEvents.length
+    ? workbench.runtimeEvents.map((event) => ({
+        time: formatDateTime(event.created_at),
+        scope: event.event_type,
+        content: event.message,
+      }))
+    : [
+        { time: "09:00", scope: "GET", content: "读取 P2 需求规格冻结包" },
+        { time: "09:01", scope: "ADAPTER", content: "构建 P3 Design Lab ViewModel" },
+      ];
   return (
     <WorkspacePanel title="运行日志" subtitle="运行日志只记录过程，不作为正式设计结论。">
       <div className="p3-design-lab-runtime-log">

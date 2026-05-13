@@ -73,3 +73,41 @@ def run_design_check(session_id: str, service: SoftwareDesignV2Service = Depends
     if result is None:
         raise HTTPException(status_code=404, detail="P3 design session not found")
     return result
+
+
+@router.post("/sessions/{session_id}/save")
+def save_design_draft(session_id: str, service: SoftwareDesignV2Service = Depends(get_software_design_v2_service)):
+    result = service.save_draft(session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="P3 design session not found")
+    return result
+
+
+@router.post("/sessions/{session_id}/projection")
+def generate_projection(session_id: str, service: SoftwareDesignV2Service = Depends(get_software_design_v2_service)):
+    result = service.generate_projection(session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="P3 design session not found")
+    return result
+
+
+@router.post("/sessions/{session_id}/freeze")
+def freeze_design_session(session_id: str, service: SoftwareDesignV2Service = Depends(get_software_design_v2_service)):
+    try:
+        result = service.freeze(session_id)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="P3 design session not found")
+    return result
+
+
+@router.delete("/sessions/{session_id}")
+def delete_design_session(session_id: str, service: SoftwareDesignV2Service = Depends(get_software_design_v2_service)):
+    try:
+        result = service.delete_session(session_id)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="P3 design session not found")
+    return result

@@ -107,6 +107,7 @@ export type StageOutputProjectionViewModel = {
   status: "empty" | "draft" | "ready" | "frozen";
   sourceDocumentId?: string;
   sourceStateId?: string;
+  tree?: StageOutputProjectionTreeNodeViewModel;
   items: Array<{
     itemId: string;
     title: string;
@@ -116,6 +117,13 @@ export type StageOutputProjectionViewModel = {
     readiness: "pending" | "ready" | "blocked" | string;
   }>;
   emptyDescription: string;
+};
+
+export type StageOutputProjectionTreeNodeViewModel = {
+  nodeId: string;
+  title: string;
+  nodeType: string;
+  children?: StageOutputProjectionTreeNodeViewModel[];
 };
 
 export type StageInteractionViewModel = {
@@ -171,6 +179,15 @@ export type StageActionViewModel = {
   loading: boolean;
 };
 
+export type StageRuntimeEventViewModel = {
+  eventId: string;
+  event_type: string;
+  eventType: string;
+  message: string;
+  created_at: string;
+  createdAt: string;
+};
+
 export type DocumentOutlineViewModel = {
   sections: Array<{
     sectionId: string;
@@ -200,5 +217,6 @@ export type StageDocumentWorkbenchViewModel = {
   quality: StageQualityGateViewModel;
   projection: StageOutputProjectionViewModel;
   freeze: StageFreezeViewModel;
+  runtimeEvents: StageRuntimeEventViewModel[];
   actions: StageActionViewModel[];
 };

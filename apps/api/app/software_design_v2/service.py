@@ -46,6 +46,8 @@ class SoftwareDesignV2Service:
             "workorder_projection": None,
             "turns": [],
             "check_result": None,
+            "frozen_package": None,
+            "runtime_events": [self._build_runtime_event("session_created", "创建设计会话")],
             "created_at": self._now(),
             "updated_at": self._now(),
         }
@@ -67,6 +69,10 @@ class SoftwareDesignV2Service:
         design_session["workorder_projection"] = self._build_workorder_projection()
         design_session["status"] = "baseline_ready"
         design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("generate", "生成软件设计说明、设计基线和 P4 投影"),
+        ]
         self._refresh_related_designs(design_session)
         return design_session
 
@@ -116,6 +122,10 @@ class SoftwareDesignV2Service:
         ]
         design_session["status"] = "patch_ready"
         design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("turn", f"追加设计回合：{normalized_intent}"),
+        ]
         self._refresh_related_designs(design_session)
         return {"turn": turn, "session": design_session}
 
@@ -141,8 +151,85 @@ class SoftwareDesignV2Service:
         }
         design_session["check_result"] = check_result
         design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("check", "运行设计完整性检查"),
+        ]
         self._refresh_related_designs(design_session)
-        return {"session_id": session_id, "check_result": check_result}
+        return {"session_id": session_id, "check_result": check_result, "session": design_session}
+
+    def save_draft(self, session_id: str) -> dict | None:
+        design_session = self.get_session(session_id)
+        if design_session is None:
+            return None
+        if design_session["design_baseline"] is None:
+            self.generate(session_id)
+            design_session = self.get_session(session_id)
+            if design_session is None:
+                return None
+        design_session["status"] = "draft_saved"
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("save", "保存软件设计说明草稿"),
+        ]
+        self._refresh_related_designs(design_session)
+        return design_session
+
+    def generate_projection(self, session_id: str) -> dict | None:
+        design_session = self.get_session(session_id)
+        if design_session is None:
+            return None
+        if design_session["design_baseline"] is None:
+            self.generate(session_id)
+            design_session = self.get_session(session_id)
+            if design_session is None:
+                return None
+        design_session["workorder_projection"] = self._build_workorder_projection()
+        design_session["status"] = "projection_ready"
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("projection", "生成 P4 工单投影候选"),
+        ]
+        self._refresh_related_designs(design_session)
+        return design_session
+
+    def freeze(self, session_id: str) -> dict | None:
+        design_session = self.get_session(session_id)
+        if design_session is None:
+            return None
+        if design_session["design_baseline"] is None:
+            self.generate(session_id)
+            design_session = self.get_session(session_id)
+            if design_session is None:
+                return None
+        if design_session["check_result"] is None:
+            self.run_check(session_id)
+            design_session = self.get_session(session_id)
+            if design_session is None:
+                return None
+        if design_session["check_result"]["blocking_count"] > 0:
+            raise ValueError("P3 design session has blocking check items")
+
+        design_session["status"] = "frozen"
+        design_session["frozen_package"] = self._build_frozen_package(design_session)
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("freeze", "冻结软件设计基线和设计包"),
+        ]
+        self._refresh_related_designs(design_session)
+        return design_session
+
+    def delete_session(self, session_id: str) -> dict | None:
+        design_session = self.get_session(session_id)
+        if design_session is None:
+            return None
+        if design_session["status"] == "frozen":
+            raise ValueError("frozen P3 design session cannot be deleted")
+        del self._sessions[session_id]
+        return {"deleted_session_id": session_id}
 
     def _get_input_package(self, input_package_id: str) -> dict:
         packages = self.list_input_packages()["items"]
@@ -241,12 +328,56 @@ class SoftwareDesignV2Service:
                 "architecture_recommendation": "unified_service",
                 "design_notes": ["统一服务优先，保留后续拆分条件。"],
             },
+            "tree": {
+                "node_id": "p4-projection-root",
+                "title": "P4 模块工单投影包",
+                "node_type": "projection_package",
+                "children": [
+                    {
+                        "node_id": "branch-core-service",
+                        "title": "统一服务实现分支",
+                        "node_type": "module_branch",
+                        "children": [
+                            {"node_id": "wo-planning-task", "title": "规划任务管理模块实现", "node_type": "module_workorder"},
+                            {"node_id": "wo-conflict-alert", "title": "冲突识别与告警模块实现", "node_type": "module_workorder"},
+                        ],
+                    },
+                    {
+                        "node_id": "branch-collaboration",
+                        "title": "协同与审计实现分支",
+                        "node_type": "module_branch",
+                        "children": [
+                            {"node_id": "wo-collaboration-confirm", "title": "协同确认模块实现", "node_type": "module_workorder"},
+                            {"node_id": "wo-audit-trace", "title": "审计追溯模块实现", "node_type": "module_workorder"},
+                        ],
+                    },
+                ],
+            },
             "items": [
                 {"item_id": "wo-planning-task", "title": "规划任务管理模块实现", "module_id": "planning-task"},
                 {"item_id": "wo-conflict-alert", "title": "冲突识别与告警模块实现", "module_id": "conflict-alert"},
                 {"item_id": "wo-collaboration-confirm", "title": "协同确认模块实现", "module_id": "collaboration-confirm"},
                 {"item_id": "wo-audit-trace", "title": "审计追溯模块实现", "module_id": "audit-trace"},
             ],
+        }
+
+    def _build_frozen_package(self, design_session: dict) -> dict:
+        return {
+            "package_id": f"sdp-{design_session['session_id']}",
+            "version_label": "SoftwareDesignBaseline v2",
+            "status": "frozen",
+            "frozen_at": self._now(),
+            "design_document": design_session["design_document"],
+            "design_baseline": design_session["design_baseline"],
+            "workorder_projection": design_session["workorder_projection"],
+        }
+
+    def _build_runtime_event(self, event_type: str, message: str) -> dict:
+        return {
+            "event_id": f"p3evt-{uuid4().hex[:10]}",
+            "event_type": event_type,
+            "message": message,
+            "created_at": self._now(),
         }
 
     def _now(self) -> str:
