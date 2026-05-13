@@ -7,23 +7,66 @@ import App from "../App";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const deleteMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
+    delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
 
 beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
+  deleteMock.mockReset();
 });
 
 test("renders P3 Design Lab as a Lab workspace with software design document, structured data, and P4 projection tree", async () => {
   const inputPackage = buildInputPackage();
   const createdSession = buildSession(inputPackage, "created");
   const generatedSession = buildSession(inputPackage, "baseline_ready");
+  const savedSession = buildSession(inputPackage, "draft_saved", {
+    runtime_events: [
+      { event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" },
+      { event_id: "evt-2", event_type: "save", message: "保存软件设计说明草稿", created_at: "2026-05-13T10:22:00Z" },
+    ],
+  });
+  const projectedSession = buildSession(inputPackage, "projection_ready", {
+    runtime_events: [
+      { event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" },
+      { event_id: "evt-3", event_type: "projection", message: "生成 P4 工单投影候选", created_at: "2026-05-13T10:23:00Z" },
+    ],
+  });
+  const turnedSession = buildSession(inputPackage, "patch_ready", {
+    turns: [
+      {
+        turn_id: "p3turn-1",
+        user_input: "按保守方案，增加状态机说明",
+        normalized_intent: "add_state_machine",
+        assistant_message: "已补入状态机说明，并将告警反馈时间保留为待确认项。",
+        created_at: "2026-05-13T10:24:00Z",
+      },
+    ],
+  });
+  const checkedSession = buildSession(inputPackage, "patch_ready", {
+    check_result: {
+      blocking_count: 0,
+      warning_count: 1,
+      passed_count: 4,
+      items: [{ severity: "passed", message: "软件设计说明正文已生成。" }],
+    },
+  });
+  const frozenSession = buildSession(inputPackage, "frozen", {
+    check_result: checkedSession.check_result,
+    frozen_package: {
+      package_id: "sdp-p3dl-1",
+      version_label: "SoftwareDesignBaseline v2",
+      status: "frozen",
+      frozen_at: "2026-05-13T10:30:00Z",
+    },
+  });
 
   getMock.mockImplementation((url: string) => {
     if (url === "/software-design-v2/input-packages") {
@@ -39,7 +82,39 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
     if (url === "/software-design-v2/sessions/p3dl-1/generate") {
       return Promise.resolve({ data: generatedSession });
     }
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return Promise.resolve({ data: { turn: turnedSession.turns[0], session: turnedSession } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/save") {
+      return Promise.resolve({ data: savedSession });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/projection") {
+      return Promise.resolve({ data: projectedSession });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/check") {
+      return Promise.resolve({
+        data: { session_id: "p3dl-1", check_result: checkedSession.check_result, session: checkedSession },
+      });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/freeze") {
+      return Promise.resolve({ data: frozenSession });
+    }
     throw new Error(`unexpected post url: ${url}`);
+  });
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: generatedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  deleteMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: { deleted_session_id: "p3dl-1" } });
+    }
+    throw new Error(`unexpected delete url: ${url}`);
   });
 
   render(
@@ -71,11 +146,16 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(within(workspace).getByTestId("document-body-panel")).toBeInTheDocument();
   expect(within(workspace).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
   expect(within(workspace).getAllByText("SoftwareDesignBaseline v2").length).toBeGreaterThanOrEqual(1);
+  fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));
+  expect(await screen.findByText("设计会话：draft_saved")).toBeInTheDocument();
 
   fireEvent.click(within(workspace).getByRole("button", { name: "结构化数据" }));
   expect(within(workspace).getByTestId("p3-design-structured-data-view")).toBeInTheDocument();
   expect(within(workspace).getByText("规划任务管理")).toBeInTheDocument();
   expect(within(workspace).getByText("unified_service")).toBeInTheDocument();
+  fireEvent.click(within(workspace).getByRole("button", { name: "生成投影候选" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/projection"));
 
   fireEvent.click(within(navigation).getByRole("tab", { name: /P4 投影/ }));
   expect(screen.getByTestId("p3-design-lab-projection-tree")).toBeInTheDocument();
@@ -90,6 +170,32 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(within(inputView).getAllByText("空域协同规划软件需求规格说明").length).toBeGreaterThan(0);
   expect(within(inputView).getByText("2026-05-13 10:20")).toBeInTheDocument();
   expect(within(inputView).getByText("baseline_ready")).toBeInTheDocument();
+
+  fireEvent.click(within(inputView).getByRole("button", { name: "进入编辑" }));
+  await waitFor(() => expect(getMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
+
+  fireEvent.click(within(navigation).getByRole("tab", { name: /当前 Turn/ }));
+  fireEvent.change(screen.getByLabelText("P3 Design Lab CLI"), { target: { value: "按保守方案，增加状态机说明" } });
+  fireEvent.click(screen.getByRole("button", { name: "提交" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/turns", {
+      user_input: "按保守方案，增加状态机说明",
+    }),
+  );
+  expect(await screen.findByText("已补入状态机说明，并将告警反馈时间保留为待确认项。")).toBeInTheDocument();
+
+  fireEvent.click(within(navigation).getByRole("tab", { name: /检查评审/ }));
+  fireEvent.click(screen.getByRole("button", { name: "运行检查" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/check"));
+  expect(await screen.findByText("通过项：4")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "冻结设计包" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/freeze"));
+  expect(await screen.findByText("设计会话：frozen")).toBeInTheDocument();
+
+  fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
+  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+  await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
 });
 
 function buildInputPackage() {
@@ -124,7 +230,11 @@ function buildInputPackage() {
   };
 }
 
-function buildSession(inputPackage: ReturnType<typeof buildInputPackage>, status: string) {
+function buildSession(
+  inputPackage: ReturnType<typeof buildInputPackage>,
+  status: string,
+  overrides: Record<string, unknown> = {},
+) {
   const session = {
     session_id: "p3dl-1",
     input_package: inputPackage,
@@ -153,12 +263,28 @@ function buildSession(inputPackage: ReturnType<typeof buildInputPackage>, status
       status === "created"
         ? null
         : {
+            tree: {
+              node_id: "p4-projection-root",
+              title: "P4 模块工单投影包",
+              node_type: "projection_package",
+              children: [
+                {
+                  node_id: "branch-core-service",
+                  title: "统一服务实现分支",
+                  node_type: "module_branch",
+                  children: [{ node_id: "wo-1", title: "规划任务管理模块实现", node_type: "module_workorder" }],
+                },
+              ],
+            },
             items: [{ item_id: "wo-1", title: "规划任务管理模块实现" }],
           },
     turns: [],
     check_result: null,
+    frozen_package: null,
+    runtime_events: [{ event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" }],
     created_at: "2026-05-13T10:00:00Z",
     updated_at: status === "created" ? "2026-05-13T10:00:00Z" : "2026-05-13T10:20:00Z",
+    ...overrides,
   };
   return {
     ...session,

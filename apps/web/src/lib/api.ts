@@ -2271,7 +2271,32 @@ export type P3DesignLabDesignBaseline = {
 
 export type P3DesignLabWorkorderProjection = {
   package_overview?: Record<string, unknown>;
+  tree?: P3DesignLabProjectionTreeNode;
   items: Array<{ item_id: string; title: string; module_id?: string }>;
+};
+
+export type P3DesignLabProjectionTreeNode = {
+  node_id: string;
+  title: string;
+  node_type: string;
+  children?: P3DesignLabProjectionTreeNode[];
+};
+
+export type P3DesignLabFrozenPackage = {
+  package_id: string;
+  version_label: string;
+  status: string;
+  frozen_at: string;
+  design_document?: P3DesignLabDesignDocument;
+  design_baseline?: P3DesignLabDesignBaseline;
+  workorder_projection?: P3DesignLabWorkorderProjection;
+};
+
+export type P3DesignLabRuntimeEvent = {
+  event_id: string;
+  event_type: string;
+  message: string;
+  created_at: string;
 };
 
 export type P3DesignLabSession = {
@@ -2284,6 +2309,10 @@ export type P3DesignLabSession = {
   workorder_projection: P3DesignLabWorkorderProjection | null;
   turns: Array<Record<string, unknown>>;
   check_result?: RequirementAuthoringCheckResult | null;
+  frozen_package?: P3DesignLabFrozenPackage | null;
+  runtime_events?: P3DesignLabRuntimeEvent[];
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type RequirementAnalysisOrchestratorStatus = "active" | "available" | "disabled";

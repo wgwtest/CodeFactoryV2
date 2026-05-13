@@ -84,6 +84,11 @@ export function buildP3DesignLabWorkbenchViewModel({
           speaker: "SYS",
           content: session ? "设计基线已就绪，等待下一轮自然语言配置。" : "等待生成软件设计说明。",
         },
+        ...(session?.turns.map((turn, index) => ({
+          id: toDisplayString(turn.turn_id, `turn-${index + 1}`),
+          speaker: toDisplayString(turn.normalized_intent, "TURN"),
+          content: toDisplayString(turn.assistant_message, toDisplayString(turn.user_input, "设计回合已记录。")),
+        })) ?? []),
       ],
       composer: {
         ariaLabel: "P3 Design Lab CLI",
@@ -152,6 +157,7 @@ export function buildP3DesignLabWorkbenchViewModel({
       status: projection ? "ready" : "empty",
       sourceDocumentId: designDocument?.title,
       sourceStateId: designBaseline?.baseline_id,
+      tree: projection?.tree ? buildProjectionTreeNode(projection.tree) : undefined,
       items:
         projection?.items.map((item) => ({
           itemId: item.item_id,
@@ -163,10 +169,25 @@ export function buildP3DesignLabWorkbenchViewModel({
       emptyDescription: "生成软件设计说明后显示 P4 投影预览。",
     },
     freeze: {
-      status: designDocument && designBaseline && projection ? "candidate" : "not_ready",
+      status: session?.status === "frozen" ? "frozen" : designDocument && designBaseline && projection ? "candidate" : "not_ready",
       gates: [],
       candidateOutputs: ["软件设计说明", "SoftwareDesignBaseline v2", "P4 模块工单投影"],
+      frozenRecord: session?.frozen_package
+        ? {
+            recordId: session.frozen_package.package_id,
+            frozenAt: session.frozen_package.frozen_at,
+          }
+        : undefined,
     },
+    runtimeEvents:
+      session?.runtime_events?.map((event) => ({
+        eventId: event.event_id,
+        event_type: event.event_type,
+        eventType: event.event_type,
+        message: event.message,
+        created_at: event.created_at,
+        createdAt: event.created_at,
+      })) ?? [],
     actions: [
       {
         key: "generate",
@@ -218,4 +239,18 @@ function toDisplayString(value: unknown, fallback: string): string {
 
 function toOptionalDisplayString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function buildProjectionTreeNode(
+  node: NonNullable<P3DesignLabSession["workorder_projection"]>["tree"],
+): StageDocumentWorkbenchViewModel["projection"]["tree"] {
+  if (!node) {
+    return undefined;
+  }
+  return {
+    nodeId: node.node_id,
+    title: node.title,
+    nodeType: node.node_type,
+    children: node.children?.map((child) => buildProjectionTreeNode(child)).filter((child) => child !== undefined),
+  };
 }
