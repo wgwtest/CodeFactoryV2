@@ -1,0 +1,1530 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P2 Brainstorming Lab 需规列表简化原型 v8</title>
+    <style>
+      :root {
+        --bg: #eef3f0;
+        --ink: #111f1d;
+        --muted: #77827f;
+        --line: #cbd6d1;
+        --panel: #fff;
+        --soft: #f7fbf9;
+        --teal: #287b78;
+        --teal-soft: #e8f7f4;
+        --blue: #1976ff;
+        --blue-soft: #eaf3ff;
+        --green: #52c41a;
+        --green-soft: #effbe9;
+        --gold: #b46a00;
+        --gold-soft: #fff7e6;
+        --red: #c24132;
+        --red-soft: #fff1f0;
+        --shadow: 0 16px 42px rgba(25, 43, 38, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(26, 48, 44, 0.055) 1px, transparent 1px) 0 0 / 28px 28px,
+          linear-gradient(0deg, rgba(26, 48, 44, 0.055) 1px, transparent 1px) 0 0 / 28px 28px,
+          var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 22px 28px 0;
+        overflow: hidden;
+      }
+
+      .topbar,
+      .sidebar,
+      .workspace,
+      .panel,
+      .card,
+      .input-box,
+      .textarea-box {
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .topbar {
+        height: 82px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 24px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .mark {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #12435a;
+        color: #12435a;
+        font-weight: 900;
+        font-size: 17px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 30px;
+        line-height: 1.08;
+        font-weight: 950;
+      }
+
+      .subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .pill-row,
+      .top-actions,
+      .button-row,
+      .tag-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag,
+      .button {
+        min-height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d9d9d9;
+        background: #fff;
+        padding: 4px 9px;
+        font-size: 13px;
+        line-height: 1.2;
+        font-weight: 700;
+      }
+
+      .tag.blue {
+        border-color: #91caff;
+        color: #0958d9;
+        background: var(--blue-soft);
+      }
+
+      .tag.green {
+        border-color: #b7eb8f;
+        color: #237804;
+        background: var(--green-soft);
+      }
+
+      .tag.gold {
+        border-color: #ffd591;
+        color: #ad4e00;
+        background: var(--gold-soft);
+      }
+
+      .tag.teal {
+        border-color: #9ad4ce;
+        color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .tag.red {
+        border-color: #ffccc7;
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .button {
+        height: 36px;
+        min-width: 88px;
+        cursor: default;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--blue);
+        background: var(--blue);
+      }
+
+      .button.danger {
+        color: #cf1322;
+        border-color: #ffccc7;
+        background: #fff;
+      }
+
+      .layout {
+        height: 952px;
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 18px;
+      }
+
+      .sidebar {
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .tab-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .tab {
+        min-height: 96px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+        padding: 14px 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .state-spec .nav-spec,
+      .state-config .nav-config,
+      .state-session .nav-session,
+      .state-doc .nav-session,
+      .state-tree .nav-session,
+      .state-path .nav-session,
+      .state-turn .nav-turn,
+      .state-log .nav-log,
+      .state-log-context .nav-log {
+        border-color: var(--teal);
+        background: var(--teal-soft);
+        box-shadow: inset 3px 0 0 var(--teal);
+      }
+
+      .tab-title {
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .tab-sub {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .view {
+        display: none;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .state-spec .view-spec,
+      .state-config .view-config,
+      .state-session .view-session,
+      .state-doc .view-session,
+      .state-tree .view-session,
+      .state-path .view-session,
+      .state-turn .view-turn,
+      .state-log .view-log,
+      .state-log-context .view-log {
+        display: grid;
+      }
+
+      .view-config {
+        grid-template-columns: 0.72fr 1.08fr;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .view-spec {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .spec-context-strip {
+        grid-column: 1 / -1;
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .spec-list-layout {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        align-content: start;
+        gap: 14px;
+      }
+
+      .spec-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 150px 150px auto;
+        gap: 10px;
+      }
+
+      .spec-table {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto repeat(5, minmax(0, auto));
+        align-content: start;
+        border: 1px solid var(--line);
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .spec-table-head,
+      .spec-row {
+        display: grid;
+        grid-template-columns: minmax(260px, 1.1fr) 128px 170px 170px 132px 132px 230px;
+        gap: 12px;
+        align-items: center;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .spec-table-head {
+        min-height: 48px;
+        color: #40514e;
+        background: var(--soft);
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .spec-row {
+        min-height: 104px;
+      }
+
+      .spec-row:last-child {
+        border-bottom: 0;
+      }
+
+      .spec-row.selected {
+        background: var(--teal-soft);
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .spec-title {
+        font-size: 17px;
+        line-height: 1.3;
+        font-weight: 950;
+      }
+
+      .spec-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      .spec-row-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, auto));
+        gap: 8px;
+        justify-content: end;
+      }
+
+      .config-left {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 16px;
+      }
+
+      .view-session {
+        grid-template-columns: 0.72fr 1.08fr;
+      }
+
+      .view-turn {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .view-log {
+        grid-template-columns: 0.32fr 1fr;
+      }
+
+      .panel {
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        margin-bottom: 14px;
+      }
+
+      .panel-title {
+        font-size: 22px;
+        line-height: 1.2;
+        font-weight: 950;
+      }
+
+      .panel-sub {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .stack {
+        display: grid;
+        align-content: start;
+        gap: 11px;
+      }
+
+      .orchestrator-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .orchestrator-card {
+        min-height: 75px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .orchestrator-card.selected,
+      .provider.selected,
+      .template-card.selected {
+        border-color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .option-name {
+        font-weight: 900;
+        line-height: 1.45;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .label {
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .input-box {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        overflow: hidden;
+        color: #1f2f2d;
+        font-size: 14px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .provider-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .provider {
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 11px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .current-config {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .template-layout {
+        height: calc(100% - 56px);
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 0.32fr 0.68fr;
+        gap: 14px;
+      }
+
+      .template-list {
+        min-height: 0;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+        overflow: hidden;
+      }
+
+      .template-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .template-card {
+        min-height: 70px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .template-id {
+        margin-top: 6px;
+        color: var(--muted);
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .template-editor {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto auto auto 1fr;
+        gap: 11px;
+        overflow: hidden;
+      }
+
+      .editor-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+      }
+
+      .base-note {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px;
+        border: 1px dashed var(--line);
+        background: var(--soft);
+      }
+
+      .textarea-box {
+        min-height: 0;
+        padding: 12px;
+        overflow: hidden;
+        font-family: "Consolas", "JetBrains Mono", monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .chat-panel {
+        display: grid;
+        grid-template-rows: auto 1fr auto auto;
+      }
+
+      .session-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 11px;
+        border: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .messages {
+        min-height: 0;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        padding: 16px 0;
+        overflow: hidden;
+      }
+
+      .message {
+        max-width: 92%;
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr);
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        background: var(--soft);
+        box-shadow: 0 10px 22px rgba(21, 45, 40, 0.08);
+      }
+
+      .message.user {
+        justify-self: end;
+        grid-template-columns: minmax(0, 1fr) 60px;
+        background: #e5f6dc;
+        border-color: #b7e7ae;
+      }
+
+      .avatar {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        color: var(--teal);
+        background: #d9f7ee;
+        font-weight: 900;
+      }
+
+      .message.user .avatar {
+        grid-column: 2;
+        color: #124f9f;
+        background: #b9d6ff;
+      }
+
+      .message.user .message-text {
+        grid-column: 1;
+        grid-row: 1;
+      }
+
+      .message-text {
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .quick-options {
+        display: grid;
+        gap: 9px;
+        margin-bottom: 10px;
+      }
+
+      .quick-option {
+        min-height: 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .quick-option.recommended {
+        border-color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .command {
+        display: grid;
+        grid-template-columns: 1fr 82px;
+        gap: 8px;
+      }
+
+      .command .input-box {
+        height: 54px;
+        color: #a0a7a5;
+      }
+
+      .summary-panel {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+      }
+
+      .inner-tabs {
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        min-height: 46px;
+        border-bottom: 1px solid #e5e9e7;
+      }
+
+      .inner-tab {
+        height: 46px;
+        display: inline-flex;
+        align-items: center;
+        color: #1f2f2d;
+        font-weight: 850;
+      }
+
+      .inner-tab.active {
+        color: var(--blue);
+        border-bottom: 2px solid var(--blue);
+      }
+
+      .content-state,
+      .content-doc,
+      .content-tree,
+      .content-path,
+      .content-log-overview,
+      .content-log-context {
+        display: none;
+      }
+
+      .state-session .content-state,
+      .state-doc .content-doc,
+      .state-tree .content-tree,
+      .state-path .content-path,
+      .state-log .content-log-overview,
+      .state-log-context .content-log-context {
+        display: grid;
+      }
+
+      .state-session .tab-state,
+      .state-doc .tab-doc,
+      .state-tree .tab-tree,
+      .state-path .tab-path,
+      .state-log .log-overview-tab,
+      .state-log-context .log-context-tab {
+        color: var(--blue);
+        border-bottom: 2px solid var(--blue);
+      }
+
+      .a4 {
+        min-height: 0;
+        margin-top: 16px;
+        padding: 42px;
+        border: 1px solid var(--line);
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .a4-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 28px;
+      }
+
+      .section-title {
+        margin: 18px 0 10px;
+        padding-top: 8px;
+        border-top: 1px dashed #d6ded9;
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .state-item,
+      .log-block,
+      .turn-card,
+      .tree-row,
+      .path-item,
+      .revision-marker {
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .state-item {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+
+      .state-text {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .doc-grid {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 230px;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .doc-page {
+        padding: 34px 42px;
+        border: 1px solid var(--line);
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .doc-heading {
+        display: grid;
+        gap: 5px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e9e7;
+        margin-bottom: 18px;
+      }
+
+      .highlight {
+        background: #fff7cc;
+        box-shadow: 0 0 0 2px #ffe58f inset;
+      }
+
+      .revision-rail {
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .revision-marker {
+        padding: 10px;
+        border-left: 5px solid #f0b429;
+      }
+
+      .tree {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .tree-row {
+        min-height: 44px;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) 160px auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+      }
+
+      .tree-row.child {
+        margin-left: 26px;
+      }
+
+      .marker {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #bfbfbf;
+        color: var(--muted);
+        background: #fff;
+        font-weight: 950;
+      }
+
+      .marker.done {
+        color: #237804;
+        border-color: #b7eb8f;
+        background: var(--green-soft);
+      }
+
+      .marker.partial {
+        color: var(--gold);
+        border-color: #ffd591;
+        background: var(--gold-soft);
+      }
+
+      .path-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .path-item {
+        padding: 14px;
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr) 280px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .turn-scroll {
+        height: 100%;
+        overflow: hidden;
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }
+
+      .turn-card {
+        display: grid;
+        gap: 7px;
+        padding: 10px 12px;
+        background: var(--soft);
+      }
+
+      .turn-card.big {
+        min-height: 118px;
+      }
+
+      .turn-compact-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .delta-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, auto));
+        gap: 8px;
+      }
+
+      .audit-stage-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .audit-stage {
+        min-height: 78px;
+        display: grid;
+        align-content: start;
+        gap: 7px;
+        padding: 9px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .audit-stage strong,
+      .log-item strong {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .log-list {
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .log-item {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .log-id {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-weight: 900;
+      }
+
+      .log-stage {
+        min-width: 0;
+        display: grid;
+        gap: 4px;
+      }
+
+      .log-item.active {
+        border-color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .log-detail {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 12px;
+      }
+
+      .log-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 80px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: var(--soft);
+      }
+
+      .log-block {
+        padding: 12px;
+      }
+
+      pre {
+        margin: 8px 0 0;
+        padding: 12px;
+        overflow: hidden;
+        color: #173f3d;
+        background: #f6faf9;
+        border: 1px solid #d9e3df;
+        font-family: "Consolas", "JetBrains Mono", monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage state-spec" id="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">LAB</div>
+          <div>
+            <h1>P2 XG 需求规格说明 Lab</h1>
+            <p class="subtitle">v8 调整：4.1 只保留需求规格说明列表；选中对象后再进入 4.2 组织器配置。</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="tag blue">需规对象前置</span>
+          <span class="tag green">可插拔组织器</span>
+          <span class="tag gold">只生成 document_patch 建议</span>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="tab-list">
+            <div class="tab nav-spec">
+              <div>
+                <div class="tab-title">需求规格说明管理</div>
+                <div class="tab-sub">RequirementAuthoringDocument / RequirementSpec</div>
+              </div>
+              <span class="tag green">当前</span>
+            </div>
+            <div class="tab nav-config">
+              <div>
+                <div class="tab-title">组织器配置</div>
+                <div class="tab-sub">选中需规后的组织器配置</div>
+              </div>
+              <span class="tag">配置</span>
+            </div>
+            <div class="tab nav-session">
+              <div>
+                <div class="tab-title">会话管理</div>
+                <div class="tab-sub">RequirementAnalysisSession</div>
+              </div>
+              <span class="tag">已创建</span>
+            </div>
+            <div class="tab nav-turn">
+              <div>
+                <div class="tab-title">当前 Turn</div>
+                <div class="tab-sub">RequirementAnalysisTurn</div>
+              </div>
+              <span class="tag">turn-0001</span>
+            </div>
+            <div class="tab nav-log">
+              <div>
+                <div class="tab-title">调用日志</div>
+                <div class="tab-sub">Model / Runner Calls</div>
+              </div>
+              <span class="tag">3 条</span>
+            </div>
+          </div>
+        </aside>
+
+        <main class="workspace">
+          <section class="view view-spec">
+            <section class="panel spec-list-layout">
+              <div class="panel-head">
+                <div class="panel-title">需求规格说明管理</div>
+                <div class="panel-sub">4.1 只承担需规对象的列表、检索、新建和进入动作；对象详情、模板、组织器、Provider 等配置留到 4.2 展开。</div>
+              </div>
+              <div class="spec-toolbar">
+                <div class="input-box">搜索标题 / 领域 / 模板 / 状态</div>
+                <div class="input-box">状态：全部</div>
+                <div class="input-box">模板：全部</div>
+                <div class="button primary">新建需规</div>
+              </div>
+              <div class="spec-table">
+                <div class="spec-table-head">
+                  <div>需规标题</div>
+                  <div>状态</div>
+                  <div>模板</div>
+                  <div>最近更新</div>
+                  <div>会话</div>
+                  <div>输出</div>
+                  <div>操作</div>
+                </div>
+                <div class="spec-row selected">
+                  <div>
+                    <div class="spec-title">默认运算软件需求规格说明</div>
+                    <div class="template-id">REQ-SPEC-20260513-0001 · 当前选中对象</div>
+                    <div class="spec-meta">
+                      <span class="tag gold">范围待确认</span>
+                      <span class="tag">P1 知识包待绑定</span>
+                    </div>
+                  </div>
+                  <div><span class="tag blue">分析中</span></div>
+                  <div>81433 软件级模板</div>
+                  <div>2026-05-13 00:28</div>
+                  <div><span class="tag green">已创建</span></div>
+                  <div><span class="tag gold">草稿</span></div>
+                  <div class="spec-row-actions">
+                    <span class="button">打开</span>
+                    <span class="button">编辑</span>
+                    <span class="button primary">进入配置</span>
+                  </div>
+                </div>
+                <div class="spec-row">
+                  <div>
+                    <div class="spec-title">空域协同规划软件需求规格说明</div>
+                    <div class="template-id">REQ-SPEC-20260512-0007 · 冻结草案 v0.3</div>
+                    <div class="spec-meta">
+                      <span class="tag">P1 知识包已绑定</span>
+                      <span class="tag">章节完成度 86%</span>
+                    </div>
+                  </div>
+                  <div><span class="tag green">待评审</span></div>
+                  <div>81433 软件级模板</div>
+                  <div>2026-05-12 21:16</div>
+                  <div><span class="tag green">已创建</span></div>
+                  <div><span class="tag">v0.3</span></div>
+                  <div class="spec-row-actions">
+                    <span class="button">打开</span>
+                    <span class="button">编辑</span>
+                    <span class="button primary">进入配置</span>
+                  </div>
+                </div>
+                <div class="spec-row">
+                  <div>
+                    <div class="spec-title">知识抽取服务需求规格说明</div>
+                    <div class="template-id">REQ-SPEC-20260510-0003 · 已冻结</div>
+                    <div class="spec-meta">
+                      <span class="tag">已推送 P3</span>
+                      <span class="tag">保留运行证据</span>
+                    </div>
+                  </div>
+                  <div><span class="tag">已冻结</span></div>
+                  <div>82259 平台级模板</div>
+                  <div>2026-05-10 18:42</div>
+                  <div><span class="tag">归档</span></div>
+                  <div><span class="tag green">v1.0</span></div>
+                  <div class="spec-row-actions">
+                    <span class="button">查看</span>
+                    <span class="button">复制</span>
+                    <span class="button">导出</span>
+                  </div>
+                </div>
+                <div class="spec-row">
+                  <div>
+                    <div class="spec-title">城市综合运行监测软件需求规格说明</div>
+                    <div class="template-id">REQ-SPEC-20260513-0002 · 新建后待配置</div>
+                    <div class="spec-meta">
+                      <span class="tag">仅保存标题与初始说明</span>
+                      <span class="tag">尚未启动会话</span>
+                    </div>
+                  </div>
+                  <div><span class="tag">待配置</span></div>
+                  <div>81433 软件级模板</div>
+                  <div>2026-05-13 00:51</div>
+                  <div><span class="tag">未创建</span></div>
+                  <div><span class="tag">无输出</span></div>
+                  <div class="spec-row-actions">
+                    <span class="button">打开</span>
+                    <span class="button">编辑</span>
+                    <span class="button primary">进入配置</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="view view-config">
+            <div class="spec-context-strip">
+              <div>
+                <strong>当前需规对象：默认运算软件需求规格说明</strong>
+                <div class="template-id">REQ-SPEC-20260513-0001 · 从“需求规格说明管理”进入 · 本页配置只作用于当前需规对象</div>
+              </div>
+              <div class="tag-row"><span class="tag blue">分析中</span><span class="tag">81433 模板实例</span><span class="tag green">会话已创建</span></div>
+            </div>
+            <div class="config-left">
+              <section class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">可替换组织器</div>
+                  <div class="panel-sub">真实系统已从简单组织器选择升级为插件注册表：本地包、Dify Workflow、能力声明、可观测等级和 active 状态并列展示。</div>
+                </div>
+                <div class="orchestrator-list">
+                  <div class="orchestrator-card selected">
+                    <div class="option-name">XG Heuristic Orchestrator</div>
+                    <div class="tag-row">
+                      <span class="tag">本地组织器</span>
+                      <span class="tag green">完整观测</span>
+                      <span class="tag green">active</span>
+                    </div>
+                  </div>
+                  <div class="orchestrator-card">
+                    <div class="option-name">Brainstorm v1 Requirement Analysis Orchestrator</div>
+                    <div class="tag-row">
+                      <span class="tag">本地组织器</span>
+                      <span class="tag green">完整观测</span>
+                      <span class="tag green">active</span>
+                    </div>
+                  </div>
+                  <div class="orchestrator-card">
+                    <div class="option-name">Brainstorm v1 Dify-shaped Workflow Orchestrator</div>
+                    <div class="tag-row">
+                      <span class="tag">Dify Workflow</span>
+                      <span class="tag gold">有限观测</span>
+                      <span class="tag green">active</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">启动参数</div>
+                  <div class="panel-sub">用于验证 XG 需求分析会话生命周期，不进入正式编辑器状态。</div>
+                </div>
+                <div class="stack">
+                  <div class="field">
+                    <div class="label">课题输入</div>
+                    <div class="input-box">默认运算软件需求规格说明</div>
+                  </div>
+                  <div class="field">
+                    <div class="label">启动模板实例</div>
+                    <div class="input-box">默认软件级需求规格说明模板实例-v1.2（xg-template-81433-默认运算软件需求规格说明模板实例-v1-0）</div>
+                  </div>
+                  <div class="provider-row">
+                    <div class="provider"><span>DeepSeek</span><span class="tag green">已启用</span></div>
+                    <div class="provider selected"><span>Mock Provider</span><span class="tag green">已启用</span></div>
+                    <div class="provider"><span>OpenAI</span><span class="tag gold">未配置</span></div>
+                  </div>
+                  <div class="button primary">启动验证</div>
+                  <div class="button">重新扫描组织器</div>
+                  <div class="current-config">当前 Provider：Mock Provider；当前组织器：XG Heuristic Orchestrator；启动模板：默认软件级需求规格说明模板实例-v1.2</div>
+                </div>
+              </section>
+            </div>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div class="panel-title">需求规格说明模板</div>
+                <div class="panel-sub">真实配置页已包含模板实例列表、实例元数据编辑、Markdown 正文编辑、保存实例和保存为基础模板。</div>
+              </div>
+              <div class="template-layout">
+                <div class="template-list">
+                  <div class="template-actions">
+                    <div class="button primary">新建实例</div>
+                    <div class="button danger">删除实例</div>
+                  </div>
+                  <div class="template-card selected">
+                    <div>
+                      <div class="option-name">默认软件级需求规格说明模板</div>
+                      <div class="template-id">xg-template-81433-默认运算软件...</div>
+                    </div>
+                    <span class="tag">available</span>
+                  </div>
+                </div>
+                <div class="template-editor">
+                  <div class="editor-head">
+                    <div>
+                      <div class="option-name">默认软件级需求规格说明模板实例-v1.2</div>
+                      <div class="template-id">基于 81433 的通用 Lab 模板实例，不绑定具体业务样例。</div>
+                    </div>
+                    <div class="button-row">
+                      <span class="tag green">已同步</span>
+                      <span class="tag">markdown</span>
+                      <span class="button primary">保存模板</span>
+                      <span class="button">保存为基础模板</span>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <div class="label">实例名称</div>
+                    <div class="input-box">默认软件级需求规格说明模板实例-v1.2</div>
+                  </div>
+                  <div class="field">
+                    <div class="label">实例说明</div>
+                    <div class="input-box">基于 81433 的通用 Lab 模板实例，不绑定具体业务样例。</div>
+                  </div>
+                  <div class="base-note">
+                    <strong>基础依据</strong>
+                    <span class="template-id">软件级需求规格说明模板（81433号）</span>
+                  </div>
+                  <div class="textarea-box"># 81433 软件级需求规格说明模板（通用细化版）
+
+## 模板使用说明
+
+本模板用于软件级需求规格说明的需求探索、临时正文承载和正式成稿。模板不绑定具体行业，不把 81433 解释为固定章节编号清单，而是把 81433 的软件级需求规格思想转化为可配置、可扩展、可审查的正文结构。
+
+## 1 总则
+
+### 1.1 编写目的
+
+**写作目标：** 说明本文档为什么编写、服务于哪个软件对象，以及将为哪些后续活动提供依据。</div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="view view-session">
+            <section class="panel chat-panel">
+              <div class="panel-head">
+                <div class="panel-title">CLI 式问答区</div>
+                <div class="panel-sub">当前会话：fa2a6710-f928-4d2c-851d-652cbae165dc</div>
+              </div>
+              <div class="session-strip">
+                <strong>会话 fa2a6710-f928-4d2c-851d-652cbae165dc</strong>
+                <span class="tag blue">阶段 探索与收束阶段</span>
+                <span class="tag">Provider mock</span>
+                <span class="tag">Model provider-default</span>
+                <span class="tag">只生成 document_patch 建议</span>
+                <span class="tag">默认运算软件需求规格说明</span>
+              </div>
+              <div class="messages">
+                <div class="message">
+                  <div>
+                    <div class="avatar">助</div>
+                    <strong>助手</strong>
+                  </div>
+                  <div class="message-text">我会按 xg-template-81433 默认运算软件需求规格说明模板维护完成度树。你可以直接描述、提问、反驳或补充；我会说明本轮更新了哪些规格内容。</div>
+                </div>
+                <div class="message user">
+                  <div class="avatar">用</div>
+                  <div class="message-text">A，先按计算分析工具理解</div>
+                </div>
+                <div class="message">
+                  <div>
+                    <div class="avatar">助</div>
+                    <strong>助手</strong>
+                  </div>
+                  <div class="message-text">本轮已补入临时正文，并完成应用后回看。建议下一步确认：组织器策略问题，请确认本文档适用的软件范围、第一阶段边界、主要用户和明确不纳入范围。</div>
+                </div>
+              </div>
+              <div class="quick-options">
+                <div class="quick-option recommended"><span><span class="tag green">推荐</span> A 先限定第一阶段范围</span><span class="button">选择 A</span></div>
+                <div class="quick-option"><span>B 先确认目标用户</span><span class="button">选择 B</span></div>
+                <div class="quick-option"><span>C 先说明不纳入范围</span><span class="button">选择 C</span></div>
+              </div>
+              <div class="command">
+                <div class="input-box">输入 A / 继续 / 更正式 / 或直接描述需求...</div>
+                <div class="button primary">发送</div>
+              </div>
+            </section>
+
+            <section class="panel summary-panel">
+              <div class="panel-head">
+                <div class="panel-title">会话摘要 / 过程产物</div>
+                <div class="panel-sub">主视角是结构化状态承载页；临时正文、完成度树和沟通路径作为辅助对照。</div>
+              </div>
+              <div class="inner-tabs">
+                <span class="inner-tab tab-state">结构化状态</span>
+                <span class="inner-tab tab-doc">临时正文</span>
+                <span class="inner-tab tab-tree">需求规格完成度树</span>
+                <span class="inner-tab tab-path">沟通路径</span>
+              </div>
+              <div class="session-content">
+                <div class="a4 content-state">
+                  <div class="a4-title">
+                    <div>
+                      <strong>结构化状态 / A4 视图</strong>
+                      <div class="template-id">需求分析结构化状态 · 默认运算软件需求规格说明</div>
+                    </div>
+                    <div class="tag-row"><span class="tag blue">探索与收束阶段</span><span class="tag blue">focus: SPEC-REQ-1.2</span></div>
+                  </div>
+                  <div class="section-title">一、已确认事实</div>
+                  <div class="state-item">
+                    <div class="state-text">先按计算分析工具理解</div>
+                    <div class="tag-row"><span class="tag">1 总则 / 编写目的</span><span class="tag green">active</span><span class="template-id">turn-0001</span></div>
+                  </div>
+                  <div class="section-title">二、已确认决策</div>
+                  <div class="state-item">
+                    <div class="state-text">本轮优先围绕“1 总则 / 编写目的”补齐需求规格信息。</div>
+                    <div class="tag-row"><span class="tag">1 总则 / 编写目的</span><span class="tag green">active</span><span class="template-id">turn-0001</span></div>
+                  </div>
+                  <div class="section-title">四、未闭合问题</div>
+                  <div class="state-item">
+                    <div class="state-text">可以补齐：组织器策略问题，请先确认软件名称、背景领域和编写目的。</div>
+                    <div class="tag-row"><span class="tag">1 总则 / 编写目的</span><span class="tag gold">open</span></div>
+                  </div>
+                </div>
+                <div class="doc-grid content-doc">
+                  <div class="doc-page">
+                    <div class="doc-heading">
+                      <strong>默认软件级需求规格说明模板实例-v1.2 需求规格说明（Lab 临时正文）</strong>
+                      <span class="template-id">默认运算软件需求规格说明</span>
+                    </div>
+                    <p><strong>1 总则 / 编写目的</strong></p>
+                    <p><span class="highlight">本系统暂按计算分析工具理解，优先围绕软件级需求规格说明的编写目的进行需求补齐。</span>后续仍需确认软件名称、业务背景、适用范围、主要用户和不纳入范围。</p>
+                  </div>
+                  <div class="revision-rail">
+                    <div class="revision-marker">
+                      <strong>第1轮修订</strong>
+                      <div class="template-id">影响 1 处正文片段，来自 turn-0001</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="tree content-tree">
+                  <div class="tree-row"><span class="marker partial">…</span><strong>需求规格说明完成度树（81433号）</strong><span>81433号 需求规格说明</span><span class="tag gold">部分完成</span></div>
+                  <div class="tree-row child"><span class="marker partial">…</span><strong>1 总则</strong><span>1 总则</span><span class="tag gold">部分完成</span></div>
+                  <div class="tree-row child"><span class="marker done">✓</span><strong>1.1 编写目的</strong><span>1 总则 / 编写目的</span><span class="tag green">已关闭</span></div>
+                  <div class="tree-row child"><span class="marker">?</span><strong>1.2 适用范围</strong><span>1 总则 / 适用范围</span><span class="tag">待确认</span></div>
+                  <div class="tree-row child"><span class="marker">?</span><strong>2 软件总体描述</strong><span>2 软件总体描述</span><span class="tag">待确认</span></div>
+                  <div class="tree-row child"><span class="marker">?</span><strong>3 具体需求</strong><span>3 具体需求</span><span class="tag">待确认</span></div>
+                </div>
+                <div class="path-list content-path">
+                  <div class="path-item"><strong>turn-0001</strong><span>SPEC-REQ-1.1</span><span>先按计算分析工具理解</span></div>
+                  <div class="path-item"><strong>next</strong><span>SPEC-REQ-1.2</span><span>确认适用范围、阶段边界和目标用户</span></div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="view view-turn">
+            <section class="panel">
+              <div class="panel-head">
+                <div class="panel-title">当前 Turn 决策审计</div>
+                <div class="panel-sub">真实运行态中，当前 Turn 不只是聊天记录，而是组织器策略、输入承接、阶段执行、正文补丁、回看和下一轮问题的审计视图。</div>
+              </div>
+              <div class="turn-scroll">
+                <div class="turn-compact-grid">
+                  <div class="turn-card">
+                    <div class="label">组织器插件</div>
+                    <div class="tag-row"><span class="tag">本地组织器</span><span class="tag green">完整观测</span><span class="tag">xg-local-heuristic-orchestrator</span></div>
+                  </div>
+                  <div class="turn-card">
+                    <div class="label">上轮系统留题</div>
+                    <strong>无，用户自由发起。</strong>
+                    <div class="tag-row"><span class="tag">无留题</span><span class="template-id">首轮或无系统留题</span></div>
+                  </div>
+                  <div class="turn-card">
+                    <div class="label">本轮用户输入</div>
+                    <strong>A，先按计算分析工具理解</strong>
+                    <div class="tag-row"><span class="tag">quick_option_answer</span><span class="tag">选项 A</span><span class="tag blue">承接通过</span></div>
+                  </div>
+                </div>
+                <div class="turn-card big">
+                  <div class="label">本轮结构化状态增量</div>
+                  <div class="delta-grid">
+                    <span class="tag">confirmed_facts: +1</span><span class="tag">confirmed_decisions: +1</span><span class="tag">tentative_assumptions: +0</span><span class="tag">open_questions: +1</span><span class="tag">rejected_directions: +0</span><span class="tag">chapter_projections: +1</span>
+                  </div>
+                  <div class="turn-compact-grid">
+                    <div class="state-item"><strong>已确认事实</strong><span>先按计算分析工具理解</span><div class="tag-row"><span class="tag green">active</span><span class="tag">1 总则 / 编写目的</span></div></div>
+                    <div class="state-item"><strong>已确认决策</strong><span>本轮优先围绕“1 总则 / 编写目的”补齐。</span><div class="tag-row"><span class="tag green">active</span><span class="tag">turn-0001</span></div></div>
+                    <div class="state-item"><strong>未闭合问题</strong><span>继续确认软件名称、背景领域、主要用户和不纳入范围。</span><div class="tag-row"><span class="tag gold">open</span><span class="tag">下一轮留题</span></div></div>
+                  </div>
+                </div>
+                <div class="turn-card big">
+                  <div class="label">阶段执行审计</div>
+                  <div class="audit-stage-grid">
+                    <div class="audit-stage"><strong>intent_understanding</strong><span class="tag blue">policy_interpreted</span><span>识别为快捷选项回答，绑定选项 A。</span></div>
+                    <div class="audit-stage"><strong>decision_state_delta</strong><span class="tag blue">adopted</span><span>采纳事实、决策、开放问题和章节投影。</span></div>
+                    <div class="audit-stage"><strong>working_document_patch</strong><span class="tag gold">patch_suggestion_only</span><span>仅生成 Lab 临时正文建议，不写正式文档。</span></div>
+                    <div class="audit-stage"><strong>next_interaction_planning</strong><span class="tag blue">question_ready</span><span>生成下一轮交互选项和留题。</span></div>
+                  </div>
+                </div>
+                <div class="turn-compact-grid">
+                  <div class="turn-card">
+                    <div class="label">规格补充执行</div>
+                    <strong>本轮已补入临时正文，并完成应用后回看。</strong>
+                    <span>document_patch 指向 1 总则 / 编写目的。</span>
+                  </div>
+                  <div class="turn-card">
+                    <div class="label">目标范围回看</div>
+                    <strong>目标章节可承载，但信息仍不足。</strong>
+                    <span>缺少软件名称、背景领域和适用边界。</span>
+                  </div>
+                  <div class="turn-card">
+                    <div class="label">下一轮交互设计</div>
+                    <strong>推荐 A：先限定第一阶段范围。</strong>
+                    <div class="tag-row"><span class="tag green">推荐</span><span class="tag">B 目标用户</span><span class="tag">C 不纳入范围</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="view view-log">
+            <section class="panel">
+              <div class="panel-head">
+                <div class="panel-title">模型 / Runner 调用日志</div>
+                <div class="panel-sub">只展示外部模型 Provider 或本地 Runner 调用；服务端内部阶段审计在当前 Turn 中查看。</div>
+              </div>
+              <div class="log-list">
+                <div class="log-item active"><span class="log-id">requi...</span><div class="log-stage"><strong>intent_understanding</strong><div class="template-id">turn-0001 · mock</div></div><span class="tag blue">mocked</span></div>
+                <div class="log-item"><span class="log-id">requi...</span><div class="log-stage"><strong>decision_state_delta</strong><div class="template-id">turn-0001 · mock</div></div><span class="tag blue">mocked</span></div>
+                <div class="log-item"><span class="log-id">requi...</span><div class="log-stage"><strong>next_interaction_planning</strong><div class="template-id">turn-0001 · mock</div></div><span class="tag blue">mocked</span></div>
+              </div>
+            </section>
+            <section class="panel log-detail">
+              <div class="panel-head">
+                <div class="panel-title">调用详情</div>
+                <div class="panel-sub">requirement-analysis-provider-call-0001</div>
+              </div>
+              <div class="inner-tabs">
+                <span class="inner-tab log-overview-tab">概览</span>
+                <span class="inner-tab log-context-tab">当前 turn 上下文</span>
+                <span class="inner-tab">输出格式要求</span>
+                <span class="inner-tab">请求</span>
+                <span class="inner-tab">原始输出</span>
+                <span class="inner-tab">输出后处理</span>
+              </div>
+              <div class="content-log-overview">
+                <div class="log-meta">
+                  <span>Provider: mock</span><span>Model: provider-default</span>
+                  <span>Status: mocked</span><span>Turn: turn-0001</span>
+                  <span>Stage: intent_understanding / policy_interpreted</span><span>Orchestrator: xg-heuristic-orchestrator</span>
+                </div>
+                <div class="log-block"><strong>user_input</strong><pre>A，先按计算分析工具理解</pre></div>
+                <div class="log-block"><strong>normalized_input</strong><pre>{
+  "input_type": "quick_option_answer",
+  "matched_option": "A",
+  "semantic": "先按计算分析工具理解"
+}</pre></div>
+              </div>
+              <div class="content-log-context">
+                <div class="log-block"><strong>provider_request.prompt_bundle.context_json</strong><pre>{
+  "session_phase": "exploration_convergence",
+  "active_spec_node_id": "SPEC-REQ-1.2",
+  "template_id": "xg-template-81433-默认运算软件需求规格说明模板实例-v1-0",
+  "write_policy": "patch_suggestion_only"
+}</pre></div>
+                <div class="log-block"><strong>provider_request.prompt_bundle.decision_state_document_json</strong><pre>{
+  "sections": [
+    "已确认事实",
+    "已确认决策",
+    "未闭合问题",
+    "章节投影"
+  ]
+}</pre></div>
+              </div>
+            </section>
+          </section>
+        </main>
+      </section>
+    </div>
+
+    <script>
+      const stage = document.getElementById("stage");
+      const state = location.hash.replace("#", "") || "spec";
+      const states = {
+        spec: "state-spec",
+        config: "state-config",
+        session: "state-session",
+        doc: "state-doc",
+        tree: "state-tree",
+        path: "state-path",
+        turn: "state-turn",
+        log: "state-log",
+        "log-context": "state-log-context",
+      };
+      stage.className = `stage ${states[state] || states.config}`;
+    </script>
+  </body>
+</html>
