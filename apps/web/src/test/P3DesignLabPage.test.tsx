@@ -125,7 +125,7 @@ function buildInputPackage() {
 }
 
 function buildSession(inputPackage: ReturnType<typeof buildInputPackage>, status: string) {
-  return {
+  const session = {
     session_id: "p3dl-1",
     input_package: inputPackage,
     status,

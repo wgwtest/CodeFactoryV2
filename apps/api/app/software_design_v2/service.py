@@ -67,6 +67,7 @@ class SoftwareDesignV2Service:
         design_session["workorder_projection"] = self._build_workorder_projection()
         design_session["status"] = "baseline_ready"
         design_session["updated_at"] = self._now()
+        self._refresh_related_designs(design_session)
         return design_session
 
     def append_turn(self, session_id: str, payload: P3DesignTurnWrite) -> dict | None:
@@ -160,6 +161,33 @@ class SoftwareDesignV2Service:
             "knowledge_binding": (document.semantic_state or {}).get("knowledge_binding"),
             "frozen_at": frozen_package.get("frozen_at"),
             "p3_consumable": frozen_package.get("p3_consumable") is True,
+            "related_designs": self._list_related_designs(f"p2frozen-{document.id}"),
+        }
+
+    def _list_related_designs(self, input_package_id: str) -> list[dict]:
+        related_designs = []
+        for design_session in self._sessions.values():
+            if (
+                design_session.get("input_package", {}).get("input_package_id") == input_package_id
+                and design_session.get("design_document")
+            ):
+                related_designs.append(self._build_related_design_summary(design_session))
+        return sorted(related_designs, key=lambda item: item["updated_at"], reverse=True)
+
+    def _refresh_related_designs(self, design_session: dict) -> None:
+        input_package = design_session.get("input_package")
+        if input_package:
+            input_package["related_designs"] = self._list_related_designs(input_package["input_package_id"])
+
+    def _build_related_design_summary(self, design_session: dict) -> dict:
+        design_document = design_session["design_document"] or {}
+        return {
+            "software_design_id": design_session["session_id"],
+            "title": design_document.get("title", "未命名软件设计说明"),
+            "version_label": "SoftwareDesignBaseline v2",
+            "status": design_session["status"],
+            "created_at": design_session["created_at"],
+            "updated_at": design_session["updated_at"],
         }
 
     def _build_design_document(self, app_name: str) -> dict:
@@ -221,4 +249,3 @@ class SoftwareDesignV2Service:
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
-

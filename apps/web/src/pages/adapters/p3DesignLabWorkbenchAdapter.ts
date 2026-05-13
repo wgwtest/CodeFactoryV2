@@ -52,6 +52,7 @@ export function buildP3DesignLabWorkbenchViewModel({
             content: clause.content,
           })),
         })) ?? [],
+      relatedDesigns: visiblePackage?.related_designs ?? [],
       emptyDescription: "没有 P2 新版冻结包",
     },
     interaction: {

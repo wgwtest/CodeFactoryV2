@@ -32,6 +32,14 @@ export type StageInputFactsViewModel = {
   sourceTitle: string;
   readonly: boolean;
   sections: StageInputFactSectionViewModel[];
+  relatedDesigns: Array<{
+    software_design_id: string;
+    title: string;
+    version_label: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }>;
   emptyDescription: string;
 };
 

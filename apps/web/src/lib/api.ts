@@ -2236,6 +2236,16 @@ export type P3DesignLabInputPackage = {
   knowledge_binding?: RequirementAuthoringKnowledgeBinding | null;
   frozen_at?: string | null;
   p3_consumable: boolean;
+  related_designs?: P3DesignLabRelatedDesign[];
+};
+
+export type P3DesignLabRelatedDesign = {
+  software_design_id: string;
+  title: string;
+  version_label: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type P3DesignLabDocumentSection = {

@@ -361,7 +361,22 @@ function InputPackageView({
         <section className="p3-design-lab-panel">
           <PanelHead title="关联软设" subtitle="一条需规可以关联多份软件设计说明；发布和冻结不在本视图完成。" />
           <div className="p3-design-lab-related-design-list">
-            {workbench.product.status === "empty" ? (
+            {inputFacts.relatedDesigns.length ? (
+              inputFacts.relatedDesigns.map((design) => (
+                <article className="p3-design-lab-related-design-card" key={design.software_design_id}>
+                  <span>
+                    <Text strong>{design.title}</Text>
+                    <Text type="secondary">版本：{design.version_label}</Text>
+                  </span>
+                  <Space wrap>
+                    <Tag color={design.status === "baseline_ready" ? "green" : "default"}>{design.status}</Tag>
+                    <Tag>{formatDateTime(design.updated_at)}</Tag>
+                    <Button size="small">进入编辑</Button>
+                    <Button danger size="small">删除</Button>
+                  </Space>
+                </article>
+              ))
+            ) : workbench.product.status === "empty" ? (
               <div className="p3-design-lab-empty-state">当前需规尚未生成关联软设。</div>
             ) : (
               <article className="p3-design-lab-related-design-card">
@@ -649,5 +664,5 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function formatDateTime(value: string) {
-  return value.slice(0, 10);
+  return value.slice(0, 16).replace("T", " ");
 }
