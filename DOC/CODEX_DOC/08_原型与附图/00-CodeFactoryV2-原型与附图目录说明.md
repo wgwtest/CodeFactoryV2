@@ -14,9 +14,16 @@
 
 | 版本包 | 状态 | 用途 |
 | --- | --- | --- |
+| `2026-05-13-012600-CodeFactoryV2-P2-Brainstorming-Lab需规发布与新建弹窗原型-v9/` | 待用户确认 | 当前 P2 Lab 需规发布与新建弹窗修正版；继承 v8 的单栏列表，行内动作收敛为“进入配置 / 发布”，发布后 P3 可接收，并新增新建需规模态窗口 |
+| `2026-05-13-005800-CodeFactoryV2-P2-Brainstorming-Lab需规列表简化原型-v8/` | 已被 v9 修正 | 前序 P2 Lab 需规列表简化版；4.1 单栏列表方向成立，但行内 `打开 / 编辑 / 进入配置` 三连动作被 v9 收敛为 `进入配置 / 发布` |
+| `2026-05-13-003300-CodeFactoryV2-P2-Brainstorming-Lab需规管理前置原型-v7/` | 已被 v8 简化修正 | 前序 P2 Lab 需规对象管理前置版；方向成立，但 4.1 右侧当前需规详情面板被用户要求移除 |
+| `2026-05-12-213000-CodeFactoryV2-P2-Brainstorming-Lab真实系统对齐原型-v6/` | v7 / v8 继承基线 | P2 Lab 真实运行系统对齐版；以真实运行截图、`RequirementAnalysisLabPage.tsx` 和 API 路由为事实源，保留四 Tab 并补齐复杂组织器配置、会话过程产物、Turn 审计和 Provider 调用日志 |
+| `2026-05-12-205752-CodeFactoryV2-P2-Brainstorming-Lab需求输入事项深化原型-v5/` | 已被 v6 修正 | 前序业务化尝试；保留“需求输入事项”分析线索，但当前 Lab 原型评审以真实系统对齐版 v6 为准 |
+| `2026-05-01-161500-CodeFactoryV2-P2-Brainstorming-Lab问题树摘要原型-v4/` | v4 / v5 基线 | P2 Lab 问题树摘要基线；四 Tab、左侧显式状态机和章节问题树为后续版本的重要来源，但真实运行复杂度以 v6 为准 |
 | `2026-05-05-213407-CodeFactoryV2-P1知识抽取闭环规则重算原型提示词-v1/` | 新增设计输入 | 当前 `P1 / P0` 知识抽取闭环、策略库复用、规则输入输出合同、规则变更增量重算的 UI 原型提示词包 |
-| `2026-05-01-123341-CodeFactoryV2-P2-Brainstorming-Lab原型-v2/` | 待用户确认 | 当前 `P2 Brainstorming Lab` 原型评审入口；修正左侧对象树、当前 Turn 聚焦和组织器配置前置 |
-| `2026-05-01-120854-CodeFactoryV2-P2-Brainstorming-Lab原型-v1/` | 已被 v2 替代 | 前序 `P2 Brainstorming Lab` 原型；独立 Lab 方向成立，但左侧对象、单轮态和组织器层级被 v2 修正 |
+| `2026-05-01-141500-CodeFactoryV2-P2-Brainstorming-Lab原型-v3/` | 已被 v4 替代 | 前序 `P2 Brainstorming Lab` 状态机原型；四 Tab 状态机成立，问题树摘要以 v4 / v5 为准 |
+| `2026-05-01-123341-CodeFactoryV2-P2-Brainstorming-Lab原型-v2/` | 已被 v3 / v4 / v5 替代 | 前序 `P2 Brainstorming Lab` 原型评审入口；修正左侧对象树、当前 Turn 聚焦和组织器配置前置 |
+| `2026-05-01-120854-CodeFactoryV2-P2-Brainstorming-Lab原型-v1/` | 已被 v2 / v3 / v4 / v5 替代 | 前序 `P2 Brainstorming Lab` 原型；独立 Lab 方向成立，但左侧对象、单轮态和组织器层级被后续版本修正 |
 | `2026-04-30-005207-CodeFactoryV2-P6语义画布流动与P3P5补充原型-v17/` | 用户已确认方向 | 当前 `/portal` 语义画布扩充开发事实源；约束 P1 挂载队列、阶段间流动对象和 `P3 -> P5` 设计基线流 |
 | `2026-04-30-222633-CodeFactoryV2-XX-P1-Sim原型-v4/` | 待用户确认 | 当前 `XX-P1-Sim` 评审入口；修正 5.1 服务接口、调用日志和左侧摘要表达，继承 v3 的 5.2 / 5.3 |
 | `2026-04-30-214734-CodeFactoryV2-XX-P1-Sim原型-v3/` | 已被 v4 替代 | 前序 `XX-P1-Sim` 原型；P1 上游知识服务边界成立，但 5.1 中接口、日志和左侧表达被 v4 修正 |

@@ -1,0 +1,1341 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P2 Brainstorming Lab 需求输入事项深化原型 v5</title>
+    <style>
+      :root {
+        --bg: #eef2f0;
+        --ink: #172221;
+        --muted: #62706d;
+        --line: #c8d3ce;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #183d4d;
+        --navy-2: #e4eef2;
+        --teal: #2d746f;
+        --teal-2: #e1f2ee;
+        --amber: #98631f;
+        --amber-2: #f4e7d4;
+        --green: #257348;
+        --red: #9b4138;
+        --shadow: 0 24px 58px rgba(37, 52, 49, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          linear-gradient(0deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          #eef2f0;
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 14px 38px rgba(45, 61, 56, 0.11);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        color: var(--navy);
+        background: #fff;
+        font-size: 17px;
+        font-weight: 900;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 1.15;
+        font-weight: 900;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .head-actions,
+      .pill-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+
+      .button,
+      .pill {
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--navy);
+        background: var(--navy);
+      }
+
+      .button.teal {
+        color: #fff;
+        border-color: var(--teal);
+        background: var(--teal);
+      }
+
+      .button.ghost {
+        background: #f7f9f8;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+      }
+
+      .pill.navy {
+        color: var(--navy);
+        border-color: #a9c1cd;
+        background: var(--navy-2);
+      }
+
+      .pill.teal {
+        color: var(--teal);
+        border-color: #95c7c0;
+        background: var(--teal-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dcb47a;
+        background: var(--amber-2);
+      }
+
+      .pill.red {
+        color: var(--red);
+        border-color: #d8b1aa;
+        background: #f5dedb;
+      }
+
+      .layout {
+        height: 956px;
+        display: grid;
+        grid-template-columns: 284px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card {
+        border: 1px solid rgba(162, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 20px 18px 16px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        min-height: 0;
+        padding: 14px;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .tab-item {
+        min-height: 82px;
+        padding: 12px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .state-config .nav-config,
+      .state-session .nav-session,
+      .state-turn .nav-turn,
+      .state-log .nav-log {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .tab-desc {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+      }
+
+      .side-rule {
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.55;
+        font-weight: 800;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .work-head {
+        height: 78px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 18px 0 20px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .head-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .head-title {
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .head-sub {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .body {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .state-config .show-config,
+      .state-session .show-session,
+      .state-turn .show-turn,
+      .state-log .show-log {
+        display: grid;
+      }
+
+      .show-config,
+      .show-session,
+      .show-turn,
+      .show-log {
+        display: none;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .show-config {
+        grid-template-columns: 1fr 1fr 1.08fr;
+      }
+
+      .show-session {
+        grid-template-columns: 1.25fr 0.95fr;
+      }
+
+      .show-turn {
+        grid-template-columns: 0.95fr 1.25fr;
+      }
+
+      .show-log {
+        grid-template-columns: 0.78fr 1.22fr;
+      }
+
+      .panel {
+        min-height: 0;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .panel-head {
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 15px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .panel-title {
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .panel-sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .panel-content {
+        min-height: 0;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .stack {
+        display: grid;
+        gap: 11px;
+        align-content: start;
+      }
+
+      .option-card,
+      .field,
+      .contract-row,
+      .msg,
+      .patch,
+      .step-row,
+      .log-row,
+      .detail-box,
+      .fact-row {
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .option-card {
+        min-height: 84px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+      }
+
+      .option-card.selected {
+        border-color: var(--teal);
+        background: #eef9f7;
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .option-title {
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .option-desc {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .field {
+        padding: 12px;
+      }
+
+      .field-label {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .field-value {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 850;
+      }
+
+      .field-value.multi {
+        min-height: 62px;
+        align-items: flex-start;
+        line-height: 1.55;
+        font-weight: 700;
+      }
+
+      .contract-row {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px;
+      }
+
+      .protocol-box {
+        padding: 12px;
+        border: 1px solid #c4d4cf;
+        background: #f7faf9;
+      }
+
+      .protocol-list {
+        margin: 9px 0 0;
+        padding-left: 18px;
+        color: #33423f;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .notice {
+        padding: 12px 13px;
+        border: 1px solid #d9b87f;
+        background: #fff7ea;
+        color: #6f4819;
+        font-size: 13px;
+        line-height: 1.55;
+        font-weight: 800;
+      }
+
+      .conversation {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 12px;
+      }
+
+      .item-summary {
+        border: 1px solid #c4d4cf;
+        background: #fbfdfc;
+      }
+
+      .item-summary-head {
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 11px;
+        border-bottom: 1px solid #d9e3df;
+        background: #f2f7f5;
+      }
+
+      .item-summary-title {
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .item-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr 1fr;
+        gap: 8px;
+        padding: 10px;
+      }
+
+      .item-cell {
+        min-height: 58px;
+        padding: 9px 10px;
+        border: 1px solid #d6e0dc;
+        background: #fff;
+      }
+
+      .item-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .item-value {
+        margin-top: 5px;
+        color: #20332f;
+        font-size: 12px;
+        line-height: 1.35;
+        font-weight: 900;
+      }
+
+      .flow-steps {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 7px;
+        padding: 0 10px 10px;
+      }
+
+      .flow-step {
+        min-height: 38px;
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr);
+        align-items: center;
+        gap: 6px;
+        padding: 6px 7px;
+        border: 1px solid #d5dfdb;
+        background: #fff;
+        color: #2d3d3a;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .flow-dot {
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #9ac0b8;
+        color: var(--teal);
+        background: #eef8f6;
+        font-size: 10px;
+        font-weight: 950;
+      }
+
+      .flow-step.pending .flow-dot {
+        border-color: #d1ae72;
+        color: var(--amber);
+        background: #fff8ea;
+      }
+
+      .spec-slice {
+        padding: 10px 11px;
+        border: 1px solid #d3ded9;
+        background: #fffefa;
+      }
+
+      .spec-slice-title {
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .spec-slice-text {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .messages {
+        min-height: 0;
+        overflow: hidden;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .msg {
+        max-width: 92%;
+        padding: 12px 13px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .msg.assistant {
+        border-color: #bad1da;
+        background: #edf6f8;
+      }
+
+      .msg.user {
+        justify-self: end;
+        border-color: #acd0c9;
+        background: #edf8f6;
+      }
+
+      .quick-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 9px;
+      }
+
+      .option {
+        min-width: 74px;
+        padding: 7px 9px;
+        border: 1px solid #a7c5cf;
+        background: #fff;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .input-line {
+        height: 50px;
+        display: grid;
+        grid-template-columns: 1fr 90px;
+        gap: 9px;
+      }
+
+      .input {
+        display: flex;
+        align-items: center;
+        padding: 0 13px;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: #4c5b5f;
+        font-size: 14px;
+      }
+
+      .doc-tree {
+        display: grid;
+        gap: 10px;
+      }
+
+      .doc-section {
+        border: 1px solid #c4d4cf;
+        background: #fbfdfc;
+      }
+
+      .doc-section-head {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        border-bottom: 1px solid #d9e3df;
+        background: #f2f7f5;
+      }
+
+      .doc-section-title {
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .doc-section-meta {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .tree-lines {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px 10px;
+      }
+
+      .tree-row {
+        min-height: 28px;
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 7px;
+        color: #243532;
+        font-size: 12px;
+      }
+
+      .tree-row.child {
+        margin-left: 26px;
+        color: var(--muted);
+      }
+
+      .tree-row.patch-row {
+        color: #6f4819;
+      }
+
+      .tree-status {
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #b9cac5;
+        background: #fff;
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .tree-status.done {
+        border-color: #7cb9aa;
+        color: var(--teal);
+        background: #ecf8f4;
+      }
+
+      .tree-status.open {
+        border-color: #d1ae72;
+        color: #8a5a1f;
+        background: #fff8ea;
+      }
+
+      .tree-status.review {
+        border-color: #d99595;
+        color: #9b3c3c;
+        background: #fff1f1;
+      }
+
+      .tree-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 850;
+      }
+
+      .tree-ref {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .tree-note {
+        padding: 8px 10px;
+        border: 1px dashed #c7d5d1;
+        color: var(--muted);
+        background: #fbfcfc;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .fact-row,
+      .patch,
+      .step-row,
+      .log-row,
+      .detail-box {
+        padding: 12px;
+      }
+
+      .fact-title,
+      .patch-title,
+      .step-title,
+      .detail-title {
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .fact-text,
+      .patch-text,
+      .detail-text {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .turn-object {
+        height: 100%;
+        display: grid;
+        gap: 11px;
+        align-content: start;
+      }
+
+      .step-row {
+        min-height: 48px;
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .step-num {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #aac9c3;
+        color: var(--teal);
+        background: #eff8f6;
+        font-weight: 900;
+      }
+
+      .log-row {
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .code-box {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid #c6d3cf;
+        background: #10262d;
+        color: #d6f0ec;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      .empty-state {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        border: 1px dashed #bdc9c5;
+        background: #fbfcfb;
+        color: var(--muted);
+        font-size: 14px;
+        text-align: center;
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage state-config" id="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">LAB</div>
+          <div>
+            <h1>P2 Brainstorming Lab · 需求输入事项深化</h1>
+            <p class="subtitle">基于 v4 继续深化：保留 Lab 四 Tab，新增“需求输入事项 -> 问答收敛 -> 正文输出”的业务链路。</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">路由 /p2-requirement-analysis-lab</span>
+          <span class="pill teal">事项 ra-item-0521</span>
+          <span class="pill amber">标准需求分析档案</span>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">Lab 显式 Tab</div>
+            <div class="side-note">仍沿用 v4 的 Lab 导航。事项、会话和 Turn 状态只更新徽标，不自动改变用户所在 Tab。</div>
+          </div>
+
+          <div class="tab-list">
+            <div class="tab-item nav-config">
+              <div class="tab-name">组织器配置 <span class="pill navy">默认档案</span></div>
+              <div class="tab-desc">事项默认档案、组织器插槽、模板、知识包和写入策略。</div>
+            </div>
+            <div class="tab-item nav-session">
+              <div class="tab-name">会话管理 <span class="pill teal">已绑定事项</span></div>
+              <div class="tab-desc">需求输入事项、CLI 问答、问题树摘要和输出状态。</div>
+            </div>
+            <div class="tab-item nav-turn">
+              <div class="tab-name">当前 Turn <span class="pill amber">turn-0002</span></div>
+              <div class="tab-desc">单轮输入、事项绑定、结构化输出和正文 patch。</div>
+            </div>
+            <div class="tab-item nav-log">
+              <div class="tab-name">调用日志 <span class="pill teal">3 条</span></div>
+              <div class="tab-desc">Provider 调用、自动建会话、模型和原始响应。</div>
+            </div>
+          </div>
+
+          <div class="side-foot">
+            <div class="side-rule">规则：新建事项、自动提交首轮输入、发送追问都不自动切 Tab；用户显式点击才切换。</div>
+          </div>
+        </aside>
+
+        <main class="workspace">
+          <div class="work-head">
+            <div class="head-left">
+              <span class="pill navy">v5 基于 v4 深化</span>
+              <div>
+                <div class="head-title" id="headTitle">组织器配置</div>
+                <div class="head-sub" id="headSub">先确认事项默认档案，再看组织器参数和稳定契约，最后启动或复用会话。</div>
+              </div>
+            </div>
+            <div class="head-actions">
+              <span class="pill teal">item: ra-item-0521</span>
+              <span class="pill teal">session: bs-8f31</span>
+              <span class="pill amber">activeTab: user controlled</span>
+            </div>
+          </div>
+
+          <div class="body">
+            <section class="show-config">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">1. 需求输入事项默认档案</div>
+                    <div class="panel-sub">业务入口是事项；Lab 只展示该事项自动套用的配置。</div>
+                  </div>
+                  <span class="pill teal">已套用</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="field">
+                    <div class="field-label">事项标题</div>
+                    <div class="field-value multi">空域运算软件需求规格分析</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">初始输入</div>
+                    <div class="field-value multi">需要分析一套空域运算软件，支持空域数据导入、计算分析、结果校核和需求规格说明输出。</div>
+                  </div>
+                  <div class="option-card selected">
+                    <div>
+                      <div class="option-title">标准需求分析档案</div>
+                      <div class="option-desc">默认绑定模板、知识包、组织器、Provider 和可撤回草稿写入策略。</div>
+                    </div>
+                    <span class="pill teal">当前</span>
+                  </div>
+                  <div class="option-card">
+                    <div>
+                      <div class="option-title">强审计分析档案</div>
+                      <div class="option-desc">保留更多调用证据和决策审计，适合过程可追溯要求高的项目。</div>
+                    </div>
+                    <span class="pill">高级</span>
+                  </div>
+                  <div class="option-card">
+                    <div>
+                      <div class="option-title">Dify 稳定成稿档案</div>
+                      <div class="option-desc">切到外部工作流，优先保证长文成稿稳定性和章节完整性。</div>
+                    </div>
+                    <span class="pill">可切换</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">2. 自动解析出的启动参数</div>
+                    <div class="panel-sub">新建事项后自动创建文档和会话；普通用户不需要先理解内部配置。</div>
+                  </div>
+                  <span class="pill amber">不会切Tab</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="field">
+                    <div class="field-label">RequirementAnalysisWorkItem</div>
+                    <div class="field-value">ra-item-0521 / analyzing</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">RequirementAnalysisSession</div>
+                    <div class="field-value">bs-8f31 / exploration_convergence</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">需求规格模板</div>
+                    <div class="field-value">81433号 软件需求规格说明模板</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">知识包</div>
+                    <div class="field-value">P1 active archive / airspace-domain-demo</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">组织器与 Provider</div>
+                    <div class="field-value multi">BrainstormingOrchestrator<br />Mock Provider / mock-brainstorm-v1</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">写入策略</div>
+                    <div class="field-value">document_patch 进入草稿建议区，用户确认后写入正文</div>
+                  </div>
+                  <div class="button primary">新建事项并启动会话</div>
+                  <div class="notice">点击后自动创建事项、工作文档和 BrainstormSession；如果初始输入存在，会提交首轮 Turn，但当前 Tab 仍不自动切换。</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">3. 稳定契约 / 输出链路</div>
+                    <div class="panel-sub">v5 增加业务对象，但不破坏 v4 的组织器 Lab 契约。</div>
+                  </div>
+                  <span class="pill navy">stable</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="contract-row"><strong>需求分析事项</strong><span class="pill teal">work item</span></div>
+                  <div class="contract-row"><strong>正式需求规格文档</strong><span class="pill teal">working doc</span></div>
+                  <div class="contract-row"><strong>组织器会话</strong><span class="pill teal">session</span></div>
+                  <div class="contract-row"><strong>章节问题树</strong><span class="pill teal">doc tree</span></div>
+                  <div class="contract-row"><strong>检查与冻结</strong><span class="pill amber">ready gate</span></div>
+                  <div class="contract-row"><strong>P2 -> P3 输出</strong><span class="pill teal">frozen package</span></div>
+                  <div class="protocol-box">
+                    <strong>统一输出协议保持不变</strong>
+                    <ol class="protocol-list">
+                      <li>work_item_id / session_id</li>
+                      <li>assistant_message</li>
+                      <li>next_question / quick_options</li>
+                      <li>confirmed_facts_delta</li>
+                      <li>document_patch</li>
+                      <li>draft_gap / freeze_readiness</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-session">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">需求输入事项 / CLI 式问答区</div>
+                    <div class="panel-sub">只属于“会话管理”Tab。事项新建后自动绑定会话，发送输入后不自动跳 Turn。</div>
+                  </div>
+                  <span class="pill teal">ra-item-0521 · bs-8f31</span>
+                </div>
+                <div class="panel-content">
+                  <div class="conversation">
+                    <div class="item-summary">
+                      <div class="item-summary-head">
+                        <div class="item-summary-title">空域运算软件需求规格分析</div>
+                        <span class="pill amber">analyzing</span>
+                      </div>
+                      <div class="item-grid">
+                        <div class="item-cell">
+                          <div class="item-label">初始输入</div>
+                          <div class="item-value">空域数据导入、计算分析、结果校核和规格输出</div>
+                        </div>
+                        <div class="item-cell">
+                          <div class="item-label">默认档案</div>
+                          <div class="item-value">标准需求分析 / 81433 模板</div>
+                        </div>
+                        <div class="item-cell">
+                          <div class="item-label">输出状态</div>
+                          <div class="item-value">草稿 42% · 3 个阻断缺口</div>
+                        </div>
+                      </div>
+                      <div class="flow-steps">
+                        <div class="flow-step"><span class="flow-dot">1</span><span>新建输入</span></div>
+                        <div class="flow-step"><span class="flow-dot">2</span><span>自动建会话</span></div>
+                        <div class="flow-step"><span class="flow-dot">3</span><span>问答收敛</span></div>
+                        <div class="flow-step pending"><span class="flow-dot">4</span><span>正文草稿</span></div>
+                        <div class="flow-step pending"><span class="flow-dot">5</span><span>检查冻结</span></div>
+                      </div>
+                    </div>
+                    <div class="messages">
+                      <div class="msg assistant">
+                        已根据初始输入创建需求分析事项，并套用“标准需求分析”档案。我会先确认系统定位，再把事实映射到需求规格章节。
+                        <div class="quick-options">
+                          <span class="option">A 计算分析工具</span>
+                          <span class="option">B 协同规划平台</span>
+                          <span class="option">C 二者都有</span>
+                        </div>
+                      </div>
+                      <div class="msg user">A，先按计算分析工具理解</div>
+                      <div class="msg assistant">已确认：系统初步定位为计算分析工具。已生成 1.1 系统目标草稿建议，下一步确认输入数据来源和输出结果形式。</div>
+                    </div>
+                    <div class="input-line">
+                      <div class="input">继续补充需求、回答选项，或输入“查看草稿 / 运行检查”...</div>
+                      <div class="button teal">发送</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">会话摘要 / 问题树 / 输出状态</div>
+                    <div class="panel-sub">按需求规格章节组织问题、事实、文档建议和冻结准备度。</div>
+                  </div>
+                  <span class="pill amber">doc tree + draft</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="doc-tree">
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">1.1 系统目标</div>
+                        <div class="doc-section-meta">2 问题 / 1 事实 / 1 草稿</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status done">✓</span>
+                          <span class="tree-text">Q-001 系统定位是什么？</span>
+                          <span class="tree-ref">已确认 · F-001 · P-001</span>
+                        </div>
+                        <div class="tree-row child">
+                          <span class="tree-status done">F</span>
+                          <span class="tree-text">F-001 系统定位为空域计算分析工具</span>
+                          <span class="tree-ref">turn-0001</span>
+                        </div>
+                        <div class="tree-row child patch-row">
+                          <span class="tree-status done">P</span>
+                          <span class="tree-text">P-001 -> 1.1 系统目标草稿建议</span>
+                          <span class="tree-ref">已进入草稿区</span>
+                        </div>
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-002 是否需要说明离线或弱网运行？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">1.2 用户角色</div>
+                        <div class="doc-section-meta">1 问题</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-003 主要用户是谁？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">2.1 输入数据与接口</div>
+                        <div class="doc-section-meta">2 问题</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-004 输入数据来源是什么？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                        <div class="tree-row">
+                          <span class="tree-status open">?</span>
+                          <span class="tree-text">Q-006 是否需要外部接口或批量文件导入？</span>
+                          <span class="tree-ref">待确认</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">4. 运行环境要求</div>
+                        <div class="doc-section-meta">1 阻断缺口</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status review">!</span>
+                          <span class="tree-text">Q-007 硬件、软件和部署环境尚未确认</span>
+                          <span class="tree-ref">阻断冻结</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="doc-section">
+                      <div class="doc-section-head">
+                        <div class="doc-section-title">未归类澄清项</div>
+                        <div class="doc-section-meta">1 需复核</div>
+                      </div>
+                      <div class="tree-lines">
+                        <div class="tree-row">
+                          <span class="tree-status review">!</span>
+                          <span class="tree-text">Q-005 专家校核职责应落到用户角色还是业务流程？</span>
+                          <span class="tree-ref">需复核</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="spec-slice">
+                      <div class="spec-slice-title">当前草稿片段 / 1.1 系统目标</div>
+                      <div class="spec-slice-text">本系统面向空域领域分析人员，支持围绕空域运算任务进行输入数据组织、计算分析、结果校核与需求规格说明输出。该片段来自 F-001 / P-001，冻结前仍需确认运行环境与输入接口。</div>
+                    </div>
+                    <div class="tree-note">v5 仍沿用 v4 规则：问题树只服务于需求规格说明成文。新增的事项状态用于解释“这条输入如何走到一个输出”，不把 Lab 改成独立任务管理器。</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-turn">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">本轮输入对象</div>
+                    <div class="panel-sub">当前 Tab 只聚焦 turn-0002，并显示它归属的需求输入事项。</div>
+                  </div>
+                  <span class="pill amber">turn-0002</span>
+                </div>
+                <div class="panel-content turn-object">
+                  <div class="field">
+                    <div class="field-label">work_item_id</div>
+                    <div class="field-value">ra-item-0521 / 空域运算软件需求规格分析</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">user_input</div>
+                    <div class="field-value">A，先按计算分析工具理解</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">answering</div>
+                    <div class="field-value multi">上一轮问题：这个软件更偏向计算分析工具，还是协同规划平台？</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">normalized_input</div>
+                    <div class="field-value multi">input_type: quick_option_answer<br />matched_option: A<br />semantic: 系统初步定位为计算分析工具。</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">confirmed_facts_delta</div>
+                    <div class="field-value multi">系统初步定位为空域计算分析工具</div>
+                  </div>
+                  <div class="field">
+                    <div class="field-label">draft_gap_delta</div>
+                    <div class="field-value multi">阻断缺口：输入接口、运行环境、性能指标尚未确认。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">Brainstorming Service 循环输出</div>
+                    <div class="panel-sub">展示可审计服务步骤、事项状态更新和结构化输出，不展示底层思维链。</div>
+                  </div>
+                  <span class="pill teal">completed</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="step-row"><div class="step-num">1</div><div class="step-title">接收用户输入</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">2</div><div class="step-title">读取事项与会话状态</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">3</div><div class="step-title">读取模板与知识包</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">4</div><div class="step-title">组装模型上下文</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">5</div><div class="step-title">调用 Provider</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">6</div><div class="step-title">解析结构化输出</div><span class="pill teal">done</span></div>
+                  <div class="step-row"><div class="step-num">7</div><div class="step-title">校验并落事项 / 文档状态</div><span class="pill teal">done</span></div>
+                  <div class="patch">
+                    <div class="patch-title">document_patch / 1.1 系统目标</div>
+                    <div class="patch-text">本系统面向空域领域专家，支持围绕空域运算任务进行输入组织、计算分析与结果确认。</div>
+                  </div>
+                  <div class="patch">
+                    <div class="patch-title">freeze_readiness</div>
+                    <div class="patch-text">当前不可冻结：接口需求、性能需求、安装操作要求和运行环境要求仍缺少可写入事实。</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-log">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">Provider 调用列表</div>
+                    <div class="panel-sub">调用日志是独立 Tab，记录事项自动建会话和模型调用证据。</div>
+                  </div>
+                  <span class="pill teal">3 条</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="log-row">
+                    <div>
+                      <div class="fact-title">workitem-session-bootstrap-0001</div>
+                      <div class="fact-text">item: ra-item-0521 / profile: standard-requirement-analysis / status: created</div>
+                    </div>
+                    <span class="pill">bootstrap</span>
+                  </div>
+                  <div class="log-row">
+                    <div>
+                      <div class="fact-title">brainstorm-provider-call-0002</div>
+                      <div class="fact-text">provider: mock / model: mock-brainstorm-v1 / status: mocked</div>
+                    </div>
+                    <span class="pill teal">selected</span>
+                  </div>
+                  <div class="log-row">
+                    <div>
+                      <div class="fact-title">brainstorm-provider-call-0003</div>
+                      <div class="fact-text">provider: mock / model: mock-brainstorm-v1 / status: mocked</div>
+                    </div>
+                    <span class="pill">ready</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">调用详情</div>
+                    <div class="panel-sub">用于 Lab 可观测性和调试，不作为专家正式文档内容。</div>
+                  </div>
+                  <span class="pill amber">raw response</span>
+                </div>
+                <div class="panel-content stack">
+                  <div class="detail-box">
+                    <div class="detail-title">调用上下文</div>
+                    <div class="detail-text">work_item: ra-item-0521；session: bs-8f31；turn: turn-0002；orchestrator: BrainstormingOrchestrator；write_policy: user_confirmed_patch。</div>
+                  </div>
+                  <div class="detail-box">
+                    <div class="detail-title">解析结果</div>
+                    <div class="detail-text">结构化输出通过校验，已更新 messages、confirmed_facts、open_questions、document_patch、draft_gap 和 provider_logs。</div>
+                  </div>
+                  <div class="code-box">{
+  "work_item_id": "ra-item-0521",
+  "session_id": "bs-8f31",
+  "provider_id": "mock",
+  "model": "mock-brainstorm-v1",
+  "mock": true,
+  "user_input": "A，先按计算分析工具理解",
+  "output_protocol": [
+    "assistant_message",
+    "next_question",
+    "document_patch",
+    "freeze_readiness"
+  ]
+}</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </section>
+    </div>
+
+    <script>
+      const stage = document.getElementById("stage");
+      const title = document.getElementById("headTitle");
+      const sub = document.getElementById("headSub");
+      const state = location.hash.replace("#", "") || "config";
+      const map = {
+        config: ["state-config", "组织器配置", "先确认事项默认档案，再看组织器参数和稳定契约，最后新建会话。"],
+        session: ["state-session", "会话管理", "用户显式点击会话管理后，才进入需求输入事项、CLI 问答和问题树。"],
+        turn: ["state-turn", "当前 Turn 输入 / 输出对象", "用户显式点击当前 Turn 后，才查看最新单轮输入、草稿和缺口。"],
+        log: ["state-log", "调用日志", "用户显式点击调用日志后，才查看事项创建和 Provider 调用证据。"],
+      };
+      const current = map[state] || map.config;
+      stage.className = "stage " + current[0];
+      title.textContent = current[1];
+      sub.textContent = current[2];
+    </script>
+  </body>
+</html>
