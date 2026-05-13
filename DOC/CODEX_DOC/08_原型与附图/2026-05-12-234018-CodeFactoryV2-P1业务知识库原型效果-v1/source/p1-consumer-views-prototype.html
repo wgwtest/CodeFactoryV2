@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P1 Consumer Workspace Prototype</title>
+    <style>
+      :root {
+        --bg: #eef2f0;
+        --ink: #172221;
+        --muted: #63716e;
+        --line: #c8d3ce;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #183d4d;
+        --navy-2: #e4eef2;
+        --teal: #2d746f;
+        --teal-2: #e1f2ee;
+        --amber: #98631f;
+        --amber-2: #f4e7d4;
+        --green: #257348;
+        --green-2: #e5f1e9;
+        --red: #9b4138;
+        --red-2: #f5dedb;
+        --blue: #2c5f8f;
+        --shadow: 0 24px 58px rgba(37, 52, 49, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          linear-gradient(0deg, rgba(24, 61, 77, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+          #eef2f0;
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .screen {
+        display: none;
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      body[data-state="cockpit"] #cockpit,
+      body[data-state="query"] #query,
+      body[data-state="answer"] #answer,
+      body[data-state="object"] #object,
+      body[data-state="graph"] #graph {
+        display: block;
+      }
+
+      .topbar {
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 14px 38px rgba(45, 61, 56, 0.11);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        color: var(--navy);
+        background: #fff;
+        font-size: 17px;
+        font-weight: 900;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 1.15;
+        font-weight: 900;
+      }
+
+      h2 {
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      h3 {
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .pill-row,
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+
+      .button,
+      .pill {
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--navy);
+        background: var(--navy);
+      }
+
+      .button.teal {
+        color: #fff;
+        border-color: var(--teal);
+        background: var(--teal);
+      }
+
+      .button.ghost {
+        background: #f7f9f8;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        white-space: nowrap;
+      }
+
+      .pill.navy {
+        color: var(--navy);
+        border-color: #a9c1cd;
+        background: var(--navy-2);
+      }
+
+      .pill.teal {
+        color: var(--teal);
+        border-color: #95c7c0;
+        background: var(--teal-2);
+      }
+
+      .pill.amber {
+        color: var(--amber);
+        border-color: #dcb47a;
+        background: var(--amber-2);
+      }
+
+      .pill.green {
+        color: var(--green);
+        border-color: #97cba5;
+        background: var(--green-2);
+      }
+
+      .pill.red {
+        color: var(--red);
+        border-color: #d8b1aa;
+        background: var(--red-2);
+      }
+
+      .layout {
+        height: 956px;
+        display: grid;
+        grid-template-columns: 284px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card,
+      .table {
+        border: 1px solid rgba(162, 176, 171, 0.82);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 20px 18px 16px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        min-height: 0;
+        padding: 14px;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .tab {
+        min-height: 68px;
+        display: grid;
+        align-content: center;
+        gap: 6px;
+        padding: 12px 13px;
+        border: 1px solid #c9d5d1;
+        background: #fff;
+      }
+
+      .tab.active {
+        border-color: #86aaa6;
+        background: var(--teal-2);
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .tab b {
+        font-size: 14px;
+      }
+
+      .tab span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .workspace-head,
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 62px;
+        padding: 14px 16px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f8faf9;
+      }
+
+      .workspace-body {
+        flex: 1;
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: 31fr 43fr 26fr;
+        gap: 14px;
+        height: 100%;
+      }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 430px;
+        gap: 14px;
+        height: 100%;
+      }
+
+      .grid-object {
+        display: grid;
+        grid-template-columns: 330px minmax(0, 1fr) 420px;
+        gap: 14px;
+        height: 100%;
+      }
+
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .panel-body {
+        flex: 1;
+        min-height: 0;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .stack {
+        display: grid;
+        align-content: start;
+        gap: 12px;
+      }
+
+      .card {
+        padding: 14px;
+        background: #fff;
+        box-shadow: none;
+      }
+
+      .card.active {
+        border-color: #84aaa5;
+        background: #f0fbf8;
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .card-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .card-title b {
+        font-size: 15px;
+      }
+
+      .card p,
+      .small {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .metric {
+        padding: 14px;
+        border: 1px solid #d4ddd9;
+        background: #fff;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .table {
+        box-shadow: none;
+        overflow: hidden;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 1.4fr 0.8fr 0.8fr 0.8fr 1fr;
+        gap: 8px;
+        padding: 11px 12px;
+        border-bottom: 1px solid #dbe4e0;
+        align-items: center;
+        font-size: 12px;
+      }
+
+      .table-row.head {
+        color: var(--muted);
+        background: #f4f7f6;
+        font-weight: 900;
+      }
+
+      .table-row:last-child {
+        border-bottom: 0;
+      }
+
+      .query-box {
+        padding: 18px;
+        border: 1px solid #abc7cf;
+        background: #eef8fb;
+      }
+
+      .query-line {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid #96b7c6;
+        background: #fff;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .answer-paper {
+        padding: 22px 26px;
+        border: 1px solid #e1d6c5;
+        background: var(--paper);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+      }
+
+      .answer-paper h2 {
+        font-family: "Noto Serif SC", "Songti SC", serif;
+        font-size: 24px;
+        text-align: center;
+      }
+
+      .answer-paper p {
+        margin-top: 12px;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .object-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .quote {
+        padding: 12px 13px;
+        border-left: 4px solid var(--teal);
+        background: #f0fbf8;
+        color: #263532;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .version-strip {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .mini {
+        padding: 10px 12px;
+        border: 1px solid #d4ddd9;
+        background: #fff;
+      }
+
+      .mini b {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+
+      .mini span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .timeline {
+        position: relative;
+        display: grid;
+        gap: 10px;
+      }
+
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        background: #c5d2ce;
+      }
+
+      .event {
+        position: relative;
+        padding-left: 28px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .event::before {
+        content: "";
+        position: absolute;
+        left: 2px;
+        top: 5px;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--teal);
+        background: #fff;
+      }
+
+      .graph-stage {
+        position: relative;
+        height: 100%;
+        min-height: 780px;
+        border: 1px solid #c8d3ce;
+        background:
+          linear-gradient(90deg, rgba(24, 61, 77, 0.045) 1px, transparent 1px) 0 0 / 30px 30px,
+          linear-gradient(0deg, rgba(24, 61, 77, 0.045) 1px, transparent 1px) 0 0 / 30px 30px,
+          #fff;
+        overflow: hidden;
+      }
+
+      .node {
+        position: absolute;
+        width: 154px;
+        min-height: 74px;
+        padding: 11px;
+        border: 2px solid #9fc0cc;
+        background: #eef8fb;
+        font-size: 13px;
+        font-weight: 900;
+        box-shadow: 0 12px 28px rgba(24, 61, 77, 0.14);
+      }
+
+      .node small {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .node.green {
+        border-color: #97cba5;
+        background: #eef8f0;
+      }
+
+      .node.amber {
+        border-color: #dcb47a;
+        background: #fff7e8;
+      }
+
+      .edge {
+        position: absolute;
+        height: 3px;
+        background: #667a82;
+        transform-origin: left center;
+      }
+
+      .edge-label {
+        position: absolute;
+        padding: 4px 8px;
+        border: 1px solid #c8d3ce;
+        background: #fff;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .bar {
+        height: 9px;
+        background: #e6ece9;
+        overflow: hidden;
+      }
+
+      .bar > i {
+        display: block;
+        height: 100%;
+        background: var(--teal);
+      }
+
+      .matrix {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+      }
+
+      .matrix-cell {
+        min-height: 64px;
+        padding: 9px;
+        border: 1px solid #d4ddd9;
+        background: #fff;
+      }
+
+      .matrix-cell b {
+        display: block;
+        font-size: 12px;
+      }
+
+      .matrix-cell span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <section id="cockpit" class="screen">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P1</div>
+          <div><h1>业务知识库消费者驾驶舱</h1><div class="subtitle">先看全局库资产，再进入单库查询；不暴露抽取运行和策略编辑动作</div></div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">知识库总览 Tab</span><span class="pill green">正式库 8</span><span class="pill amber">候选库 3</span><button class="button primary">进入知识库查询</button>
+        </div>
+      </header>
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head"><div class="side-title">消费者工作台</div><div class="side-note">右侧 Tab 决定当前视图；这里不进入编辑链路。</div></div>
+          <div class="tab-list">
+            <div class="tab active"><b>知识库总览</b><span>资产驾驶舱、库状态、知识量、更新时间</span></div>
+            <div class="tab"><b>知识库查询</b><span>选择单库后围绕目标问题查询</span></div>
+            <div class="tab"><b>对象与证据</b><span>阅读知识对象、证据和来源</span></div>
+            <div class="tab"><b>图谱探索</b><span>查看关系子图和版本说明</span></div>
+          </div>
+          <div class="side-foot"><span class="pill teal">当前身份：知识消费者</span></div>
+        </aside>
+        <section class="workspace">
+          <div class="workspace-head">
+            <div><h2>知识库资产总览</h2><div class="subtitle">横向比较所有库：什么时候加入、知识量、版本状态、质量风险和可消费范围</div></div>
+            <div class="head-actions"><button class="button ghost">按领域筛选</button><button class="button ghost">只看正式库</button><button class="button teal">打开选中库</button></div>
+          </div>
+          <div class="workspace-body">
+            <div class="grid-3">
+              <section class="panel">
+                <div class="panel-head"><h2>全局指标</h2><span class="pill navy">12 个知识库</span></div>
+                <div class="panel-body stack">
+                  <div class="metric-row">
+                    <div class="metric"><span>正式发布</span><strong>8</strong></div>
+                    <div class="metric"><span>候选态</span><strong>3</strong></div>
+                    <div class="metric"><span>不可用</span><strong>1</strong></div>
+                    <div class="metric"><span>来源文档</span><strong>74</strong></div>
+                  </div>
+                  <div class="split">
+                    <div class="card"><div class="card-title"><b>总知识量</b><span class="pill teal">6,214</span></div><p>实体、事件、流程、关系总和，按当前实现口径统计。</p></div>
+                    <div class="card"><div class="card-title"><b>证据覆盖</b><span class="pill amber">72%</span></div><p>有 excerpt 的对象较多，强锚点仍需增强。</p></div>
+                  </div>
+                  <div class="card">
+                    <div class="card-title"><b>领域分布</b><span class="pill navy">Top 5</span></div>
+                    <div class="matrix">
+                      <div class="matrix-cell"><b>销售合同</b><span>452 项</span></div>
+                      <div class="matrix-cell"><b>供应商</b><span>388 项</span></div>
+                      <div class="matrix-cell"><b>交付验收</b><span>274 项</span></div>
+                      <div class="matrix-cell"><b>售后服务</b><span>321 项</span></div>
+                      <div class="matrix-cell"><b>采购规范</b><span>265 项</span></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>知识库列表</h2><span class="pill teal">选中销售合同知识库</span></div>
+                <div class="panel-body">
+                  <div class="table">
+                    <div class="table-row head"><div>知识库</div><div>加入时间</div><div>知识量</div><div>版本</div><div>消费建议</div></div>
+                    <div class="table-row" style="background:#f0fbf8"><div><b>销售合同知识库</b><br /><span class="small">合同、审批、条款</span></div><div>2026-05-02</div><div>452</div><div><span class="pill green">正式版</span></div><div>可直接查询</div></div>
+                    <div class="table-row"><div><b>供应商准入知识库</b><br /><span class="small">准入、评级、风险</span></div><div>2026-05-06</div><div>388</div><div><span class="pill amber">候选态</span></div><div>可浏览，不建议正式引用</div></div>
+                    <div class="table-row"><div><b>交付验收知识库</b><br /><span class="small">验收、交付、缺陷</span></div><div>2026-05-08</div><div>274</div><div><span class="pill red">不可用</span></div><div>缺少发布快照</div></div>
+                    <div class="table-row"><div><b>售后服务知识库</b><br /><span class="small">服务、工单、响应</span></div><div>2026-05-10</div><div>321</div><div><span class="pill green">正式版</span></div><div>可直接查询</div></div>
+                    <div class="table-row"><div><b>采购规范知识库</b><br /><span class="small">采购、审批、付款</span></div><div>2026-05-11</div><div>265</div><div><span class="pill green">正式版</span></div><div>证据覆盖中等</div></div>
+                  </div>
+                </div>
+              </section>
+              <aside class="panel">
+                <div class="panel-head"><h2>选中库快照</h2><span class="pill green">正式可用</span></div>
+                <div class="panel-body stack">
+                  <div class="card active"><div class="card-title"><b>销售合同知识库</b><span class="pill navy">v2026.05.12</span></div><p>7 份来源文档，覆盖合同审批、条款变更、归档和法务介入。</p></div>
+                  <div class="card"><div class="card-title"><b>知识构成</b></div><p>实体 380 / 事件 11 / 流程 61 / 关系 789。</p><div class="bar"><i style="width:72%"></i></div></div>
+                  <div class="card"><div class="card-title"><b>质量摘要</b><span class="pill amber">中高可信</span></div><p>主要风险：证据锚点不足、跨文档归并待增强。</p></div>
+                  <div class="card"><div class="card-title"><b>推荐问题</b></div><p>哪些条款需要法务介入？<br />补充协议是否必须归档？<br />交付延期会触发哪些审批？</p></div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <section id="query" class="screen">
+      <header class="topbar">
+        <div class="brand"><div class="mark">P1</div><div><h1>销售合同知识库查询</h1><div class="subtitle">单库消费入口：选库后的第一屏，关注结果、版本、可信度和推荐问题</div></div></div>
+        <div class="top-actions"><span class="pill green">正式版</span><span class="pill navy">publication v2026.05.12</span><button class="button ghost">切换知识库</button><button class="button primary">查询目标问题</button></div>
+      </header>
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head"><div class="side-title">消费者 Tab</div><div class="side-note">从总览进入单库查询；编辑动作不在默认路径。</div></div>
+          <div class="tab-list">
+            <div class="tab"><b>知识库总览</b><span>返回所有库驾驶舱</span></div>
+            <div class="tab active"><b>知识库查询</b><span>当前库结果、推荐问题和可信度</span></div>
+            <div class="tab"><b>对象与证据</b><span>查看知识对象详情</span></div>
+            <div class="tab"><b>图谱探索</b><span>关系子图和版本说明</span></div>
+          </div>
+          <div class="side-foot"><span class="pill teal">当前库：销售合同</span></div>
+        </aside>
+        <section class="workspace">
+          <div class="workspace-head"><div><h2>结果消费概览</h2><div class="subtitle">这里不展示抽取队列；只展示当前可用知识结果</div></div><div class="pill-row"><span class="pill green">可引用</span><span class="pill amber">证据锚点待增强</span></div></div>
+          <div class="workspace-body">
+            <div class="grid-3">
+              <section class="panel">
+                <div class="panel-head"><h2>结果指标</h2><span class="pill navy">当前版本</span></div>
+                <div class="panel-body stack">
+                  <div class="metric-row">
+                    <div class="metric"><span>实体</span><strong>380</strong></div>
+                    <div class="metric"><span>事件</span><strong>11</strong></div>
+                    <div class="metric"><span>流程</span><strong>61</strong></div>
+                    <div class="metric"><span>关系</span><strong>789</strong></div>
+                  </div>
+                  <div class="query-box">
+                    <h2>围绕目标问题使用知识库</h2>
+                    <div class="query-line">输入问题，例如“哪些合同条款需要法务介入？” <button class="button teal">查询</button></div>
+                  </div>
+                  <div class="card"><div class="card-title"><b>可回答范围</b></div><p>合同审批、条款变更、法务介入、补充协议归档、交付延期影响。</p></div>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>推荐查询与知识入口</h2><span class="pill teal">消费者路径</span></div>
+                <div class="panel-body stack">
+                  <div class="split">
+                    <div class="card active"><div class="card-title"><b>哪些条款需要法务介入？</b><span class="pill green">推荐</span></div><p>命中流程、事件、条款对象和 5 条证据。</p></div>
+                    <div class="card"><div class="card-title"><b>补充协议是否必须归档？</b></div><p>命中补充协议归档流程和归档责任对象。</p></div>
+                  </div>
+                  <div class="split">
+                    <div class="card"><div class="card-title"><b>交付延期会触发哪些审批？</b></div><p>命中交付延期事件、商务复核和法务审核。</p></div>
+                    <div class="card"><div class="card-title"><b>违约责任条款怎么确认？</b></div><p>命中条款变更确认、证据覆盖 3 份文档。</p></div>
+                  </div>
+                  <div class="table">
+                    <div class="table-row head"><div>高频对象</div><div>类型</div><div>证据</div><div>状态</div><div>入口</div></div>
+                    <div class="table-row"><div>合同审批流程</div><div>process</div><div>9</div><div><span class="pill green">正式</span></div><div>查看详情</div></div>
+                    <div class="table-row"><div>条款变更确认</div><div>event</div><div>2</div><div><span class="pill amber">弱证据</span></div><div>查看证据</div></div>
+                    <div class="table-row"><div>违约责任条款</div><div>entity</div><div>3</div><div><span class="pill green">正式</span></div><div>查看图谱</div></div>
+                  </div>
+                </div>
+              </section>
+              <aside class="panel">
+                <div class="panel-head"><h2>版本与可信度</h2><span class="pill green">正式</span></div>
+                <div class="panel-body stack">
+                  <div class="card"><div class="card-title"><b>结果版本</b><span class="pill navy">v2026.05.12</span></div><p>治理确认后发布，允许业务阅读引用。</p></div>
+                  <div class="card"><div class="card-title"><b>质量状态</b><span class="pill amber">中高可信</span></div><p>有摘录证据 389 项；缺少可定位 anchor。</p></div>
+                  <div class="card"><div class="card-title"><b>策略版本</b><span class="pill teal">只读</span></div><p>policy-package-v4，消费者不编辑策略。</p></div>
+                  <div class="timeline">
+                    <div class="event"><b>2026-05-02</b><br />知识库创建并接入初始合同材料。</div>
+                    <div class="event"><b>2026-05-11</b><br />完成抽取与质量检查。</div>
+                    <div class="event"><b>2026-05-12</b><br />治理确认并发布当前版本。</div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <section id="answer" class="screen">
+      <header class="topbar">
+        <div class="brand"><div class="mark">P1</div><div><h1>目标问题知识结果</h1><div class="subtitle">围绕一个问题组织答案、对象、关系和证据</div></div></div>
+        <div class="top-actions"><span class="pill green">销售合同知识库</span><span class="pill navy">正式版</span><button class="button ghost">返回查询</button></div>
+      </header>
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head"><div class="side-title">问题上下文</div><div class="side-note">查询不改变知识库状态；仅消费已发布结果。</div></div>
+          <div class="tab-list">
+            <div class="tab active"><b>当前问题</b><span>哪些合同条款需要法务介入？</span></div>
+            <div class="tab"><b>相关对象</b><span>流程 1 / 事件 2 / 实体 4</span></div>
+            <div class="tab"><b>证据范围</b><span>5 条摘录，3 份来源文档</span></div>
+          </div>
+          <div class="side-foot"><span class="pill amber">未覆盖客户例外条款</span></div>
+        </aside>
+        <section class="workspace">
+          <div class="workspace-head"><div><h2>问题：销售合同审批中，哪些条款需要法务介入？</h2><div class="subtitle">答案绑定当前知识库版本和证据范围</div></div><button class="button primary">复制答案引用</button></div>
+          <div class="workspace-body">
+            <div class="grid-2">
+              <section class="panel">
+                <div class="panel-head"><h2>答案与知识结构</h2><div class="pill-row"><span class="pill green">可引用</span><span class="pill amber">证据锚点弱</span></div></div>
+                <div class="panel-body stack">
+                  <div class="answer-paper">
+                    <h2>需要法务介入的重点条款</h2>
+                    <p>当前知识库显示，价格调整、交付延期、违约责任、保密义务和争议解决条款需要法务参与确认。若条款发生变更，还应触发商务负责人复核并记录审批证据。</p>
+                  </div>
+                  <div class="object-grid">
+                    <div class="card active"><div class="card-title"><b>合同审批流程</b><span class="pill teal">process</span></div><p>提交、商务复核、法务审核、归档确认。</p></div>
+                    <div class="card"><div class="card-title"><b>条款变更确认</b><span class="pill navy">event</span></div><p>核心条款变化时触发审核链。</p></div>
+                    <div class="card"><div class="card-title"><b>违约责任条款</b><span class="pill amber">entity</span></div><p>存在跨文档表述差异。</p></div>
+                  </div>
+                  <div class="table">
+                    <div class="table-row head"><div>关系路径</div><div>类型</div><div>证据</div><div>状态</div><div>解释</div></div>
+                    <div class="table-row"><div>条款变更 -> 法务审核</div><div>触发</div><div>2</div><div><span class="pill green">通过</span></div><div>核心条款变更需审核</div></div>
+                    <div class="table-row"><div>违约责任 -> 审核意见</div><div>约束</div><div>3</div><div><span class="pill amber">复核</span></div><div>证据足够但锚点弱</div></div>
+                  </div>
+                </div>
+              </section>
+              <aside class="panel">
+                <div class="panel-head"><h2>证据与边界</h2><span class="pill navy">为什么可信</span></div>
+                <div class="panel-body stack">
+                  <div class="quote">“涉及价格、交付周期、违约责任的修改，需经法务审核后进入最终审批。”<br /><b>来源：</b>销售合同审批规则.md</div>
+                  <div class="quote">“补充协议不得绕过归档流程，关键条款调整需保留审批记录。”<br /><b>来源：</b>补充协议管理说明.md</div>
+                  <div class="card"><div class="card-title"><b>覆盖范围</b></div><p>覆盖标准合同、补充协议、归档要求；未覆盖客户特殊例外。</p></div>
+                  <div class="card"><div class="card-title"><b>质量提示</b><span class="pill amber">谨慎引用</span></div><p>当前有摘录证据，但缺页码、段落 anchor 和 evidence role。</p></div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <section id="object" class="screen">
+      <header class="topbar">
+        <div class="brand"><div class="mark">P1</div><div><h1>知识对象与证据阅读</h1><div class="subtitle">消费者只读对象详情；生产修正入口隐藏为次级动作</div></div></div>
+        <div class="top-actions"><span class="pill navy">entity / event / process</span><span class="pill green">正式结果</span><button class="button ghost">提交问题反馈</button></div>
+      </header>
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head"><div class="side-title">对象列表</div><div class="side-note">按当前实现口径组织知识对象。</div></div>
+          <div class="tab-list">
+            <div class="tab active"><b>合同审批流程</b><span>process · 9 证据 · 18 关系</span></div>
+            <div class="tab"><b>违约责任条款</b><span>entity · 3 证据</span></div>
+            <div class="tab"><b>条款变更确认</b><span>event · 2 证据</span></div>
+            <div class="tab"><b>补充协议归档</b><span>process · 4 证据</span></div>
+          </div>
+          <div class="side-foot"><span class="pill amber">强锚点不足</span></div>
+        </aside>
+        <section class="workspace">
+          <div class="workspace-head"><div><h2>合同审批流程</h2><div class="subtitle">这条知识是什么、从哪里来、能不能用</div></div><div class="pill-row"><span class="pill teal">process</span><span class="pill green">正式</span></div></div>
+          <div class="workspace-body">
+            <div class="grid-object">
+              <section class="panel">
+                <div class="panel-head"><h2>对象摘要</h2><span class="pill navy">只读</span></div>
+                <div class="panel-body stack">
+                  <div class="card active"><div class="card-title"><b>业务定义</b></div><p>销售合同从提交、商务复核、法务审核到归档确认的标准处理路径。</p></div>
+                  <div class="metric-row">
+                    <div class="metric"><span>支撑文档</span><strong>4</strong></div>
+                    <div class="metric"><span>关系</span><strong>18</strong></div>
+                    <div class="metric"><span>证据</span><strong>9</strong></div>
+                    <div class="metric"><span>风险</span><strong>2</strong></div>
+                  </div>
+                  <div class="table">
+                    <div class="table-row head"><div>步骤</div><div>类型</div><div>证据</div><div>状态</div><div>说明</div></div>
+                    <div class="table-row"><div>合同提交</div><div>step</div><div>2</div><div><span class="pill green">通过</span></div><div>发起审批</div></div>
+                    <div class="table-row"><div>商务复核</div><div>step</div><div>3</div><div><span class="pill green">通过</span></div><div>确认商务条款</div></div>
+                    <div class="table-row"><div>法务审核</div><div>step</div><div>4</div><div><span class="pill amber">弱锚点</span></div><div>确认风险条款</div></div>
+                  </div>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>关系路径</h2><span class="pill teal">业务脉络</span></div>
+                <div class="panel-body stack">
+                  <div class="card"><div class="card-title"><b>合同提交 -> 商务复核</b><span class="pill green">part_of</span></div><p>审批流程的前置步骤，检查价格、付款、交付条件。</p></div>
+                  <div class="card"><div class="card-title"><b>商务复核 -> 法务审核</b><span class="pill teal">operational_exchange</span></div><p>当条款变更或风险条款出现时移交法务。</p></div>
+                  <div class="card"><div class="card-title"><b>法务审核 -> 归档确认</b><span class="pill green">describes</span></div><p>审核意见和合同文本一并归档。</p></div>
+                  <div class="card"><div class="card-title"><b>消费者解释</b></div><p>阅读路径强调“为什么这个流程能被引用”，不显示重跑、规则合同编辑和策略保存。</p></div>
+                </div>
+              </section>
+              <aside class="panel">
+                <div class="panel-head"><h2>证据面板</h2><span class="pill amber">excerpt 级</span></div>
+                <div class="panel-body stack">
+                  <div class="quote">“标准合同审批需经过商务复核、法务审核与归档确认。”<br /><b>销售合同审批规则.md</b></div>
+                  <div class="quote">“重大条款变更应补充审批意见，并与原合同记录一并归档。”<br /><b>合同归档说明.md</b></div>
+                  <div class="card"><div class="card-title"><b>证据质量</b></div><p>有 excerpt 和 document_id；缺少页码、段落锚点、block id。</p></div>
+                  <div class="card"><div class="card-title"><b>消费者动作</b></div><p>查看来源、复制引用、提交问题反馈；不显示生产动作。</p></div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <section id="graph" class="screen">
+      <header class="topbar">
+        <div class="brand"><div class="mark">P1</div><div><h1>图谱探索与版本说明</h1><div class="subtitle">可视化集中放在本视图：从目标问题相关子图进入，不在查询首页堆叠图谱</div></div></div>
+        <div class="top-actions"><span class="pill green">正式版</span><span class="pill amber">孤立率提示</span><button class="button ghost">查看版本说明</button></div>
+      </header>
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head"><div class="side-title">图谱筛选</div><div class="side-note">先看相关子图，再切全量图谱。</div></div>
+          <div class="tab-list">
+            <div class="tab active"><b>法务介入条款</b><span>目标问题相关子图</span></div>
+            <div class="tab"><b>合同审批全链路</b><span>流程与事件视图</span></div>
+            <div class="tab"><b>弱证据对象</b><span>证据不足提示</span></div>
+            <div class="tab"><b>正式版本说明</b><span>发布、治理、质量状态</span></div>
+          </div>
+          <div class="side-foot"><span class="pill navy">默认不展示系统输出合同</span></div>
+        </aside>
+        <section class="workspace">
+          <div class="workspace-head"><div><h2>“法务介入条款”相关子图</h2><div class="subtitle">消费者理解业务关系；生产者可复用此图检查孤立节点和错误边</div></div><div class="pill-row"><span class="pill teal">证据优先</span><span class="pill navy">关系强度</span></div></div>
+          <div class="workspace-body">
+            <div class="grid-3">
+              <section class="panel" style="grid-column: span 2">
+                <div class="panel-head"><h2>关系图谱</h2><span class="pill green">publication v2026.05.12</span></div>
+                <div class="panel-body">
+                  <div class="graph-stage">
+                    <div class="edge" style="left: 270px; top: 190px; width: 330px; transform: rotate(16deg)"></div>
+                    <div class="edge" style="left: 610px; top: 270px; width: 330px; transform: rotate(18deg)"></div>
+                    <div class="edge" style="left: 350px; top: 505px; width: 360px; transform: rotate(-22deg)"></div>
+                    <div class="edge" style="left: 740px; top: 505px; width: 290px; transform: rotate(-27deg)"></div>
+                    <div class="edge-label" style="left: 420px; top: 200px">触发</div>
+                    <div class="edge-label" style="left: 760px; top: 310px">需要审核</div>
+                    <div class="edge-label" style="left: 530px; top: 430px">归档</div>
+                    <div class="node green" style="left: 160px; top: 150px">合同审批流程<small>process · 9 证据</small></div>
+                    <div class="node" style="left: 555px; top: 240px">条款变更确认<small>event · 2 证据</small></div>
+                    <div class="node amber" style="left: 950px; top: 355px">违约责任条款<small>entity · 3 证据</small></div>
+                    <div class="node green" style="left: 300px; top: 545px">补充协议归档<small>process · 4 证据</small></div>
+                    <div class="node" style="left: 820px; top: 560px">法务审核意见<small>entity · 2 证据</small></div>
+                  </div>
+                </div>
+              </section>
+              <aside class="panel">
+                <div class="panel-head"><h2>节点详情</h2><span class="pill amber">当前选中</span></div>
+                <div class="panel-body stack">
+                  <div class="card active"><div class="card-title"><b>违约责任条款</b><span class="pill teal">entity</span></div><p>涉及赔偿、免责、争议解决等责任边界。</p></div>
+                  <div class="card"><div class="card-title"><b>关系解释</b></div><p>当违约责任条款发生变更时，触发法务审核意见。</p></div>
+                  <div class="card"><div class="card-title"><b>版本状态</b><span class="pill green">正式</span></div><p>正式版可引用；证据锚点仍需后续增强。</p></div>
+                  <div class="card"><div class="card-title"><b>质量提示</b><span class="pill amber">孤立率</span></div><p>全库业务关系图孤立率约 52.7%，建议消费者从推荐子图进入。</p></div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <script>
+      const state = (location.hash || "#cockpit").slice(1);
+      document.body.dataset.state = ["cockpit", "query", "answer", "object", "graph"].includes(state) ? state : "cockpit";
+    </script>
+  </body>
+</html>
