@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P4 P2/P3 对齐设计草案 v2</title>
+    <style>
+      :root {
+        --ink: #15202f;
+        --muted: #66758a;
+        --line: #d9e0ea;
+        --paper: #fffdf8;
+        --panel: #ffffff;
+        --field: #f6f8fb;
+        --blue: #235d8f;
+        --cyan: #2c8a9a;
+        --green: #4f8b62;
+        --amber: #ad7c26;
+        --red: #a94f4f;
+        --navy: #173b4f;
+        --shadow: 0 16px 28px rgba(21, 32, 47, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(21, 32, 47, 0.05) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(21, 32, 47, 0.045) 1px, transparent 1px),
+          #eef2f6;
+        background-size: 24px 24px;
+        color: var(--ink);
+        font-family: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+      }
+
+      .board {
+        width: 1920px;
+        height: 1080px;
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .topbar {
+        height: 78px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 14px 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: var(--shadow);
+      }
+
+      .title {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .actions,
+      .status-row,
+      .pill-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fbfcfe;
+        color: #334155;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .pill.strong {
+        border-color: #96b7c6;
+        background: #eef8fb;
+        color: #174d5f;
+        font-weight: 700;
+      }
+
+      .pill.green {
+        border-color: #a8c7ae;
+        background: #f0f8ef;
+        color: #2f6840;
+      }
+
+      .pill.amber {
+        border-color: #ddc087;
+        background: #fbf3dd;
+        color: #8a5b11;
+      }
+
+      .button {
+        min-height: 34px;
+        padding: 6px 12px;
+        border: 1px solid #b7c4d6;
+        border-radius: 6px;
+        background: #fff;
+        color: #1f2a3a;
+        font-size: 14px;
+      }
+
+      .button.primary {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #fff;
+      }
+
+      .tabs {
+        height: 62px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        color: #415068;
+      }
+
+      .tab.active {
+        border-color: #8bb9c6;
+        background: #f1fbfd;
+        color: #174d5f;
+        box-shadow: var(--shadow);
+      }
+
+      .tab-index {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #e6edf5;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .tab-title {
+        display: block;
+        font-size: 17px;
+        font-weight: 800;
+      }
+
+      .tab-caption {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .shell {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr) 430px;
+        gap: 16px;
+      }
+
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f8fafc;
+      }
+
+      h2 {
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .panel-head small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .panel-body {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        padding: 14px;
+      }
+
+      .tree {
+        display: grid;
+        gap: 9px;
+      }
+
+      .tree-group {
+        padding: 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .tree-group.active {
+        border-color: #8bb9c6;
+        background: #f1fbfd;
+      }
+
+      .tree-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .tree-sub {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .indent {
+        margin-top: 8px;
+        padding-left: 12px;
+        border-left: 2px solid #d9e0ea;
+        display: grid;
+        gap: 7px;
+      }
+
+      .main-grid {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 14px;
+      }
+
+      .summary-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+
+      .metric {
+        min-height: 76px;
+        padding: 12px;
+        border: 1px solid #dde5ef;
+        border-radius: 8px;
+        background: #fbfcfe;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 27px;
+      }
+
+      .work-split {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 42fr 58fr;
+        gap: 14px;
+      }
+
+      .stack {
+        min-height: 0;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .card,
+      .paper,
+      .trace {
+        border: 1px solid #dde5ef;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .card {
+        padding: 14px;
+      }
+
+      .card h3,
+      .paper h3,
+      .trace h3 {
+        margin: 0 0 9px;
+        font-size: 16px;
+      }
+
+      .card p,
+      .trace p {
+        color: #3b4860;
+        font-size: 14px;
+        line-height: 1.68;
+      }
+
+      .paper {
+        min-height: 100%;
+        padding: 24px 30px;
+        background: var(--paper);
+        border-color: #e8decf;
+      }
+
+      .paper-title {
+        margin-bottom: 14px;
+        text-align: center;
+        font-size: 22px;
+        font-weight: 800;
+      }
+
+      .section-block {
+        position: relative;
+        margin-bottom: 12px;
+        padding: 12px 14px;
+        border: 1px solid #eadfcd;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .section-block.active {
+        border-color: #8bb9c6;
+        background: #f1fbfd;
+      }
+
+      .section-block h3 {
+        font-size: 15px;
+      }
+
+      .section-block p {
+        color: #364256;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .side-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .trace {
+        padding: 14px;
+        background: #fbfcfe;
+      }
+
+      .trace-line {
+        display: grid;
+        grid-template-columns: 86px 1fr;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid #e5ebf2;
+        font-size: 13px;
+      }
+
+      .trace-line:first-of-type {
+        border-top: 0;
+      }
+
+      .trace-line span {
+        color: var(--muted);
+      }
+
+      .trace-line strong {
+        color: #1f2a3a;
+      }
+
+      .mini-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .mini-table th,
+      .mini-table td {
+        padding: 9px 8px;
+        border-bottom: 1px solid #e6edf5;
+        text-align: left;
+      }
+
+      .mini-table th {
+        color: #526173;
+        font-size: 12px;
+        background: #f8fafc;
+      }
+
+      .heatmap {
+        display: grid;
+        grid-template-columns: 110px repeat(4, 1fr);
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .heatmap div {
+        min-height: 36px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #e0e7ef;
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .heatmap .h {
+        background: #f8fafc;
+        color: #526173;
+        font-weight: 800;
+      }
+
+      .heatmap .ok {
+        background: #eef8ef;
+        color: #2f6840;
+      }
+
+      .heatmap .warn {
+        background: #fbf3dd;
+        color: #8a5b11;
+      }
+
+      .heatmap .empty {
+        background: #f8fafc;
+        color: #94a3b8;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 10px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px;
+        border: 1px solid #e0e7ef;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .dot {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #e7f3fb;
+        color: #1f5d7a;
+        font-weight: 800;
+        font-size: 12px;
+      }
+
+      .queue-card {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid #dde5ef;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="p4-v2-board" class="board">
+      <header class="topbar">
+        <div>
+          <div class="title">
+            <h1>P4 工具仓库</h1>
+            <span class="subtitle">P2/P3 对齐设计草案：对象树、当前对象工作面、正面产物与下游投影</span>
+          </div>
+          <div class="status-row" style="margin-top: 8px">
+            <span class="pill strong">设计草案 v2</span>
+            <span class="pill">基于现有功能重组</span>
+            <span class="pill">待用户确认</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="button">刷新投影</button>
+          <button class="button">导出评审包</button>
+          <button class="button primary">进入当前对象</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="P4 v2 工作对象页签">
+        <div id="tab-demand" class="tab">
+          <span class="tab-index">01</span>
+          <span><span class="tab-title">需求工序</span><span class="tab-caption">P3 总单到叶子项供给</span></span>
+        </div>
+        <div id="tab-asset" class="tab">
+          <span class="tab-index">02</span>
+          <span><span class="tab-title">工具资产</span><span class="tab-caption">P4 正面产物与覆盖</span></span>
+        </div>
+        <div id="tab-runtime" class="tab">
+          <span class="tab-index">03</span>
+          <span><span class="tab-title">运行观察</span><span class="tab-caption">制造、巡检、投影刷新</span></span>
+        </div>
+      </nav>
+
+      <section id="view-demand" class="shell">
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>P4 对象树</h2>
+            <small>真实业务对象，不是图号目录</small>
+          </div>
+          <div class="panel-body">
+            <div class="tree">
+              <div class="tree-group">
+                <div class="tree-title"><span>P3 来源总单</span><span class="pill">2</span></div>
+                <p class="tree-sub">模拟蓝军一期 / 导航规划一期</p>
+              </div>
+              <div class="tree-group active">
+                <div class="tree-title"><span>导航规划一期工具需求单</span><span class="pill amber">reviewing</span></div>
+                <p class="tree-sub">accepted · partially_ready · delivered</p>
+                <div class="indent">
+                  <div class="tree-group active">
+                    <div class="tree-title"><span>航路规划编译器</span><span class="pill green">ready_for_fetch</span></div>
+                    <p class="tree-sub">approved_manufacture · manufactured_tool</p>
+                  </div>
+                  <div class="tree-group">
+                    <div class="tree-title"><span>冲突窗口分析器</span><span class="pill amber">pending</span></div>
+                    <p class="tree-sub">pending_review · checking</p>
+                  </div>
+                </div>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>制造任务</span><span class="pill green">1 完成</span></div>
+                <p class="tree-sub">tmp-b0c89a42f2d1 · runtime 已推进</p>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>P5 查询投影</span><span class="pill green">可消费</span></div>
+                <p class="tree-sub">整单查询 / 叶子项进度 / fetch interface</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>当前叶子项工作面</h2>
+            <small>P2 的 Turn / P3 的条款映射在 P4 中对应叶子工具需求</small>
+          </div>
+          <div class="panel-body main-grid">
+            <div class="summary-strip">
+              <div class="metric"><span>总单状态</span><strong>reviewing</strong></div>
+              <div class="metric"><span>交付状态</span><strong>delivered</strong></div>
+              <div class="metric"><span>当前叶子项</span><strong>100%</strong></div>
+              <div class="metric"><span>P5 取用</span><strong>ready</strong></div>
+            </div>
+            <div class="work-split">
+              <div class="stack">
+                <article class="card">
+                  <h3>输入事实</h3>
+                  <p>来自 P3 软件设计投影：导航规划系统 / 航路设计 / 路径规划 / 航路装配 / 航路规划编译器。</p>
+                  <div class="pill-row" style="margin-top: 10px">
+                    <span class="pill">manual_text</span>
+                    <span class="pill">structured_json</span>
+                    <span class="pill">agent_runtime</span>
+                  </div>
+                </article>
+                <article class="card">
+                  <h3>审定与分支</h3>
+                  <p>未命中既有工具，审定通过后进入制造名单。P4 的动作不是写软件设计，而是把叶子需求转成可交付工具。</p>
+                  <div class="pill-row" style="margin-top: 10px">
+                    <span class="pill amber">manufacture_candidate</span>
+                    <span class="pill green">approved_manufacture</span>
+                  </div>
+                </article>
+                <article class="card">
+                  <h3>操作区</h3>
+                  <div class="actions">
+                    <button class="button primary">刷新进度</button>
+                    <button class="button">打开制造任务</button>
+                    <button class="button">查看 P5 投影</button>
+                  </div>
+                </article>
+              </div>
+              <article class="paper">
+                <div class="paper-title">P4 工具需求处理单</div>
+                <section class="section-block active">
+                  <h3>1. 叶子需求识别</h3>
+                  <p>组件名：航路规划编译器。问题：根据任务区域和约束条件生成可执行航路方案。该对象是 P4 当前工作台的主对象，而不是整页功能列表。</p>
+                </section>
+                <section class="section-block">
+                  <h3>2. 匹配结论</h3>
+                  <p>当前未命中现有工具，形成制造候选。匹配结果与审定意见保留为审计事实，供 Runtime 和 P5 查询投影使用。</p>
+                </section>
+                <section class="section-block">
+                  <h3>3. 供给输出</h3>
+                  <p>Runtime 完成模拟制造后登记工具资产，生成 fetch interface：/api/tool-hub/tools/tool-72c5feffc00b/fetch。</p>
+                </section>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>供给投影</h2>
+            <small>P5/P6 只读消费面</small>
+          </div>
+          <div class="panel-body side-stack">
+            <article class="trace">
+              <h3>P5 可见状态</h3>
+              <div class="trace-line"><span>sheet</span><strong>tds-24deb7661568</strong></div>
+              <div class="trace-line"><span>item</span><strong>tdi-ab8e557bcbb1</strong></div>
+              <div class="trace-line"><span>status</span><strong>ready_for_fetch</strong></div>
+              <div class="trace-line"><span>message</span><strong>模拟研制完成，当前可获取工具</strong></div>
+            </article>
+            <article class="trace">
+              <h3>跨阶段链路</h3>
+              <div class="timeline">
+                <div class="step"><span class="dot">P3</span><strong>组件缺口投影为工具需求单</strong><span class="pill">submitted</span></div>
+                <div class="step"><span class="dot">P4</span><strong>叶子项审定并制造工具</strong><span class="pill green">ready</span></div>
+                <div class="step"><span class="dot">P5</span><strong>查询进度并取用 fetch interface</strong><span class="pill green">query</span></div>
+              </div>
+            </article>
+            <article class="trace">
+              <h3>设计判断</h3>
+              <p>P4 的首屏应围绕当前叶子需求展开，像 P2 当前 Turn、P3 当前条款一样，让用户知道“我正在处理哪个对象”。</p>
+            </article>
+          </div>
+        </aside>
+      </section>
+
+      <section id="view-asset" class="shell hidden">
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>资产对象树</h2>
+            <small>从工具清单升级为正面产物索引</small>
+          </div>
+          <div class="panel-body">
+            <div class="tree">
+              <div class="tree-group active">
+                <div class="tree-title"><span>工具资产</span><span class="pill">2</span></div>
+                <p class="tree-sub">active · skill · agent_runtime</p>
+                <div class="indent">
+                  <div class="tree-group active">
+                    <div class="tree-title"><span>航路规划编译器</span><span class="pill amber">warning</span></div>
+                    <p class="tree-sub">模拟制造产物 · 待正式验证</p>
+                  </div>
+                  <div class="tree-group">
+                    <div class="tree-title"><span>蓝军编组树构造器</span><span class="pill green">verified</span></div>
+                    <p class="tree-sub">既有工具 · 样例通过</p>
+                  </div>
+                </div>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>覆盖矩阵</span><span class="pill amber">缺口</span></div>
+                <p class="tree-sub">导航规划 / 模拟蓝军 / 前端元组件 / Skill</p>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>交付口径</span><span class="pill">fetch</span></div>
+                <p class="tree-sub">descriptor · manual integration · external deps</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>工具资产正面产物</h2>
+            <small>借 P3 右侧主产物区，把 ToolDefinition 作为 P4 正文</small>
+          </div>
+          <div class="panel-body main-grid">
+            <div class="summary-strip">
+              <div class="metric"><span>工具总数</span><strong>2</strong></div>
+              <div class="metric"><span>已验证</span><strong>1</strong></div>
+              <div class="metric"><span>制造产物</span><strong>1</strong></div>
+              <div class="metric"><span>覆盖风险</span><strong>13</strong></div>
+            </div>
+            <div class="work-split">
+              <article class="paper">
+                <div class="paper-title">工具资产说明书</div>
+                <section class="section-block active">
+                  <h3>1. 工具身份</h3>
+                  <p>航路规划编译器，slug：comp-route-plan-compiler-71149d，业务域：navigation_planning，工具形态：Skill。</p>
+                </section>
+                <section class="section-block">
+                  <h3>2. 输入输出合同</h3>
+                  <p>输入类型：manual_text。输出类型：structured_json。运行平台：agent_runtime。集成方式：manual。</p>
+                </section>
+                <section class="section-block">
+                  <h3>3. 交付与验证状态</h3>
+                  <p>当前为模拟制造产物，验证状态 warning。可被 P5 通过 fetch interface 取用，但需要后续真实验证补齐。</p>
+                </section>
+              </article>
+              <div class="stack">
+                <article class="card">
+                  <h3>覆盖矩阵</h3>
+                  <div class="heatmap">
+                    <div class="h">业务域</div><div class="h">Skill</div><div class="h">组件</div><div class="h">模板</div><div class="h">服务</div>
+                    <div class="h">导航规划</div><div class="warn">1</div><div class="empty">0</div><div class="empty">0</div><div class="empty">0</div>
+                    <div class="h">模拟蓝军</div><div class="ok">1</div><div class="empty">0</div><div class="empty">0</div><div class="empty">0</div>
+                    <div class="h">数据治理</div><div class="empty">0</div><div class="empty">0</div><div class="empty">0</div><div class="empty">0</div>
+                  </div>
+                </article>
+                <article class="card">
+                  <h3>工具清单仍保留，但降为索引</h3>
+                  <table class="mini-table">
+                    <tr><th>工具</th><th>域</th><th>验证</th></tr>
+                    <tr><td>航路规划编译器</td><td>导航规划</td><td>warning</td></tr>
+                    <tr><td>蓝军编组树构造器</td><td>模拟蓝军</td><td>verified</td></tr>
+                  </table>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>资产投影与交付</h2>
+            <small>工具资产如何被下游消费</small>
+          </div>
+          <div class="panel-body side-stack">
+            <article class="trace">
+              <h3>Fetch Interface</h3>
+              <div class="trace-line"><span>mode</span><strong>descriptor</strong></div>
+              <div class="trace-line"><span>entry</span><strong>/api/tool-hub/tools/tool-72c5feffc00b/fetch</strong></div>
+              <div class="trace-line"><span>contract</span><strong>p4.fetch.v1</strong></div>
+            </article>
+            <article class="trace">
+              <h3>自演进提示</h3>
+              <p>覆盖矩阵中导航规划只有一个 Skill，前端元组件、模板和服务接口仍为空。这个信息应贴近资产主产物，而不是只藏在总览风险卡里。</p>
+            </article>
+            <article class="trace">
+              <h3>设计判断</h3>
+              <p>P4 的“正面产物”不是表格，而是能解释身份、合同、验证、覆盖和取用方式的工具资产说明书。</p>
+            </article>
+          </div>
+        </aside>
+      </section>
+
+      <section id="view-runtime" class="shell hidden">
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>运行对象树</h2>
+            <small>当前运行对象替代孤立巡检页</small>
+          </div>
+          <div class="panel-body">
+            <div class="tree">
+              <div class="tree-group active">
+                <div class="tree-title"><span>制造任务 tmp-b0c89a42f2d1</span><span class="pill green">done</span></div>
+                <p class="tree-sub">航路规划编译器 · Runtime 已推进至 ready_for_fetch</p>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>巡检轮次 evolution-run-a3400</span><span class="pill green">completed</span></div>
+                <p class="tree-sub">8 项发现 · 覆盖缺口 / 建议 / 停滞检查</p>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>投影刷新</span><span class="pill">overview / tool_list</span></div>
+                <p class="tree-sub">命令写事实，查询读投影</p>
+              </div>
+              <div class="tree-group">
+                <div class="tree-title"><span>风险队列</span><span class="pill amber">13</span></div>
+                <p class="tree-sub">待演进建议和覆盖缺口</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>当前运行观察面</h2>
+            <small>把 Runtime、制造、自演进放回同一运行语义</small>
+          </div>
+          <div class="panel-body main-grid">
+            <div class="summary-strip">
+              <div class="metric"><span>制造队列</span><strong>1</strong></div>
+              <div class="metric"><span>巡检轮次</span><strong>2</strong></div>
+              <div class="metric"><span>投影刷新</span><strong>3</strong></div>
+              <div class="metric"><span>风险建议</span><strong>13</strong></div>
+            </div>
+            <div class="work-split">
+              <div class="stack">
+                <article class="card">
+                  <h3>运行链路</h3>
+                  <div class="timeline">
+                    <div class="step"><span class="dot">1</span><strong>审定制造候选</strong><span class="pill green">done</span></div>
+                    <div class="step"><span class="dot">2</span><strong>Runtime 领取制造任务</strong><span class="pill green">done</span></div>
+                    <div class="step"><span class="dot">3</span><strong>登记工具资产并刷新投影</strong><span class="pill green">done</span></div>
+                    <div class="step"><span class="dot">4</span><strong>P5 查询 ready_for_fetch</strong><span class="pill green">visible</span></div>
+                  </div>
+                </article>
+                <article class="card">
+                  <h3>巡检发现项</h3>
+                  <table class="mini-table">
+                    <tr><th>发现</th><th>级别</th><th>处置</th></tr>
+                    <tr><td>导航规划覆盖不足</td><td>info</td><td>生成建议</td></tr>
+                    <tr><td>模拟制造产物待验证</td><td>warning</td><td>进入验证队列</td></tr>
+                    <tr><td>真实交付清单缺失</td><td>warning</td><td>补齐 manifest</td></tr>
+                  </table>
+                </article>
+              </div>
+              <article class="paper">
+                <div class="paper-title">运行事实与投影刷新说明</div>
+                <section class="section-block active">
+                  <h3>1. 命令事实</h3>
+                  <p>用户在需求工序中审定制造，后端写入审定事实和制造任务。前端不直接推进长耗时任务。</p>
+                </section>
+                <section class="section-block">
+                  <h3>2. Runtime 事实</h3>
+                  <p>运行协调器领取任务、推进进度、登记工具资产，并把制造结果写回工具仓库事实层。</p>
+                </section>
+                <section class="section-block">
+                  <h3>3. 查询投影</h3>
+                  <p>Overview、Tool List、Demand Progress 和 P5 Query 读投影。刷新投影是运行链的一部分，不是 UI 临时拼接。</p>
+                </section>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>处置与回路</h2>
+            <small>可接受、可忽略、可回滚</small>
+          </div>
+          <div class="panel-body side-stack">
+            <article class="trace">
+              <h3>当前可执行动作</h3>
+              <div class="actions">
+                <button class="button primary">接受优化建议</button>
+                <button class="button">忽略发现项</button>
+                <button class="button">回滚任务</button>
+              </div>
+            </article>
+            <article class="trace">
+              <h3>队列状态</h3>
+              <div class="queue-card"><strong>p4-manufacture</strong><span class="pill green">idle</span></div>
+              <div class="queue-card" style="margin-top: 8px"><strong>p4-evolution</strong><span class="pill">ready</span></div>
+              <div class="queue-card" style="margin-top: 8px"><strong>projection-refresh</strong><span class="pill green">fresh</span></div>
+            </article>
+            <article class="trace">
+              <h3>设计判断</h3>
+              <p>自演进不应像附属 Tab，而应是运行观察台的一部分：它解释 P4 为什么产生建议、如何处置，以及如何影响工具资产投影。</p>
+            </article>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const state = location.hash.replace("#", "") || "demand";
+      for (const key of ["demand", "asset", "runtime"]) {
+        document.querySelector(`#view-${key}`).classList.toggle("hidden", key !== state);
+        document.querySelector(`#tab-${key}`).classList.toggle("active", key === state);
+      }
+    </script>
+  </body>
+</html>
