@@ -5,6 +5,7 @@ import type {
   RequirementAnalysisOrchestratorEnvelope,
   RequirementAnalysisProvider,
   RequirementAnalysisTemplateSummary,
+  RequirementSpecWorkItem,
 } from "./api";
 import {
   getRequirementAnalysisTemplateBases,
@@ -12,6 +13,7 @@ import {
   getRequirementAnalysisOrchestrators,
   getRequirementAnalysisProviders,
   getRequirementAnalysisTemplates,
+  getRequirementSpecWorkItems,
 } from "./requirementAnalysis";
 
 export type RequirementAnalysisLabBootstrap = {
@@ -20,6 +22,7 @@ export type RequirementAnalysisLabBootstrap = {
   providers: RequirementAnalysisProvider[];
   templates: RequirementAnalysisTemplateSummary[];
   templateBases: RequirementAnalysisTemplateSummary[];
+  specItems: RequirementSpecWorkItem[];
   loading: boolean;
   error: string | null;
 };
@@ -30,6 +33,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
   const [providers, setProviders] = useState<RequirementAnalysisProvider[]>([]);
   const [templates, setTemplates] = useState<RequirementAnalysisTemplateSummary[]>([]);
   const [templateBases, setTemplateBases] = useState<RequirementAnalysisTemplateSummary[]>([]);
+  const [specItems, setSpecItems] = useState<RequirementSpecWorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,12 +43,13 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     async function load() {
       try {
         setLoading(true);
-        const [configResponse, orchestratorsResponse, providersResponse, templatesResponse, templateBasesResponse] = await Promise.all([
+        const [configResponse, orchestratorsResponse, providersResponse, templatesResponse, templateBasesResponse, specItemsResponse] = await Promise.all([
           getRequirementAnalysisLabConfig(),
           getRequirementAnalysisOrchestrators(),
           getRequirementAnalysisProviders(),
           getRequirementAnalysisTemplates(),
           getRequirementAnalysisTemplateBases(),
+          getRequirementSpecWorkItems(),
         ]);
         if (cancelled) {
           return;
@@ -54,6 +59,7 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
         setProviders(providersResponse.data.items);
         setTemplates(templatesResponse.data.items);
         setTemplateBases(templateBasesResponse.data.items);
+        setSpecItems(specItemsResponse.data.items);
         setError(null);
       } catch (loadError) {
         if (!cancelled) {
@@ -72,5 +78,5 @@ export function useRequirementAnalysisLabBootstrap(): RequirementAnalysisLabBoot
     };
   }, []);
 
-  return { labConfig, orchestratorsEnvelope, providers, templates, templateBases, loading, error };
+  return { labConfig, orchestratorsEnvelope, providers, templates, templateBases, specItems, loading, error };
 }

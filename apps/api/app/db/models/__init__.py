@@ -6,6 +6,7 @@ from app.db.models.requirements import (
     RequirementAuthoringDocument,
     RequirementAuthoringTemplate,
     RequirementSpec,
+    RequirementSpecWorkItem,
 )
 from app.db.models.tool_hub_delivery import (
     ToolArtifactVersionRecord,
@@ -27,6 +28,7 @@ __all__ = [
     "RequirementAuthoringDocument",
     "RequirementAuthoringTemplate",
     "RequirementSpec",
+    "RequirementSpecWorkItem",
     "ToolArtifactVersionRecord",
     "ToolBuildRequestRecord",
     "ToolBuildRunRecord",

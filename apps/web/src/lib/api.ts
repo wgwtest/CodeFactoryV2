@@ -2351,6 +2351,55 @@ export type RequirementAnalysisTemplateDetail = RequirementAnalysisTemplateSumma
   content: string;
 };
 
+export type RequirementSpecWorkItemStatus =
+  | "draft"
+  | "configured"
+  | "revision_draft"
+  | "published_to_p3"
+  | "archived"
+  | string;
+
+export type RequirementSpecWorkItem = {
+  spec_item_id: string;
+  title: string;
+  initial_description: string;
+  status: RequirementSpecWorkItemStatus;
+  template_id: string;
+  knowledge_binding: Record<string, unknown> | null;
+  authoring_document_id: string;
+  analysis_session_id: string | null;
+  published_requirement_spec_id: string | null;
+  published_package_id: string | null;
+  version: number;
+  p3_consumable: boolean;
+  next_action?: "enter_config" | "stay" | null;
+  available_actions: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type RequirementSpecWorkItemEnvelope = {
+  items: RequirementSpecWorkItem[];
+};
+
+export type RequirementSpecWorkItemCreateInput = {
+  title: string;
+  initial_description?: string;
+  template_id: string;
+  knowledge_binding?: Record<string, unknown> | null;
+  create_action?: "enter_config" | "stay";
+};
+
+export type RequirementSpecWorkItemConfigureInput = {
+  topic: string;
+  orchestrator_id?: string;
+  provider_id?: string;
+  model?: string;
+  template_id?: string;
+  knowledge_package_id?: string;
+  write_policy?: string;
+};
+
 export type RequirementAnalysisPageMeta = {
   title: string;
   subtitle: string;
@@ -2687,16 +2736,14 @@ export type RequirementAnalysisTurn = {
     semantic: string;
   };
   input_relation: RequirementAnalysisInputRelation;
-  decision_state_delta?: Partial<RequirementAnalysisDecisionState>;
-  decision_state_change_summary?: Record<string, unknown>;
   spec_execution: RequirementAnalysisSpecExecution;
   post_update_review: RequirementAnalysisPostUpdateReview;
-  decision_state_delta?: RequirementAnalysisDecisionState;
+  decision_state_delta?: Partial<RequirementAnalysisDecisionState>;
   decision_state_change_summary?: {
     turn_id: string;
     added_counts: Record<string, number>;
     next_focus: string;
-  };
+  } | Record<string, unknown>;
   decision_state_document?: RequirementAnalysisDecisionStateDocument;
   closure_decision: RequirementAnalysisClosureAssessment;
   next_interaction: RequirementAnalysisInteraction;
@@ -2707,36 +2754,6 @@ export type RequirementAnalysisTurn = {
   raw_model_response: Record<string, unknown>;
   raw_plugin_response?: Record<string, unknown>;
   created_at: string;
-};
-
-export type RequirementAnalysisDecisionStateItem = {
-  item_id?: string;
-  content: string;
-  source_turn_id?: string | null;
-  target_section?: string;
-  status?: string;
-};
-
-export type RequirementAnalysisDecisionState = {
-  topic?: string;
-  confirmed_facts: RequirementAnalysisDecisionStateItem[];
-  confirmed_decisions: RequirementAnalysisDecisionStateItem[];
-  tentative_assumptions: RequirementAnalysisDecisionStateItem[];
-  open_questions: RequirementAnalysisDecisionStateItem[];
-  rejected_directions: RequirementAnalysisDecisionStateItem[];
-  next_focus: string;
-  chapter_projections: RequirementAnalysisDecisionStateItem[];
-};
-
-export type RequirementAnalysisDecisionStateDocument = {
-  document_id: string;
-  title: string;
-  phase: string;
-  sections: Array<{
-    section_id: string;
-    heading: string;
-    items: RequirementAnalysisDecisionStateItem[];
-  }>;
 };
 
 export type RequirementAnalysisTurnStageAudit = {
@@ -2791,8 +2808,6 @@ export type RequirementAnalysisSession = {
   turns: RequirementAnalysisTurn[];
   confirmed_facts: string[];
   open_questions: string[];
-  decision_state?: RequirementAnalysisDecisionState;
-  decision_state_document?: RequirementAnalysisDecisionStateDocument;
   document_patch: RequirementAnalysisDocumentPatch[];
   working_document: RequirementAnalysisWorkingDocument;
   questions: RequirementAnalysisQuestionItem[];

@@ -65,6 +65,29 @@ class RequirementAuthoringDocument(Base):
     )
 
 
+class RequirementSpecWorkItem(Base):
+    __tablename__ = "requirement_spec_work_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    title: Mapped[str] = mapped_column(String(255))
+    initial_description: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String(32), default="draft")
+    template_id: Mapped[str] = mapped_column(String(255), index=True)
+    knowledge_binding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    authoring_document_id: Mapped[str] = mapped_column(String(255), index=True)
+    analysis_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    published_requirement_spec_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    published_package_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    p3_consumable: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
 class RequirementAnalysisSession(Base):
     __tablename__ = "requirement_analysis_sessions"
 

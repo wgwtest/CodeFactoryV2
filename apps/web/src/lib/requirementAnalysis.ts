@@ -8,6 +8,10 @@ import type {
   RequirementAnalysisTemplateDetail,
   RequirementAnalysisTemplateEnvelope,
   RequirementAnalysisTurnEnvelope,
+  RequirementSpecWorkItem,
+  RequirementSpecWorkItemConfigureInput,
+  RequirementSpecWorkItemCreateInput,
+  RequirementSpecWorkItemEnvelope,
 } from "./api";
 
 export function getRequirementAnalysisLabConfig() {
@@ -32,6 +36,22 @@ export function getRequirementAnalysisTemplates() {
 
 export function getRequirementAnalysisTemplateBases() {
   return api.get<RequirementAnalysisTemplateEnvelope>("/requirement-analysis/template-bases");
+}
+
+export function getRequirementSpecWorkItems() {
+  return api.get<RequirementSpecWorkItemEnvelope>("/requirement-analysis/spec-items");
+}
+
+export function createRequirementSpecWorkItem(payload: RequirementSpecWorkItemCreateInput) {
+  return api.post<RequirementSpecWorkItem>("/requirement-analysis/spec-items", payload);
+}
+
+export function configureRequirementSpecWorkItem(specItemId: string, payload: RequirementSpecWorkItemConfigureInput) {
+  return api.post<RequirementSpecWorkItem>(`/requirement-analysis/spec-items/${specItemId}/configure`, payload);
+}
+
+export function publishRequirementSpecWorkItem(specItemId: string) {
+  return api.post<RequirementSpecWorkItem>(`/requirement-analysis/spec-items/${specItemId}/publish`);
 }
 
 export function getRequirementAnalysisTemplate(templateId: string) {
