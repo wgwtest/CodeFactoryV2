@@ -88,6 +88,8 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(within(inputView).getByText("需规列表")).toBeInTheDocument();
   expect(within(inputView).getByText("关联软设")).toBeInTheDocument();
   expect(within(inputView).getAllByText("空域协同规划软件需求规格说明").length).toBeGreaterThan(0);
+  expect(within(inputView).getByText("2026-05-13 10:20")).toBeInTheDocument();
+  expect(within(inputView).getByText("baseline_ready")).toBeInTheDocument();
 });
 
 function buildInputPackage() {
@@ -97,6 +99,7 @@ function buildInputPackage() {
     source_title: "空域协同规划软件需求规格说明",
     p3_consumable: true,
     frozen_at: "2026-05-01T00:00:00Z",
+    related_designs: [],
     standard_document: {
       title: "空域协同规划软件需求规格说明",
       sections: [
@@ -154,5 +157,26 @@ function buildSession(inputPackage: ReturnType<typeof buildInputPackage>, status
           },
     turns: [],
     check_result: null,
+    created_at: "2026-05-13T10:00:00Z",
+    updated_at: status === "created" ? "2026-05-13T10:00:00Z" : "2026-05-13T10:20:00Z",
+  };
+  return {
+    ...session,
+    input_package:
+      status === "created"
+        ? inputPackage
+        : {
+            ...inputPackage,
+            related_designs: [
+              {
+                software_design_id: session.session_id,
+                title: "空域协同规划软件设计说明",
+                version_label: "SoftwareDesignBaseline v2",
+                status: "baseline_ready",
+                created_at: "2026-05-13T10:00:00Z",
+                updated_at: "2026-05-13T10:20:00Z",
+              },
+            ],
+          },
   };
 }
