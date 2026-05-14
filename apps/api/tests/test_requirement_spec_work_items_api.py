@@ -112,3 +112,28 @@ def test_requirement_spec_work_item_create_list_configure_and_publish() -> None:
     assert specs.status_code == 200
     assert specs.json()[0]["id"] == published_item["published_requirement_spec_id"]
     assert specs.json()[0]["application_name"] == "空域协同规划软件"
+
+
+def test_requirement_spec_work_item_create_accepts_lab_template_instance_id() -> None:
+    client = TestClient(create_app())
+    lab_config = client.get("/api/requirement-analysis/lab-config")
+    assert lab_config.status_code == 200
+    lab_template_id = lab_config.json()["defaults"]["template_id"]
+
+    created = client.post(
+        "/api/requirement-analysis/spec-items",
+        json={
+            "title": "态势分析系统需求规格说明",
+            "initial_description": "用于态势分析系统的需求分析。",
+            "template_id": lab_template_id,
+            "create_action": "enter_config",
+        },
+    )
+
+    assert created.status_code == 200
+    item = created.json()
+    assert item["template_id"] == lab_template_id
+
+    document = client.get(f"/api/requirement-authoring/documents/{item['authoring_document_id']}")
+    assert document.status_code == 200
+    assert document.json()["template_id"] == "tpl-81433-default"
