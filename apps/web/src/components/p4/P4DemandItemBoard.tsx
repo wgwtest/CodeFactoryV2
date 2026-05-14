@@ -97,6 +97,15 @@ export function P4DemandItemBoard({
               size="small"
               hoverable
               onClick={() => onSelectItem(item.item_id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectItem(item.item_id);
+                }
+              }}
+              tabIndex={0}
+              role="button"
+              aria-pressed={selected}
               style={{
                 background: selected ? "#eef4ff" : "#ffffff",
               }}
@@ -112,9 +121,6 @@ export function P4DemandItemBoard({
                 <Typography.Text>{item.recommendation_summary}</Typography.Text>
 
                 <Space wrap>
-                  <Button size="small" onClick={() => onSelectItem(item.item_id)}>
-                    审定与处置
-                  </Button>
                   {item.supply_result?.progress_query_interface ? (
                     <Button
                       size="small"

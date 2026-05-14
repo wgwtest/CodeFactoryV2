@@ -11,15 +11,32 @@ type P4WorkspaceTab = {
 
 type P4WorkspaceTabsProps = {
   items: P4WorkspaceTab[];
+  activeKey?: string;
+  defaultActiveKey?: string;
+  tabPosition?: "top" | "left";
+  destroyOnHidden?: boolean;
+  onChange?: (activeKey: string) => void;
+  className?: string;
 };
 
-export function P4WorkspaceTabs({ items }: P4WorkspaceTabsProps) {
+export function P4WorkspaceTabs({
+  items,
+  activeKey,
+  defaultActiveKey = items[0]?.key,
+  tabPosition = "top",
+  destroyOnHidden = true,
+  onChange,
+  className,
+}: P4WorkspaceTabsProps) {
   return (
-    <div id="xx-p4-workspace-nav">
+    <div id="xx-p4-workspace-nav" className={className}>
       <Tabs
-        className="xx-p4-workspace-tabs"
-        defaultActiveKey="overview"
-        destroyOnHidden
+        className={`xx-p4-workspace-tabs${tabPosition === "left" ? " xx-p4-workspace-tabs--left" : ""}`}
+        activeKey={activeKey}
+        defaultActiveKey={defaultActiveKey}
+        destroyOnHidden={destroyOnHidden}
+        onChange={onChange}
+        tabPosition={tabPosition}
         items={items}
       />
     </div>

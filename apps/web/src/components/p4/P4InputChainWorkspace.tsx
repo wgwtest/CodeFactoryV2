@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Input, List, Row, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Col, Empty, Input, Row, Space, Tag, Typography } from "antd";
 
 import type { ToolDemandReviewDecisionInput, ToolDemandSheet } from "../../lib/api";
 import { P4DemandItemBoard } from "./P4DemandItemBoard";
@@ -150,39 +150,40 @@ export function P4InputChainWorkspace({
             {sheets.length === 0 ? (
               <Empty description="当前没有工具需求单" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
-              <List
-                size="small"
-                dataSource={sheets}
-                renderItem={(sheet) => {
+              <div className="xx-p4-entity-list" role="list" aria-label="工序单受理区工单列表">
+                {sheets.map((sheet) => {
                   const selected = sheet.sheet_id === activeSheet?.sheet_id;
                   return (
-                    <List.Item key={sheet.sheet_id}>
-                      <Space
-                        align="center"
-                        style={{ display: "flex", justifyContent: "space-between", width: "100%" }}
-                        wrap
-                      >
-                        <Space direction="vertical" size={2} style={{ display: "flex" }}>
-                          <Typography.Text strong>{`工单：${sheet.sheet_name}`}</Typography.Text>
-                          <Typography.Text type="secondary">{`工单 ID：${sheet.sheet_id}`}</Typography.Text>
-                        </Space>
-                        <Space align="center" wrap>
+                    <article
+                      key={sheet.sheet_id}
+                      className={`xx-p4-entity-row${selected ? " is-active" : ""}`}
+                      role="listitem"
+                      tabIndex={0}
+                      aria-selected={selected}
+                      onClick={() => void onSelectSheet(sheet.sheet_id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void onSelectSheet(sheet.sheet_id);
+                        }
+                      }}
+                    >
+                      <div className="xx-p4-entity-row-main">
+                        <div className="xx-p4-entity-row-head">
+                          <Typography.Text strong>{sheet.sheet_name}</Typography.Text>
+                          <span className="xx-p4-entity-row-code">{sheet.sheet_id}</span>
+                        </div>
+                        <div className="xx-p4-entity-row-meta">
                           {renderLifecycleTag(sheet.lifecycle_status)}
                           {renderReviewTag(sheet.review_status)}
                           {renderDeliveryTag(sheet.delivery_status)}
-                          <Button
-                            id={`xx-p4-view-sheet-${sheet.sheet_id}`}
-                            type={selected ? "primary" : "default"}
-                            onClick={() => void onSelectSheet(sheet.sheet_id)}
-                          >
-                            查看工单 {sheet.sheet_id}
-                          </Button>
-                        </Space>
-                      </Space>
-                    </List.Item>
+                        </div>
+                      </div>
+                      <div className="xx-p4-entity-row-state">{selected ? "当前" : null}</div>
+                    </article>
                   );
-                }}
-              />
+                })}
+              </div>
             )}
           </div>
 

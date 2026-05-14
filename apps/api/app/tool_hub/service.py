@@ -73,6 +73,7 @@ from app.tool_hub.models import (
     ToolVerification,
     now_iso,
 )
+from app.tool_hub.query_models import P4ObjectWorkbenchReadEnvelope
 from app.tool_hub.repository import ToolHubRepository
 from app.tool_hub.recipe_service import ToolRecipeService
 from app.tool_hub.registry_service import RegistryService
@@ -165,6 +166,19 @@ class ToolHubService:
         return ToolHubOverviewReadEnvelope(
             meta=projection.meta,
             data=projection.overview,
+        )
+
+    def get_object_workbench(
+        self,
+        *,
+        sheet_id: str | None = None,
+        item_id: str | None = None,
+        tool_id: str | None = None,
+    ) -> P4ObjectWorkbenchReadEnvelope:
+        return self.query_service.get_object_workbench_projection(
+            sheet_id=sheet_id,
+            item_id=item_id,
+            tool_id=tool_id,
         )
 
     def get_catalogs(self) -> ToolHubCatalogs:

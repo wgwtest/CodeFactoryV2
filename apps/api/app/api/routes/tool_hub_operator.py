@@ -31,6 +31,7 @@ from app.tool_hub.models import (
     ToolRegistryDeleteResult,
     ToolRegistryTestingClearResult,
 )
+from app.tool_hub.query_models import P4ObjectWorkbenchReadEnvelope
 from app.tool_hub.service import ToolHubService
 
 router = APIRouter(tags=["tool-hub-operator"])
@@ -39,6 +40,16 @@ router = APIRouter(tags=["tool-hub-operator"])
 @router.get("/overview", response_model=ToolHubOverviewReadEnvelope)
 def get_tool_hub_overview(service: ToolHubService = Depends(get_tool_hub_service)):
     return service.get_overview()
+
+
+@router.get("/operator/workbench/object-view", response_model=P4ObjectWorkbenchReadEnvelope)
+def get_tool_hub_object_workbench(
+    sheet_id: str | None = None,
+    item_id: str | None = None,
+    tool_id: str | None = None,
+    service: ToolHubService = Depends(get_tool_hub_service),
+):
+    return service.get_object_workbench(sheet_id=sheet_id, item_id=item_id, tool_id=tool_id)
 
 
 @router.get("/tools", response_model=ToolListReadEnvelope)
