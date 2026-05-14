@@ -1,115 +1,231 @@
-# P1 业务知识库审阅型 worktree 指南
+# P-BasePlatform worktree 启动指南
 
-> 适用目录：`.worktrees/p1-knowledge-base-review`
-> 对应分支：`feat/p1-knowledge-base-review`
-> 默认角色：审阅、建议、验证、风险提示；非 P1 主实现分支。
+> 适用目录：`.worktrees/p-base-platform`  
+> 对应分支：`feat/p-base-platform`  
+> 默认角色：平台基础能力实现分支；首版聚焦 `P2 -> P3` 平台交换层，不归属单一 P 阶段业务分支。
 
 ## 1. 分支定位
 
-P1 对应 `业务知识库`，主要承载文档接入、解析、知识抽取、治理发布、图谱/流程投影等能力。与 P2-P6 多数辅助 worktree 不同，P1 的主要开发工作通常由其他同志主导完成，本 worktree 的默认职责不是持续直接改造主实现，而是：
+`P-BasePlatform` 是 `P1-P6` 之外的跨阶段平台基础能力分支。它不负责生成需求、生成设计、生产工具或构建软件，而是为各阶段之间的正式成果物流转提供统一底座。
 
-- 审阅 P1 相关提交、设计文档、接口契约和运行效果；
-- 复核 P1 是否符合 CodeFactoryV2 的主线架构、数据互联互通和验收规则；
-- 形成审阅意见、修改建议、风险清单、验收反馈和必要的补充文档；
-- 在用户明确授权时，才进行小范围修复、文档补充或验证脚本调整；
-- 对较大实现变更，优先提出建议和可执行改造路径，不默认代替 P1 主负责人重写实现。
+首版目标只打通 `P2 -> P3`：
 
-## 2. 工作边界
+```text
+P2 发布冻结需规包
+  -> 平台交换层登记 ArtifactEnvelope
+  -> P3 查询可消费 RequirementSpecPackage
+  -> P3 消费时登记 ArtifactConsumption
+  -> P3 创建 P3DesignInputPackage / P3DesignLabSession
+```
 
-### 2.1 默认可以做
+该分支的长期方向是沉淀跨阶段通用能力：成果物登记、版本治理、payload hash、来源追溯、消费记录、幂等控制、只读查询和后续事件 outbox。
 
-- 读取和对比 `main`、远端 P1 分支、P1 相关提交的差异；
-- 运行 P1 后端、前端和专项测试，记录可复现结果；
-- 检查知识库列表、文档接入、抽取质量、治理发布、图谱展示等关键路径；
-- 补充审阅记录、验收意见、风险说明和交接文档；
-- 对明显低风险的问题进行最小修复，例如文档路径、测试说明、入口说明、轻微配置问题。
+## 2. 必读事实源
 
-### 2.2 默认不应做
-
-- 未经用户确认，大规模重构 P1 主实现；
-- 把 P1 主负责人的实现路线替换成本 worktree 的另一套实现；
-- 在未检查远端和主线状态前直接 merge、rebase 或 force push；
-- 用本 worktree 的过程性结论替代正式设计文档或主线验收事实；
-- 将 `.worktrees/*` 当作正式运行、正式验收或正式交付目录。
-
-## 3. 必读事实源
-
-新会话进入本 worktree 后，建议按以下顺序读取：
+新会话进入本 worktree 后，按以下顺序读取：
 
 1. `CODEX_START_HERE.md`
-2. `README.md`
-3. `DOC/CODEX_DOC/00-本地工程策略映射.md`
-4. `DOC/CODEX_DOC/02_设计说明/P1_业务知识库/P1-业务知识库设计.md`
-5. `DOC/CODEX_DOC/02_设计说明/P1_业务知识库/P1-业务知识库重构设计.md`
-6. `DOC/CODEX_DOC/02_设计说明/P1_业务知识库/P1-知识质量与图谱质量保障设计.md`
-7. `DOC/CODEX_DOC/05_节点合同/01-P1-业务知识库-节点合同.md`
-8. `docs/superpowers/specs/2026-05-11-p1-knowledge-quality-improvement-handoff.md`
+2. `WORKTREE_GUIDE.md`
+3. `DOC/CODEX_DOC/README.md`
+4. `DOC/CODEX_DOC/00-本地工程策略映射.md`
+5. `DOC/CODEX_DOC/02_设计说明/00_总纲/03-P1-P6数据互联互通与平台交换层设计.md`
+6. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
+7. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
+8. `DOC/CODEX_DOC/07_过程文档/02_历史计划/2026-05-14-1709-P-BasePlatform分支开设说明.md`
+9. 最近相关测试记录：`DOC/CODEX_DOC/06_测试文档/03_机测记录/`
 
 若 `DOC/CODEX_DOC/` 与 `docs/superpowers/` 表达冲突，以 `DOC/CODEX_DOC/` 为正式事实源。
 
-## 4. 主要代码入口
+## 3. 当前基线
 
-后端重点关注：
+本 worktree 从 `main` 的以下基线切出：
 
-- `apps/api/app/api/routes/archives.py`
-- `apps/api/app/api/routes/documents.py`
-- `apps/api/app/api/routes/knowledge.py`
-- `apps/api/app/api/routes/p1_refactor.py`
-- `apps/api/app/archive_knowledge/`
+```text
+32d0e02 完善P2到P3接口设计
+```
 
-前端重点关注：
+当前本地分支已有启动说明提交：
 
-- `apps/web/src/App.tsx`
-- `apps/web/src/features/p1/`
-- `apps/web/src/features/p1Clean/`
-- `apps/web/src/pages/DocumentsPage.tsx`
-- `apps/web/src/pages/DocumentIntakePage.tsx`
-- `apps/web/src/pages/GovernancePage.tsx`
-- `apps/web/src/pages/KnowledgeGraphPage.tsx`
+```text
+3c55320 新增P-BasePlatform分支开设说明
+```
 
-测试重点关注：
+远端 GitHub 当前因 HTTPS/TLS 链路问题可能无法推送。推送前先执行：
 
-- `apps/api/tests/test_archive_*`
-- `apps/api/tests/test_document_*`
-- `apps/api/tests/test_p1_*`
-- `apps/web/src/test/DocumentsPage.test.tsx`
-- `apps/web/src/test/p1Clean*.test.*`
+```bash
+git ls-remote origin -h refs/heads/main
+```
 
-## 5. 主要验收入口
+若仍出现 `gnutls_handshake() failed`，不要反复强推；先处理 GitHub 网络或代理问题。
 
-常用前端路由：
+## 4. 工作边界
 
-- `/p1`
-- `/p1/archives/:archiveId/*`
-- `/archives`
-- `/documents`
-- `/documents/intake`
-- `/governance`
-- `/graph`
-- `/xx-p1-sim`
+### 4.1 默认可以做
 
-P1 验收时应优先覆盖：
+- 新增 `platform_exchange` 后端域模型、仓储、服务和 API 路由。
+- 新增 `ArtifactEnvelope`、`ArtifactConsumption`、`RequirementSpecPackage` 的最小合同模型。
+- 改造 `P2` 发布服务：冻结和创建 `RequirementSpec` 后登记平台成果物。
+- 改造 `P3` 输入包服务：优先从平台交换层读取可消费成果物，保留旧扫描路径作为降级兼容。
+- 在 `P3` 创建设计会话时登记 `ArtifactConsumption`。
+- 补充合同测试和链路测试，证明 `P2 -> 平台交换层 -> P3` 可追溯。
+- 同步更新总纲、P2、P3 和测试文档中的接口事实。
 
-- 知识库列表加载和当前知识库切换；
-- 文档上传、接入、解析、抽取状态展示；
-- 知识单元、证据链、质量状态和失败原因展示；
-- 审核、发布、治理规则和质量门禁路径；
-- 图谱、流程或关系投影是否能解释来源文档。
+### 4.2 默认不应做
 
-## 6. 审阅输出格式
+- 不重做 `P2` 需规管理 UI。
+- 不重做 `P3 Design Lab` 页面布局。
+- 不把 `P3Order` 恢复为新版主接口术语。
+- 不在首版实现全量 `P3 -> P4`、`P4 -> P5`、`P1 ~ P5 -> P6` 交换层。
+- 不引入微服务拆分、多租户权限系统或完整异步事件总线。
+- 不直接覆盖 `p2`、`p3`、`p4` 等其他 worktree 的未提交改动。
 
-建议审阅结论采用以下结构：
+## 5. 核心对象口径
 
-1. `审阅范围`：分支、提交、文件或运行入口；
-2. `事实证据`：命令输出、截图、测试结果、接口响应或文档路径；
-3. `主要问题`：按阻塞、重要、一般分级；
-4. `修改建议`：说明建议谁改、改哪里、为什么；
-5. `是否建议合入主线`：明确 `建议合入`、`暂缓合入` 或 `需补证据后再判断`。
+### 5.1 ArtifactEnvelope
 
-## 7. 与主线同步规则
+平台成果物信封。首版用于包装 `RequirementSpecPackage`。
 
-- 工作前执行 `git fetch origin`、`git status --short --branch`、`git log --oneline --decorate -n 10`。
-- 若本 worktree 落后 `main`，优先从最新 `main` 同步。
-- 若发现 P1 远端有新提交，先审阅差异，再判断是否建议合并。
-- 正式启动服务、用户验收、提交和推送默认回到仓库主目录执行。
-- 如需把本 worktree 的审阅文档或小修复合入主线，必须先检查主目录是否干净，再以可追溯方式合并。
+最小字段包括：
+
+- `artifact_id`
+- `artifact_type`
+- `artifact_version`
+- `schema_version`
+- `producer_stage`
+- `producer_ref_id`
+- `lifecycle_status`
+- `payload_mode`
+- `payload_ref`
+- `payload_hash`
+- `parent_artifact_ids`
+- `source_trace`
+- `idempotency_key`
+- `created_at`
+- `frozen_at`
+- `published_at`
+- `published_by`
+
+### 5.2 ArtifactConsumption
+
+平台消费记录。首版用于记录 `P3` 消费 `P2` 成果物。
+
+最小字段包括：
+
+- `consumption_id`
+- `artifact_id`
+- `consumer_stage`
+- `consumer_ref_id`
+- `consumption_mode`
+- `accepted_schema_version`
+- `result_status`
+- `result_message`
+- `consumed_at`
+
+### 5.3 RequirementSpecPackage
+
+首版 payload 复用当前 `P2` 冻结包和工作文档事实。
+
+最小字段包括：
+
+- `standard_document`
+- `structured_spec`
+- `annotations`
+- `check_result`
+- `knowledge_binding`
+- `source_trace`
+- `p3_consumable`
+
+## 6. 主要代码入口
+
+后端预计新增或重点修改：
+
+- `apps/api/app/platform_exchange/`
+- `apps/api/app/api/routes/platform_exchange.py`
+- `apps/api/app/main.py`
+- `apps/api/app/requirement_spec_work_items/service.py`
+- `apps/api/app/software_design_v2/service.py`
+- `apps/api/tests/test_platform_exchange_p2_p3_api.py`
+- `apps/api/tests/test_software_design_v2_api.py`
+- `apps/api/tests/test_requirement_spec_work_items_api.py`
+
+前端原则上不应大改。若必须补充类型或调用封装，优先关注：
+
+- `apps/web/src/lib/api.ts`
+- `apps/web/src/lib/softwareDesignV2.ts`
+- `apps/web/src/pages/P3DesignLabPage.tsx`
+- `apps/web/src/pages/RequirementAnalysisLabPage.tsx`
+
+## 7. 首版 API 边界
+
+建议 API 族：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/platform-exchange/artifacts` | 查询可消费成果物 |
+| `GET` | `/api/platform-exchange/artifacts/{artifact_id}` | 获取成果物详情 |
+| `POST` | `/api/platform-exchange/artifacts` | 登记成果物，首版可仅由 P2 发布服务内部调用 |
+| `POST` | `/api/platform-exchange/artifacts/{artifact_id}/consume` | 登记 P3 消费 |
+| `GET` | `/api/platform-exchange/consumptions` | 查询消费记录 |
+
+`P2` 对外仍保留：
+
+```text
+POST /api/requirement-analysis/spec-items/{id}/publish
+```
+
+`P3` 对外仍保留：
+
+```text
+GET /api/software-design-v2/input-packages
+POST /api/software-design-v2/sessions
+```
+
+首版目标是保持页面兼容，同时把输入来源逐步切换到平台交换层。
+
+## 8. 验证命令
+
+后端最小验证：
+
+```bash
+uv run pytest apps/api/tests/test_platform_exchange_p2_p3_api.py -q
+uv run pytest apps/api/tests/test_requirement_spec_work_items_api.py apps/api/tests/test_software_design_v2_api.py -q
+```
+
+前端回归按改动范围选择：
+
+```bash
+corepack pnpm --dir apps/web exec vitest run src/test/RequirementAnalysisLabPage.test.tsx src/test/P3DesignLabPage.test.tsx
+```
+
+若只改后端平台交换层，前端测试不是每次必跑；但如果改了 `apps/web/src/lib/api.ts`、P2 或 P3 页面，必须跑对应前端测试。
+
+## 9. 验收标准
+
+首版完成必须满足：
+
+1. `P2` 发布一条完整需规后生成 `ArtifactEnvelope<RequirementSpecPackage>`。
+2. 成果物包含 `published_at`、`published_by`、`frozen_at`、`payload_hash`、`source_trace`。
+3. `P3` 能通过平台交换层查询到该成果物，并转换为 `P3DesignInputPackage`。
+4. `P3` 基于该输入包创建设计会话后生成 `ArtifactConsumption`。
+5. 再次发布同一版本不会生成不可区分的重复成果物，具备幂等键或版本区分。
+6. 当前 `/api/software-design-v2/input-packages` 仍可被 `/p3-design-lab` 使用。
+7. 现有 P2 需规管理测试和 P3 Design Lab 测试不回退。
+
+## 10. 与主线同步规则
+
+- 工作前执行：`git status --short --branch`、`git log --oneline --decorate -n 10`。
+- 若远端恢复可达，再执行 `git fetch origin`。
+- 合并 `main` 前，先确认本 worktree 是否有未提交改动。
+- 正式启动服务、用户验收、主线提交和推送默认回到仓库主目录执行。
+- 将本分支成果合入主线前，必须说明它是否改动了 `P2`、`P3` 的业务接口，以及是否影响现有页面。
+
+## 11. 交接输出格式
+
+每轮重要工作后，建议补充交接记录，至少写清：
+
+1. 本轮改了哪些平台交换对象；
+2. 是否改动 `P2` 发布服务；
+3. 是否改动 `P3` 输入包服务；
+4. 新增或修改了哪些 API；
+5. 跑过哪些测试，结果是什么；
+6. 还剩哪些未打通的真实链路。
