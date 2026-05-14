@@ -153,6 +153,7 @@ DISPLAY_CONTRACT_PROFILE = {
             ("supported_software_count", "支持软件", 24, "个", "累计承载"),
             ("requirement_spec_count", "需求规格", 86, "份", "累计产出"),
             ("business_object_count", "业务对象", 430, "个", "累计建模"),
+            ("p3_consumable_spec_count", "P3 可接收", 42, "份", "已发布到 P3"),
         ],
         "live": [
             ("active_knowledge_receive_rate", "知识接入", 5, "条/小时", "1h", "input"),
@@ -162,7 +163,7 @@ DISPLAY_CONTRACT_PROFILE = {
             ("p1_knowledge_input", "left", "input", "发布态知识", "P1", "5 条/小时", False),
             ("p2_p3_output", "right", "output", "需求规格", "P3", "4 份/小时", False),
         ],
-        "queue": ("p2-modeling-queue", "需求建模队列", ["访谈记录", "领域对象", "模型草案"]),
+        "queue": ("p2-spec-release-queue", "需规发布队列", ["需求规格说明对象", "组织器配置", "发布到 P3"]),
         "users": [
             ("role:industry-user", "业", "行业用户"),
             ("role:product-owner", "产", "产品负责人"),
@@ -172,7 +173,7 @@ DISPLAY_CONTRACT_PROFILE = {
             ("role:project-manager", "项", "项目管理"),
         ],
         "prototype_ref": "DOC/CODEX_DOC/08_原型与附图/2026-04-29-192233-CodeFactoryV2-P6四子系统总体状态卡详情原型-v14/",
-        "summary": "支持软件 24 个，需求规格 86 份，业务对象 430 个",
+        "summary": "支持软件 24 个，需求规格 86 份，业务对象 430 个，P3 可接收 42 份",
     },
     "P3": {
         "overview": [
@@ -190,7 +191,7 @@ DISPLAY_CONTRACT_PROFILE = {
             ("p3_p4_output", "right", "output", "模块工单包", "P4", "5 包/小时", False),
             ("p3_p5_baseline_output", "right", "output", "设计基线", "P5", "3 份/小时", False),
         ],
-        "queue": ("p3-design-queue", "设计生成队列", ["规范输入", "分析草图", "草案", "评审", "冻结"]),
+        "queue": ("p3-design-projection-queue", "软设投影队列", ["P2 冻结包", "关联软设", "设计基线", "P4 工单投影", "冻结设计包"]),
         "users": [
             ("role:architect", "架", "架构设计"),
             ("role:designer", "设", "软件设计"),
@@ -215,7 +216,7 @@ DISPLAY_CONTRACT_PROFILE = {
             ("p3_workorder_input", "left", "input", "模块工单包", "P3", "5 包/小时", False),
             ("p4_p5_output", "right", "output", "工具供给", "P5", "4 项/小时", False),
         ],
-        "queue": ("p4-supply-queue", "工具供给队列", ["查询", "生成", "验证"]),
+        "queue": ("p4-workorder-processing-queue", "工具工单处理队列", ["工单处理", "工具构建", "取用驾驶舱", "覆盖知识图谱"]),
         "users": [
             ("role:tool-engineer", "工", "工具工程"),
             ("role:researcher", "研", "工具研究"),

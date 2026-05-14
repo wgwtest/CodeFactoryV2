@@ -72,6 +72,7 @@ test("renders the P6 contract simulator and submits five display contracts", asy
     expect.objectContaining({ connected_target: "P2" }),
   ]);
   expect(p1Contract.flow_ports.filter((port) => port.direction === "input")).toEqual([]);
+  expect((p1Contract as unknown as { entry_projection: { entry_route: string } }).entry_projection.entry_route).toBe("/p1");
   expect(p1Contract.system_overall_metrics.map((metric) => metric.key)).toEqual([
     "knowledge_repository_count",
     "published_knowledge_count",
@@ -84,6 +85,28 @@ test("renders the P6 contract simulator and submits five display contracts", asy
   ]);
   expect(p5Contract.flow_ports.filter((port) => port.direction === "output")).toEqual([
     expect.objectContaining({ connected_target: "交付目录", terminal: true }),
+  ]);
+  const p2Contract = payload.contracts.find((item) => {
+    const overview = item.stage_overview as { stage_id: string };
+    return overview.stage_id === "P2";
+  }) as { queue_projection: { label: string; items: Array<{ label: string }> } };
+  const p4Contract = payload.contracts.find((item) => {
+    const overview = item.stage_overview as { stage_id: string };
+    return overview.stage_id === "P4";
+  }) as { queue_projection: { label: string; items: Array<{ label: string }> } };
+
+  expect(p2Contract.queue_projection.label).toBe("需规发布队列");
+  expect(p2Contract.queue_projection.items.map((item) => item.label)).toEqual([
+    "需求规格说明对象",
+    "组织器配置",
+    "发布到 P3",
+  ]);
+  expect(p4Contract.queue_projection.label).toBe("工具工单处理队列");
+  expect(p4Contract.queue_projection.items.map((item) => item.label)).toEqual([
+    "工单处理",
+    "工具构建",
+    "取用驾驶舱",
+    "覆盖知识图谱",
   ]);
 
   expect(await screen.findByText("已发送 5 个阶段合同")).toBeInTheDocument();

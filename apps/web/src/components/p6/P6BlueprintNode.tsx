@@ -323,6 +323,7 @@ export function P6BlueprintNode({
 
       {node.kind === "module" && queueProjection ? (
         <div className="p6-blueprint-node__queue-rack" aria-label={`${node.title} ${queueProjection.label}`}>
+          <span className="p6-blueprint-node__queue-label">{queueProjection.label}</span>
           <span className="p6-blueprint-node__queue-rail" aria-hidden="true" />
           <div className="p6-blueprint-node__queue-items">
             {queueSlots.map((item, index) => (

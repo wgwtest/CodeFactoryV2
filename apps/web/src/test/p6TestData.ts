@@ -160,7 +160,7 @@ export function buildPlatformRoutes() {
       entry_available: true,
     },
     stage_routes: {
-      P1: { route_id: "stage-p1", label: "业务知识库", path: "/archives", description: "P1 稳定模块入口", entry_available: true },
+      P1: { route_id: "stage-p1", label: "业务知识库", path: "/p1", description: "P1 稳定模块入口", entry_available: true },
       P2: {
         route_id: "stage-p2",
         label: "需求分析系统",
@@ -177,9 +177,9 @@ export function buildPlatformRoutes() {
 
 export function buildPlatformLegend() {
   return {
-    summary_copy: "门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。",
+    summary_copy: "门户只负责导览与跳转，不承载业务编辑。双击节点会在新标签页打开对应模块。",
     interaction_facts: [
-      "单击高亮 / 双击进入 / 滚轮缩放 / 背景平移",
+      "单击高亮 / 双击新标签页打开 / 滚轮缩放 / 背景平移",
       "节点拖拽仅在自动布局区内生效，超界后自动回收",
     ],
     element_language_copy: "矩形状态卡 = 系统节点，轻量胶囊 = 参与用户，小胶囊 = 数据产物",
@@ -515,7 +515,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
       node_kind: "module",
       title: "业务知识库",
       stage_id: "P1",
-      route: "/archives",
+      route: "/p1",
       projection_mode: "auto",
       summary: "知识供给稳定对外发布。",
       primary_status: "knowledge_asset_running",
@@ -563,18 +563,19 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
       stage_id: "P2",
       route: "/p2-requirement-analysis-lab",
       projection_mode: "auto",
-      summary: "需求建模累计资产稳定增长。",
-      primary_status: "requirement_modeling_running",
+      summary: "需求规格对象前置管理与发布链路稳定。",
+      primary_status: "requirement_spec_publishing",
       freshness: "fresh",
       description: "把业务语言建模为结构化需求规格与需求对象。",
       stage_card: makeStageCard(
         "P2",
-        "支持软件 24 个，需求规格 86 份，业务对象 430 个",
-        "知识接入 5 条/小时，规格输出 4 份/小时。",
+        "支持软件 24 个，需求规格 86 份，业务对象 430 个，P3 可接收 42 份",
+        "需求规格对象前置管理，4 份/小时发布到 P3。",
         [
           makeMetric("supported_software_count", "支持软件", 24, "个", "累计承载"),
           makeMetric("requirement_spec_count", "需求规格", 86, "份", "累计产出"),
           makeMetric("business_object_count", "业务对象", 430, "个", "累计建模"),
+          makeMetric("p3_consumable_spec_count", "P3 可接收", 42, "份", "已发布到 P3"),
         ],
         [
           makeLive("active_knowledge_receive_rate", "知识接入", 5, "条/小时", "1h", "input"),
@@ -589,8 +590,8 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
           makeUser("role:requirement-reviewer", "审", "需求评审"),
           makeUser("role:project-manager", "项", "项目管理"),
         ],
-        makeQueue("P2", "需求建模队列", ["访谈记录", "领域对象", "模型草案"]),
-        { label: "健康", tone: "ready", detail: "需求建模链路稳定。" },
+        makeQueue("P2", "需规发布队列", ["需求规格说明对象", "组织器配置", "发布到 P3"]),
+        { label: "健康", tone: "ready", detail: "需求规格发布链路稳定。" },
       ),
     },
     {
@@ -637,7 +638,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
           makeUser("role:modeler", "模", "模型维护"),
           makeUser("role:project-owner", "项", "项目负责人"),
         ],
-        makeQueue("P3", "设计生成队列", ["规范输入", "分析草图", "草案", "评审", "冻结"]),
+        makeQueue("P3", "软设投影队列", ["P2 冻结包", "关联软设", "设计基线", "P4 工单投影", "冻结设计包"]),
         isReviewPressure
           ? { label: "注意", tone: "warning", detail: "设计评审压力升高。" }
           : { label: "健康", tone: "ready", detail: "设计输出节奏正常。" },
@@ -674,7 +675,7 @@ export function buildPortalProjectionEnvelope(scenarioId: string) {
           makeUser("role:tool-reviewer", "审", "工具评审"),
           makeUser("role:maintainer", "维", "工具维护"),
         ],
-        makeQueue("P4", "工具供给队列", ["查询", "生成", "验证"]),
+        makeQueue("P4", "工具工单处理队列", ["工单处理", "工具构建", "取用驾驶舱", "覆盖知识图谱"]),
         isDeliveryGap
           ? { label: "注意", tone: "warning", detail: "供给链存在待补位需求。" }
           : { label: "健康", tone: "ready", detail: "工具匹配链路稳定。" },
@@ -904,7 +905,7 @@ export function buildObservationProjectionEnvelope(scenarioId: string) {
         stage_id: card.stage_id,
         label: `进入 ${card.stage_name}`,
         route: card.stage_id === "P1"
-          ? "/archives"
+          ? "/p1"
           : card.stage_id === "P2"
             ? "/p2-requirement-analysis-lab"
             : card.stage_id === "P3"

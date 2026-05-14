@@ -258,6 +258,7 @@ def test_p6_mock_stage_snapshots_expose_display_contract_v2_regions() -> None:
 
     p1_payload = p1_snapshot["node_status_payload"]
     assert p1_payload["contract_version"] == "P6DisplayExportContract.v2"
+    assert p1_snapshot["entry_projection"]["entry_route"] == "/p1"
     p1_overall_keys = {item["key"] for item in p1_payload["system_overall_metric_items"]}
     assert {"knowledge_repository_count", "published_knowledge_count", "domain_directory_count", "contributor_count"}.issubset(
         p1_overall_keys
@@ -269,7 +270,14 @@ def test_p6_mock_stage_snapshots_expose_display_contract_v2_regions() -> None:
 
     p2_keys = {item["key"] for item in p2_snapshot["node_status_payload"]["system_overall_metric_items"]}
     assert "supported_software_count" in p2_keys
+    assert "p3_consumable_spec_count" in p2_keys
     assert "active_requirement_count" not in p2_keys
+    assert p2_snapshot["node_status_payload"]["queue_projection"]["label"] == "需规发布队列"
+    assert [item["label"] for item in p2_snapshot["node_status_payload"]["queue_projection"]["items"]] == [
+        "需求规格说明对象",
+        "组织器配置",
+        "发布到 P3",
+    ]
 
     p5_output = next(port for port in p5_snapshot["node_status_payload"]["flow_port_items"] if port["direction"] == "output")
     assert p5_output["connected_target"] == "交付目录"
@@ -381,14 +389,38 @@ def test_p6_portal_projection_returns_stage_and_participant_nodes() -> None:
     ]
 
     p1_node = next(item for item in projection["node_list"] if item["node_id"] == "p1")
+    p2_node = next(item for item in projection["node_list"] if item["node_id"] == "p2")
     p3_node = next(item for item in projection["node_list"] if item["node_id"] == "p3")
+    p4_node = next(item for item in projection["node_list"] if item["node_id"] == "p4")
     p5_node = next(item for item in projection["node_list"] if item["node_id"] == "p5")
     assert [port for port in p1_node["stage_card"]["flow_port_items"] if port["direction"] == "input"] == []
     assert [port["connected_target"] for port in p1_node["stage_card"]["flow_port_items"] if port["direction"] == "output"] == ["P2"]
+    assert p1_node["route"] == "/p1"
+    assert p2_node["stage_card"]["summary_line"] == "需求规格对象前置管理，4 份/小时发布到 P3。"
+    assert [item["label"] for item in p2_node["stage_card"]["queue_projection"]["items"]] == [
+        "需求规格说明对象",
+        "组织器配置",
+        "发布到 P3",
+    ]
     assert any(
         port["direction"] == "output" and port["connected_target"] == "P5" and port["label"] == "设计基线"
         for port in p3_node["stage_card"]["flow_port_items"]
     )
+    assert p3_node["stage_card"]["queue_projection"]["label"] == "软设投影队列"
+    assert [item["label"] for item in p3_node["stage_card"]["queue_projection"]["items"]] == [
+        "P2 冻结包",
+        "关联软设",
+        "设计基线",
+        "P4 工单投影",
+        "冻结设计包",
+    ]
+    assert p4_node["stage_card"]["queue_projection"]["label"] == "工具工单处理队列"
+    assert [item["label"] for item in p4_node["stage_card"]["queue_projection"]["items"]] == [
+        "工单处理",
+        "工具构建",
+        "取用驾驶舱",
+        "覆盖知识图谱",
+    ]
     assert any(
         port["direction"] == "input" and port["connected_target"] == "P3" and port["label"] == "设计基线"
         for port in p5_node["stage_card"]["flow_port_items"]
@@ -449,12 +481,12 @@ def test_platform_config_routes_and_legend_are_available_for_portal_consumers() 
 
     assert routes_payload["portal_route"]["path"] == "/portal"
     assert routes_payload["observation_route"]["path"] == "/observation"
-    assert routes_payload["stage_routes"]["P1"]["path"] == "/archives"
+    assert routes_payload["stage_routes"]["P1"]["path"] == "/p1"
     assert routes_payload["stage_routes"]["P2"]["path"] == "/p2-requirement-analysis-lab"
     assert routes_payload["stage_routes"]["P3"]["path"] == "/p3-design-lab"
     assert routes_payload["stage_routes"]["P4"]["path"] == "/xx-p4"
     assert routes_payload["stage_routes"]["P5"]["path"] == "/build"
-    assert legend_payload["summary_copy"] == "门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。"
+    assert legend_payload["summary_copy"] == "门户只负责导览与跳转，不承载业务编辑。双击节点会在新标签页打开对应模块。"
     assert legend_payload["signal_items"][2]["label"] == "模拟源驱动"
     assert legend_payload["roadmap_items"][0]["label"] == "统一登录接入"
 

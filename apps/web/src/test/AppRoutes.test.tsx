@@ -616,6 +616,10 @@ function mockXXP1SimApis() {
 
 function mockRequirementAnalysisLabApis() {
   getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: [] } });
+    }
+
     if (url === "/requirement-analysis/lab-config") {
       return Promise.resolve({
         data: {
@@ -1024,6 +1028,7 @@ test("renders P2 XG requirement analysis lab route outside the main shell", asyn
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });

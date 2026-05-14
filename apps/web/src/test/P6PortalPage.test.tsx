@@ -29,6 +29,7 @@ beforeEach(() => {
   window.localStorage.clear();
   getMock.mockReset();
   postMock.mockReset();
+  vi.restoreAllMocks();
 
   getMock.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
     if (url === "/p6/mock-scenarios") {
@@ -132,11 +133,11 @@ test("renders P6 portal blueprint outside MainShell on /portal route and loads f
   expect(screen.getByTestId("p6-portal-legend")).toBeInTheDocument();
   expect(screen.getByText("统一登录接入")).toBeInTheDocument();
   expect(screen.getByText("权限与角色控制")).toBeInTheDocument();
-  expect(screen.getByText(/双击节点即可进入对应模块/)).toBeInTheDocument();
+  expect(screen.getByText(/双击节点会在新标签页打开对应模块/)).toBeInTheDocument();
   expect(screen.getByText(/当前知识库：知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "图表视图" })).toHaveAttribute("href", "/portal-data?scenario=baseline");
   expect(screen.getByRole("link", { name: "模拟发生器" })).toHaveAttribute("href", "/xx-p6-sim");
-  expect(screen.getByTestId("p6-portal-node-p1")).toHaveAttribute("data-route", "/archives");
+  expect(screen.getByTestId("p6-portal-node-p1")).toHaveAttribute("data-route", "/p1");
   expect(screen.getByTestId("p6-portal-node-p2")).toHaveAttribute("data-route", "/p2-requirement-analysis-lab");
   expect(screen.getByTestId("p6-portal-node-p3")).toHaveAttribute("data-route", "/p3-design-lab");
   expect(screen.getByTestId("p6-portal-node-p4")).toHaveAttribute("data-route", "/xx-p4");
@@ -224,6 +225,12 @@ test("renders five stage cards without standalone artifacts, external P1 input, 
   expect(screen.queryByTestId("p6-portal-world-boundary")).not.toBeInTheDocument();
   expect(screen.queryByText("外部知识")).not.toBeInTheDocument();
   expect(screen.queryByText("外部资料")).not.toBeInTheDocument();
+  expect(screen.queryByText("需求建模队列")).not.toBeInTheDocument();
+  expect(screen.queryByText("设计生成队列")).not.toBeInTheDocument();
+  expect(screen.queryByText("工具供给队列")).not.toBeInTheDocument();
+  expect(screen.getByText("需规发布队列")).toBeInTheDocument();
+  expect(screen.getByText("软设投影队列")).toBeInTheDocument();
+  expect(screen.getByText("工具工单处理队列")).toBeInTheDocument();
   expect(screen.queryByTestId("p6-flow-label-p3-p5")).not.toBeInTheDocument();
   expect(screen.getAllByTestId(/^p6-flow-payload-p3-p5-/)[0]).toHaveTextContent("基线");
   expect(screen.getByTestId("p6-terminal-output-delivery-catalog")).toHaveTextContent("交付目录");
@@ -351,7 +358,9 @@ test("switches relationship view from semantic wires to projection aggregation",
   expect(screen.getByTestId("p6-node-relations-p3")).toHaveTextContent(/产物0/);
 });
 
-test("double clicking a module navigates to its target workspace through route config", async () => {
+test("double clicking a module opens its target workspace in a new page through route config", async () => {
+  const openMock = vi.spyOn(window, "open").mockReturnValue(null);
+
   render(
     <MemoryRouter initialEntries={["/portal"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
@@ -361,8 +370,8 @@ test("double clicking a module navigates to its target workspace through route c
   const node = await screen.findByRole("button", { name: /软件构建系统/i });
   fireEvent.doubleClick(node);
 
-  expect(await screen.findByText("软件构建系统")).toBeInTheDocument();
-  expect(await screen.findByText("交付主单队列")).toBeInTheDocument();
+  expect(openMock).toHaveBeenCalledWith("/build", "_blank", "noopener,noreferrer");
+  expect(screen.getByText("图例")).toBeInTheDocument();
 });
 
 test("keeps the P6.4 card configurator out of the portal canvas", async () => {
