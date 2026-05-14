@@ -54,6 +54,10 @@ export function publishRequirementSpecWorkItem(specItemId: string) {
   return api.post<RequirementSpecWorkItem>(`/requirement-analysis/spec-items/${specItemId}/publish`);
 }
 
+export function deleteRequirementSpecWorkItem(specItemId: string) {
+  return api.delete<{ deleted: boolean; spec_item_id: string }>(`/requirement-analysis/spec-items/${specItemId}`);
+}
+
 export function getRequirementAnalysisTemplate(templateId: string) {
   return api.get<RequirementAnalysisTemplateDetail>(`/requirement-analysis/templates/${templateId}`);
 }

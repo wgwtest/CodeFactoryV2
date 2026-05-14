@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.db.models.requirements import RequirementSpecWorkItem
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate
 from app.requirement_analysis.session_application_service import RequirementAnalysisApplicationService
+from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
 from app.requirement_authoring.models import RequirementAuthoringDocumentCreate, RequirementAuthoringDocumentSave
 from app.requirement_authoring.service import RequirementAuthoringService
 from app.requirement_exchange.requirement_spec_service import RequirementSpecApplicationService
@@ -21,6 +22,7 @@ class RequirementSpecWorkItemService:
         self.repository = RequirementSpecWorkItemRepository(session)
         self.authoring_service = RequirementAuthoringService(session)
         self.analysis_service = RequirementAnalysisApplicationService(session)
+        self.analysis_template_service = RequirementAnalysisTemplateService()
         self.spec_service = RequirementSpecApplicationService(session)
 
     def list_items(self) -> dict:
@@ -30,7 +32,7 @@ class RequirementSpecWorkItemService:
         document = self.authoring_service.create_document(
             RequirementAuthoringDocumentCreate(
                 title=payload.title,
-                template_id=payload.template_id,
+                template_id=self._resolve_authoring_template_id(payload.template_id),
                 archive_ids=[],
             )
         )
@@ -39,7 +41,7 @@ class RequirementSpecWorkItemService:
                 document["document_id"],
                 RequirementAuthoringDocumentSave(
                     title=payload.title,
-                    template_id=payload.template_id,
+                    template_id=self._resolve_authoring_template_id(payload.template_id),
                     knowledge_binding=payload.knowledge_binding,
                 ),
             )
@@ -84,7 +86,7 @@ class RequirementSpecWorkItemService:
             item.authoring_document_id,
             RequirementAuthoringDocumentSave(
                 title=item.title,
-                template_id=item.template_id,
+                template_id=self._resolve_authoring_template_id(item.template_id),
                 knowledge_binding=item.knowledge_binding,
             ),
         )
@@ -199,3 +201,20 @@ class RequirementSpecWorkItemService:
         if status in {"archived", "deleted"}:
             return []
         return ["enter_config", "publish"]
+
+    def _resolve_authoring_template_id(self, template_id: str) -> str:
+        self.authoring_service.template_application_service.ensure_default_templates()
+        if self.authoring_service.template_application_service.get_template_model(template_id) is not None:
+            return template_id
+
+        lab_template = self.analysis_template_service.get_template(template_id)
+        template_code = ""
+        if lab_template is not None:
+            template_code = str(lab_template.get("template_code") or "")
+        if not template_code:
+            template_code = "".join(char for char in template_id if char.isdigit())
+        if not template_code:
+            return template_id
+
+        candidates = self.authoring_service.template_application_service.repository.list_templates_by_code(template_code)
+        return candidates[0].id if candidates else template_id

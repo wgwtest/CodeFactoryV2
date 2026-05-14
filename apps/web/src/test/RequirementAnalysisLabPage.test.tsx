@@ -121,6 +121,14 @@ test("adds a simple requirement spec management tab before orchestrator configur
     throw new Error(`unexpected post url: ${url}`);
   });
 
+  deleteMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items/spec-item-002") {
+      specItems = specItems.filter((item) => item.spec_item_id !== "spec-item-002");
+      return Promise.resolve({ data: { deleted: true, spec_item_id: "spec-item-002" } });
+    }
+    throw new Error(`unexpected delete url: ${url}`);
+  });
+
   render(
     <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
@@ -138,6 +146,7 @@ test("adds a simple requirement spec management tab before orchestrator configur
   expect(screen.getByRole("button", { name: "新建需规" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "进入配置" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "发布" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
   expect(screen.queryByText("当前需规")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "新建需规" }));
@@ -155,6 +164,15 @@ test("adds a simple requirement spec management tab before orchestrator configur
   expect(screen.getByDisplayValue("空域冲突处置软件需求规格说明")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /需求规格说明管理/ }));
+  const createdSpecRow = screen.getByText("空域冲突处置软件需求规格说明").closest("article") as HTMLElement;
+  fireEvent.click(within(createdSpecRow).getByRole("button", { name: "删除" }));
+  expect(screen.getByText("删除需求规格说明")).toBeInTheDocument();
+  expect(screen.getByText("删除后不可恢复，是否确认删除这条需求规格说明？")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+  await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-002"));
+  await waitFor(() => expect(screen.queryByText("空域冲突处置软件需求规格说明")).not.toBeInTheDocument());
+
   let originalSpecRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
   fireEvent.click(within(originalSpecRow).getByRole("button", { name: "进入配置" }));
   await waitFor(() =>
@@ -168,6 +186,35 @@ test("adds a simple requirement spec management tab before orchestrator configur
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/publish"));
   expect(screen.getByText("已发布到 P3")).toBeInTheDocument();
   expect(screen.getByText("P3 可接收")).toBeInTheDocument();
+});
+
+test("shows a business publish precondition message when the spec has blocking gaps", async () => {
+  mockRequirementAnalysisBootstrap();
+  postMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items/spec-item-001/publish") {
+      return Promise.reject({
+        message: "Request failed with status code 409",
+        response: {
+          status: 409,
+          data: { detail: "document has blocking gaps" },
+        },
+      });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  const specRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  fireEvent.click(within(specRow).getByRole("button", { name: "发布" }));
+
+  expect(await screen.findByText("当前需求规格说明仍有阻断型缺口，请先进入配置补齐必填内容后再发布。")).toBeInTheDocument();
+  expect(screen.queryByText("Request failed with status code 409")).not.toBeInTheDocument();
 });
 
 test("keeps XG requirement analysis lab view tabs explicit while business state changes", async () => {
@@ -1188,6 +1235,19 @@ test("uses a 4:6 session workspace ratio so the working document is wider than t
   expect(css).toContain(".requirement-analysis-lab-tab-grid.is-session");
   expect(css).toContain("grid-template-columns: minmax(360px, 0.8fr) minmax(560px, 1.2fr);");
   expect(css).not.toContain("grid-template-columns: minmax(420px, 0.95fr) minmax(460px, 1.05fr);");
+});
+
+test("keeps requirement spec item list styles isolated from the session spec tree rows", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toContain(".requirement-analysis-lab-spec-item-row");
+  expect(css).toContain(".requirement-analysis-lab-spec-item-row-main");
+  expect(css).toMatch(
+    /\.requirement-analysis-lab-spec-item-row\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/s,
+  );
+  expect(css).toMatch(
+    /\.requirement-analysis-lab-spec-row\s*\{[^}]*grid-template-columns: 22px minmax\(0, 1\.2fr\) minmax\(120px, 0\.8fr\) auto;/s,
+  );
 });
 
 test("styles user chat messages as a clearer pale-green bubble distinct from assistant messages", () => {

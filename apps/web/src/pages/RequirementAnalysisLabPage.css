@@ -191,7 +191,7 @@
   gap: 10px;
 }
 
-.requirement-analysis-lab-spec-row {
+.requirement-analysis-lab-spec-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
@@ -201,12 +201,12 @@
   background: #ffffff;
 }
 
-.requirement-analysis-lab-spec-row.is-selected {
+.requirement-analysis-lab-spec-item-row.is-selected {
   border-color: #2f7b7d;
   background: #f3fbfa;
 }
 
-.requirement-analysis-lab-spec-row-main {
+.requirement-analysis-lab-spec-item-row-main {
   min-width: 0;
   display: grid;
   gap: 8px;
@@ -218,8 +218,8 @@
   text-align: left;
 }
 
-.requirement-analysis-lab-spec-row-title,
-.requirement-analysis-lab-spec-row-meta {
+.requirement-analysis-lab-spec-item-row-title,
+.requirement-analysis-lab-spec-item-row-meta {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -227,15 +227,15 @@
   gap: 12px;
 }
 
-.requirement-analysis-lab-spec-row-title > .ant-typography {
+.requirement-analysis-lab-spec-item-row-title > .ant-typography {
   min-width: 0;
 }
 
-.requirement-analysis-lab-spec-row p.ant-typography {
+.requirement-analysis-lab-spec-item-row p.ant-typography {
   margin-bottom: 0;
 }
 
-.requirement-analysis-lab-spec-row-actions {
+.requirement-analysis-lab-spec-item-row-actions {
   display: flex;
   align-items: center;
   gap: 8px;

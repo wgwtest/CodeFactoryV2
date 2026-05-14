@@ -26,6 +26,7 @@ import {
   createRequirementAnalysisTurn,
   createRequirementSpecWorkItem,
   deleteRequirementAnalysisTemplate,
+  deleteRequirementSpecWorkItem,
   getRequirementAnalysisTemplate,
   publishRequirementSpecWorkItem,
   reloadRequirementAnalysisOrchestrators,
@@ -142,6 +143,47 @@ function formatRequirementSpecWorkItemDate(value: string) {
   return value.replace("T", " ").slice(0, 16);
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const detail = getApiErrorDetail(error);
+  if (detail === "document has blocking gaps") {
+    return "当前需求规格说明仍有阻断型缺口，请先进入配置补齐必填内容后再发布。";
+  }
+  if (detail) {
+    return detail;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getApiErrorDetail(error: unknown) {
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return "";
+  }
+  const response = (error as { response?: { data?: unknown } }).response;
+  const data = response?.data;
+  if (!data || typeof data !== "object" || !("detail" in data)) {
+    return "";
+  }
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (item && typeof item === "object" && "msg" in item && typeof (item as { msg?: unknown }).msg === "string") {
+          return (item as { msg: string }).msg;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("；");
+  }
+  return "";
+}
+
 export function RequirementAnalysisLabPage() {
   const {
     labConfig,
@@ -164,6 +206,7 @@ export function RequirementAnalysisLabPage() {
   const [newSpecDescription, setNewSpecDescription] = useState("");
   const [specItemActingId, setSpecItemActingId] = useState<string | null>(null);
   const [specItemCreating, setSpecItemCreating] = useState(false);
+  const [deletingSpecItem, setDeletingSpecItem] = useState<RequirementSpecWorkItem | null>(null);
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -269,7 +312,7 @@ export function RequirementAnalysisLabPage() {
         setTemplateDraft(response.data.content);
       } catch (templateError) {
         if (!cancelled) {
-          setError(templateError instanceof Error ? templateError.message : "加载需求规格说明模板失败");
+          setError(getApiErrorMessage(templateError, "加载需求规格说明模板失败"));
         }
       } finally {
         if (!cancelled) {
@@ -346,7 +389,7 @@ export function RequirementAnalysisLabPage() {
       setCurrentTurn(response.data.turns.at(-1) ?? null);
       setError(null);
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "启动 XG 需求分析会话失败");
+      setError(getApiErrorMessage(startError, "启动 XG 需求分析会话失败"));
     } finally {
       setActing(false);
     }
@@ -405,7 +448,7 @@ export function RequirementAnalysisLabPage() {
       applySpecItemToConfig(response.data);
       setError(null);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "新建需求规格说明失败");
+      setError(getApiErrorMessage(createError, "新建需求规格说明失败"));
     } finally {
       setSpecItemCreating(false);
     }
@@ -428,7 +471,7 @@ export function RequirementAnalysisLabPage() {
       applySpecItemToConfig(response.data);
       setError(null);
     } catch (configureError) {
-      setError(configureError instanceof Error ? configureError.message : "进入需规配置失败");
+      setError(getApiErrorMessage(configureError, "进入需规配置失败"));
     } finally {
       setSpecItemActingId(null);
     }
@@ -441,7 +484,33 @@ export function RequirementAnalysisLabPage() {
       updateSpecItem(response.data);
       setError(null);
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "发布需求规格说明失败");
+      setError(getApiErrorMessage(publishError, "发布需求规格说明失败"));
+    } finally {
+      setSpecItemActingId(null);
+    }
+  }
+
+  async function handleDeleteSpecItem() {
+    if (!deletingSpecItem) {
+      return;
+    }
+    try {
+      setSpecItemActingId(deletingSpecItem.spec_item_id);
+      await deleteRequirementSpecWorkItem(deletingSpecItem.spec_item_id);
+      setSpecItems((current) => {
+        const nextItems = current.filter((item) => item.spec_item_id !== deletingSpecItem.spec_item_id);
+        setSelectedSpecItemId((selected) => {
+          if (selected !== deletingSpecItem.spec_item_id) {
+            return selected;
+          }
+          return nextItems[0]?.spec_item_id ?? "";
+        });
+        return nextItems;
+      });
+      setDeletingSpecItem(null);
+      setError(null);
+    } catch (deleteError) {
+      setError(getApiErrorMessage(deleteError, "删除需求规格说明失败"));
     } finally {
       setSpecItemActingId(null);
     }
@@ -461,7 +530,7 @@ export function RequirementAnalysisLabPage() {
       setOrchestratorsEnvelope(nextEnvelope);
       setError(null);
     } catch (reloadError) {
-      setError(reloadError instanceof Error ? reloadError.message : "重新扫描组织器失败");
+      setError(getApiErrorMessage(reloadError, "重新扫描组织器失败"));
     } finally {
       setReloadingOrchestrators(false);
     }
@@ -485,7 +554,7 @@ export function RequirementAnalysisLabPage() {
       setTemplates((current) => current.map((template) => (template.template_id === response.data.template_id ? response.data : template)));
       setError(null);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存需求规格说明模板失败");
+      setError(getApiErrorMessage(saveError, "保存需求规格说明模板失败"));
     } finally {
       setTemplateSaving(false);
     }
@@ -501,7 +570,7 @@ export function RequirementAnalysisLabPage() {
       setBaseTemplates((current) => [...current.filter((template) => template.template_id !== response.data.template_id), response.data]);
       setError(null);
     } catch (saveAsBaseError) {
-      setError(saveAsBaseError instanceof Error ? saveAsBaseError.message : "保存为基础模板失败");
+      setError(getApiErrorMessage(saveAsBaseError, "保存为基础模板失败"));
     } finally {
       setTemplateSaving(false);
     }
@@ -563,7 +632,7 @@ export function RequirementAnalysisLabPage() {
       setCreateTemplateModalOpen(false);
       setError(null);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "新建需求规格说明模板实例失败");
+      setError(getApiErrorMessage(createError, "新建需求规格说明模板实例失败"));
     } finally {
       setTemplateSaving(false);
     }
@@ -597,7 +666,7 @@ export function RequirementAnalysisLabPage() {
       });
       setError(null);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "删除需求规格说明模板实例失败");
+      setError(getApiErrorMessage(deleteError, "删除需求规格说明模板实例失败"));
     } finally {
       setTemplateSaving(false);
     }
@@ -627,7 +696,7 @@ export function RequirementAnalysisLabPage() {
       setCurrentTurn(response.data.turn);
       setError(null);
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "发送当前 Turn 失败");
+      setError(getApiErrorMessage(sendError, "发送当前 Turn 失败"));
     } finally {
       setPendingUserInput(null);
       setActing(false);
@@ -708,6 +777,9 @@ export function RequirementAnalysisLabPage() {
                 onCloseCreate={handleCloseCreateSpecItem}
                 onCreate={() => void handleCreateSpecItem()}
                 onDescriptionChange={setNewSpecDescription}
+                onDeleteCancel={() => setDeletingSpecItem(null)}
+                onDeleteConfirm={() => void handleDeleteSpecItem()}
+                onDeleteRequest={setDeletingSpecItem}
                 onEnterConfig={(item) => void handleEnterSpecItemConfig(item)}
                 onOpenCreate={handleOpenCreateSpecItem}
                 onPublish={(item) => void handlePublishSpecItem(item)}
@@ -715,6 +787,7 @@ export function RequirementAnalysisLabPage() {
                 onTitleChange={setNewSpecTitle}
                 publishedCount={publishedSpecItemCount}
                 selectedItemId={selectedSpecItemId}
+                deletingItem={deletingSpecItem}
                 specItems={specItems}
                 templates={templates}
               />
@@ -829,6 +902,9 @@ function SpecManagementTab({
   onCloseCreate,
   onCreate,
   onDescriptionChange,
+  onDeleteCancel,
+  onDeleteConfirm,
+  onDeleteRequest,
   onEnterConfig,
   onOpenCreate,
   onPublish,
@@ -836,6 +912,7 @@ function SpecManagementTab({
   onTitleChange,
   publishedCount,
   selectedItemId,
+  deletingItem,
   specItems,
   templates,
 }: {
@@ -847,6 +924,9 @@ function SpecManagementTab({
   onCloseCreate: () => void;
   onCreate: () => void;
   onDescriptionChange: (value: string) => void;
+  onDeleteCancel: () => void;
+  onDeleteConfirm: () => void;
+  onDeleteRequest: (item: RequirementSpecWorkItem) => void;
   onEnterConfig: (item: RequirementSpecWorkItem) => void;
   onOpenCreate: () => void;
   onPublish: (item: RequirementSpecWorkItem) => void;
@@ -854,6 +934,7 @@ function SpecManagementTab({
   onTitleChange: (value: string) => void;
   publishedCount: number;
   selectedItemId: string;
+  deletingItem: RequirementSpecWorkItem | null;
   specItems: RequirementSpecWorkItem[];
   templates: RequirementAnalysisTemplateSummary[];
 }) {
@@ -882,14 +963,14 @@ function SpecManagementTab({
                   <article
                     className={
                       item.spec_item_id === selectedItemId
-                        ? "requirement-analysis-lab-spec-row is-selected"
-                        : "requirement-analysis-lab-spec-row"
+                        ? "requirement-analysis-lab-spec-item-row is-selected"
+                        : "requirement-analysis-lab-spec-item-row"
                     }
                     key={item.spec_item_id}
                     role="listitem"
                   >
-                    <button className="requirement-analysis-lab-spec-row-main" onClick={() => onSelect(item.spec_item_id)} type="button">
-                      <span className="requirement-analysis-lab-spec-row-title">
+                    <button className="requirement-analysis-lab-spec-item-row-main" onClick={() => onSelect(item.spec_item_id)} type="button">
+                      <span className="requirement-analysis-lab-spec-item-row-title">
                         <Text strong>{item.title}</Text>
                         <Space wrap>
                           <Tag color={requirementSpecWorkItemStatusColor(item.status)}>{formatRequirementSpecWorkItemStatus(item.status)}</Tag>
@@ -900,12 +981,12 @@ function SpecManagementTab({
                       <Paragraph ellipsis={{ rows: 2 }} type="secondary">
                         {item.initial_description || "暂无初始需求输入。"}
                       </Paragraph>
-                      <span className="requirement-analysis-lab-spec-row-meta">
+                      <span className="requirement-analysis-lab-spec-item-row-meta">
                         <Text type="secondary">模板：{templateName}</Text>
                         <Text type="secondary">更新：{formatRequirementSpecWorkItemDate(item.updated_at)}</Text>
                       </span>
                     </button>
-                    <div className="requirement-analysis-lab-spec-row-actions">
+                    <div className="requirement-analysis-lab-spec-item-row-actions">
                       <Button loading={actingId === item.spec_item_id} onClick={() => onEnterConfig(item)}>
                         进入配置
                       </Button>
@@ -917,6 +998,9 @@ function SpecManagementTab({
                         type="primary"
                       >
                         发布
+                      </Button>
+                      <Button aria-label="删除" danger loading={actingId === item.spec_item_id} onClick={() => onDeleteRequest(item)}>
+                        删除
                       </Button>
                     </div>
                   </article>
@@ -961,6 +1045,19 @@ function SpecManagementTab({
             />
           </label>
         </div>
+      </Modal>
+      <Modal
+        cancelText="取消"
+        destroyOnHidden
+        okButtonProps={{ danger: true, loading: deletingItem ? actingId === deletingItem.spec_item_id : false }}
+        okText="确认删除"
+        onCancel={onDeleteCancel}
+        onOk={onDeleteConfirm}
+        open={Boolean(deletingItem)}
+        title="删除需求规格说明"
+      >
+        <Paragraph>删除后不可恢复，是否确认删除这条需求规格说明？</Paragraph>
+        {deletingItem ? <Text type="secondary">{deletingItem.title}</Text> : null}
       </Modal>
     </>
   );
