@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } from "react";
-import { useNavigate } from "react-router-dom";
 
 import {
   type P6MockScenarioCatalog,
@@ -320,7 +319,6 @@ export function P6BlueprintCanvas({
   onScenarioChange,
   onRetry,
 }: P6BlueprintCanvasProps) {
-  const navigate = useNavigate();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const personalLayoutRef = useRef<Record<P6PortalNodeId, P6PortalPosition>>(readPersonalPortalLayout());
   const [layout, setLayout] = useState<Record<P6PortalNodeId, P6PortalPosition>>(() => readPersonalPortalLayout());
@@ -711,7 +709,7 @@ export function P6BlueprintCanvas({
               }}
               onDoubleClick={() => {
                 if (node.kind === "module") {
-                  navigate(resolveP6StageRoute(node, routes) ?? "/portal");
+                  window.open(resolveP6StageRoute(node, routes) ?? "/portal", "_blank", "noopener,noreferrer");
                 }
               }}
               onMouseEnter={() => setHoveredNodeId(node.id)}

@@ -35,7 +35,7 @@ const scenarioSeeds: StageContractSeed[] = [
     stageId: "P1",
     stageName: "业务知识库",
     summary: "知识库 12 个，已发布知识 12480 条，领域 36 个，贡献者 58 人",
-    route: "/archives",
+    route: "/p1",
     primaryStatus: "knowledge_asset_running",
     overall: [
       ["knowledge_repository_count", "知识库", 12, "个", "累计资产"],
@@ -65,13 +65,14 @@ const scenarioSeeds: StageContractSeed[] = [
   {
     stageId: "P2",
     stageName: "需求分析系统",
-    summary: "支持软件 24 个，需求规格 86 份，业务对象 430 个",
+    summary: "支持软件 24 个，需求规格 86 份，业务对象 430 个，P3 可接收 42 份",
     route: "/p2-requirement-analysis-lab",
-    primaryStatus: "requirement_modeling_running",
+    primaryStatus: "requirement_spec_publishing",
     overall: [
       ["supported_software_count", "支持软件", 24, "个", "累计承载"],
       ["requirement_spec_count", "需求规格", 86, "份", "累计产出"],
       ["business_object_count", "业务对象", 430, "个", "累计建模"],
+      ["p3_consumable_spec_count", "P3 可接收", 42, "份", "已发布到 P3"],
     ],
     live: [
       ["active_knowledge_receive_rate", "知识接入", 12, "条/小时", "1h", "input"],
@@ -87,8 +88,8 @@ const scenarioSeeds: StageContractSeed[] = [
       ["role:analyst", "析", "需求分析"],
       ["role:domain-expert", "专", "领域专家"],
     ],
-    queueLabel: "需求建模队列",
-    queueItems: ["空域协同规划", "任务审批流程", "态势看板"],
+    queueLabel: "需规发布队列",
+    queueItems: ["需求规格说明对象", "组织器配置", "发布到 P3"],
     sourceObject: "RequirementSpec",
     prototypeRef:
       "DOC/CODEX_DOC/08_原型与附图/2026-04-29-192233-CodeFactoryV2-P6四子系统总体状态卡详情原型-v14/",
@@ -118,8 +119,8 @@ const scenarioSeeds: StageContractSeed[] = [
       ["role:architect", "架", "架构设计"],
       ["role:reviewer", "评", "设计评审"],
     ],
-    queueLabel: "设计生成队列",
-    queueItems: ["边界上下文", "模块接口", "工单包"],
+    queueLabel: "软设投影队列",
+    queueItems: ["P2 冻结包", "关联软设", "设计基线", "P4 工单投影", "冻结设计包"],
     sourceObject: "SoftwareDesignBaseline",
     prototypeRef:
       "DOC/CODEX_DOC/08_原型与附图/2026-04-29-192233-CodeFactoryV2-P6四子系统总体状态卡详情原型-v14/",
@@ -148,8 +149,8 @@ const scenarioSeeds: StageContractSeed[] = [
       ["role:tool-governor", "治", "资产治理"],
       ["role:tool-dev", "工", "工具开发"],
     ],
-    queueLabel: "工具供给队列",
-    queueItems: ["能力匹配", "工具补位", "供给校验"],
+    queueLabel: "工具工单处理队列",
+    queueItems: ["工单处理", "工具构建", "取用驾驶舱", "覆盖知识图谱"],
     sourceObject: "ToolDefinition",
     prototypeRef:
       "DOC/CODEX_DOC/08_原型与附图/2026-04-29-192233-CodeFactoryV2-P6四子系统总体状态卡详情原型-v14/",

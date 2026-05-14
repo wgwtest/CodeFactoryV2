@@ -77,7 +77,7 @@ test("switches focus stage and scenario in the observation page", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("支持软件 24 个，需求规格 86 份，业务对象 430 个")).toBeInTheDocument();
+  expect(await screen.findByText("支持软件 24 个，需求规格 86 份，业务对象 430 个，P3 可接收 42 份")).toBeInTheDocument();
   expect(screen.getByTestId("p6-observation-stage-card-P2")).toHaveAttribute("data-active", "true");
 
   fireEvent.click(screen.getByRole("button", { name: "交付缺口" }));

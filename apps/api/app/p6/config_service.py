@@ -106,7 +106,7 @@ class PlatformConfigService:
                     primitive_kind="system_stage_card",
                     supported_states=["healthy", "warning", "blocked", "unknown"],
                     layout_rules=["矩形状态卡", "至少包含主状态与页脚状态"],
-                    interaction_rules=["单击高亮", "双击跳转", "悬停联动关系"],
+                    interaction_rules=["单击高亮", "双击新标签页打开", "悬停联动关系"],
                     example_refs=["/portal#node-stage-card", "/observation#serial-stage-card"],
                 ),
                 SharedDisplayPrimitive(
@@ -226,9 +226,9 @@ class PlatformConfigService:
 
     def get_legend(self) -> PlatformLegend:
         return PlatformLegend(
-            summary_copy="门户只负责导览与跳转，不承载业务编辑。双击节点即可进入对应模块。",
+            summary_copy="门户只负责导览与跳转，不承载业务编辑。双击节点会在新标签页打开对应模块。",
             interaction_facts=[
-                "单击高亮 / 双击进入 / 滚轮缩放 / 背景平移",
+                "单击高亮 / 双击新标签页打开 / 滚轮缩放 / 背景平移",
                 "节点拖拽仅在自动布局区内生效，超界后自动回收",
             ],
             element_language_copy="矩形状态卡 = 系统节点，轻量胶囊 = 参与用户，小胶囊 = 数据产物",
