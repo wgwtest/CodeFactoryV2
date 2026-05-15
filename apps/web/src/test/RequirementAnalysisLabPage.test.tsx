@@ -140,14 +140,17 @@ test("adds a simple requirement spec management tab before orchestrator configur
   expect(specManagementTab).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "false");
   expect(screen.getByText("4.1 需求规格说明管理")).toBeInTheDocument();
-  expect(screen.getByText("空域协同规划软件需求规格说明")).toBeInTheDocument();
-  expect(screen.getByText("草稿")).toBeInTheDocument();
-  expect(screen.getByText("v1")).toBeInTheDocument();
+  expect(screen.getAllByText("空域协同规划软件需求规格说明").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("草稿").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("v1").length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "新建需规" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "进入配置" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "发布" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
-  expect(screen.queryByText("当前需规")).not.toBeInTheDocument();
+  expect(screen.getByText("当前需规")).toBeInTheDocument();
+  expect(screen.getByText("需规编辑中")).toBeInTheDocument();
+  expect(screen.getByText("编辑中")).toBeInTheDocument();
+  expect(screen.getByText("待启动会话")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "新建需规" }));
   expect(screen.getByText("新建需求规格说明")).toBeInTheDocument();
@@ -164,7 +167,7 @@ test("adds a simple requirement spec management tab before orchestrator configur
   expect(screen.getByDisplayValue("空域冲突处置软件需求规格说明")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: /需求规格说明管理/ }));
-  const createdSpecRow = screen.getByText("空域冲突处置软件需求规格说明").closest("article") as HTMLElement;
+  const createdSpecRow = getRequirementSpecItemRow("空域冲突处置软件需求规格说明");
   fireEvent.click(within(createdSpecRow).getByRole("button", { name: "删除" }));
   expect(screen.getByText("删除需求规格说明")).toBeInTheDocument();
   expect(screen.getByText("删除后不可恢复，是否确认删除这条需求规格说明？")).toBeInTheDocument();
@@ -173,7 +176,7 @@ test("adds a simple requirement spec management tab before orchestrator configur
   await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-002"));
   await waitFor(() => expect(screen.queryByText("空域冲突处置软件需求规格说明")).not.toBeInTheDocument());
 
-  let originalSpecRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  let originalSpecRow = getRequirementSpecItemRow("空域协同规划软件需求规格说明");
   fireEvent.click(within(originalSpecRow).getByRole("button", { name: "进入配置" }));
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/configure", expect.any(Object)),
@@ -181,11 +184,99 @@ test("adds a simple requirement spec management tab before orchestrator configur
   expect(screen.getByRole("tab", { name: /组织器配置/ })).toHaveAttribute("aria-selected", "true");
 
   fireEvent.click(screen.getByRole("tab", { name: /需求规格说明管理/ }));
-  originalSpecRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  originalSpecRow = getRequirementSpecItemRow("空域协同规划软件需求规格说明");
   fireEvent.click(within(originalSpecRow).getByRole("button", { name: "发布" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/publish"));
-  expect(screen.getByText("已发布到 P3")).toBeInTheDocument();
-  expect(screen.getByText("P3 可接收")).toBeInTheDocument();
+  expect(screen.getAllByText("已发布到 P3").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("P3 可接收").length).toBeGreaterThan(0);
+  expect(screen.getByText("已发布锁定")).toBeInTheDocument();
+});
+
+test("guards Lab workflow tabs when no requirement spec is active", async () => {
+  mockRequirementAnalysisBootstrap([]);
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  expect(screen.getAllByText("未选择需规").length).toBeGreaterThan(0);
+  expect(screen.getByText("未激活")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("请先新建或选择一份需求规格说明，并进入编辑状态。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("请先进入组织器配置，确认模板、组织器和 Provider，并启动或恢复会话。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /当前 Turn/ }));
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("请先在会话管理中发送一轮输入，生成当前 Turn 后再查看审计。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /调用日志/ }));
+  expect(screen.getByRole("tab", { name: /调用日志/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getAllByText("当前暂无会话调用日志。选择需规并创建会话后，将按会话展示 Provider 调用证据。").length).toBeGreaterThan(0);
+});
+
+test("locks configuration and editing actions for a published requirement spec", async () => {
+  const publishedSpec: RequirementSpecWorkItem = {
+    ...buildRequirementSpecWorkItem(),
+    status: "published_to_p3",
+    p3_consumable: true,
+    published_requirement_spec_id: "req-spec-001",
+    published_package_id: "p3-input-req-spec-001",
+    available_actions: ["enter_config", "revision"],
+  };
+  mockRequirementAnalysisBootstrap([publishedSpec]);
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  expect(screen.getByText("已发布锁定")).toBeInTheDocument();
+  expect(screen.getByText("发布锁定")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "进入配置" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
+
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("已发布版本已锁定，请创建修订草稿后继续编辑。")).toBeInTheDocument();
+});
+
+test("restores a bound analysis session before entering session management", async () => {
+  const configuredSpec: RequirementSpecWorkItem = {
+    ...buildRequirementSpecWorkItem(),
+    status: "configured",
+    analysis_session_id: "ra-airspace-001",
+  };
+  mockRequirementAnalysisBootstrap([configuredSpec]);
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/sessions/ra-airspace-001") {
+      return Promise.resolve({ data: buildSession("created") });
+    }
+    return mockRequirementAnalysisBootstrapGet(url, [configuredSpec]);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /会话管理/ }));
+
+  await waitFor(() => expect(getMock).toHaveBeenCalledWith("/requirement-analysis/sessions/ra-airspace-001"));
+  expect(await screen.findByText("会话 ra-airspace-001")).toBeInTheDocument();
+  expect(screen.queryByText("尚未创建 Requirement Analysis 会话。请先回到“组织器配置”点击“启动验证”。")).not.toBeInTheDocument();
 });
 
 test("shows a business publish precondition message when the spec has blocking gaps", async () => {
@@ -210,7 +301,7 @@ test("shows a business publish precondition message when the spec has blocking g
   );
 
   expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
-  const specRow = screen.getByText("空域协同规划软件需求规格说明").closest("article") as HTMLElement;
+  const specRow = getRequirementSpecItemRow("空域协同规划软件需求规格说明");
   fireEvent.click(within(specRow).getByRole("button", { name: "发布" }));
 
   expect(await screen.findByText("当前需求规格说明仍有阻断型缺口，请先进入配置补齐必填内容后再发布。")).toBeInTheDocument();
@@ -323,7 +414,7 @@ test("saves session artifacts from the session summary and can save them as a ne
     }),
   );
   expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
-  expect(await screen.findByText("态势分析系统需求规格说明 - 另存副本")).toBeInTheDocument();
+  await waitFor(() => expect(getRequirementSpecItemRow("态势分析系统需求规格说明 - 另存副本")).toBeInTheDocument());
 });
 
 test("keeps XG requirement analysis lab view tabs explicit while business state changes", async () => {
@@ -1359,6 +1450,31 @@ test("keeps requirement spec item list styles isolated from the session spec tre
   );
 });
 
+test("keeps template editor title from being squeezed into vertical text", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).not.toMatch(
+    /\.requirement-analysis-lab-template-editor-head\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/s,
+  );
+  expect(css).toMatch(
+    /\.requirement-analysis-lab-template-meta \.ant-typography:first-child\s*\{[^}]*white-space: nowrap;[^}]*text-overflow: ellipsis;/s,
+  );
+});
+
+test("stacks requirement spec item rows on phone widths to avoid vertical text", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
+
+  expect(css).toMatch(
+    /@media \(max-width: 520px\)\s*\{[\s\S]*\.requirement-analysis-lab-spec-item-row\s*\{[^}]*grid-template-columns: 1fr;/s,
+  );
+  expect(css).toMatch(
+    /@media \(max-width: 520px\)\s*\{[\s\S]*\.requirement-analysis-lab-spec-item-row-title,\s*\.requirement-analysis-lab-spec-item-row-meta\s*\{[^}]*align-items: flex-start;[^}]*flex-direction: column;/s,
+  );
+  expect(css).toMatch(
+    /@media \(max-width: 520px\)\s*\{[\s\S]*\.requirement-analysis-lab-spec-item-row-actions\s*\{[^}]*flex-wrap: wrap;/s,
+  );
+});
+
 test("styles user chat messages as a clearer pale-green bubble distinct from assistant messages", () => {
   const css = readFileSync(resolve(process.cwd(), "src/pages/RequirementAnalysisLabPage.css"), "utf8");
 
@@ -1437,6 +1553,17 @@ function createDeferred<T>() {
     resolve = promiseResolve;
   });
   return { promise, resolve };
+}
+
+function getRequirementSpecItemRow(title: string) {
+  const row = screen
+    .getAllByText(title)
+    .map((node) => node.closest("article"))
+    .find((node): node is HTMLElement => Boolean(node));
+  if (!row) {
+    throw new Error(`Requirement spec item row not found: ${title}`);
+  }
+  return row;
 }
 
 function buildOrchestrators() {
@@ -1788,55 +1915,59 @@ function buildRequirementSpecWorkItem(): RequirementSpecWorkItem {
   };
 }
 
-function mockRequirementAnalysisBootstrap() {
+function mockRequirementAnalysisBootstrapGet(url: string, specItems: RequirementSpecWorkItem[] = [buildRequirementSpecWorkItem()]) {
+  if (url === "/requirement-analysis/spec-items") {
+    return Promise.resolve({ data: { items: specItems } });
+  }
+  if (url === "/requirement-analysis/lab-config") {
+    return Promise.resolve({ data: buildLabConfig() });
+  }
+  if (url === "/requirement-analysis/orchestrators") {
+    return Promise.resolve({ data: buildOrchestrators() });
+  }
+  if (url === "/requirement-analysis/providers") {
+    return Promise.resolve({
+      data: {
+        items: [
+          { provider_id: "mock", name: "Mock Provider", status: "active" },
+          { provider_id: "deepseek", name: "DeepSeek", status: "active" },
+        ],
+      },
+    });
+  }
+  if (url === "/requirement-analysis/templates") {
+    return Promise.resolve({
+      data: {
+        items: [buildRequirementAnalysisTemplateSummary()],
+      },
+    });
+  }
+  if (url === "/requirement-analysis/template-bases") {
+    return Promise.resolve({
+      data: {
+        items: [
+          {
+            template_id: "81433号",
+            template_code: "81433",
+            name: "软件级需求规格说明模板",
+            description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+            status: "active",
+          },
+        ],
+      },
+    });
+  }
+  if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+    return Promise.resolve({
+      data: buildRequirementAnalysisTemplateDetail(),
+    });
+  }
+  throw new Error(`unexpected get url: ${url}`);
+}
+
+function mockRequirementAnalysisBootstrap(specItems: RequirementSpecWorkItem[] = [buildRequirementSpecWorkItem()]) {
   getMock.mockImplementation((url: string) => {
-    if (url === "/requirement-analysis/spec-items") {
-      return Promise.resolve({ data: { items: [buildRequirementSpecWorkItem()] } });
-    }
-    if (url === "/requirement-analysis/lab-config") {
-      return Promise.resolve({ data: buildLabConfig() });
-    }
-    if (url === "/requirement-analysis/orchestrators") {
-      return Promise.resolve({ data: buildOrchestrators() });
-    }
-    if (url === "/requirement-analysis/providers") {
-      return Promise.resolve({
-        data: {
-          items: [
-            { provider_id: "mock", name: "Mock Provider", status: "active" },
-            { provider_id: "deepseek", name: "DeepSeek", status: "active" },
-          ],
-        },
-      });
-    }
-    if (url === "/requirement-analysis/templates") {
-      return Promise.resolve({
-        data: {
-          items: [buildRequirementAnalysisTemplateSummary()],
-        },
-      });
-    }
-    if (url === "/requirement-analysis/template-bases") {
-      return Promise.resolve({
-        data: {
-          items: [
-            {
-              template_id: "81433号",
-              template_code: "81433",
-              name: "软件级需求规格说明模板",
-              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
-              status: "active",
-            },
-          ],
-        },
-      });
-    }
-    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
-      return Promise.resolve({
-        data: buildRequirementAnalysisTemplateDetail(),
-      });
-    }
-    throw new Error(`unexpected get url: ${url}`);
+    return mockRequirementAnalysisBootstrapGet(url, specItems);
   });
 }
 

@@ -27,6 +27,7 @@ import {
   createRequirementSpecWorkItem,
   deleteRequirementAnalysisTemplate,
   deleteRequirementSpecWorkItem,
+  getRequirementAnalysisSession,
   getRequirementAnalysisTemplate,
   publishRequirementSpecWorkItem,
   reloadRequirementAnalysisOrchestrators,
@@ -50,6 +51,29 @@ const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
 
 type RequirementAnalysisLabTab = "spec" | "config" | "session" | "turn" | "log";
+
+type RequirementAnalysisLabAccess = {
+  allowed: boolean;
+  reason: string;
+};
+
+type RequirementAnalysisLabWorkspaceState = {
+  activeSpecEditable: boolean;
+  activeSpecLocked: boolean;
+  canSaveArtifacts: boolean;
+  primaryStatusLabel: string;
+  primaryStatusColor: string;
+  nextRecommendedAction: string;
+  specTitle: string;
+  specVersion: string;
+  specStatusLabel: string;
+  editStatusLabel: string;
+  configStatusLabel: string;
+  sessionStatusLabel: string;
+  turnStatusLabel: string;
+  p3StatusLabel: string;
+  tabAccess: Record<RequirementAnalysisLabTab, RequirementAnalysisLabAccess>;
+};
 type WorkingDocumentFragment = RequirementAnalysisSession["working_document"]["revision_fragments"][number];
 
 function formatRequirementAnalysisTurnLabel(turnId: string) {
@@ -125,6 +149,93 @@ function formatRequirementSpecWorkItemStatus(status: string) {
   return labels[status] ?? status;
 }
 
+function isRequirementSpecWorkItemEditable(item: RequirementSpecWorkItem | null) {
+  if (!item) {
+    return false;
+  }
+  return ["draft", "configured", "analyzing", "ready_to_publish", "revision_draft"].includes(item.status) && !item.p3_consumable;
+}
+
+function isRequirementSpecWorkItemLocked(item: RequirementSpecWorkItem | null) {
+  if (!item) {
+    return false;
+  }
+  return item.status === "published_to_p3" || item.p3_consumable || ["archived", "deleted"].includes(item.status);
+}
+
+function buildRequirementAnalysisLabWorkspaceState({
+  currentTurn,
+  selectedSpecItem,
+  session,
+}: {
+  currentTurn: RequirementAnalysisTurn | null;
+  selectedSpecItem: RequirementSpecWorkItem | null;
+  session: RequirementAnalysisSession | null;
+}): RequirementAnalysisLabWorkspaceState {
+  const activeSpecEditable = isRequirementSpecWorkItemEditable(selectedSpecItem);
+  const activeSpecLocked = isRequirementSpecWorkItemLocked(selectedSpecItem);
+  const hasSpec = Boolean(selectedSpecItem);
+  const hasSession = Boolean(session || selectedSpecItem?.analysis_session_id);
+  const hasCurrentTurn = Boolean(currentTurn);
+  const hasConfiguredSpec = Boolean(selectedSpecItem?.status === "configured" || selectedSpecItem?.analysis_session_id || session);
+  const lockedMessage = "已发布版本已锁定，请创建修订草稿后继续编辑。";
+  const chooseSpecMessage = "请先新建或选择一份需求规格说明，并进入编辑状态。";
+  const startSessionMessage = "请先进入组织器配置，确认模板、组织器和 Provider，并启动或恢复会话。";
+  const turnMessage = "请先在会话管理中发送一轮输入，生成当前 Turn 后再查看审计。";
+  const canEnterConfig = hasSpec && activeSpecEditable;
+  const canEnterSession = canEnterConfig && hasConfiguredSpec && hasSession;
+  const canEnterTurn = canEnterSession && hasCurrentTurn;
+  const primaryStatusLabel = !hasSpec
+    ? "未选择需规"
+    : activeSpecLocked
+      ? "已发布锁定"
+      : hasCurrentTurn
+        ? "Turn 已生成"
+        : hasSession
+          ? "会话进行中"
+          : hasConfiguredSpec
+            ? "组织器已配置"
+            : "需规编辑中";
+  const nextRecommendedAction = !hasSpec
+    ? "新建需规"
+    : activeSpecLocked
+      ? "创建修订草稿"
+      : hasCurrentTurn
+        ? "查看当前 Turn 审计"
+        : hasSession
+          ? "在会话管理中继续输入"
+          : hasConfiguredSpec
+            ? "进入会话管理"
+            : "进入组织器配置";
+
+  return {
+    activeSpecEditable,
+    activeSpecLocked,
+    canSaveArtifacts: Boolean(selectedSpecItem && session && activeSpecEditable),
+    primaryStatusLabel,
+    primaryStatusColor: !hasSpec ? "default" : activeSpecLocked ? "red" : hasCurrentTurn ? "geekblue" : hasSession ? "blue" : "green",
+    nextRecommendedAction,
+    specTitle: selectedSpecItem?.title ?? "未选择需规",
+    specVersion: selectedSpecItem ? `v${selectedSpecItem.version}` : "-",
+    specStatusLabel: selectedSpecItem ? formatRequirementSpecWorkItemStatus(selectedSpecItem.status) : "未选择",
+    editStatusLabel: !hasSpec ? "未激活" : activeSpecLocked ? "发布锁定" : "编辑中",
+    configStatusLabel: hasConfiguredSpec ? "已配置组织器" : "待配置",
+    sessionStatusLabel: hasSession ? "会话已创建" : "待启动会话",
+    turnStatusLabel: currentTurn ? `当前 Turn: ${currentTurn.turn_id}` : "暂无 Turn",
+    p3StatusLabel: selectedSpecItem?.p3_consumable ? "P3 可接收" : "未发布",
+    tabAccess: {
+      spec: { allowed: true, reason: "" },
+      config: { allowed: canEnterConfig, reason: activeSpecLocked ? lockedMessage : chooseSpecMessage },
+      session: { allowed: canEnterSession, reason: startSessionMessage },
+      turn: { allowed: canEnterTurn, reason: turnMessage },
+      log: {
+        allowed: true,
+        reason: hasSession ? "" : "当前暂无会话调用日志。选择需规并创建会话后，将按会话展示 Provider 调用证据。",
+      },
+    },
+  };
+}
+
 function requirementSpecWorkItemStatusColor(status: string) {
   if (status === "published_to_p3") {
     return "green";
@@ -149,6 +260,9 @@ function getApiErrorMessage(error: unknown, fallback: string) {
   const detail = getApiErrorDetail(error);
   if (detail === "document has blocking gaps") {
     return "当前需求规格说明仍有阻断型缺口，请先进入配置补齐必填内容后再发布。";
+  }
+  if (detail === "Requirement Analysis session not found") {
+    return "未找到已绑定的需求分析会话，请先回到组织器配置重新启动会话。";
   }
   if (detail) {
     return detail;
@@ -289,9 +403,10 @@ export function RequirementAnalysisLabPage() {
     setNewTemplateName((current) => current || buildDefaultRequirementAnalysisTemplateName(topic || labConfig.defaults.topic));
   }, [labConfig, orchestratorsEnvelope, providers, templates, baseTemplates, topic]);
 
+  const effectiveSelectedSpecItemId = selectedSpecItemId || specItems[0]?.spec_item_id || "";
   const selectedSpecItem = useMemo(
-    () => specItems.find((item) => item.spec_item_id === selectedSpecItemId) ?? null,
-    [specItems, selectedSpecItemId],
+    () => specItems.find((item) => item.spec_item_id === effectiveSelectedSpecItemId) ?? null,
+    [effectiveSelectedSpecItemId, specItems],
   );
 
   useEffect(() => {
@@ -359,8 +474,65 @@ export function RequirementAnalysisLabPage() {
     ? resolveRequirementAnalysisWritePolicyLabel(labConfig.defaults.write_policy, labConfig.write_policies)
     : "写入策略加载中";
   const effectiveError = error ?? bootstrapError;
+  const workspaceState = useMemo(
+    () => buildRequirementAnalysisLabWorkspaceState({ currentTurn, selectedSpecItem, session }),
+    [currentTurn, selectedSpecItem, session],
+  );
+
+  function shouldRestoreSelectedSpecSessionForTab(nextTab: RequirementAnalysisLabTab) {
+    const sessionId = selectedSpecItem?.analysis_session_id;
+    return Boolean(sessionId && session?.session_id !== sessionId && (nextTab === "session" || nextTab === "turn" || nextTab === "log"));
+  }
+
+  async function restoreSelectedSpecSession() {
+    const sessionId = selectedSpecItem?.analysis_session_id;
+    if (!sessionId) {
+      return false;
+    }
+    try {
+      setActing(true);
+      const response = await getRequirementAnalysisSession(sessionId);
+      setSession(response.data);
+      setCurrentTurn(response.data.turns.at(-1) ?? null);
+      return true;
+    } catch (restoreError) {
+      setError(getApiErrorMessage(restoreError, "恢复需求分析会话失败"));
+      return false;
+    } finally {
+      setActing(false);
+    }
+  }
+
+  function activateTab(nextTab: RequirementAnalysisLabTab) {
+    const access = workspaceState.tabAccess[nextTab];
+    if (!access.allowed) {
+      setError(access.reason);
+      return;
+    }
+    const enterTab = () => {
+      setActiveTab(nextTab);
+      if (nextTab === "log" && access.reason) {
+        setError(access.reason);
+        return;
+      }
+      setError(null);
+    };
+    if (!shouldRestoreSelectedSpecSessionForTab(nextTab)) {
+      enterTab();
+      return;
+    }
+    void (async () => {
+      if (await restoreSelectedSpecSession()) {
+        enterTab();
+      }
+    })();
+  }
 
   async function handleStart() {
+    if (!workspaceState.activeSpecEditable) {
+      setError(workspaceState.activeSpecLocked ? "已发布版本已锁定，请创建修订草稿后继续编辑。" : "请先新建或选择一份需求规格说明，并进入编辑状态。");
+      return;
+    }
     setActiveTab("session");
     const resolvedTemplateId = startupTemplateId || selectedTemplateId || templates[0]?.template_id || bootstrappedTemplates[0]?.template_id || "";
     if (!resolvedTemplateId) {
@@ -418,7 +590,9 @@ export function RequirementAnalysisLabPage() {
       setSelectedTemplateId(item.template_id);
       setStartupTemplateId(item.template_id);
     }
-    setActiveTab("config");
+    if (isRequirementSpecWorkItemEditable(item)) {
+      setActiveTab("config");
+    }
   }
 
   function handleOpenCreateSpecItem() {
@@ -460,6 +634,11 @@ export function RequirementAnalysisLabPage() {
   }
 
   async function handleEnterSpecItemConfig(item: RequirementSpecWorkItem) {
+    if (!isRequirementSpecWorkItemEditable(item)) {
+      updateSpecItem(item);
+      setError(isRequirementSpecWorkItemLocked(item) ? "已发布版本已锁定，请创建修订草稿后继续编辑。" : "请先选择一份可编辑的需求规格说明。");
+      return;
+    }
     applySpecItemToConfig(item);
     try {
       setSpecItemActingId(item.spec_item_id);
@@ -499,6 +678,11 @@ export function RequirementAnalysisLabPage() {
     if (!deletingSpecItem) {
       return;
     }
+    if (isRequirementSpecWorkItemLocked(deletingSpecItem)) {
+      setError("已发布需求规格说明不能删除，请创建修订或归档。");
+      setDeletingSpecItem(null);
+      return;
+    }
     try {
       setSpecItemActingId(deletingSpecItem.spec_item_id);
       await deleteRequirementSpecWorkItem(deletingSpecItem.spec_item_id);
@@ -522,7 +706,7 @@ export function RequirementAnalysisLabPage() {
   }
 
   async function handleSaveSessionArtifacts() {
-    if (!selectedSpecItem || !session) {
+    if (!selectedSpecItem || !session || !workspaceState.activeSpecEditable) {
       setError("请先选择需求规格说明并创建会话。");
       return;
     }
@@ -746,6 +930,10 @@ export function RequirementAnalysisLabPage() {
     if (!session || !trimmed) {
       return;
     }
+    if (!workspaceState.activeSpecEditable) {
+      setError("已发布版本已锁定，请创建修订草稿后继续编辑。");
+      return;
+    }
 
     try {
       setActing(true);
@@ -780,6 +968,8 @@ export function RequirementAnalysisLabPage() {
         </Space>
       </header>
 
+      {!loading ? <WorkspaceStatusBar state={workspaceState} /> : null}
+
       {effectiveError ? <Alert type="error" showIcon message={effectiveError} /> : null}
 
       {loading ? (
@@ -792,35 +982,35 @@ export function RequirementAnalysisLabPage() {
             <TabNode
               active={activeTab === "spec"}
               badge={`${specItems.length} 条`}
-              onClick={() => setActiveTab("spec")}
+              onClick={() => activateTab("spec")}
               subtitle="RequirementSpecWorkItem"
               title="需求规格说明管理"
             />
             <TabNode
               active={activeTab === "config"}
               badge={selectedSpecItem ? "4.2" : "配置"}
-              onClick={() => setActiveTab("config")}
+              onClick={() => activateTab("config")}
               subtitle="RequirementAnalysisOrchestrator 插槽"
               title="组织器配置"
             />
             <TabNode
               active={activeTab === "session"}
               badge={session ? "已创建" : "未创建"}
-              onClick={() => setActiveTab("session")}
+              onClick={() => activateTab("session")}
               subtitle="RequirementAnalysisSession"
               title="会话管理"
             />
             <TabNode
               active={activeTab === "turn"}
               badge={currentTurn?.turn_id ?? "暂无"}
-              onClick={() => setActiveTab("turn")}
+              onClick={() => activateTab("turn")}
               subtitle="RequirementAnalysisTurn"
               title="当前 Turn"
             />
             <TabNode
               active={activeTab === "log"}
               badge={`${logCount} 条`}
-              onClick={() => setActiveTab("log")}
+              onClick={() => activateTab("log")}
               subtitle="Model / Runner Calls"
               title="调用日志"
             />
@@ -846,7 +1036,7 @@ export function RequirementAnalysisLabPage() {
                 onSelect={setSelectedSpecItemId}
                 onTitleChange={setNewSpecTitle}
                 publishedCount={publishedSpecItemCount}
-                selectedItemId={selectedSpecItemId}
+                selectedItemId={effectiveSelectedSpecItemId}
                 deletingItem={deletingSpecItem}
                 specItems={specItems}
                 templates={templates}
@@ -856,9 +1046,10 @@ export function RequirementAnalysisLabPage() {
               <ConfigTab
                 activeProvider={activeProvider}
                 acting={acting}
+                canStart={workspaceState.activeSpecEditable}
                 labConfig={labConfig}
                 currentSession={session}
-                onEnterSession={() => setActiveTab("session")}
+                onEnterSession={() => activateTab("session")}
                 onProviderSelect={setSelectedProviderId}
                 onStart={() => void handleStart()}
                 onReloadOrchestrators={() => void handleReloadOrchestrators()}
@@ -904,7 +1095,7 @@ export function RequirementAnalysisLabPage() {
             {activeTab === "session" ? (
               <SessionTab
                 acting={acting}
-                canSaveArtifacts={Boolean(selectedSpecItem && session)}
+                canSaveArtifacts={workspaceState.canSaveArtifacts}
                 currentTurn={currentTurn}
                 onCloseSaveAsSpec={handleCloseSaveAsSpec}
                 onOpenSaveAsSpec={handleOpenSaveAsSpec}
@@ -924,7 +1115,9 @@ export function RequirementAnalysisLabPage() {
               />
             ) : null}
             {activeTab === "turn" ? <TurnTab currentTurn={currentTurn} labConfig={labConfig} onResetSession={handleResetSession} /> : null}
-            {activeTab === "log" ? <LogTab logSchema={labConfig.provider_log_schema} logs={session?.provider_logs ?? []} /> : null}
+            {activeTab === "log" ? (
+              <LogTab emptyMessage={workspaceState.tabAccess.log.reason || undefined} logSchema={labConfig.provider_log_schema} logs={session?.provider_logs ?? []} />
+            ) : null}
           </section>
         </section>
       ) : null}
@@ -959,6 +1152,30 @@ function TabNode({
       </span>
       <Tag>{badge}</Tag>
     </button>
+  );
+}
+
+function WorkspaceStatusBar({ state }: { state: RequirementAnalysisLabWorkspaceState }) {
+  return (
+    <section className="requirement-analysis-lab-workspace-status" aria-label="Lab 作业上下文状态">
+      <div className="requirement-analysis-lab-workspace-status-main">
+        <Tag color={state.primaryStatusColor}>{state.primaryStatusLabel}</Tag>
+        <span className="requirement-analysis-lab-workspace-status-title">
+          <Text type="secondary">当前需规</Text>
+          <Text strong>{state.specTitle}</Text>
+        </span>
+      </div>
+      <Space className="requirement-analysis-lab-workspace-status-tags" wrap>
+        <Tag>{state.specVersion}</Tag>
+        <Tag>{state.specStatusLabel}</Tag>
+        <Tag color={state.activeSpecLocked ? "red" : state.activeSpecEditable ? "green" : "default"}>{state.editStatusLabel}</Tag>
+        <Tag>{state.configStatusLabel}</Tag>
+        <Tag>{state.sessionStatusLabel}</Tag>
+        <Tag>{state.turnStatusLabel}</Tag>
+        <Tag color={state.p3StatusLabel === "P3 可接收" ? "green" : "default"}>{state.p3StatusLabel}</Tag>
+        <Tag color="blue">下一步：{state.nextRecommendedAction}</Tag>
+      </Space>
+    </section>
   );
 }
 
@@ -1056,19 +1273,25 @@ function SpecManagementTab({
                       </span>
                     </button>
                     <div className="requirement-analysis-lab-spec-item-row-actions">
-                      <Button loading={actingId === item.spec_item_id} onClick={() => onEnterConfig(item)}>
+                      <Button disabled={!isRequirementSpecWorkItemEditable(item)} loading={actingId === item.spec_item_id} onClick={() => onEnterConfig(item)}>
                         进入配置
                       </Button>
                       <Button
                         aria-label="发布"
-                        disabled={item.status === "published_to_p3"}
+                        disabled={isRequirementSpecWorkItemLocked(item)}
                         loading={actingId === item.spec_item_id}
                         onClick={() => onPublish(item)}
                         type="primary"
                       >
                         发布
                       </Button>
-                      <Button aria-label="删除" danger loading={actingId === item.spec_item_id} onClick={() => onDeleteRequest(item)}>
+                      <Button
+                        aria-label="删除"
+                        danger
+                        disabled={isRequirementSpecWorkItemLocked(item)}
+                        loading={actingId === item.spec_item_id}
+                        onClick={() => onDeleteRequest(item)}
+                      >
                         删除
                       </Button>
                     </div>
@@ -1135,6 +1358,7 @@ function SpecManagementTab({
 function ConfigTab({
   activeProvider,
   acting,
+  canStart,
   labConfig,
   currentSession,
   onEnterSession,
@@ -1181,6 +1405,7 @@ function ConfigTab({
 }: {
   activeProvider: RequirementAnalysisProvider | null;
   acting: boolean;
+  canStart: boolean;
   labConfig: RequirementAnalysisLabConfig;
   currentSession: RequirementAnalysisSession | null;
   onEnterSession: () => void;
@@ -1309,7 +1534,7 @@ function ConfigTab({
                 </button>
               ))}
             </div>
-            <Button block loading={acting} onClick={onStart} type="primary">
+            <Button block disabled={!canStart} loading={acting} onClick={onStart} type="primary">
               启动验证
             </Button>
             <Button block loading={reloadingOrchestrators} onClick={onReloadOrchestrators}>
@@ -1749,7 +1974,15 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema; logs: RequirementAnalysisProviderLog[] }) {
+function LogTab({
+  emptyMessage = "暂无模型或 Runner 调用日志。",
+  logSchema,
+  logs,
+}: {
+  emptyMessage?: string;
+  logSchema: RequirementAnalysisFieldSchema;
+  logs: RequirementAnalysisProviderLog[];
+}) {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const selectedLog =
     logs.find((log) => log.call_id === selectedCallId) ?? logs[0] ?? null;
@@ -1794,7 +2027,7 @@ function LogTab({ logSchema, logs }: { logSchema: RequirementAnalysisFieldSchema
             </div>
           ) : (
             <div className="requirement-analysis-lab-empty">
-              <Text type="secondary">暂无模型或 Runner 调用日志。</Text>
+              <Text type="secondary">{emptyMessage}</Text>
             </div>
           )}
         </section>
