@@ -528,7 +528,9 @@ export function RequirementAnalysisLabPage() {
     }
     try {
       setSessionArtifactSaving(true);
-      const response = await saveRequirementSpecWorkItemSessionArtifacts(selectedSpecItem.spec_item_id);
+      const response = await saveRequirementSpecWorkItemSessionArtifacts(selectedSpecItem.spec_item_id, {
+        session_id: session.session_id,
+      });
       updateSpecItem(response.data);
       setError(null);
     } catch (saveError) {
@@ -561,6 +563,7 @@ export function RequirementAnalysisLabPage() {
       setSessionArtifactSaving(true);
       const response = await saveRequirementSpecWorkItemSessionArtifactsAs(selectedSpecItem.spec_item_id, {
         title: saveAsSpecTitle.trim() || `${selectedSpecItem.title} 副本`,
+        session_id: session.session_id,
       });
       updateSpecItem(response.data);
       handleCloseSaveAsSpec();

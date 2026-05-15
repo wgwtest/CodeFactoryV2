@@ -210,3 +210,51 @@ def test_requirement_spec_work_item_saves_and_saves_as_session_artifacts() -> No
     saved_as_state = saved_as_document.json()["semantic_state"]
     assert saved_as_state["lab_session_artifacts"]["source_spec_item_id"] == item["spec_item_id"]
     assert saved_as_state["lab_session_artifacts"]["session_id"] == session_id
+
+
+def test_requirement_spec_work_item_save_as_accepts_explicit_session_id() -> None:
+    client = TestClient(create_app())
+    lab_config = client.get("/api/requirement-analysis/lab-config")
+    assert lab_config.status_code == 200
+    lab_template_id = lab_config.json()["defaults"]["template_id"]
+
+    created = client.post(
+        "/api/requirement-analysis/spec-items",
+        json={
+            "title": "态势分析系统需求规格说明",
+            "initial_description": "用于态势分析系统的需求分析。",
+            "template_id": lab_template_id,
+            "create_action": "stay",
+        },
+    )
+    assert created.status_code == 200
+    item = created.json()
+    assert item["analysis_session_id"] is None
+
+    session = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "态势分析系统需求规格说明",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": lab_template_id,
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert session.status_code == 200
+    session_id = session.json()["session_id"]
+
+    saved_as = client.post(
+        f"/api/requirement-analysis/spec-items/{item['spec_item_id']}/save-session-artifacts-as",
+        json={"title": "态势分析系统需求规格说明 - 手动会话副本", "session_id": session_id},
+    )
+    assert saved_as.status_code == 200
+    saved_as_item = saved_as.json()
+    assert saved_as_item["title"] == "态势分析系统需求规格说明 - 手动会话副本"
+    assert saved_as_item["analysis_session_id"] == session_id
+
+    refreshed = client.get(f"/api/requirement-analysis/spec-items/{item['spec_item_id']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["analysis_session_id"] == session_id

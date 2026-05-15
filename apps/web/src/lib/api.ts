@@ -2421,6 +2421,11 @@ export type RequirementSpecWorkItemCreateInput = {
 
 export type RequirementSpecWorkItemSaveAsInput = {
   title: string;
+  session_id?: string;
+};
+
+export type RequirementSpecWorkItemSaveSessionArtifactsInput = {
+  session_id?: string;
 };
 
 export type RequirementSpecWorkItemConfigureInput = {

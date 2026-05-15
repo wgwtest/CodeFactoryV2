@@ -219,13 +219,7 @@ test("shows a business publish precondition message when the spec has blocking g
 
 test("saves session artifacts from the session summary and can save them as a new spec item", async () => {
   const session = buildSession("waiting_user");
-  let specItems: RequirementSpecWorkItem[] = [
-    {
-      ...buildRequirementSpecWorkItem(),
-      analysis_session_id: session.session_id,
-      status: "configured",
-    },
-  ];
+  let specItems: RequirementSpecWorkItem[] = [buildRequirementSpecWorkItem()];
   mockRequirementAnalysisBootstrap();
   postMock.mockImplementation((url: string, body?: unknown) => {
     if (url === "/requirement-analysis/sessions") {
@@ -237,7 +231,7 @@ test("saves session artifacts from the session summary and can save them as a ne
       return Promise.resolve({ data: saved });
     }
     if (url === "/requirement-analysis/spec-items/spec-item-001/save-session-artifacts-as") {
-      expect(body).toEqual({ title: "态势分析系统需求规格说明 - 另存副本" });
+      expect(body).toEqual({ title: "态势分析系统需求规格说明 - 另存副本", session_id: session.session_id });
       const savedAs: RequirementSpecWorkItem = {
         ...buildRequirementSpecWorkItem(),
         spec_item_id: "spec-item-002",
@@ -308,7 +302,11 @@ test("saves session artifacts from the session summary and can save them as a ne
   expect(screen.getByText("会话摘要 / 过程产物")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/save-session-artifacts"));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/save-session-artifacts", {
+      session_id: session.session_id,
+    }),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "另存为" }));
   expect(screen.getByText("另存为需求规格说明")).toBeInTheDocument();
@@ -321,6 +319,7 @@ test("saves session artifacts from the session summary and can save them as a ne
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/save-session-artifacts-as", {
       title: "态势分析系统需求规格说明 - 另存副本",
+      session_id: session.session_id,
     }),
   );
   expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");

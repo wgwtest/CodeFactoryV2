@@ -13,6 +13,7 @@ import type {
   RequirementSpecWorkItemCreateInput,
   RequirementSpecWorkItemEnvelope,
   RequirementSpecWorkItemSaveAsInput,
+  RequirementSpecWorkItemSaveSessionArtifactsInput,
 } from "./api";
 
 export function getRequirementAnalysisLabConfig() {
@@ -59,8 +60,8 @@ export function deleteRequirementSpecWorkItem(specItemId: string) {
   return api.delete<{ deleted: boolean; spec_item_id: string }>(`/requirement-analysis/spec-items/${specItemId}`);
 }
 
-export function saveRequirementSpecWorkItemSessionArtifacts(specItemId: string) {
-  return api.post<RequirementSpecWorkItem>(`/requirement-analysis/spec-items/${specItemId}/save-session-artifacts`);
+export function saveRequirementSpecWorkItemSessionArtifacts(specItemId: string, payload?: RequirementSpecWorkItemSaveSessionArtifactsInput) {
+  return api.post<RequirementSpecWorkItem>(`/requirement-analysis/spec-items/${specItemId}/save-session-artifacts`, payload ?? {});
 }
 
 export function saveRequirementSpecWorkItemSessionArtifactsAs(specItemId: string, payload: RequirementSpecWorkItemSaveAsInput) {
