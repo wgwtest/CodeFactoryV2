@@ -217,6 +217,116 @@ test("shows a business publish precondition message when the spec has blocking g
   expect(screen.queryByText("Request failed with status code 409")).not.toBeInTheDocument();
 });
 
+test("saves session artifacts from the session summary and can save them as a new spec item", async () => {
+  const session = buildSession("waiting_user");
+  let specItems: RequirementSpecWorkItem[] = [
+    {
+      ...buildRequirementSpecWorkItem(),
+      analysis_session_id: session.session_id,
+      status: "configured",
+    },
+  ];
+  mockRequirementAnalysisBootstrap();
+  postMock.mockImplementation((url: string, body?: unknown) => {
+    if (url === "/requirement-analysis/sessions") {
+      return Promise.resolve({ data: session });
+    }
+    if (url === "/requirement-analysis/spec-items/spec-item-001/save-session-artifacts") {
+      const saved = { ...specItems[0], updated_at: "2026-05-13T11:00:00" };
+      specItems = [saved];
+      return Promise.resolve({ data: saved });
+    }
+    if (url === "/requirement-analysis/spec-items/spec-item-001/save-session-artifacts-as") {
+      expect(body).toEqual({ title: "态势分析系统需求规格说明 - 另存副本" });
+      const savedAs: RequirementSpecWorkItem = {
+        ...buildRequirementSpecWorkItem(),
+        spec_item_id: "spec-item-002",
+        title: "态势分析系统需求规格说明 - 另存副本",
+        status: "draft",
+        analysis_session_id: session.session_id,
+        updated_at: "2026-05-13T11:10:00",
+      };
+      specItems = [savedAs, ...specItems];
+      return Promise.resolve({ data: savedAs });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+  getMock.mockImplementation((url: string) => {
+    if (url === "/requirement-analysis/spec-items") {
+      return Promise.resolve({ data: { items: specItems } });
+    }
+    if (url === "/requirement-analysis/lab-config") {
+      return Promise.resolve({ data: buildLabConfig() });
+    }
+    if (url === "/requirement-analysis/orchestrators") {
+      return Promise.resolve({ data: buildOrchestrators() });
+    }
+    if (url === "/requirement-analysis/providers") {
+      return Promise.resolve({
+        data: {
+          items: [
+            { provider_id: "mock", name: "Mock Provider", status: "active" },
+            { provider_id: "deepseek", name: "DeepSeek", status: "active" },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates") {
+      return Promise.resolve({ data: { items: [buildRequirementAnalysisTemplateSummary()] } });
+    }
+    if (url === "/requirement-analysis/template-bases") {
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              template_id: "81433号",
+              template_code: "81433",
+              name: "软件级需求规格说明模板",
+              description: "基础模板依据，只读，不作为 Lab 会话直接编辑对象。",
+              status: "active",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/requirement-analysis/templates/xg-template-81433-attitude-analysis") {
+      return Promise.resolve({ data: buildRequirementAnalysisTemplateDetail() });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p2-requirement-analysis-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "P2 XG 需求分析组织器 Lab" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: /组织器配置/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "启动验证" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/sessions", expect.any(Object)));
+  expect(screen.getByText("会话摘要 / 过程产物")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/save-session-artifacts"));
+
+  fireEvent.click(screen.getByRole("button", { name: "另存为" }));
+  expect(screen.getByText("另存为需求规格说明")).toBeInTheDocument();
+  expect(screen.getByLabelText("新需规标题")).toHaveValue("空域协同规划软件需求规格说明 副本");
+  fireEvent.change(screen.getByLabelText("新需规标题"), {
+    target: { value: "态势分析系统需求规格说明 - 另存副本" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "确认另存" }));
+
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/requirement-analysis/spec-items/spec-item-001/save-session-artifacts-as", {
+      title: "态势分析系统需求规格说明 - 另存副本",
+    }),
+  );
+  expect(screen.getByRole("tab", { name: /需求规格说明管理/ })).toHaveAttribute("aria-selected", "true");
+  expect(await screen.findByText("态势分析系统需求规格说明 - 另存副本")).toBeInTheDocument();
+});
+
 test("keeps XG requirement analysis lab view tabs explicit while business state changes", async () => {
   let session = buildSession("created");
   const deferredTurn = createDeferred<{ data: RequirementAnalysisTurnEnvelope }>();

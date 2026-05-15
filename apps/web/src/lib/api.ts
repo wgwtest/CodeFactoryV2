@@ -2419,6 +2419,10 @@ export type RequirementSpecWorkItemCreateInput = {
   create_action?: "enter_config" | "stay";
 };
 
+export type RequirementSpecWorkItemSaveAsInput = {
+  title: string;
+};
+
 export type RequirementSpecWorkItemConfigureInput = {
   topic: string;
   orchestrator_id?: string;

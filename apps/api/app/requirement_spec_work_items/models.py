@@ -45,6 +45,12 @@ class RequirementSpecWorkItemRevisionCreate(BaseModel):
     title: str | None = None
 
 
+class RequirementSpecWorkItemSaveAs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+
+
 class RequirementSpecWorkItemSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

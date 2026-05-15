@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Input, Modal, Select, Space, Spin, Tabs, Tag, Typography } from "antd";
 import assistantAvatar from "../components/requirementAnalysisAssistantAvatar.svg";
 import userAvatar from "../components/requirementAnalysisUserAvatar.svg";
@@ -32,6 +32,8 @@ import {
   reloadRequirementAnalysisOrchestrators,
   saveRequirementAnalysisTemplate,
   saveRequirementAnalysisTemplateAsBase,
+  saveRequirementSpecWorkItemSessionArtifacts,
+  saveRequirementSpecWorkItemSessionArtifactsAs,
 } from "../lib/requirementAnalysis";
 import {
   getRequirementAnalysisProviderLogFieldNote,
@@ -207,6 +209,9 @@ export function RequirementAnalysisLabPage() {
   const [specItemActingId, setSpecItemActingId] = useState<string | null>(null);
   const [specItemCreating, setSpecItemCreating] = useState(false);
   const [deletingSpecItem, setDeletingSpecItem] = useState<RequirementSpecWorkItem | null>(null);
+  const [sessionArtifactSaving, setSessionArtifactSaving] = useState(false);
+  const [saveAsSpecModalOpen, setSaveAsSpecModalOpen] = useState(false);
+  const [saveAsSpecTitle, setSaveAsSpecTitle] = useState("");
   const [selectedOrchestratorId, setSelectedOrchestratorId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -513,6 +518,58 @@ export function RequirementAnalysisLabPage() {
       setError(getApiErrorMessage(deleteError, "删除需求规格说明失败"));
     } finally {
       setSpecItemActingId(null);
+    }
+  }
+
+  async function handleSaveSessionArtifacts() {
+    if (!selectedSpecItem || !session) {
+      setError("请先选择需求规格说明并创建会话。");
+      return;
+    }
+    try {
+      setSessionArtifactSaving(true);
+      const response = await saveRequirementSpecWorkItemSessionArtifacts(selectedSpecItem.spec_item_id);
+      updateSpecItem(response.data);
+      setError(null);
+    } catch (saveError) {
+      setError(getApiErrorMessage(saveError, "保存会话过程产物失败"));
+    } finally {
+      setSessionArtifactSaving(false);
+    }
+  }
+
+  function handleOpenSaveAsSpec() {
+    if (!selectedSpecItem || !session) {
+      setError("请先选择需求规格说明并创建会话。");
+      return;
+    }
+    setSaveAsSpecTitle(`${selectedSpecItem.title} 副本`);
+    setSaveAsSpecModalOpen(true);
+  }
+
+  function handleCloseSaveAsSpec() {
+    setSaveAsSpecModalOpen(false);
+    setSaveAsSpecTitle("");
+  }
+
+  async function handleSaveSessionArtifactsAs() {
+    if (!selectedSpecItem || !session) {
+      setError("请先选择需求规格说明并创建会话。");
+      return;
+    }
+    try {
+      setSessionArtifactSaving(true);
+      const response = await saveRequirementSpecWorkItemSessionArtifactsAs(selectedSpecItem.spec_item_id, {
+        title: saveAsSpecTitle.trim() || `${selectedSpecItem.title} 副本`,
+      });
+      updateSpecItem(response.data);
+      handleCloseSaveAsSpec();
+      setActiveTab("spec");
+      setError(null);
+    } catch (saveAsError) {
+      setError(getApiErrorMessage(saveAsError, "另存会话过程产物失败"));
+    } finally {
+      setSessionArtifactSaving(false);
     }
   }
 
@@ -844,11 +901,20 @@ export function RequirementAnalysisLabPage() {
             {activeTab === "session" ? (
               <SessionTab
                 acting={acting}
+                canSaveArtifacts={Boolean(selectedSpecItem && session)}
                 currentTurn={currentTurn}
+                onCloseSaveAsSpec={handleCloseSaveAsSpec}
+                onOpenSaveAsSpec={handleOpenSaveAsSpec}
                 onQuickOptionSelect={(option) => void submitUserInput(formatQuickOptionInput(option))}
+                onSaveArtifacts={() => void handleSaveSessionArtifacts()}
+                onSaveArtifactsAs={() => void handleSaveSessionArtifactsAs()}
                 onSend={() => void handleSend()}
                 pendingUserInput={pendingUserInput}
+                saveAsModalOpen={saveAsSpecModalOpen}
+                saveAsTitle={saveAsSpecTitle}
+                savingArtifacts={sessionArtifactSaving}
                 session={session}
+                setSaveAsTitle={setSaveAsSpecTitle}
                 setUserInput={setUserInput}
                 userInput={userInput}
                 writePolicies={labConfig.write_policies}
@@ -1433,21 +1499,39 @@ function ConfigTab({
 
 function SessionTab({
   acting,
+  canSaveArtifacts,
   currentTurn,
+  onCloseSaveAsSpec,
+  onOpenSaveAsSpec,
   onQuickOptionSelect,
+  onSaveArtifacts,
+  onSaveArtifactsAs,
   onSend,
   pendingUserInput,
+  saveAsModalOpen,
+  saveAsTitle,
+  savingArtifacts,
   session,
+  setSaveAsTitle,
   setUserInput,
   userInput,
   writePolicies,
 }: {
   acting: boolean;
+  canSaveArtifacts: boolean;
   currentTurn: RequirementAnalysisTurn | null;
+  onCloseSaveAsSpec: () => void;
+  onOpenSaveAsSpec: () => void;
   onQuickOptionSelect: (option: RequirementAnalysisQuickOption) => void;
+  onSaveArtifacts: () => void;
+  onSaveArtifactsAs: () => void;
   onSend: () => void;
   pendingUserInput: string | null;
+  saveAsModalOpen: boolean;
+  saveAsTitle: string;
+  savingArtifacts: boolean;
   session: RequirementAnalysisSession | null;
+  setSaveAsTitle: (value: string) => void;
   setUserInput: (value: string) => void;
   userInput: string;
   writePolicies: RequirementAnalysisLabConfig["write_policies"];
@@ -1548,7 +1632,18 @@ function SessionTab({
             </div>
           )}
         </section>
-        <SessionSummary session={session} />
+        <SessionSummary
+          canSaveArtifacts={canSaveArtifacts}
+          onCloseSaveAsSpec={onCloseSaveAsSpec}
+          onOpenSaveAsSpec={onOpenSaveAsSpec}
+          onSaveArtifacts={onSaveArtifacts}
+          onSaveArtifactsAs={onSaveArtifactsAs}
+          saveAsModalOpen={saveAsModalOpen}
+          saveAsTitle={saveAsTitle}
+          savingArtifacts={savingArtifacts}
+          session={session}
+          setSaveAsTitle={setSaveAsTitle}
+        />
       </div>
     </>
   );
@@ -1988,10 +2083,45 @@ function buildWorkingDocumentSegments(text: string, fragments: WorkingDocumentFr
   return segments.filter((segment) => segment.text);
 }
 
-function SessionSummary({ session }: { session: RequirementAnalysisSession | null }) {
+function SessionSummary({
+  canSaveArtifacts,
+  onCloseSaveAsSpec,
+  onOpenSaveAsSpec,
+  onSaveArtifacts,
+  onSaveArtifactsAs,
+  saveAsModalOpen,
+  saveAsTitle,
+  savingArtifacts,
+  session,
+  setSaveAsTitle,
+}: {
+  canSaveArtifacts: boolean;
+  onCloseSaveAsSpec: () => void;
+  onOpenSaveAsSpec: () => void;
+  onSaveArtifacts: () => void;
+  onSaveArtifactsAs: () => void;
+  saveAsModalOpen: boolean;
+  saveAsTitle: string;
+  savingArtifacts: boolean;
+  session: RequirementAnalysisSession | null;
+  setSaveAsTitle: (value: string) => void;
+}) {
   return (
     <section className="requirement-analysis-lab-panel requirement-analysis-lab-summary">
-      <PanelHead title="会话摘要 / 过程产物" subtitle="主视角是结构化状态承载页；临时正文、完成度树和沟通路径作为辅助对照。" />
+      <PanelHead
+        title="会话摘要 / 过程产物"
+        subtitle="主视角是结构化状态承载页；临时正文、完成度树和沟通路径作为辅助对照。"
+        extra={
+          <Space className="requirement-analysis-lab-summary-actions" wrap>
+            <Button aria-label="保存" disabled={!canSaveArtifacts} loading={savingArtifacts} onClick={onSaveArtifacts}>
+              保存
+            </Button>
+            <Button aria-label="另存为" disabled={!canSaveArtifacts} loading={savingArtifacts} onClick={onOpenSaveAsSpec}>
+              另存为
+            </Button>
+          </Space>
+        }
+      />
       {session ? (
         <Tabs
           defaultActiveKey="decision-state"
@@ -2023,6 +2153,29 @@ function SessionSummary({ session }: { session: RequirementAnalysisSession | nul
           <Text type="secondary">尚未创建会话，暂无摘要。</Text>
         </div>
       )}
+      <Modal
+        cancelText="取消"
+        destroyOnHidden
+        okButtonProps={{ disabled: !saveAsTitle.trim(), loading: savingArtifacts }}
+        okText="确认另存"
+        onCancel={onCloseSaveAsSpec}
+        onOk={onSaveArtifactsAs}
+        open={saveAsModalOpen}
+        title="另存为需求规格说明"
+      >
+        <div className="requirement-analysis-lab-save-as-body">
+          <label className="requirement-analysis-lab-field">
+            <Text strong>新需规标题</Text>
+            <Input
+              aria-label="新需规标题"
+              onChange={(event) => setSaveAsTitle(event.target.value)}
+              placeholder="输入另存后的需求规格说明标题"
+              value={saveAsTitle}
+            />
+          </label>
+          <Text type="secondary">另存后会创建新的需求规格说明对象，并复制当前会话的结构化状态、临时正文、完成度树和沟通路径。</Text>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -2317,11 +2470,14 @@ function formatDocumentPatchAnchorLabel(
   return plan.display_heading || plan.canonical_clause_heading || plan.template_clause_id || planRef;
 }
 
-function PanelHead({ title, subtitle }: { title: string; subtitle: string }) {
+function PanelHead({ title, subtitle, extra }: { title: string; subtitle: string; extra?: ReactNode }) {
   return (
     <div className="requirement-analysis-lab-panel-head">
-      <Title level={4}>{title}</Title>
-      <Text type="secondary">{subtitle}</Text>
+      <div className="requirement-analysis-lab-panel-head-main">
+        <Title level={4}>{title}</Title>
+        <Text type="secondary">{subtitle}</Text>
+      </div>
+      {extra ? <div className="requirement-analysis-lab-panel-head-extra">{extra}</div> : null}
     </div>
   );
 }

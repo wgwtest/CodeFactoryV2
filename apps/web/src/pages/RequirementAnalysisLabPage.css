@@ -424,7 +424,25 @@
 }
 
 .requirement-analysis-lab-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 14px;
+}
+
+.requirement-analysis-lab-panel-head-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.requirement-analysis-lab-panel-head-main .ant-typography {
+  margin-bottom: 0;
+}
+
+.requirement-analysis-lab-panel-head-extra {
+  flex-shrink: 0;
 }
 
 .requirement-analysis-lab-option-list,
@@ -817,6 +835,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.requirement-analysis-lab-summary-actions {
+  justify-content: flex-end;
+}
+
+.requirement-analysis-lab-save-as-body {
+  display: grid;
+  gap: 12px;
 }
 
 .requirement-analysis-lab-doc-section {
