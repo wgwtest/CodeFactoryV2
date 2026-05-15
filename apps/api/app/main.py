@@ -5,6 +5,7 @@ from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.p6 import router as p6_router
 from app.api.routes.p1_refactor import router as p1_refactor_router
 from app.api.routes.modeling import router as modeling_router
+from app.api.routes.platform_exchange import router as platform_exchange_router
 from app.api.routes.platform_config import router as platform_config_router
 from app.api.routes.platform_display import router as platform_display_router
 from app.api.routes.requirement_authoring import router as requirement_authoring_router
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(p1_refactor_router, prefix=settings.api_prefix)
     app.include_router(p6_router, prefix=settings.api_prefix)
     app.include_router(platform_config_router, prefix=settings.api_prefix)
+    app.include_router(platform_exchange_router, prefix=settings.api_prefix)
     app.include_router(platform_display_router, prefix=settings.api_prefix)
     app.include_router(modeling_router, prefix=settings.api_prefix)
     app.include_router(requirement_authoring_router, prefix=settings.api_prefix)

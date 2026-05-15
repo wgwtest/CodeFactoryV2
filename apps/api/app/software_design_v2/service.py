@@ -6,6 +6,8 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from app.db.models.requirements import RequirementAuthoringDocument
+from app.platform_exchange.models import ConsumeArtifactCommand
+from app.platform_exchange.service import PlatformExchangeService
 from app.software_design_v2.models import P3DesignSessionCreate, P3DesignTurnWrite
 
 
@@ -14,8 +16,17 @@ class SoftwareDesignV2Service:
 
     def __init__(self, session) -> None:
         self.session = session
+        self.platform_exchange_service = PlatformExchangeService(session)
 
     def list_input_packages(self) -> dict:
+        artifact_items = self.platform_exchange_service.list_artifacts(
+            artifact_type="requirement_spec_package",
+            producer_stage="P2",
+            lifecycle_status="published",
+        )["items"]
+        if artifact_items:
+            return {"items": [self._build_input_package_from_artifact(artifact) for artifact in artifact_items]}
+
         documents = self.session.scalars(
             select(RequirementAuthoringDocument).order_by(RequirementAuthoringDocument.updated_at.desc())
         ).all()
@@ -52,6 +63,18 @@ class SoftwareDesignV2Service:
             "updated_at": self._now(),
         }
         self._sessions[session_id] = design_session
+        if not input_package["input_package_id"].startswith("p2frozen-"):
+            self.platform_exchange_service.consume_artifact(
+                input_package["input_package_id"],
+                ConsumeArtifactCommand(
+                    consumer_stage="P3",
+                    consumer_ref_id=session_id,
+                    consumer_ref_type="P3DesignLabSession",
+                    consumption_mode="snapshot",
+                    accepted_schema_version="requirement_spec_package.v1",
+                    result_status="accepted",
+                ),
+            )
         return design_session
 
     def get_session(self, session_id: str) -> dict | None:
@@ -251,6 +274,23 @@ class SoftwareDesignV2Service:
             "frozen_at": frozen_package.get("frozen_at"),
             "p3_consumable": frozen_package.get("p3_consumable") is True,
             "related_designs": self._list_related_designs(f"p2frozen-{document.id}"),
+        }
+
+    def _build_input_package_from_artifact(self, artifact: dict) -> dict:
+        payload = artifact.get("payload") or {}
+        source_trace = payload.get("source_trace") or artifact.get("source_trace") or {}
+        standard_document = payload.get("standard_document") or {}
+        return {
+            "input_package_id": artifact["artifact_id"],
+            "source_document_id": source_trace.get("authoring_document_id", ""),
+            "source_title": standard_document.get("title") or source_trace.get("title") or "未命名需求规格说明",
+            "standard_document": standard_document,
+            "structured_spec": payload.get("structured_spec", {}),
+            "annotations": payload.get("annotations", []),
+            "knowledge_binding": payload.get("knowledge_binding"),
+            "frozen_at": source_trace.get("frozen_at") or artifact.get("frozen_at"),
+            "p3_consumable": payload.get("p3_consumable") is True,
+            "related_designs": self._list_related_designs(artifact["artifact_id"]),
         }
 
     def _list_related_designs(self, input_package_id: str) -> list[dict]:

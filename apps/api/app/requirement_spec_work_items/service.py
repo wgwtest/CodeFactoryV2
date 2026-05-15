@@ -7,6 +7,8 @@ from app.requirement_analysis.template_service import RequirementAnalysisTemplat
 from app.requirement_authoring.models import RequirementAuthoringDocumentCreate, RequirementAuthoringDocumentSave
 from app.requirement_authoring.service import RequirementAuthoringService
 from app.requirement_exchange.requirement_spec_service import RequirementSpecApplicationService
+from app.platform_exchange.models import PublishArtifactCommand
+from app.platform_exchange.service import PlatformExchangeService
 from app.requirement_spec_work_items.models import (
     RequirementSpecWorkItemConfigure,
     RequirementSpecWorkItemCreate,
@@ -24,6 +26,7 @@ class RequirementSpecWorkItemService:
         self.analysis_service = RequirementAnalysisApplicationService(session)
         self.analysis_template_service = RequirementAnalysisTemplateService()
         self.spec_service = RequirementSpecApplicationService(session)
+        self.platform_exchange_service = PlatformExchangeService(session)
 
     def list_items(self) -> dict:
         return {"items": [self.serialize_item(item) for item in self.repository.list_items()]}
@@ -131,10 +134,36 @@ class RequirementSpecWorkItemService:
                 "payload": structured_spec,
             }
         )
+        platform_artifact = self.platform_exchange_service.publish_artifact(
+            PublishArtifactCommand(
+                artifact_type="requirement_spec_package",
+                artifact_version=str(item.version),
+                schema_version="requirement_spec_package.v1",
+                producer_stage="P2",
+                producer_ref_id=item.id,
+                producer_ref_type="RequirementSpecWorkItem",
+                payload=self._build_requirement_spec_package_payload(
+                    item=item,
+                    document=document,
+                    requirement_spec_id=requirement_spec.id,
+                ),
+                source_trace={
+                    "spec_item_id": item.id,
+                    "authoring_document_id": item.authoring_document_id,
+                    "requirement_spec_id": requirement_spec.id,
+                    "requirement_spec_version": item.version,
+                    "title": item.title,
+                    "frozen_at": (document.get("frozen_package") or {}).get("frozen_at"),
+                    "published_from": "RequirementSpecWorkItemService.publish_item",
+                },
+                frozen_at=(document.get("frozen_package") or {}).get("frozen_at"),
+                published_by="system",
+            )
+        )
         item.status = "published_to_p3"
         item.p3_consumable = True
         item.published_requirement_spec_id = requirement_spec.id
-        item.published_package_id = f"p3-input-{requirement_spec.id}"
+        item.published_package_id = platform_artifact["artifact_id"]
         return self.serialize_item(self.repository.save_item(item))
 
     def create_revision(self, spec_item_id: str, payload: RequirementSpecWorkItemRevisionCreate) -> dict | None:
@@ -218,3 +247,29 @@ class RequirementSpecWorkItemService:
 
         candidates = self.authoring_service.template_application_service.repository.list_templates_by_code(template_code)
         return candidates[0].id if candidates else template_id
+
+    @staticmethod
+    def _build_requirement_spec_package_payload(
+        *,
+        item: RequirementSpecWorkItem,
+        document: dict,
+        requirement_spec_id: str,
+    ) -> dict:
+        frozen_package = document.get("frozen_package") or {}
+        semantic_state = document.get("semantic_state") or {}
+        return {
+            "standard_document": frozen_package.get("standard_document", document.get("document")),
+            "structured_spec": frozen_package.get("structured_spec", {}),
+            "annotations": frozen_package.get("annotations", document.get("annotations") or []),
+            "check_result": document.get("check_result") or {},
+            "knowledge_binding": item.knowledge_binding or semantic_state.get("knowledge_binding"),
+            "source_trace": {
+                "spec_item_id": item.id,
+                "authoring_document_id": item.authoring_document_id,
+                "requirement_spec_id": requirement_spec_id,
+                "requirement_spec_version": item.version,
+                "title": item.title,
+                "frozen_at": frozen_package.get("frozen_at"),
+            },
+            "p3_consumable": True,
+        }

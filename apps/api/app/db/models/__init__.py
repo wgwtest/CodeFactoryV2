@@ -1,6 +1,7 @@
-from app.db.models import document, knowledge, requirements, tool_hub_delivery
+from app.db.models import document, knowledge, platform_exchange, requirements, tool_hub_delivery
 from app.db.models.document import Document, DocumentSegment, DocumentVersion, ParseRun
 from app.db.models.knowledge import AuditLog, CandidateItem, KnowledgeItem, KnowledgeVersion
+from app.db.models.platform_exchange import PlatformExchangeArtifact, PlatformExchangeConsumption
 from app.db.models.requirements import (
     RequirementAnalysisSession,
     RequirementAuthoringDocument,
@@ -24,6 +25,8 @@ __all__ = [
     "KnowledgeItem",
     "KnowledgeVersion",
     "ParseRun",
+    "PlatformExchangeArtifact",
+    "PlatformExchangeConsumption",
     "RequirementAnalysisSession",
     "RequirementAuthoringDocument",
     "RequirementAuthoringTemplate",
@@ -35,6 +38,7 @@ __all__ = [
     "ToolValidationReportRecord",
     "document",
     "knowledge",
+    "platform_exchange",
     "requirements",
     "tool_hub_delivery",
 ]

@@ -6,6 +6,7 @@ import { P1CleanApp, P1KnowledgeBaseGateway } from "./features/p1Clean/P1CleanAp
 import { P1RefactorShell } from "./features/p1/shell/P1RefactorShell";
 import { ApplicationModelerPage } from "./pages/ApplicationModelerPage";
 import { ArchiveManagementPage } from "./pages/ArchiveManagementPage";
+import { BasePlatformMonitorPage } from "./pages/BasePlatformMonitorPage";
 import { BuildWorkspacePage } from "./pages/BuildWorkspacePage";
 import { DocumentIntakePage } from "./pages/DocumentIntakePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
@@ -152,6 +153,14 @@ export default function App() {
 
   if (location.pathname === "/") {
     return <Navigate to="/portal" replace />;
+  }
+
+  if (location.pathname.startsWith("/base-platform-monitor")) {
+    return (
+      <Routes>
+        <Route path="/base-platform-monitor" element={<BasePlatformMonitorPage />} />
+      </Routes>
+    );
   }
 
   if (location.pathname.startsWith("/p1-legacy")) {
