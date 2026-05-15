@@ -603,7 +603,117 @@ GET /api/platform-exchange/monitor
 
 该聚合 API 只做读取和汇总，不产生新业务状态，不写入审计事件。
 
-### 5.6 与 `P6` 的前端关系
+### 5.6 前端准实时读取策略
+
+`P2 -> Base Platform -> P3` 首版链路在后端采用同步写入和同步查询：
+
+```text
+P2 发布需求规格包
+  -> Base Platform 写入平台资源登记项（ArtifactEnvelope）
+  -> P3 查询平台资源并映射为 P3 设计输入包（P3DesignInputPackage）
+```
+
+但是前端页面如果只在首次打开时请求一次数据，会出现“后端已经有新资源，已打开页面仍显示旧数据”的体验问题。该问题不是平台存储失败，也不是 `P3` 后端查询失败，而是已打开前端页面缺少准实时刷新机制。
+
+首版统一采用以下前端准实时读取策略：
+
+```text
+页面首次打开：立即请求
+页面保持可见：每 1 秒轮询一次
+页面从后台切回前台：立即请求
+用户手动刷新：立即请求
+请求未完成时：不发起并发重复请求
+请求失败时：保留上一版可用数据并显示错误
+```
+
+该策略适用于：
+
+| 页面或模块 | 请求接口 | 刷新周期 | 说明 |
+| --- | --- | --- | --- |
+| 基础平台监控日志台（Base Platform Monitor） | `GET /api/platform-exchange/monitor` | 1 秒 | 展示 `P1 ~ P5` 与 `Base Platform` 总账 |
+| P3 设计输入包列表（P3 Input Packages） | `GET /api/software-design-v2/input-packages` | 1 秒 | 让 `P2` 发布后的需求规格包尽快进入 `P3` 可选输入 |
+| 后续 `P4/P5` 输入列表 | 待定 | 1 秒 | 延续相同策略 |
+
+虽然基础平台监控日志台是只读观察页面，`P3` 输入包列表是业务入口，但从用户验收视角看，两者的实时性要求一致：
+
+```text
+P2 已发布
+  -> P3 应能尽快看到
+  -> Base Platform Monitor 也应能尽快看到
+```
+
+因此首版不再为两者设置不同刷新策略，二者统一使用同一套前端准实时读取机制。
+
+技术实现上，前端应提供通用读取机制：
+
+```text
+usePollingResource
+```
+
+中文口径为：
+
+```text
+前端轮询资源读取 Hook
+```
+
+职责包括：
+
+1. 组件挂载后立即加载数据；
+2. 页面可见时按固定周期轮询；
+3. 浏览器标签页从后台切回前台时立即刷新；
+4. 浏览器窗口重新获得焦点时立即刷新；
+5. 避免同一资源重复并发请求；
+6. 组件卸载时清理定时器和事件监听；
+7. 请求失败时调用错误处理，但不强制清空旧数据。
+
+基础平台监控日志台通过以下方式读取：
+
+```text
+usePollingResource(
+  intervalMs = 1000,
+  load = GET /api/platform-exchange/monitor
+)
+```
+
+`P3DesignLabPage` 通过以下方式读取：
+
+```text
+usePollingResource(
+  intervalMs = 1000,
+  load = GET /api/software-design-v2/input-packages
+)
+```
+
+`P3` 输入包列表刷新后必须保留用户当前选择：
+
+```text
+如果当前 selectedPackageId 仍存在
+  -> 保留当前选择
+否则
+  -> 选择最新列表中的第一项
+```
+
+这样可以避免页面自动刷新时打断用户正在查看或操作的输入包。
+
+1 秒轮询是首版准实时方案，不是最终事件驱动架构。后续如果需要更强实时性，可以演进为：
+
+```text
+Server-Sent Events（服务端事件推送，SSE）
+WebSocket（双向实时通信）
+平台事件总线
+```
+
+即使后续切换为推送机制，也应优先复用当前抽象边界：
+
+```text
+页面不直接绑定传输机制
+  -> 页面调用统一资源读取/订阅抽象
+  -> 底层可从 polling 替换为 SSE/WebSocket
+```
+
+也就是说，`usePollingResource` 当前是轮询实现；后续可扩展为统一的 `useRealtimeResource` 或在内部增加推送能力，而不是让每个页面各自实现实时通信。
+
+### 5.7 与 `P6` 的前端关系
 
 基础平台不是 `P6` 的后台专属模块。
 
@@ -624,13 +734,14 @@ P6 不拥有这些资源的生产权和存储权
 
 后续如果 `P6` 展示 `P1 ~ P5` 流转图，应通过平台查询资源关系、消费记录、版本和追溯链，而不是直接扫描 `P2/P3/P4/P5` 内部表。
 
-### 5.7 前端改动边界
+### 5.8 前端改动边界
 
 首版不改 `P1 ~ P5` 既有业务页面。若需要实现基础平台监控日志台，候选位置为：
 
 ```text
 apps/web/src/lib/api.ts
 apps/web/src/lib/platformExchange.ts
+apps/web/src/lib/usePollingResource.ts
 apps/web/src/pages/BasePlatformMonitorPage.tsx
 apps/web/src/lib/softwareDesignV2.ts
 apps/web/src/pages/P3DesignLabPage.tsx
@@ -641,7 +752,8 @@ apps/web/src/pages/RequirementAnalysisLabPage.tsx
 
 - `BasePlatformMonitorPage.tsx` 是基础平台自己的只读页面；
 - `platformExchange.ts` 可封装平台资源和消费记录查询；
-- `P3DesignLabPage.tsx` 与 `RequirementAnalysisLabPage.tsx` 原则上不因监控日志台而重做。
+- `usePollingResource.ts` 承接跨页面准实时读取机制；
+- `P3DesignLabPage.tsx` 可以接入同一准实时读取机制以刷新平台输入包，但不因监控日志台而重做业务工作区。
 
 ## 6. 后端软件设计
 
@@ -939,6 +1051,28 @@ producer_stage + artifact_type + producer_ref_id + artifact_version + payload_ha
    - 让 `P2` 发布完整链路由应用服务统一提交。
 
 首版不应为了追求事务完美而大面积重构所有既有仓储。当前更稳妥的做法是把平台写入设计成幂等、可重试、可检测冲突。
+
+#### 6.4.7 前端轮询与后端一致性边界
+
+前端 1 秒轮询只解决“已打开页面是否及时重新读取后端状态”的可见性问题，不改变后端权威事实。
+
+后端权威链路仍然是：
+
+```text
+P2 发布接口返回 200
+  -> Base Platform 已写入 published 状态 artifact
+  -> P3 input-packages API 从 Base Platform 查询该 artifact
+```
+
+如果出现以下问题，不能归因为前端轮询：
+
+1. `P2` 发布接口失败；
+2. `P2` 发布接口返回 200 但平台表没有写入资源；
+3. `P3` 后端 `input-packages` 查询条件错误；
+4. 平台资源生命周期状态不是 `published`；
+5. 数据库事务未提交或服务连接到不同数据库。
+
+这些属于后端链路一致性问题，应通过后端合同测试和接口检查定位。
 
 ### 6.5 注册和装配要求
 
@@ -2084,13 +2218,14 @@ apps/api/tests/
 ```text
 apps/web/src/lib/api.ts
 apps/web/src/lib/platformExchange.ts
+apps/web/src/lib/usePollingResource.ts
 apps/web/src/pages/BasePlatformMonitorPage.tsx
 apps/web/src/lib/softwareDesignV2.ts
 apps/web/src/pages/P3DesignLabPage.tsx
 apps/web/src/pages/RequirementAnalysisLabPage.tsx
 ```
 
-`BasePlatformMonitorPage.tsx` 是基础平台首版只读监控页；其余位置只能用于 API 封装或保持既有页面兼容，不能把首版基础平台扩展成业务操作型前端系统。
+`BasePlatformMonitorPage.tsx` 是基础平台首版只读监控页；`usePollingResource.ts` 承接跨页面准实时读取机制；`P3DesignLabPage.tsx` 可以接入同一准实时读取机制以刷新平台输入包，但不因监控日志台而重做业务工作区。其余位置只能用于 API 封装或保持既有页面兼容，不能把首版基础平台扩展成业务操作型前端系统。
 
 ## 16. 验收口径
 
@@ -2107,6 +2242,10 @@ apps/web/src/pages/RequirementAnalysisLabPage.tsx
 7. 当前首版链路中，`P2` 框能展示需求规格包发布记录，`P3` 框能展示消费记录，`Base Platform` 框能展示资源总账和消费总账。
 8. `P1/P4/P5` 在未接入时显示“暂无平台资源 / 暂无消费记录 / 未接入首版链路”，而不是从页面结构中缺失。
 9. 用户无需进入基础平台监控日志台即可完成当前 `P2 -> P3` 主业务链；监控日志台只用于观察和验收。
+10. 基础平台监控日志台打开后，`P2` 发布新资源应在约 1 秒内显示到 `P2` 框。
+11. `P3DesignLabPage` 打开后，`P2` 发布新需求规格包应在约 1 秒内进入 `P3` 输入包列表。
+12. `P3` 输入包自动刷新不得打断用户当前选中的输入包；若当前选中项仍存在，必须保留选择。
+13. `P3` 输入包列表必须提供手动刷新入口，触发与自动刷新相同的数据读取逻辑。
 
 ### 16.2 架构验收
 
@@ -2119,6 +2258,7 @@ apps/web/src/pages/RequirementAnalysisLabPage.tsx
 5. 旧扫描路径只是短期降级，不是长期事实源。
 6. 基础平台监控日志台的数据来源来自 `platform_exchange_artifacts` 和 `platform_exchange_consumptions`，首版不新增审计事件表。
 7. 基础平台监控日志台不提供任何业务写操作，不改变平台资源和消费记录。
+8. 前端准实时读取只改变页面新鲜度，不改变后端权威事实来源；`P3` 仍必须通过 `GET /api/software-design-v2/input-packages` 从平台资源映射输入包。
 
 ### 16.3 测试入口
 
@@ -2132,6 +2272,16 @@ uv run pytest apps/api/tests/test_requirement_spec_work_items_api.py apps/api/te
 若只改后端平台交换层，前端测试不是每次必跑；但如果改了 `apps/web/src/lib/api.ts`、`P2` 或 `P3` 页面，必须跑对应前端测试。
 
 如果实现或修改基础平台监控日志台，必须跑该页面对应的前端测试，证明全阶段分框、空态、平台资源记录、平台消费记录和只读约束都符合设计。
+
+如果实现或修改前端准实时读取策略，必须跑：
+
+```bash
+corepack pnpm --dir apps/web exec vitest run \
+  src/test/BasePlatformMonitorPage.test.tsx \
+  src/test/P3DesignLabPage.test.tsx
+
+corepack pnpm --dir apps/web exec tsc --noEmit
+```
 
 ## 17. 风险、约束与反模式
 

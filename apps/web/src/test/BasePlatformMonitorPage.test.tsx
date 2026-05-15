@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import App from "../App";
 
@@ -9,6 +9,54 @@ const getMock = vi.fn();
 const postMock = vi.fn();
 const patchMock = vi.fn();
 const deleteMock = vi.fn();
+
+const emptyMonitorSnapshot = {
+  stages: [
+    {
+      stage: "P1",
+      published: [],
+      consumed: [],
+      empty_state: "暂无平台资源 / 暂无消费记录 / 未接入首版链路",
+    },
+    {
+      stage: "P2",
+      published: [],
+      consumed: [],
+      empty_state: "暂无平台资源 / 暂无消费记录 / 未接入首版链路",
+    },
+    {
+      stage: "P3",
+      published: [],
+      consumed: [],
+      empty_state: "暂无平台资源 / 暂无消费记录 / 未接入首版链路",
+    },
+    {
+      stage: "P4",
+      published: [],
+      consumed: [],
+      empty_state: "暂无平台资源 / 暂无消费记录 / 未接入首版链路",
+    },
+    {
+      stage: "P5",
+      published: [],
+      consumed: [],
+      empty_state: "暂无平台资源 / 暂无消费记录 / 未接入首版链路",
+    },
+  ],
+  base_platform: {
+    artifact_totals: {
+      by_type: {},
+      by_producer_stage: {},
+      by_lifecycle_status: {},
+    },
+    consumption_totals: {
+      by_consumer_stage: {},
+      by_result_status: {},
+    },
+    latest_artifacts: [],
+    latest_consumptions: [],
+  },
+};
 
 vi.mock("../lib/api", () => ({
   api: {
@@ -20,6 +68,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 beforeEach(() => {
+  vi.useRealTimers();
   getMock.mockReset();
   postMock.mockReset();
   patchMock.mockReset();
@@ -30,6 +79,10 @@ beforeEach(() => {
     }
     throw new Error(`unexpected get url: ${url}`);
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 test("renders Base Platform monitor as a read-only six-panel log console", async () => {
@@ -76,6 +129,38 @@ test("renders Base Platform monitor as a read-only six-panel log console", async
   expect(postMock).not.toHaveBeenCalled();
   expect(patchMock).not.toHaveBeenCalled();
   expect(deleteMock).not.toHaveBeenCalled();
+});
+
+test("refreshes monitor snapshot while the log console stays open", async () => {
+  vi.useFakeTimers();
+  getMock.mockImplementation((url: string) => {
+    if (url === "/platform-exchange/monitor") {
+      const snapshot = getMock.mock.calls.length === 1 ? emptyMonitorSnapshot : buildMonitorSnapshot();
+      return Promise.resolve({ data: snapshot });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/base-platform-monitor"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  const p2Panel = screen.getByTestId("base-platform-stage-P2");
+  expect(within(p2Panel).getByText("暂无平台资源 / 暂无消费记录 / 未接入首版链路")).toBeInTheDocument();
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  expect(getMock).toHaveBeenCalledTimes(2);
+  expect(within(p2Panel).getByText(/发布 requirement_spec_package/)).toBeInTheDocument();
+  expect(within(p2Panel).getByText(/artifact=art-001/)).toBeInTheDocument();
 });
 
 function buildMonitorSnapshot() {

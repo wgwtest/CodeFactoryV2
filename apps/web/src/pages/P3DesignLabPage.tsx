@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Alert, Button, Empty, Input, Select, Space, Spin, Tag, Typography } from "antd";
 
 import { StageLabShell, type StageLabNavigationItem } from "../components/stageWorkbench/StageLabShell";
@@ -22,6 +22,7 @@ import {
   runSoftwareDesignV2Check,
   saveSoftwareDesignV2Draft,
 } from "../lib/softwareDesignV2";
+import { usePollingResource } from "../lib/usePollingResource";
 import { buildP3DesignLabWorkbenchViewModel } from "./adapters/p3DesignLabWorkbenchAdapter";
 import "./P3DesignLabPage.css";
 
@@ -33,6 +34,8 @@ const DEFAULT_POLICY = {
   output_style: "按标准软设正文写，不写聊天语气",
 };
 
+const INPUT_PACKAGE_REFRESH_INTERVAL_MS = 1000;
+
 type P3DesignLabNavigationKey = "input" | "workspace" | "projection" | "turn" | "review" | "log";
 type P3DesignWorkspaceMode = "document" | "structured";
 
@@ -43,37 +46,28 @@ export function P3DesignLabPage() {
   const [activeNavigationKey, setActiveNavigationKey] = useState<P3DesignLabNavigationKey>("workspace");
   const [workspaceMode, setWorkspaceMode] = useState<P3DesignWorkspaceMode>("document");
   const [cliInput, setCliInput] = useState("按保守方案，先不要拆成微服务；模块名要能直接下发给 P4。");
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        setLoading(true);
-        const response = await getSoftwareDesignV2InputPackages();
-        if (cancelled) {
-          return;
-        }
-        setInputPackages(response.data.items);
-        setSelectedPackageId(response.data.items[0]?.input_package_id ?? null);
-        setError(null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载 P3 输入包失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
+  const loadInputPackages = useCallback(async () => {
+    const response = await getSoftwareDesignV2InputPackages();
+    return response.data.items;
   }, []);
+
+  const { loading, refresh: refreshInputPackages } = usePollingResource({
+    intervalMs: INPUT_PACKAGE_REFRESH_INTERVAL_MS,
+    load: loadInputPackages,
+    onData: useCallback((items: P3DesignLabInputPackage[]) => {
+      setInputPackages(items);
+      setSelectedPackageId((current) =>
+        current && items.some((item) => item.input_package_id === current) ? current : (items[0]?.input_package_id ?? null),
+      );
+      setError(null);
+    }, []),
+    onError: useCallback((loadError: unknown) => {
+      setError(loadError instanceof Error ? loadError.message : "加载 P3 输入包失败");
+    }, []),
+  });
 
   const selectedPackage = useMemo(
     () => inputPackages.find((item) => item.input_package_id === selectedPackageId) ?? inputPackages[0] ?? null,
@@ -275,6 +269,7 @@ export function P3DesignLabPage() {
     onRunCheck: () => void handleRunCheck(),
     onSaveDraft: () => void handleSaveDraft(),
     onSubmitTurn: () => void handleSubmitTurn(),
+    onRefreshInputPackages: () => void refreshInputPackages(),
     workbench,
     workspaceMode,
   });
@@ -380,6 +375,7 @@ function renderWorkspace({
   onRunCheck,
   onSaveDraft,
   onSubmitTurn,
+  onRefreshInputPackages,
   workbench,
   workspaceMode,
 }: {
@@ -397,6 +393,7 @@ function renderWorkspace({
   onRunCheck: () => void;
   onSaveDraft: () => void;
   onSubmitTurn: () => void;
+  onRefreshInputPackages: () => void;
   workbench: StageDocumentWorkbenchViewModel;
   workspaceMode: P3DesignWorkspaceMode;
 }) {
@@ -409,6 +406,7 @@ function renderWorkspace({
         workbench={workbench}
         onDeleteDesignSession={onDeleteDesignSession}
         onOpenDesignSession={onOpenDesignSession}
+        onRefreshInputPackages={onRefreshInputPackages}
         onSelectPackage={setSelectedPackageId}
       />
     );
@@ -477,6 +475,7 @@ function InputPackageView({
   workbench,
   onDeleteDesignSession,
   onOpenDesignSession,
+  onRefreshInputPackages,
   onSelectPackage,
 }: {
   inputFacts: StageInputFactsViewModel;
@@ -485,10 +484,19 @@ function InputPackageView({
   workbench: StageDocumentWorkbenchViewModel;
   onDeleteDesignSession: (sessionId: string) => void;
   onOpenDesignSession: (sessionId: string) => void;
+  onRefreshInputPackages: () => void;
   onSelectPackage: (value: string) => void;
 }) {
   return (
-    <WorkspacePanel title="需规输入" subtitle="先选择可进入 P3 的需求规格说明，再查看或创建它关联的软件设计说明。">
+    <WorkspacePanel
+      actions={
+        <Button aria-label="刷新输入包" onClick={onRefreshInputPackages}>
+          刷新输入包
+        </Button>
+      }
+      title="需规输入"
+      subtitle="先选择可进入 P3 的需求规格说明，再查看或创建它关联的软件设计说明。"
+    >
       <div className="p3-design-lab-input-view" data-testid="p3-design-lab-input-view">
         <section className="p3-design-lab-panel">
           <PanelHead title="需规列表" subtitle="来自 P2 authoring frozen_package，P3 只读消费。" />

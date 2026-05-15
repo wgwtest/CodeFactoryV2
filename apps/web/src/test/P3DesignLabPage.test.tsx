@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import App from "../App";
 
@@ -18,9 +18,14 @@ vi.mock("../lib/api", () => ({
 }));
 
 beforeEach(() => {
+  vi.useRealTimers();
   getMock.mockReset();
   postMock.mockReset();
   deleteMock.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 test("renders P3 Design Lab as a Lab workspace with software design document, structured data, and P4 projection tree", async () => {
@@ -196,6 +201,58 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
+});
+
+test("refreshes P3 input packages while the page stays open", async () => {
+  vi.useFakeTimers();
+  const firstPackage = buildInputPackage();
+  const secondPackage = {
+    ...buildInputPackage(),
+    input_package_id: "p2frozen-doc-2",
+    source_document_id: "doc-2",
+    source_title: "低空通航协同软件需求规格说明",
+    frozen_at: "2026-05-14T00:00:00Z",
+    standard_document: {
+      title: "低空通航协同软件需求规格说明",
+      sections: [],
+    },
+    structured_spec: {
+      application: { name: "低空通航协同软件" },
+    },
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      const items = getMock.mock.calls.length === 1 ? [firstPackage] : [firstPackage, secondPackage];
+      return Promise.resolve({ data: { items } });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  expect(screen.getByText("P3 Software Design Lab")).toBeInTheDocument();
+  expect(screen.getByText("1 份需规输入")).toBeInTheDocument();
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
+  expect(getMock).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("2 份需规输入")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /需规输入/ }));
+  const inputView = screen.getByTestId("p3-design-lab-input-view");
+  expect(within(inputView).getByText("低空通航协同软件需求规格说明")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新输入包" })).toBeInTheDocument();
 });
 
 function buildInputPackage() {

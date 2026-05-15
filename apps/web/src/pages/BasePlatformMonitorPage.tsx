@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   getPlatformExchangeMonitor,
@@ -8,6 +8,7 @@ import {
   type PlatformExchangeMonitorStage,
   type PlatformExchangeStageKey,
 } from "../lib/platformExchange";
+import { usePollingResource } from "../lib/usePollingResource";
 import "./BasePlatformMonitorPage.css";
 
 const STAGE_TITLES: Record<PlatformExchangeStageKey, string> = {
@@ -18,40 +19,28 @@ const STAGE_TITLES: Record<PlatformExchangeStageKey, string> = {
   P5: "软件构建系统",
 };
 
+const MONITOR_REFRESH_INTERVAL_MS = 1000;
+
 export function BasePlatformMonitorPage() {
   const [snapshot, setSnapshot] = useState<PlatformExchangeMonitorSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadMonitorSnapshot() {
-      try {
-        setLoading(true);
-        const response = await getPlatformExchangeMonitor();
-        if (cancelled) {
-          return;
-        }
-        setSnapshot(response.data);
-        setError(null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "加载基础平台监控快照失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadMonitorSnapshot();
-
-    return () => {
-      cancelled = true;
-    };
+  const loadMonitorSnapshot = useCallback(async () => {
+    const response = await getPlatformExchangeMonitor();
+    return response.data;
   }, []);
+
+  const { loading } = usePollingResource({
+    intervalMs: MONITOR_REFRESH_INTERVAL_MS,
+    load: loadMonitorSnapshot,
+    onData: useCallback((nextSnapshot: PlatformExchangeMonitorSnapshot) => {
+      setSnapshot(nextSnapshot);
+      setError(null);
+    }, []),
+    onError: useCallback((loadError: unknown) => {
+      setError(loadError instanceof Error ? loadError.message : "加载基础平台监控快照失败");
+    }, []),
+  });
 
   if (loading && snapshot === null) {
     return (
