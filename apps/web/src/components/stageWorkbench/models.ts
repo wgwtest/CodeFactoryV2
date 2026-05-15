@@ -123,6 +123,11 @@ export type StageOutputProjectionTreeNodeViewModel = {
   nodeId: string;
   title: string;
   nodeType: string;
+  description?: string;
+  readiness?: "pending" | "ready" | "blocked" | string;
+  sourceRefs?: string[];
+  dependsOn?: string[];
+  acceptance?: string;
   children?: StageOutputProjectionTreeNodeViewModel[];
 };
 
@@ -160,6 +165,33 @@ export type StageInteractionViewModel = {
     documentEffectSummary: string;
     nextSuggestions: string[];
   };
+};
+
+export type StageConversionViewModel = {
+  status: string;
+  strategy: string;
+  strategyOptions: Array<{
+    value: string;
+    label: string;
+    description: string;
+  }>;
+  steps: Array<{
+    stepId: string;
+    title: string;
+    description: string;
+    status: string;
+  }>;
+  draftPreview?: {
+    title: string;
+    versionLabel?: string;
+    sections: string[];
+  } | null;
+  traceabilitySummary?: {
+    mappedClauseCount: number;
+    targetCount: number;
+    pendingConfirmationCount: number;
+  } | null;
+  emptyDescription: string;
 };
 
 export type StageFreezeViewModel = {
@@ -214,6 +246,7 @@ export type StageDocumentWorkbenchViewModel = {
   interaction: StageInteractionViewModel;
   product: StandardDocumentViewModel;
   outline: DocumentOutlineViewModel;
+  conversion: StageConversionViewModel;
   quality: StageQualityGateViewModel;
   projection: StageOutputProjectionViewModel;
   freeze: StageFreezeViewModel;

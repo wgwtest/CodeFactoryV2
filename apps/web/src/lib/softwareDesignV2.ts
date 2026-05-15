@@ -7,13 +7,15 @@ export function getSoftwareDesignV2InputPackages() {
 
 export function createSoftwareDesignV2Session(payload: {
   input_package_id: string;
+  design_title: string;
+  version_label: string;
   generation_policy: Record<string, string>;
 }) {
   return api.post<P3DesignLabSession>("/software-design-v2/sessions", payload);
 }
 
-export function generateSoftwareDesignV2Session(sessionId: string) {
-  return api.post<P3DesignLabSession>(`/software-design-v2/sessions/${sessionId}/generate`);
+export function runSoftwareDesignV2Conversion(sessionId: string, payload: { strategy: string }) {
+  return api.post<P3DesignLabSession>(`/software-design-v2/sessions/${sessionId}/conversion`, payload);
 }
 
 export function getSoftwareDesignV2Session(sessionId: string) {

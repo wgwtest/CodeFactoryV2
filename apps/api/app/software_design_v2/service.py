@@ -8,11 +8,28 @@ from sqlalchemy import select
 from app.db.models.requirements import RequirementAuthoringDocument
 from app.platform_exchange.models import ConsumeArtifactCommand
 from app.platform_exchange.service import PlatformExchangeService
-from app.software_design_v2.models import P3DesignSessionCreate, P3DesignTurnWrite
+from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
 
 
 class SoftwareDesignV2Service:
     _sessions: dict[str, dict] = {}
+    _conversion_strategy_options: list[dict[str, str]] = [
+        {
+            "value": "standard_sdd_draft",
+            "label": "标准软设草稿生成",
+            "description": "按标准软件设计说明章节生成初稿。",
+        },
+        {
+            "value": "component_first",
+            "label": "组件优先拆解",
+            "description": "优先抽取组件、接口和可复用工作台对象。",
+        },
+        {
+            "value": "p4_projection_first",
+            "label": "P4 投影优先",
+            "description": "优先组织下游工具包和工单分支。",
+        },
+    ]
 
     def __init__(self, session) -> None:
         self.session = session
@@ -40,9 +57,17 @@ class SoftwareDesignV2Service:
     def create_session(self, payload: P3DesignSessionCreate) -> dict:
         input_package = self._get_input_package(payload.input_package_id)
         session_id = f"p3dl-{uuid4().hex[:10]}"
+        design_title = payload.design_title.strip()
+        version_label = payload.version_label.strip()
+        if not design_title:
+            raise ValueError("P3 design title cannot be empty")
+        if not version_label:
+            raise ValueError("P3 design version label cannot be empty")
         design_session = {
             "session_id": session_id,
             "input_package": input_package,
+            "design_title": design_title,
+            "version_label": version_label,
             "generation_policy": {
                 "architecture_preference": payload.generation_policy.get(
                     "architecture_preference",
@@ -51,7 +76,8 @@ class SoftwareDesignV2Service:
                 "module_granularity": payload.generation_policy.get("module_granularity", "3-5 个业务模块，不拆太细"),
                 "output_style": payload.generation_policy.get("output_style", "按标准软设正文写，不写聊天语气"),
             },
-            "status": "created",
+            "status": "conversion_pending",
+            "conversion": self._build_conversion_state("conversion_pending", "standard_sdd_draft", None, None),
             "design_document": None,
             "design_baseline": None,
             "workorder_projection": None,
@@ -80,21 +106,36 @@ class SoftwareDesignV2Service:
     def get_session(self, session_id: str) -> dict | None:
         return self._sessions.get(session_id)
 
-    def generate(self, session_id: str) -> dict | None:
+    def run_conversion(self, session_id: str, payload: P3DesignConversionRun) -> dict | None:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
+        strategy = payload.strategy.strip() or "standard_sdd_draft"
+        valid_strategies = {item["value"] for item in self._conversion_strategy_options}
+        if strategy not in valid_strategies:
+            raise ValueError("unsupported P3 conversion strategy")
+        return self._materialize_design_draft(design_session, strategy, target_status="draft_ready")
+
+    def _materialize_design_draft(self, design_session: dict, strategy: str, target_status: str) -> dict:
+        design_session["conversion"] = self._build_conversion_state("conversion_running", strategy, None, None)
 
         structured_spec = design_session["input_package"]["structured_spec"]
         app_name = structured_spec.get("application", {}).get("name") or "未命名软件"
-        design_session["design_document"] = self._build_design_document(app_name)
+        design_session["design_document"] = self._build_design_document(app_name, design_session["design_title"], design_session["version_label"])
         design_session["design_baseline"] = self._build_design_baseline(app_name)
-        design_session["workorder_projection"] = self._build_workorder_projection()
-        design_session["status"] = "baseline_ready"
+        if target_status == "baseline_ready":
+            design_session["workorder_projection"] = self._build_workorder_projection()
+        design_session["status"] = target_status
+        design_session["conversion"] = self._build_conversion_state(
+            "draft_ready",
+            strategy,
+            design_session["design_document"],
+            design_session["design_baseline"],
+        )
         design_session["updated_at"] = self._now()
         design_session["runtime_events"] = [
             *design_session["runtime_events"],
-            self._build_runtime_event("generate", "生成软件设计说明、设计基线和 P4 投影"),
+            self._build_runtime_event("conversion", f"执行需规转软设基础转换：{strategy}"),
         ]
         self._refresh_related_designs(design_session)
         return design_session
@@ -103,11 +144,7 @@ class SoftwareDesignV2Service:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
-        if design_session["design_baseline"] is None:
-            self.generate(session_id)
-            design_session = self.get_session(session_id)
-            if design_session is None:
-                return None
+        self._require_converted_draft(design_session)
 
         user_input = payload.user_input.strip()
         normalized_intent = "add_state_machine" if "状态" in user_input else "refine_design"
@@ -156,11 +193,7 @@ class SoftwareDesignV2Service:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
-        if design_session["design_baseline"] is None:
-            self.generate(session_id)
-            design_session = self.get_session(session_id)
-            if design_session is None:
-                return None
+        self._require_converted_draft(design_session)
         check_result = {
             "blocking_count": 0,
             "warning_count": len(design_session["design_baseline"].get("pending_confirmations", [])),
@@ -185,11 +218,7 @@ class SoftwareDesignV2Service:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
-        if design_session["design_baseline"] is None:
-            self.generate(session_id)
-            design_session = self.get_session(session_id)
-            if design_session is None:
-                return None
+        self._require_converted_draft(design_session)
         design_session["status"] = "draft_saved"
         design_session["updated_at"] = self._now()
         design_session["runtime_events"] = [
@@ -203,11 +232,7 @@ class SoftwareDesignV2Service:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
-        if design_session["design_baseline"] is None:
-            self.generate(session_id)
-            design_session = self.get_session(session_id)
-            if design_session is None:
-                return None
+        self._require_converted_draft(design_session)
         design_session["workorder_projection"] = self._build_workorder_projection()
         design_session["status"] = "projection_ready"
         design_session["updated_at"] = self._now()
@@ -222,11 +247,7 @@ class SoftwareDesignV2Service:
         design_session = self.get_session(session_id)
         if design_session is None:
             return None
-        if design_session["design_baseline"] is None:
-            self.generate(session_id)
-            design_session = self.get_session(session_id)
-            if design_session is None:
-                return None
+        self._require_converted_draft(design_session)
         if design_session["check_result"] is None:
             self.run_check(session_id)
             design_session = self.get_session(session_id)
@@ -313,15 +334,107 @@ class SoftwareDesignV2Service:
         return {
             "software_design_id": design_session["session_id"],
             "title": design_document.get("title", "未命名软件设计说明"),
-            "version_label": "SoftwareDesignBaseline v2",
+            "version_label": design_session.get("version_label", "SoftwareDesignBaseline v2"),
             "status": design_session["status"],
             "created_at": design_session["created_at"],
             "updated_at": design_session["updated_at"],
         }
 
-    def _build_design_document(self, app_name: str) -> dict:
+    def _require_converted_draft(self, design_session: dict) -> None:
+        if design_session.get("design_document") is None or design_session.get("design_baseline") is None:
+            raise ValueError("P3 design session must run conversion before editing the software design draft")
+
+    def _build_conversion_state(
+        self,
+        status: str,
+        strategy: str,
+        design_document: dict | None,
+        design_baseline: dict | None,
+    ) -> dict:
+        done = status == "draft_ready"
+        running = status == "conversion_running"
         return {
-            "title": f"{app_name}设计说明",
+            "status": status,
+            "strategy": strategy,
+            "strategy_options": self._conversion_strategy_options,
+            "steps": [
+                self._build_conversion_step(
+                    "read_requirement",
+                    "读取需规冻结包",
+                    "加载正文、结构化条款、标注和冻结快照。",
+                    done,
+                    running,
+                    0,
+                ),
+                self._build_conversion_step(
+                    "extract_design_objects",
+                    "抽取设计对象",
+                    "抽取模块候选、接口候选、数据对象候选和质量属性。",
+                    done,
+                    running,
+                    1,
+                ),
+                self._build_conversion_step(
+                    "generate_design_draft",
+                    "生成软设草稿",
+                    "生成 A4 正文草稿和 SoftwareDesignBaseline v2 初稿。",
+                    done,
+                    running,
+                    2,
+                ),
+                self._build_conversion_step(
+                    "map_traceability",
+                    "建立追溯映射",
+                    "建立需规条款到章节、模块、接口和 P4 候选的映射。",
+                    done,
+                    running,
+                    3,
+                ),
+            ],
+            "draft_preview": self._build_conversion_draft_preview(design_document) if design_document else None,
+            "traceability_summary": self._build_conversion_traceability_summary(design_baseline) if design_baseline else None,
+        }
+
+    def _build_conversion_step(
+        self,
+        step_id: str,
+        title: str,
+        description: str,
+        done: bool,
+        running: bool,
+        index: int,
+    ) -> dict:
+        if done:
+            status = "done"
+        elif running and index == 0:
+            status = "running"
+        else:
+            status = "pending"
+        return {
+            "step_id": step_id,
+            "title": title,
+            "description": description,
+            "status": status,
+        }
+
+    def _build_conversion_draft_preview(self, design_document: dict) -> dict:
+        return {
+            "title": design_document.get("title", "未命名软件设计说明"),
+            "version_label": design_document.get("version_label", "SoftwareDesignBaseline v2"),
+            "sections": [section.get("title", "未命名章节") for section in design_document.get("sections", [])],
+        }
+
+    def _build_conversion_traceability_summary(self, design_baseline: dict) -> dict:
+        return {
+            "mapped_clause_count": len(design_baseline.get("traceability", [])),
+            "target_count": len(design_baseline.get("modules", [])),
+            "pending_confirmation_count": len(design_baseline.get("pending_confirmations", [])),
+        }
+
+    def _build_design_document(self, app_name: str, design_title: str, version_label: str) -> dict:
+        return {
+            "title": design_title,
+            "version_label": version_label,
             "sections": [
                 {
                     "section_id": "goal",
@@ -366,45 +479,147 @@ class SoftwareDesignV2Service:
         return {
             "package_overview": {
                 "architecture_recommendation": "unified_service",
-                "design_notes": ["统一服务优先，保留后续拆分条件。"],
+                "design_notes": ["P4 投影按工具包树组织，不再把投影和工单拆成两个概念。"],
             },
             "tree": {
                 "node_id": "p4-projection-root",
-                "title": "P4 模块工单投影包",
+                "title": "P4-WO-StageLab-Workbench",
                 "node_type": "projection_package",
+                "description": "P3 软件设计说明向 P4 研发工单的候选投影，按共性工作台、P3 适配和验证脚本组织。",
+                "readiness": "preview_only",
                 "children": [
                     {
-                        "node_id": "branch-core-service",
-                        "title": "统一服务实现分支",
-                        "node_type": "module_branch",
+                        "node_id": "branch-common-workbench",
+                        "title": "A. 共性工作台工具包",
+                        "node_type": "toolkit_branch",
+                        "description": "沉淀 P2/P3 可复用的 Stage Lab 工作台壳、导航和通用文档组件。",
+                        "readiness": "ready",
                         "children": [
-                            {"node_id": "wo-planning-task", "title": "规划任务管理模块实现", "node_type": "module_workorder"},
-                            {"node_id": "wo-conflict-alert", "title": "冲突识别与告警模块实现", "node_type": "module_workorder"},
+                            {
+                                "node_id": "wo-stage-lab-shell",
+                                "title": "WO-A1 StageLabShell 组件生成器",
+                                "node_type": "workorder",
+                                "description": "生成左侧导航、顶部状态条和主工作区的通用工作台框架。",
+                                "readiness": "ready",
+                                "source_refs": ["SoftwareDesign.modules.commonWorkbench"],
+                                "acceptance": "P2/P3 均可复用同一套 Lab shell 和导航状态模型。",
+                            },
+                            {
+                                "node_id": "wo-stage-navigation",
+                                "title": "WO-A2 StageNavigation 状态工具",
+                                "node_type": "workorder",
+                                "description": "抽象阶段页签、徽标、禁用态和视图切换状态。",
+                                "readiness": "ready",
+                                "source_refs": ["SoftwareDesign.modules.commonWorkbench"],
+                                "acceptance": "导航项能由阶段配置生成，不再为每个阶段重写结构。",
+                            },
                         ],
                     },
                     {
-                        "node_id": "branch-collaboration",
-                        "title": "协同与审计实现分支",
-                        "node_type": "module_branch",
+                        "node_id": "branch-p3-adapter",
+                        "title": "B. P3 适配工具包",
+                        "node_type": "toolkit_branch",
+                        "description": "该分支包含 P3 专属 Adapter、输入列表快照适配器和 ViewModel 组装脚本。",
+                        "readiness": "pending",
+                        "source_refs": ["SoftwareDesign.modules.p3Adapter", "sourceRequirement"],
+                        "depends_on": ["A. 共性工作台工具包"],
+                        "acceptance": "能把需规列表、选中需规对象和软设会话映射到工作台模型。",
                         "children": [
-                            {"node_id": "wo-collaboration-confirm", "title": "协同确认模块实现", "node_type": "module_workorder"},
-                            {"node_id": "wo-audit-trace", "title": "审计追溯模块实现", "node_type": "module_workorder"},
+                            {
+                                "node_id": "wo-p3-viewmodel-adapter",
+                                "title": "WO-B1 DTO -> ViewModel Adapter",
+                                "node_type": "workorder",
+                                "description": "把 P3 API DTO 组装为 StageDocumentWorkbenchViewModel。",
+                                "readiness": "ready",
+                                "source_refs": ["SoftwareDesign.modules.p3Adapter"],
+                                "depends_on": ["WO-A1 StageLabShell 组件生成器"],
+                                "acceptance": "前端不直接消费裸 DTO，页面只依赖 ViewModel。",
+                            },
+                            {
+                                "node_id": "wo-p3-input-snapshot-adapter",
+                                "title": "WO-B2 输入列表快照适配器",
+                                "node_type": "workorder",
+                                "description": "处理 P2 已发布需规列表、关联软设列表和会话打开入口。",
+                                "readiness": "pending",
+                                "source_refs": ["sourceRequirement.list", "SoftwareDesign.relatedDesigns"],
+                                "depends_on": ["WO-B1 DTO -> ViewModel Adapter"],
+                                "acceptance": "选择需规后能展示历史软设，并支持新建、编辑、删除未冻结草稿。",
+                            },
+                        ],
+                    },
+                    {
+                        "node_id": "branch-validation-scripts",
+                        "title": "C. 验证脚本工具包",
+                        "node_type": "toolkit_branch",
+                        "description": "把同源检查和原型截图回归作为 P4 研发前的验证工具包。",
+                        "readiness": "ready",
+                        "children": [
+                            {
+                                "node_id": "wo-source-alignment-check",
+                                "title": "WO-C1 同源检查脚本",
+                                "node_type": "workorder",
+                                "description": "检查 P3 实现、软件设计说明和原型图是否指向同一套对象模型。",
+                                "readiness": "ready",
+                                "source_refs": ["SoftwareDesign.quality.sourceAlignment"],
+                                "acceptance": "输出差异清单并标记阻断/警告级别。",
+                            },
+                            {
+                                "node_id": "wo-prototype-screenshot-regression",
+                                "title": "WO-C2 原型截图回归脚本",
+                                "node_type": "workorder",
+                                "description": "对照 v6 原型截图检查软设工作区和 P4 投影视图。",
+                                "readiness": "ready",
+                                "source_refs": ["SoftwareDesign.quality.prototypeRegression"],
+                                "acceptance": "桌面视口截图包含需规输入、软设双视图和 P4 投影树。",
+                            },
                         ],
                     },
                 ],
             },
             "items": [
-                {"item_id": "wo-planning-task", "title": "规划任务管理模块实现", "module_id": "planning-task"},
-                {"item_id": "wo-conflict-alert", "title": "冲突识别与告警模块实现", "module_id": "conflict-alert"},
-                {"item_id": "wo-collaboration-confirm", "title": "协同确认模块实现", "module_id": "collaboration-confirm"},
-                {"item_id": "wo-audit-trace", "title": "审计追溯模块实现", "module_id": "audit-trace"},
+                {
+                    "item_id": "wo-stage-lab-shell",
+                    "title": "WO-A1 StageLabShell 组件生成器",
+                    "module_id": "common-workbench",
+                    "readiness": "ready",
+                },
+                {
+                    "item_id": "wo-stage-navigation",
+                    "title": "WO-A2 StageNavigation 状态工具",
+                    "module_id": "common-workbench",
+                    "readiness": "ready",
+                },
+                {
+                    "item_id": "wo-p3-viewmodel-adapter",
+                    "title": "WO-B1 DTO -> ViewModel Adapter",
+                    "module_id": "p3-adapter",
+                    "readiness": "ready",
+                },
+                {
+                    "item_id": "wo-p3-input-snapshot-adapter",
+                    "title": "WO-B2 输入列表快照适配器",
+                    "module_id": "p3-adapter",
+                    "readiness": "pending",
+                },
+                {
+                    "item_id": "wo-source-alignment-check",
+                    "title": "WO-C1 同源检查脚本",
+                    "module_id": "validation-scripts",
+                    "readiness": "ready",
+                },
+                {
+                    "item_id": "wo-prototype-screenshot-regression",
+                    "title": "WO-C2 原型截图回归脚本",
+                    "module_id": "validation-scripts",
+                    "readiness": "ready",
+                },
             ],
         }
 
     def _build_frozen_package(self, design_session: dict) -> dict:
         return {
             "package_id": f"sdp-{design_session['session_id']}",
-            "version_label": "SoftwareDesignBaseline v2",
+            "version_label": design_session.get("version_label", "SoftwareDesignBaseline v2"),
             "status": "frozen",
             "frozen_at": self._now(),
             "design_document": design_session["design_document"],

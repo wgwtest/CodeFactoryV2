@@ -79,6 +79,8 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
         "/api/software-design-v2/sessions",
         json={
             "input_package_id": packages.json()["items"][0]["input_package_id"],
+            "design_title": "空域协同规划软件设计说明 - 初版架构",
+            "version_label": "v0.1",
             "generation_policy": {
                 "architecture_preference": "统一服务优先，保留拆分点",
                 "module_granularity": "3-5 个业务模块，不拆太细",
@@ -88,26 +90,55 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     )
     assert session_response.status_code == 200
     session = session_response.json()
-    assert session["status"] == "created"
+    assert session["status"] == "conversion_pending"
+    assert session["design_title"] == "空域协同规划软件设计说明 - 初版架构"
+    assert session["version_label"] == "v0.1"
+    assert session["design_document"] is None
+    assert session["conversion"]["status"] == "conversion_pending"
+    assert [step["title"] for step in session["conversion"]["steps"]] == [
+        "读取需规冻结包",
+        "抽取设计对象",
+        "生成软设草稿",
+        "建立追溯映射",
+    ]
     assert session["input_package"]["source_document_id"] == frozen["document_id"]
 
-    generated = client.post(f"/api/software-design-v2/sessions/{session['session_id']}/generate")
-    assert generated.status_code == 200
-    generated_session = generated.json()
-    assert generated_session["status"] == "baseline_ready"
-    assert generated_session["design_document"]["title"] == "空域协同规划软件设计说明"
-    assert generated_session["design_baseline"]["architecture_mode"] == "unified_service"
-    assert generated_session["workorder_projection"]["items"][0]["title"] == "规划任务管理模块实现"
-    packages_after_generation = client.get("/api/software-design-v2/input-packages")
-    related_designs = packages_after_generation.json()["items"][0]["related_designs"]
+    old_generate = client.post(f"/api/software-design-v2/sessions/{session['session_id']}/generate")
+    assert old_generate.status_code == 404
+
+    premature_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={"user_input": "先补充总体架构"},
+    )
+    assert premature_turn.status_code == 400
+    assert "conversion" in premature_turn.json()["detail"]
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/conversion",
+        json={"strategy": "component_first"},
+    )
+    assert converted.status_code == 200
+    converted_session = converted.json()
+    assert converted_session["status"] == "draft_ready"
+    assert converted_session["conversion"]["status"] == "draft_ready"
+    assert converted_session["conversion"]["strategy"] == "component_first"
+    assert all(step["status"] == "done" for step in converted_session["conversion"]["steps"])
+    assert converted_session["conversion"]["draft_preview"]["title"] == "空域协同规划软件设计说明 - 初版架构"
+    assert converted_session["conversion"]["traceability_summary"]["mapped_clause_count"] >= 2
+    assert converted_session["design_document"]["title"] == "空域协同规划软件设计说明 - 初版架构"
+    assert converted_session["design_document"]["version_label"] == "v0.1"
+    assert converted_session["design_baseline"]["architecture_mode"] == "unified_service"
+    assert converted_session["workorder_projection"] is None
+    packages_after_conversion = client.get("/api/software-design-v2/input-packages")
+    related_designs = packages_after_conversion.json()["items"][0]["related_designs"]
     assert related_designs == [
         {
             "software_design_id": session["session_id"],
-            "title": "空域协同规划软件设计说明",
-            "version_label": "SoftwareDesignBaseline v2",
-            "status": "baseline_ready",
+            "title": "空域协同规划软件设计说明 - 初版架构",
+            "version_label": "v0.1",
+            "status": "draft_ready",
             "created_at": session["created_at"],
-            "updated_at": generated_session["updated_at"],
+            "updated_at": converted_session["updated_at"],
         }
     ]
 
@@ -128,7 +159,8 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
 
     projected = client.post(f"/api/software-design-v2/sessions/{session['session_id']}/projection")
     assert projected.status_code == 200
-    assert projected.json()["workorder_projection"]["tree"]["title"] == "P4 模块工单投影包"
+    assert projected.json()["workorder_projection"]["tree"]["title"] == "P4-WO-StageLab-Workbench"
+    assert projected.json()["workorder_projection"]["tree"]["children"][1]["title"] == "B. P3 适配工具包"
     assert projected.json()["runtime_events"][-1]["event_type"] == "projection"
 
     checked_v2 = client.post(f"/api/software-design-v2/sessions/{session['session_id']}/check")
@@ -141,7 +173,8 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     frozen_session = frozen_response.json()
     assert frozen_session["status"] == "frozen"
     assert frozen_session["frozen_package"]["package_id"] == f"sdp-{session['session_id']}"
-    assert frozen_session["workorder_projection"]["tree"]["children"][0]["children"][0]["title"] == "规划任务管理模块实现"
+    assert frozen_session["frozen_package"]["version_label"] == "v0.1"
+    assert frozen_session["workorder_projection"]["tree"]["children"][1]["children"][0]["title"] == "WO-B1 DTO -> ViewModel Adapter"
     assert frozen_session["runtime_events"][-1]["event_type"] == "freeze"
 
     delete_frozen = client.delete(f"/api/software-design-v2/sessions/{session['session_id']}")
@@ -154,8 +187,8 @@ def test_software_design_v2_supports_multiple_related_designs_and_deletes_unfroz
     _create_frozen_requirement_authoring_document(client)
     input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
 
-    first = _create_and_generate_design_session(client, input_package_id)
-    second = _create_and_generate_design_session(client, input_package_id)
+    first = _create_and_convert_design_session(client, input_package_id)
+    second = _create_and_convert_design_session(client, input_package_id)
 
     packages = client.get("/api/software-design-v2/input-packages")
     related_design_ids = [item["software_design_id"] for item in packages.json()["items"][0]["related_designs"]]
@@ -174,11 +207,13 @@ def test_software_design_v2_supports_multiple_related_designs_and_deletes_unfroz
     assert remaining_design_ids == [second["session_id"]]
 
 
-def _create_and_generate_design_session(client: TestClient, input_package_id: str) -> dict:
+def _create_and_convert_design_session(client: TestClient, input_package_id: str) -> dict:
     created = client.post(
         "/api/software-design-v2/sessions",
         json={
             "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 测试分支",
+            "version_label": "v0.1",
             "generation_policy": {
                 "architecture_preference": "统一服务优先，保留拆分点",
                 "module_granularity": "3-5 个业务模块，不拆太细",
@@ -187,6 +222,9 @@ def _create_and_generate_design_session(client: TestClient, input_package_id: st
         },
     )
     assert created.status_code == 200
-    generated = client.post(f"/api/software-design-v2/sessions/{created.json()['session_id']}/generate")
-    assert generated.status_code == 200
-    return generated.json()
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+    assert converted.status_code == 200
+    return converted.json()
