@@ -1,0 +1,2000 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeFactoryV2 P3 Design Lab 需规转软设原型 v7</title>
+    <style>
+      :root {
+        --bg: #edf2f0;
+        --ink: #162220;
+        --muted: #64716d;
+        --line: #c8d3ce;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #173d4e;
+        --navy-2: #e4eef2;
+        --teal: #2d746f;
+        --teal-2: #e1f2ee;
+        --amber: #9a631d;
+        --amber-2: #f5e8d4;
+        --green: #257348;
+        --green-2: #e3f2e8;
+        --red: #9b4138;
+        --red-2: #f5dedb;
+        --violet: #5d5a8a;
+        --violet-2: #ecebfa;
+        --shadow: 0 18px 42px rgba(37, 52, 49, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
+          var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+        overflow: hidden;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .topbar {
+        height: 82px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 12px 34px rgba(45, 61, 56, 0.1);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 17px;
+        font-weight: 950;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 36px;
+        font-weight: 950;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .pill-row,
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .workspace-switch {
+        display: none;
+        grid-template-columns: 104px 116px;
+        gap: 8px;
+        margin-right: 4px;
+      }
+
+      .state-workspace-doc .workspace-switch,
+      .state-workspace-struct .workspace-switch {
+        display: grid;
+      }
+
+      .switch-button {
+        min-height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: #40514e;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .state-workspace-doc .switch-doc,
+      .state-workspace-struct .switch-struct {
+        border-color: var(--navy);
+        background: #eef5f7;
+        color: var(--navy);
+      }
+
+      .button,
+      .pill,
+      .metric,
+      .badge {
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-weight: 850;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+        font-size: 13px;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--navy);
+        background: var(--navy);
+      }
+
+      .button.teal {
+        color: #fff;
+        border-color: var(--teal);
+        background: var(--teal);
+      }
+
+      .button.ghost {
+        background: #f7f9f8;
+      }
+
+      .pill,
+      .badge {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .pill.navy,
+      .badge.navy {
+        color: var(--navy);
+        border-color: #a9c1cd;
+        background: var(--navy-2);
+      }
+
+      .pill.teal,
+      .badge.teal {
+        color: var(--teal);
+        border-color: #95c7c0;
+        background: var(--teal-2);
+      }
+
+      .pill.amber,
+      .badge.amber {
+        color: var(--amber);
+        border-color: #dcb47a;
+        background: var(--amber-2);
+      }
+
+      .pill.green,
+      .badge.green {
+        color: var(--green);
+        border-color: #94c6a7;
+        background: var(--green-2);
+      }
+
+      .pill.red,
+      .badge.red {
+        color: var(--red);
+        border-color: #d8b1aa;
+        background: var(--red-2);
+      }
+
+      .pill.violet,
+      .badge.violet {
+        color: var(--violet);
+        border-color: #bebce0;
+        background: var(--violet-2);
+      }
+
+      .layout {
+        height: 954px;
+        display: grid;
+        grid-template-columns: 304px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card,
+      .callout {
+        border: 1px solid rgba(162, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 18px 17px 15px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        min-height: 0;
+        padding: 13px;
+        display: grid;
+        align-content: start;
+        gap: 9px;
+      }
+
+      .tab-item {
+        min-height: 76px;
+        padding: 11px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .state-input .nav-input,
+      .state-conversion .nav-conversion,
+      .state-workspace-doc .nav-workspace,
+      .state-workspace-struct .nav-workspace,
+      .state-turn .nav-turn,
+      .state-review .nav-review,
+      .state-p4 .nav-p4,
+      .state-log .nav-log {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .tab-desc {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.38;
+      }
+
+      .tab-meta {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #536260;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+      }
+
+      .side-rule {
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.52;
+        font-weight: 850;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .work-head {
+        height: 76px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 18px 0 20px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .head-left {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .head-title {
+        font-size: 18px;
+        font-weight: 950;
+      }
+
+      .head-sub {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .body {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .show-input,
+      .show-conversion,
+      .show-workspace,
+      .show-turn,
+      .show-review,
+      .show-p4,
+      .show-log {
+        display: none;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .state-input .show-input {
+        display: grid;
+        grid-template-columns: 430px minmax(0, 1fr);
+      }
+
+      .state-conversion .show-conversion {
+        display: grid;
+        grid-template-columns: 520px 344px minmax(0, 1fr);
+      }
+
+      .state-workspace-doc .show-workspace,
+      .state-workspace-struct .show-workspace {
+        display: block;
+      }
+
+      .state-turn .show-turn {
+        display: grid;
+        grid-template-columns: 420px minmax(0, 1fr) 390px;
+      }
+
+      .state-review .show-review {
+        display: grid;
+        grid-template-columns: 430px minmax(0, 1fr);
+      }
+
+      .state-p4 .show-p4 {
+        display: grid;
+        grid-template-columns: 560px minmax(0, 1fr);
+      }
+
+      .state-log .show-log {
+        display: grid;
+        grid-template-columns: 430px minmax(0, 1fr);
+      }
+
+      .workspace-mode {
+        display: none;
+        height: 100%;
+        gap: 16px;
+      }
+
+      .state-workspace-doc .mode-doc {
+        display: grid;
+        grid-template-columns: 305px minmax(0, 1fr) 420px;
+      }
+
+      .state-workspace-struct .mode-struct {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr) 420px;
+      }
+
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .panel-title {
+        font-size: 14px;
+        font-weight: 950;
+      }
+
+      .panel-sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .panel-content {
+        min-height: 0;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .stack {
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .card,
+      .list-row,
+      .table-row,
+      .tree-node,
+      .issue-row,
+      .event-row,
+      .object-row,
+      .chat-msg {
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .card {
+        padding: 12px;
+      }
+
+      .design-card {
+        min-height: 74px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 11px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .design-card.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .design-actions {
+        display: grid;
+        gap: 6px;
+      }
+
+      .card-title {
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .card-copy {
+        margin-top: 6px;
+        color: #40514e;
+        font-size: 11px;
+        line-height: 1.48;
+      }
+
+      .list-tools {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .filter {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .list-row {
+        min-height: 78px;
+        padding: 10px;
+      }
+
+      .list-row.selected {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .row-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .row-title {
+        min-width: 0;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .row-desc {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .row-meta {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #536260;
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .metric {
+        min-width: 42px;
+        min-height: 27px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+
+      .metric.green {
+        color: var(--green);
+        border-color: #94c6a7;
+        background: var(--green-2);
+      }
+
+      .metric.amber {
+        color: var(--amber);
+        border-color: #dcb47a;
+        background: var(--amber-2);
+      }
+
+      .metric.red {
+        color: var(--red);
+        border-color: #d8b1aa;
+        background: var(--red-2);
+      }
+
+      .object-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 14px;
+      }
+
+      .mini-paper {
+        height: 100%;
+        padding: 28px 34px;
+        border: 1px solid #eadfcd;
+        background: var(--paper);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+      }
+
+      .mini-paper h3 {
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e0d7c8;
+        font-size: 18px;
+        text-align: center;
+        font-weight: 950;
+      }
+
+      .mini-paper h4 {
+        margin-top: 18px;
+        font-size: 13px;
+      }
+
+      .mini-paper p {
+        margin-top: 9px;
+        color: #35423f;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .stat-cell {
+        min-height: 70px;
+        padding: 10px;
+        border-right: 1px solid #d7e0dc;
+      }
+
+      .stat-cell:last-child {
+        border-right: 0;
+      }
+
+      .stat-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .stat-value {
+        margin-top: 6px;
+        font-size: 20px;
+        font-weight: 950;
+      }
+
+      .table {
+        display: grid;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .table-row {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: 130px minmax(0, 1fr) 105px;
+        align-items: center;
+        border-bottom: 1px solid #d7e0dc;
+        color: #34413e;
+        font-size: 12px;
+      }
+
+      .table-row:last-child {
+        border-bottom: 0;
+      }
+
+      .table-row.head {
+        background: #f7f9f8;
+        color: var(--muted);
+        font-weight: 950;
+      }
+
+      .table-row span {
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding: 8px 10px;
+        border-right: 1px solid #d7e0dc;
+      }
+
+      .table-row span:last-child {
+        border-right: 0;
+      }
+
+      .outline-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .outline-item {
+        min-height: 48px;
+        padding: 9px 10px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .outline-item.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .paper-wrap {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid #d3ded9;
+        background: #f4f7f6;
+      }
+
+      .paper {
+        width: 560px;
+        height: 744px;
+        padding: 40px 46px;
+        background: var(--paper);
+        border: 1px solid #eadfcd;
+        box-shadow: 0 20px 38px rgba(51, 59, 53, 0.14);
+      }
+
+      .paper-kicker {
+        color: var(--muted);
+        font-size: 11px;
+        text-align: center;
+      }
+
+      .paper-title {
+        margin-top: 12px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e0d7c8;
+        font-size: 21px;
+        text-align: center;
+        font-weight: 950;
+      }
+
+      .paper-section {
+        margin-top: 20px;
+        padding: 10px 12px;
+        border: 1px solid transparent;
+      }
+
+      .paper-section.active {
+        border-color: #a9c1cd;
+        background: #eef5f7;
+      }
+
+      .paper-section h3 {
+        font-size: 14px;
+        font-weight: 950;
+      }
+
+      .paper-section p {
+        margin-top: 8px;
+        color: #35423f;
+        font-size: 12px;
+        line-height: 1.62;
+      }
+
+      .interaction-panel {
+        display: grid;
+        grid-template-rows: auto auto auto 1fr;
+        gap: 10px;
+      }
+
+      .object-row {
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+      }
+
+      .command-row {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 72px;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .chat-box {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .chat-msg {
+        padding: 10px 11px;
+        font-size: 12px;
+        line-height: 1.48;
+      }
+
+      .chat-msg.assistant {
+        border-color: #bad1da;
+        background: #edf6f8;
+      }
+
+      .chat-msg.user {
+        margin-left: 28px;
+        border-color: #acd0c9;
+        background: #edf8f6;
+      }
+
+      .input-line {
+        height: 48px;
+        display: grid;
+        grid-template-columns: 1fr 86px;
+        gap: 8px;
+      }
+
+      .input {
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: #4c5b5f;
+        font-size: 12px;
+      }
+
+      .turn-steps {
+        display: grid;
+        gap: 9px;
+      }
+
+      .turn-step {
+        min-height: 74px;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .step-no {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        background: var(--navy);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .tree {
+        display: grid;
+        gap: 7px;
+      }
+
+      .tree-node {
+        min-height: 38px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+      }
+
+      .tree-node.level-2 {
+        margin-left: 24px;
+      }
+
+      .tree-node.level-3 {
+        margin-left: 48px;
+      }
+
+      .tree-node.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .issue-row {
+        min-height: 60px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 11px;
+      }
+
+      .issue-row.blocking {
+        border-color: #d7aaa3;
+        background: #fff8f6;
+      }
+
+      .issue-row.pass {
+        border-color: #aacbb6;
+        background: #f3fbf6;
+      }
+
+      .event-row {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 86px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 11px;
+      }
+
+      .conversion-paper-wrap {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid #d3ded9;
+        background:
+          linear-gradient(90deg, rgba(23, 61, 78, 0.05) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(23, 61, 78, 0.05) 1px, transparent 1px),
+          #f4f7f6;
+        background-size: 24px 24px;
+      }
+
+      .conversion-paper {
+        width: 426px;
+        height: 642px;
+        padding: 30px 34px;
+        background: var(--paper);
+        border: 1px solid #eadfcd;
+        box-shadow: 0 18px 34px rgba(51, 59, 53, 0.14);
+      }
+
+      .conversion-paper.target {
+        width: 502px;
+      }
+
+      .doc-label {
+        color: var(--muted);
+        font-size: 10px;
+        text-align: center;
+        font-weight: 850;
+      }
+
+      .doc-heading {
+        margin-top: 10px;
+        padding-bottom: 13px;
+        border-bottom: 1px solid #e0d7c8;
+        font-size: 20px;
+        text-align: center;
+        font-weight: 950;
+      }
+
+      .doc-section {
+        margin-top: 15px;
+        padding: 9px 10px;
+        border: 1px solid #ece1d2;
+        background: rgba(255, 255, 255, 0.52);
+      }
+
+      .doc-section.active {
+        border-color: #a9c1cd;
+        background: #eef5f7;
+      }
+
+      .doc-section h3 {
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .doc-section p {
+        margin-top: 7px;
+        color: #35423f;
+        font-size: 11px;
+        line-height: 1.52;
+      }
+
+      .conversion-panel {
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 14px;
+      }
+
+      .conversion-bridge {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .bridge-action {
+        width: 150px;
+        height: 38px;
+        font-size: 13px;
+      }
+
+      .mapping-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mapping-row {
+        min-height: 48px;
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr) 86px;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .mapping-source,
+      .mapping-target {
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .mapping-copy {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .process-steps {
+        display: grid;
+        gap: 0;
+      }
+
+      .process-step {
+        min-height: 68px;
+        position: relative;
+        display: grid;
+        grid-template-columns: 46px minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 10px;
+        padding: 0 0 10px;
+      }
+
+      .process-step::before {
+        content: "";
+        position: absolute;
+        left: 17px;
+        top: 34px;
+        bottom: 2px;
+        border-left: 2px dashed #b8cac4;
+      }
+
+      .process-step::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        bottom: -2px;
+        width: 10px;
+        height: 10px;
+        border-right: 2px solid #b8cac4;
+        border-bottom: 2px solid #b8cac4;
+        transform: rotate(45deg);
+      }
+
+      .process-step:last-child {
+        min-height: 52px;
+        padding-bottom: 0;
+      }
+
+      .process-step:last-child::before,
+      .process-step:last-child::after {
+        display: none;
+      }
+
+      .process-dot {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        position: relative;
+        z-index: 1;
+        border-radius: 50%;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .process-step.done .process-dot {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .process-step.current .process-dot {
+        border-color: var(--amber);
+        background: var(--amber);
+        color: #fff;
+        box-shadow: 0 0 0 5px rgba(154, 99, 29, 0.13);
+      }
+
+      .process-card {
+        min-height: 50px;
+        padding: 1px 0 0;
+      }
+
+      .process-step.current .process-card {
+        color: var(--amber);
+      }
+
+      .strategy-picker {
+        display: grid;
+        gap: 7px;
+      }
+
+      .strategy-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .strategy-select {
+        height: 38px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 28px;
+        align-items: center;
+        border: 1px solid #9fb8b3;
+        background: #fff;
+        color: #1f3330;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .strategy-select span {
+        padding: 0 10px;
+      }
+
+      .select-arrow {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        border-left: 1px solid #c8d8d4;
+        color: var(--teal);
+        font-size: 13px;
+      }
+
+      .strategy-help {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .large-action {
+        height: 48px;
+        width: 100%;
+        font-size: 14px;
+      }
+
+      .conversion-output {
+        height: 100%;
+        display: grid;
+        grid-template-rows: 1fr 136px;
+        gap: 12px;
+      }
+
+      .conversion-evidence {
+        display: grid;
+        grid-template-columns: 1fr 360px;
+        gap: 12px;
+        min-height: 0;
+      }
+
+      .conversion-evidence .card {
+        padding: 10px;
+      }
+
+      .mapping-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .mapping-chip {
+        min-height: 48px;
+        display: grid;
+        align-content: center;
+        gap: 4px;
+        padding: 7px 8px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .mapping-chip strong {
+        color: var(--navy);
+        font-size: 11px;
+      }
+
+      .mapping-chip span {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .compact-table .table-row {
+        min-height: 32px;
+      }
+
+      .mapping-note {
+        min-height: 46px;
+      }
+
+      .mapping-note strong {
+        color: var(--navy);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body class="state-input">
+    <main class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P3</div>
+          <div>
+            <h1>P3 Software Design Lab</h1>
+            <p class="subtitle">从需规列表选择输入对象，进入多软设编辑、结构化数据和 P4 投影</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">需规列表：18 条</span>
+          <span class="pill teal">选中需规：REQ-2026-05-10-Authoring</span>
+          <span class="pill amber">关联软设：3 条</span>
+          <span class="pill green">当前软设：DES-2026-05-15-D0004</span>
+          <button class="button ghost">刷新需规</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">Lab 导航</div>
+            <p class="side-note">导航按工作对象推进：先选需规，再完成基础转换，再进入软设微调、投影、回合、评审和日志。</p>
+          </div>
+          <nav class="tab-list">
+            <div class="tab-item nav-input">
+              <div class="tab-name"><span>需规输入</span><span class="metric green">12</span></div>
+              <p class="tab-desc">左侧管理需规列表，右侧查看对象信息和关联软设。</p>
+              <div class="tab-meta"><span>软件设计入口</span><span>需规+软设列表</span></div>
+            </div>
+            <div class="tab-item nav-conversion">
+              <div class="tab-name"><span>需规转软设</span><span class="metric teal">转换</span></div>
+              <p class="tab-desc">新建软设后先做基础转换，左侧需规，右侧软设草稿。</p>
+              <div class="tab-meta"><span>基础转换</span><span>映射+草稿</span></div>
+            </div>
+            <div class="tab-item nav-workspace">
+              <div class="tab-name"><span>软设工作区</span><span class="metric amber">核心</span></div>
+              <p class="tab-desc">同一套软设数据的文档视图和结构化数据视图。</p>
+              <div class="tab-meta"><span>主产物编辑</span><span>双视图</span></div>
+            </div>
+            <div class="tab-item nav-p4">
+              <div class="tab-name"><span>P4 投影</span><span class="metric amber">树</span></div>
+              <p class="tab-desc">把软设结构化数据投影为 P4 工单组织树。</p>
+              <div class="tab-meta"><span>投影交换模块</span><span>P4工单</span></div>
+            </div>
+            <div class="tab-item nav-turn">
+              <div class="tab-name"><span>当前 Turn</span><span class="metric amber">回合</span></div>
+              <p class="tab-desc">左侧回合列表，右侧查看选中回合的解释和补丁。</p>
+              <div class="tab-meta"><span>会话审计模块</span><span>回合列表</span></div>
+            </div>
+            <div class="tab-item nav-review">
+              <div class="tab-name"><span>检查评审</span><span class="metric red">1</span></div>
+              <p class="tab-desc">处理冻结前阻断项、证据和处置动作。</p>
+              <div class="tab-meta"><span>评审冻结模块</span><span>门禁</span></div>
+            </div>
+            <div class="tab-item nav-log">
+              <div class="tab-name"><span>运行日志</span><span class="metric green">42</span></div>
+              <p class="tab-desc">展示 API、组织器、检查器和状态迁移。</p>
+              <div class="tab-meta"><span>审计观察</span><span>事件流</span></div>
+            </div>
+          </nav>
+          <div class="side-foot">
+            <p class="side-rule">工作规则：一条需规可关联多条软设；新建软设必须先进入基础转换；软设工作区只负责转换后的正文微调和结构化数据修订。</p>
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <div class="work-head">
+            <div class="head-left">
+              <span class="pill navy">工作对象优先</span>
+              <div>
+                <div class="head-title" data-title>需规输入：列表管理与对象选择</div>
+                <p class="head-sub" data-subtitle>先管理可进入 P3 的需规列表，再选定当前需规对象。</p>
+              </div>
+            </div>
+            <div class="head-actions">
+              <div class="workspace-switch">
+                <div class="switch-button switch-doc">文档视图</div>
+                <div class="switch-button switch-struct">结构化数据</div>
+              </div>
+              <button class="button ghost" data-action-a style="display: none"></button>
+              <button class="button ghost" data-action-b style="display: none"></button>
+              <button class="button primary" data-action-c style="display: none"></button>
+            </div>
+          </div>
+
+          <div class="body">
+            <section class="show-input">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">需规列表管理</div>
+                    <div class="panel-sub">P3 的入口是需规列表：展示创建、审批、确认、设计和发布状态。</div>
+                  </div>
+                  <span class="pill green">18 条需规</span>
+                </div>
+                <div class="panel-content">
+                  <div class="list-tools">
+                    <div class="filter">筛选：待设计 / 待审批 / 待确认 / 已发布 / 已完成</div>
+                    <button class="button ghost">批量刷新</button>
+                  </div>
+                  <div class="stack">
+                    <div class="list-row selected">
+                      <div class="row-top"><div class="row-title">REQ-2026-05-10-Authoring</div><span class="badge amber">待设计</span></div>
+                      <div class="row-desc">P2 需求规格编写系统，已审批确认，等待生成软件设计说明。</div>
+                      <div class="row-meta"><span>创建：王工 / 2026-05-10 14:53</span><span>已选定</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">REQ-2026-05-09-Scenario</div><span class="badge violet">待审批</span></div>
+                      <div class="row-desc">场景发生器需求规格已创建，等待负责人审批后进入 P3。</div>
+                      <div class="row-meta"><span>创建：李工 / 2026-05-09 18:20</span><span>审批中</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">REQ-2026-05-08-P6Portal</div><span class="badge green">已发布</span></div>
+                      <div class="row-desc">P6 门户展示需求规格已发布，已有对应软设版本。</div>
+                      <div class="row-meta"><span>创建：赵工 / 2026-05-08 09:35</span><span>软设完成</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">REQ-2026-05-07-Knowledge</div><span class="badge red">待确认</span></div>
+                      <div class="row-desc">知识抽取需求仍有关键问题未确认，不能生成软件设计说明。</div>
+                      <div class="row-meta"><span>创建：陈工 / 2026-05-07 11:12</span><span>需补确认</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">REQ-2026-05-05-DisplayExport</div><span class="badge green">已完成</span></div>
+                      <div class="row-desc">展示导出需求已完成设计、冻结和下游投影。</div>
+                      <div class="row-meta"><span>创建：平台组 / 2026-05-05 21:34</span><span>归档</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">选中需规对象</div>
+                    <div class="panel-sub">对象详情用于确认输入来源、创建和审批信息，不承担复杂编辑。</div>
+                  </div>
+                  <div class="pill-row">
+                    <span class="pill navy">待设计</span>
+                    <span class="pill teal">审批已通过</span>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="object-grid">
+                    <div class="mini-paper">
+                      <h3>需求规格说明</h3>
+                      <h4>一、系统目标</h4>
+                      <p>构建 P2 需求规格编写系统，支持自然语言交互、章节化成文、冻结包输出与 P3 可消费标记。</p>
+                      <h4>二、核心流程</h4>
+                      <p>用户通过交互式问答和文档编辑形成需求规格说明，冻结后作为 P3 软件设计系统的正式输入。</p>
+                      <h4>三、验收口径</h4>
+                      <p>冻结包必须包含标准正文、结构化条款、来源追溯、批注结论和 p3_consumable=true。</p>
+                    </div>
+                    <div class="stack">
+                      <div class="table">
+                        <div class="table-row head"><span>信息</span><span>当前值</span><span>状态</span></div>
+                        <div class="table-row"><span>创建人</span><span>王工 / P2 需求分析组</span><span>已记录</span></div>
+                        <div class="table-row"><span>创建时间</span><span>2026-05-10 14:53</span><span>已记录</span></div>
+                        <div class="table-row"><span>审批确认</span><span>周工 / 2026-05-11 09:20</span><span>通过</span></div>
+                        <div class="table-row"><span>发布状态</span><span>冻结包已发布，等待 P3 设计</span><span>待设计</span></div>
+                      </div>
+                      <div class="card">
+                        <div class="card-title">关联软设列表</div>
+                        <p class="card-copy">一条需规可以对应多条软件设计说明。这里用于选择既有软设进入编辑，或基于当前需规新建一条软设；发布、冻结和评审动作不在本页处理。</p>
+                      </div>
+                      <div class="stack">
+                        <div class="design-card active">
+                          <div>
+                            <div class="row-title">DES-2026-05-15-D0004 / v0.1</div>
+                            <div class="row-desc">最近编辑：2026-05-15 14:30 / 周工；状态：基础转换草稿。</div>
+                          </div>
+                          <div class="design-actions">
+                            <button class="button primary">编辑</button>
+                            <button class="button ghost">删除</button>
+                          </div>
+                        </div>
+                        <div class="design-card">
+                          <div>
+                            <div class="row-title">DES-2026-05-11-D0002 / v0.1</div>
+                            <div class="row-desc">最近编辑：2026-05-11 18:42 / 王工；状态：方案分支草稿。</div>
+                          </div>
+                          <div class="design-actions">
+                            <button class="button ghost">编辑</button>
+                            <button class="button ghost">删除</button>
+                          </div>
+                        </div>
+                        <div class="design-card">
+                          <div>
+                            <div class="row-title">DES-2026-05-10-D0003 / v1.0</div>
+                            <div class="row-desc">最近编辑：2026-05-10 22:16 / 平台组；状态：历史版本。</div>
+                          </div>
+                          <div class="design-actions">
+                            <button class="button ghost">编辑</button>
+                            <button class="button ghost">删除</button>
+                          </div>
+                        </div>
+                        <button class="button teal">新建软设</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-conversion">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">左侧输入：已选需规</div>
+                    <div class="panel-sub">转换视图只读取当前需规冻结包，不在这里编辑需规正文。</div>
+                  </div>
+                  <span class="pill teal">来源已冻结</span>
+                </div>
+                <div class="panel-content">
+                  <div class="conversion-paper-wrap">
+                    <article class="conversion-paper">
+                      <p class="doc-label">REQ-2026-05-10-Authoring / v1.0 / P2 已发布</p>
+                      <h2 class="doc-heading">需求规格说明</h2>
+                      <section class="doc-section active">
+                        <h3>2. 业务目标</h3>
+                        <p>支持自然语言交互、表单补充和章节化正文生成，形成可审批、可冻结、可供 P3 消费的需求规格说明。</p>
+                      </section>
+                      <section class="doc-section">
+                        <h3>4. 核心功能</h3>
+                        <p>系统应包含需规管理、会话管理、当前 Turn、调用日志、冻结发布和下游输入标记。</p>
+                      </section>
+                      <section class="doc-section">
+                        <h3>6. 质量要求</h3>
+                        <p>冻结包必须包含正文、结构化条款、来源追溯、审批结论和 p3_consumable=true。</p>
+                      </section>
+                      <section class="doc-section">
+                        <h3>8. 下游交付</h3>
+                        <p>P3 读取已发布需规后，应生成软件设计说明草稿，并保留条款到设计章节的追溯关系。</p>
+                      </section>
+                    </article>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">转换控制</div>
+                    <div class="panel-sub">只负责基础转换，不承担软设微调、发布或评审。</div>
+                  </div>
+                </div>
+                <div class="panel-content conversion-panel">
+                  <div class="strategy-picker">
+                    <div class="strategy-label">转换策略</div>
+                    <div class="strategy-select"><span>标准软设草稿生成</span><div class="select-arrow">▼</div></div>
+                    <div class="strategy-help">可切换为组件优先拆解或 P4 投影优先；当前只展示闭合状态。</div>
+                  </div>
+                  <div class="conversion-bridge">
+                    <button class="button teal bridge-action">执行基础转换</button>
+                  </div>
+                  <div class="process-steps">
+                    <div class="process-step done"><div class="process-dot">1</div><div class="process-card"><div class="row-title">读取需规冻结包</div><div class="row-desc">正文、条款、来源追溯和审批结论。</div></div><span class="badge green">完成</span></div>
+                    <div class="process-step done"><div class="process-dot">2</div><div class="process-card"><div class="row-title">抽取设计对象</div><div class="row-desc">模块、接口、数据对象、质量属性。</div></div><span class="badge green">完成</span></div>
+                    <div class="process-step current"><div class="process-dot">3</div><div class="process-card"><div class="row-title">生成软设草稿</div><div class="row-desc">生成 A4 文档骨架和结构化事实初稿。</div></div><span class="badge amber">当前</span></div>
+                    <div class="process-step"><div class="process-dot">4</div><div class="process-card"><div class="row-title">建立追溯映射</div><div class="row-desc">需规条款到软设章节、对象和 P4 候选。</div></div><span class="badge amber">待确认</span></div>
+                  </div>
+                  <button class="button primary large-action">进入软设工作区微调</button>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">右侧输出：软设草稿预览</div>
+                    <div class="panel-sub">基础转换完成后，软设工作区继续做章节扩写和结构化修订。</div>
+                  </div>
+                  <div class="pill-row">
+                    <span class="pill amber">草稿 v0.1</span>
+                    <span class="pill navy">追溯 18/18</span>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="conversion-output">
+                    <div class="conversion-paper-wrap">
+                      <article class="conversion-paper target">
+                        <p class="doc-label">DES-2026-05-15-D0004 / v0.1 / 基础转换草稿</p>
+                        <h2 class="doc-heading">软件设计说明</h2>
+                        <section class="doc-section active">
+                          <h3>1. 概述</h3>
+                          <p>本设计来源于 REQ-2026-05-10-Authoring，目标是实现 P2 需求规格编写系统的工作台、交互、发布和下游交付能力。</p>
+                        </section>
+                        <section class="doc-section">
+                          <h3>4. 总体架构</h3>
+                          <p>初步划分为需规管理、组织器配置、会话交互、Turn 记录、冻结发布、审计日志和 P3 交付适配模块。</p>
+                        </section>
+                        <section class="doc-section">
+                          <h3>8. 数据与接口</h3>
+                          <p>草稿已建立 RequirementSpec、ConversationTurn、PublishedPackage 和 P3InputSnapshot 的初始对象。</p>
+                        </section>
+                      </article>
+                    </div>
+                    <div class="conversion-evidence">
+                      <div class="stack">
+                        <div class="card">
+                          <div class="card-title">条款到章节映射</div>
+                          <p class="card-copy">映射不是评审结论，只是基础转换生成的可编辑追溯关系，后续在软设工作区微调。</p>
+                        </div>
+                        <div class="card mapping-note">
+                          <strong>已建立 18 条追溯：</strong>
+                          <p class="card-copy">覆盖业务目标、核心功能、质量门禁和 P3 交付条款；完整映射进入软设工作区复核。</p>
+                        </div>
+                      </div>
+                      <div class="table compact-table">
+                        <div class="table-row head"><span>输出对象</span><span>当前值</span><span>状态</span></div>
+                        <div class="table-row"><span>草稿</span><span>A4 骨架 + 结构化事实</span><span>待微调</span></div>
+                        <div class="table-row"><span>P4候选</span><span>工具包分支 3 个</span><span>未投影</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-workspace">
+              <div class="workspace-mode mode-doc">
+                <div class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <div class="panel-title">章节对象</div>
+                      <div class="panel-sub">同一套软设数据，当前以文档式 A4 正文展示。</div>
+                    </div>
+                  </div>
+                  <div class="panel-content">
+                    <div class="outline-list">
+                      <div class="outline-item active"><div class="row-title">生成过程</div><div class="row-desc">需规读取 -> 设计规划 -> 生成草稿 -> 人工复核。</div></div>
+                      <div class="outline-item"><div class="row-title">1. 概述</div><div class="row-desc">目标、范围、输入输出。</div></div>
+                      <div class="outline-item"><div class="row-title">4. 总体架构</div><div class="row-desc">草稿章节，正在修订模块边界。</div></div>
+                      <div class="outline-item"><div class="row-title">5. 前端工作台设计</div><div class="row-desc">StageLabShell / Adapter / 视图组件。</div></div>
+                      <div class="outline-item"><div class="row-title">8. 数据与接口</div><div class="row-desc">DTO、API、事件和状态迁移。</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="paper-wrap">
+                  <article class="paper">
+                    <p class="paper-kicker">软设：DES-2026-05-15-D0004 / v0.1 / 草稿</p>
+                    <h2 class="paper-title">软件设计说明</h2>
+                    <section class="paper-section active">
+                      <h3>4. 总体架构</h3>
+                      <p>P3 由需规列表选定输入对象，再从关联软设列表进入某一条软件设计说明。软设工作区以同一份数据同时提供 A4 文档视图和结构化数据视图。</p>
+                    </section>
+                    <section class="paper-section">
+                      <h3>4.2 模块边界</h3>
+                      <p>输入、软设正文、结构化事实、P4 投影、回合记录、检查评审和运行日志分别维护自己的对象边界。</p>
+                    </section>
+                    <section class="paper-section">
+                      <h3>5.1 前端工作台</h3>
+                      <p>文档视图继承 P2 的 A4 正文体验；结构化数据视图承接原设计基线事实树，不再作为左侧独立主 Tab。</p>
+                    </section>
+                  </article>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <div class="panel-title">选中章节交互对象</div>
+                      <div class="panel-sub">上方为快捷指令，底部 CLI 可输入自然语言补充要求。</div>
+                    </div>
+                    <span class="pill amber">需复核</span>
+                  </div>
+                  <div class="panel-content interaction-panel">
+                    <div class="card">
+                      <div class="card-title">需规到软设生成过程</div>
+                      <p class="card-copy">14:22 读取已审批需规 -> 14:25 生成设计规划 -> 14:30 生成软设草稿 D-0004 -> 14:31 人工进入章节复核。</p>
+                    </div>
+                    <div class="card">
+                      <div class="card-title">对象：设计章节 4. 总体架构</div>
+                      <p class="card-copy">绑定 P2 条款 R-001、R-006、R-014；映射结构化对象 architecture、moduleBoundaries。</p>
+                    </div>
+                    <div class="stack">
+                      <div class="command-row"><div><div class="row-title">扩写本节</div><div class="row-desc">围绕当前章节补充模块边界、接口关系和设计理由。</div></div><button class="button ghost">执行</button></div>
+                      <div class="command-row"><div><div class="row-title">补充小节</div><div class="row-desc">在 4. 总体架构下新增 4.3 工作对象关系。</div></div><button class="button ghost">执行</button></div>
+                      <div class="command-row"><div><div class="row-title">应用补丁</div><div class="row-desc">只修改本节正文并生成 document_patch。</div></div><button class="button ghost">执行</button></div>
+                    </div>
+                    <div class="chat-box">
+                      <div class="stack">
+                        <div class="chat-msg assistant">草稿 D-0004 已生成。当前章节缺少“软设双视图”的说明，建议扩写。</div>
+                        <div class="chat-msg user">在总体架构里补一段文档视图和结构化数据视图的关系。</div>
+                      </div>
+                      <div class="input-line"><div class="input">输入扩写、补充小节或局部重生成要求...</div><button class="button primary">提交</button></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="workspace-mode mode-struct">
+                <div class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <div class="panel-title">结构化数据导航</div>
+                      <div class="panel-sub">这是软设数据的结构化展示，不再作为左侧独立主 Tab。</div>
+                    </div>
+                  </div>
+                  <div class="panel-content">
+                    <div class="tree">
+                      <div class="tree-node active"><div class="row-title">SoftwareDesign DES-D0004</div><span class="badge teal">v0.1</span></div>
+                      <div class="tree-node level-2"><div class="row-title">sourceRequirement</div><span class="badge navy">REQ-Authoring</span></div>
+                      <div class="tree-node level-2"><div class="row-title">architecture</div><span class="badge green">6 模块</span></div>
+                      <div class="tree-node level-3"><div class="row-title">StageLabShell</div><span class="badge navy">共性</span></div>
+                      <div class="tree-node level-3"><div class="row-title">P3DesignLabAdapter</div><span class="badge teal">适配</span></div>
+                      <div class="tree-node level-2"><div class="row-title">interfaces</div><span class="badge amber">14</span></div>
+                      <div class="tree-node level-2"><div class="row-title">traceability</div><span class="badge green">18/18</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <div class="panel-title">选中结构化对象：architecture</div>
+                      <div class="panel-sub">与 A4 正文共享同一份软设数据，负责模块、接口和追溯事实。</div>
+                    </div>
+                    <span class="pill teal">结构化视图</span>
+                  </div>
+                  <div class="panel-content">
+                    <div class="stack">
+                      <div class="table">
+                        <div class="table-row head"><span>字段</span><span>值</span><span>状态</span></div>
+                        <div class="table-row"><span>designId</span><span>DES-2026-05-15-D0004</span><span>当前</span></div>
+                        <div class="table-row"><span>source</span><span>REQ-2026-05-10-Authoring</span><span>已绑定</span></div>
+                        <div class="table-row"><span>modules</span><span>input / workspace / struct / projection / turn / review / log</span><span>待复核</span></div>
+                        <div class="table-row"><span>sync</span><span>正文第 4 章与 architecture 对象互相追溯</span><span>已建立</span></div>
+                      </div>
+                      <div class="card">
+                        <div class="card-title">为什么放在软设工作区内</div>
+                        <p class="card-copy">文档视图、结构化数据视图是同一条软设的两种展示形式。用户可以从 A4 正文切到结构化事实，检查模块、接口、追溯和 P4 投影来源。</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <div class="panel-title">结构化数据动作</div>
+                      <div class="panel-sub">动作作用于当前软设数据，不直接发布或投影。</div>
+                    </div>
+                  </div>
+                  <div class="panel-content">
+                    <div class="stack">
+                      <div class="command-row"><div><div class="row-title">生成投影候选</div><div class="row-desc">把结构化事实提供给 P4 投影视图预览。</div></div><button class="button ghost">执行</button></div>
+                      <div class="chat-box">
+                        <div class="stack">
+                          <div class="chat-msg assistant">architecture.modules 与正文第 4.2 节存在一处命名不一致。</div>
+                          <div class="chat-msg user">把 P3DesignLabAdapter 的职责同步到正文。</div>
+                        </div>
+                        <div class="input-line"><div class="input">输入结构化数据修订要求...</div><button class="button primary">提交</button></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-turn">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">回合列表</div>
+                    <div class="panel-sub">软设工作区不强突出回合，但所有交互仍需要可追溯的回合记录。</div>
+                  </div>
+                  <span class="pill amber">7 回合</span>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="list-row selected">
+                      <div class="row-top"><div class="row-title">Turn 07：软设主工作区重构</div><span class="badge amber">当前</span></div>
+                      <div class="row-desc">把原设计基线下沉为软设结构化数据子视图。</div>
+                      <div class="row-meta"><span>2026-05-12 23:28</span><span>3 个补丁</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">Turn 06：关联软设列表</div><span class="badge green">已应用</span></div>
+                      <div class="row-desc">一条需规对应多条软设，入口页展示编辑、新建、删除。</div>
+                      <div class="row-meta"><span>2026-05-12 22:54</span><span>2 个补丁</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">Turn 05：生成过程补充</div><span class="badge green">已应用</span></div>
+                      <div class="row-desc">补充需规读取、设计规划、软设草稿、人工复核。</div>
+                      <div class="row-meta"><span>2026-05-12 21:23</span><span>4 个补丁</span></div>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-top"><div class="row-title">Turn 04：P4 投影树</div><span class="badge green">已应用</span></div>
+                      <div class="row-desc">把 P4 工单投影从平铺列表改为工具包组织树。</div>
+                      <div class="row-meta"><span>2026-05-12 20:40</span><span>1 个补丁</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">选中回合详情</div>
+                    <div class="panel-sub">解释本回合用户输入、系统理解、影响对象和生成补丁。</div>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="card">
+                      <div class="card-title">用户输入摘要</div>
+                      <p class="card-copy">软设工作区的文档视图、结构化数据视图与 P4 投影共享同一条软设数据；结构化数据应下沉为软设工作区子视图，P4 投影先保留独立 Tab。</p>
+                    </div>
+                    <div class="turn-steps">
+                      <div class="turn-step"><div class="step-no">1</div><div><div class="row-title">解释输入</div><div class="row-desc">识别为“主工作区层级”调整，而不是单页文案修复。</div></div><span class="badge green">完成</span></div>
+                      <div class="turn-step"><div class="step-no">2</div><div><div class="row-title">定位影响对象</div><div class="row-desc">左侧导航、软设子视图、结构化对象、P4 独立投影、README。</div></div><span class="badge green">完成</span></div>
+                      <div class="turn-step"><div class="step-no">3</div><div><div class="row-title">生成补丁</div><div class="row-desc">prototype_patch + doc_mapping_patch + review_response。</div></div><span class="badge amber">待确认</span></div>
+                      <div class="turn-step"><div class="step-no">4</div><div><div class="row-title">用户决策</div><div class="row-desc">确认 v7、要求继续改图、或撤回本轮结构调整。</div></div><span class="badge amber">当前</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">输出对象</div>
+                    <div class="panel-sub">Turn 的输出必须落回模块边界。</div>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="object-row"><div><div class="row-title">document_patch</div><div class="row-desc">补充软设双视图和结构化数据说明。</div></div><span class="badge amber">正文</span></div>
+                    <div class="object-row"><div><div class="row-title">structured_delta</div><div class="row-desc">把结构化事实纳入 SoftwareDesign.structuredView。</div></div><span class="badge teal">结构化</span></div>
+                    <div class="object-row"><div><div class="row-title">prototype_patch</div><div class="row-desc">重排七个主 Tab，并补充需规转软设基础转换视图。</div></div><span class="badge navy">原型</span></div>
+                    <div class="input-line"><div class="input">继续追问本轮变更...</div><button class="button primary">发送</button></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-review">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">检查评审工作模式</div>
+                    <div class="panel-sub">把规则发现的问题变成可处置事项，决定是否允许冻结。</div>
+                  </div>
+                  <div class="pill-row"><span class="pill red">1 阻断</span><span class="pill amber">3 警告</span><span class="pill green">17 通过</span></div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="issue-row blocking"><div><div class="row-title">QR-ENTRY-01：输入入口说明与结构化数据不一致</div><div class="row-desc">证据：正文仍写“单个需规作为输入起点”，结构化数据已改为需规列表。</div></div><span class="badge red">阻断</span></div>
+                    <div class="issue-row"><div><div class="row-title">QR-DOC-05：软设工作区缺少章节交互对象说明</div><div class="row-desc">建议：补充章节对象、补丁动作、结构化数据同步说明。</div></div><span class="badge amber">警告</span></div>
+                    <div class="issue-row"><div><div class="row-title">QR-P4-02：P4 投影应为树型组织</div><div class="row-desc">建议：以工具包分支树替代平铺工单列表。</div></div><span class="badge amber">警告</span></div>
+                    <div class="issue-row pass"><div><div class="row-title">QR-SHELL-01：P2 Lab 外壳继承</div><div class="row-desc">顶部身份区、左侧导航和右侧任务区已保留。</div></div><span class="badge green">通过</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">处置与冻结证据</div>
+                    <div class="panel-sub">评审视图不只是看红黄绿，还要处理证据和动作。</div>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="stat-grid">
+                      <div class="stat-cell"><div class="stat-label">冻结必填</div><div class="stat-value">12/12</div></div>
+                      <div class="stat-cell"><div class="stat-label">需求追溯</div><div class="stat-value">18/18</div></div>
+                      <div class="stat-cell"><div class="stat-label">阻断未清</div><div class="stat-value">1</div></div>
+                    </div>
+                    <div class="table">
+                      <div class="table-row head"><span>处置动作</span><span>目标对象</span><span>状态</span></div>
+                      <div class="table-row"><span>生成补丁</span><span>软件设计说明第 5 章前置关系</span><span>可用</span></div>
+                      <div class="table-row"><span>重跑检查</span><span>QR-ENTRY-01 / QR-DOC-05</span><span>待执行</span></div>
+                      <div class="table-row"><span>冻结候选</span><span>SoftwareDesign.structured v0.7 + 正文版本 D-12</span><span>阻断</span></div>
+                    </div>
+                    <div class="card">
+                      <div class="card-title">本视图存在的意义</div>
+                      <p class="card-copy">检查评审用于解释为什么当前软设能或不能进入下一阶段，并把问题落到章节、结构化事实或投影树节点上。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-p4">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">P4 工单投影树</div>
+                    <div class="panel-sub">P4 投影本身就是下游工单组织形态，不再把投影和工单拆成两个概念。</div>
+                  </div>
+                  <span class="pill amber">preview_only</span>
+                </div>
+                <div class="panel-content">
+                  <div class="tree">
+                    <div class="tree-node active"><div class="row-title">P4-WO-StageLab-Workbench</div><span class="badge violet">P4投影</span></div>
+                    <div class="tree-node level-2"><div class="row-title">A. 共性工作台工具包</div><span class="badge green">分支</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-A1 StageLabShell 组件生成器</div><span class="badge green">可投影</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-A2 StageNavigation 状态工具</div><span class="badge green">可投影</span></div>
+                    <div class="tree-node level-2"><div class="row-title">B. P3 适配工具包</div><span class="badge green">分支</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-B1 DTO -> ViewModel Adapter</div><span class="badge green">可投影</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-B2 输入列表快照适配器</div><span class="badge amber">需完善</span></div>
+                    <div class="tree-node level-2"><div class="row-title">C. 验证脚本工具包</div><span class="badge green">分支</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-C1 同源检查脚本</div><span class="badge green">可投影</span></div>
+                    <div class="tree-node level-3"><div class="row-title">WO-C2 原型截图回归脚本</div><span class="badge green">可投影</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">选中树节点详情</div>
+                    <div class="panel-sub">展示一个分支下的工具包组织关系和来源追溯。</div>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="card">
+                      <div class="card-title">节点：B. P3 适配工具包</div>
+                      <p class="card-copy">该分支是 P4 工单投影的一部分，包含 P3 专属 Adapter、输入列表快照适配器和 ViewModel 组装脚本，来源于 SoftwareDesign.modules.adapter 与 sourceRequirement 事实。</p>
+                    </div>
+                    <div class="table">
+                      <div class="table-row head"><span>字段</span><span>值</span><span>状态</span></div>
+                      <div class="table-row"><span>source</span><span>SoftwareDesign.modules.p3Adapter</span><span>已追溯</span></div>
+                      <div class="table-row"><span>depends_on</span><span>A. 共性工作台工具包</span><span>已绑定</span></div>
+                      <div class="table-row"><span>acceptance</span><span>能把需规列表和当前需规对象映射到工作台模型</span><span>需完善</span></div>
+                    </div>
+                    <div class="card">
+                      <div class="card-title">本视图存在的意义</div>
+                      <p class="card-copy">P4 投影视图回答“这份软设后续会形成哪些 P4 工单，以及这些工单如何按工具包分支组织”，因此必须用树表达分支、依赖和包内工单。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="show-log">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">运行日志过滤</div>
+                    <div class="panel-sub">日志支撑可观测性，不替代设计事实。</div>
+                  </div>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="table">
+                      <div class="table-row head"><span>类型</span><span>过滤范围</span><span>数量</span></div>
+                      <div class="table-row"><span>输入 API</span><span>需规列表、选中对象、输入快照</span><span>11</span></div>
+                      <div class="table-row"><span>组织器</span><span>章节生成、Turn 解释、补丁生成</span><span>12</span></div>
+                      <div class="table-row"><span>检查器</span><span>冻结规则、投影规则、同源检查</span><span>8</span></div>
+                      <div class="table-row"><span>状态迁移</span><span>selected -> drafting -> structured_ready</span><span>11</span></div>
+                    </div>
+                    <div class="card">
+                      <div class="card-title">日志边界</div>
+                      <p class="card-copy">日志只说明发生过什么。正式结论必须进入正文补丁、结构化事实、评审记录或投影树。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">事件时间线</div>
+                    <div class="panel-sub">按时间展示输入选择、软设交互、结构化数据和评审动作。</div>
+                  </div>
+                  <span class="pill green">42 事件</span>
+                </div>
+                <div class="panel-content">
+                  <div class="stack">
+                    <div class="event-row"><span class="metric green">20:12</span><div><div class="row-title">GET /requirement-specs?p3_consumable=true</div><div class="row-desc">加载可设计需规列表。</div></div><span class="badge navy">输入</span></div>
+                    <div class="event-row"><span class="metric green">20:14</span><div><div class="row-title">POST /input-snapshots</div><div class="row-desc">选中 REQ-Authoring 并建立 P3 输入快照。</div></div><span class="badge navy">输入</span></div>
+                    <div class="event-row"><span class="metric green">20:18</span><div><div class="row-title">POST /design-turns</div><div class="row-desc">提交软设主工作区层级调整。</div></div><span class="badge teal">Turn</span></div>
+                    <div class="event-row"><span class="metric amber">20:21</span><div><div class="row-title">DesignChecker QR-ENTRY-01</div><div class="row-desc">发现正文与结构化数据入口口径不一致。</div></div><span class="badge amber">检查</span></div>
+                    <div class="event-row"><span class="metric green">20:26</span><div><div class="row-title">ProjectionTree.preview</div><div class="row-desc">生成 P4 树型投影预览。</div></div><span class="badge violet">投影</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const stateByHash = {
+        "#input": "state-input",
+        "#conversion": "state-conversion",
+        "#workspace": "state-workspace-doc",
+        "#workspace-doc": "state-workspace-doc",
+        "#workspace-struct": "state-workspace-struct",
+        "#turn": "state-turn",
+        "#review": "state-review",
+        "#p4": "state-p4",
+        "#log": "state-log"
+      };
+
+      const titleByHash = {
+        "#input": ["需规输入：列表管理与关联软设", "先管理可进入 P3 的需规列表，再从选中需规进入已有软设或新建软设。"],
+        "#conversion": ["需规转软设：基础转换视图", "新建软设后先进入左右对称转换页，完成需规到软设草稿的基础转换。"],
+        "#workspace": ["软设工作区：文档视图", "同一条软设数据以 A4 软件设计说明正文展示，并支持章节交互。"],
+        "#workspace-doc": ["软设工作区：文档视图", "同一条软设数据以 A4 软件设计说明正文展示，并支持章节交互。"],
+        "#workspace-struct": ["软设工作区：结构化数据视图", "同一条软设数据以结构化对象展示，承接原设计基线的事实树能力。"],
+        "#turn": ["当前 Turn：回合列表与变更复核", "软设工作区弱化回合概念，但保留回合列表用于审计、解释和撤回。"],
+        "#review": ["检查评审：冻结前门禁", "把规则发现的问题变成可处置事项，并决定能否进入冻结候选。"],
+        "#p4": ["P4 投影：工单组织树", "P4 投影本身就是下游工单组织，按工具包分支树展示依赖和来源。"],
+        "#log": ["运行日志：过程审计", "展示 API、组织器、检查器和状态迁移，支撑 Lab 可观测性。"]
+      };
+
+      const actionByHash = {
+        "#input": [],
+        "#conversion": ["执行基础转换", "进入软设工作区"],
+        "#workspace": ["保存草稿", "提交复核"],
+        "#workspace-doc": ["保存草稿", "提交复核"],
+        "#workspace-struct": ["生成投影候选"],
+        "#p4": ["生成 P4 投影"],
+        "#turn": ["刷新回合", "撤回本轮", "继续追问"],
+        "#review": ["重跑检查", "生成补丁", "提交冻结候选"],
+        "#log": ["刷新日志", "导出审计", "定位对象"]
+      };
+
+      function applyState() {
+        const hash = window.location.hash || "#input";
+        document.body.className = stateByHash[hash] || "state-input";
+        const copy = titleByHash[hash] || titleByHash["#input"];
+        document.querySelector("[data-title]").textContent = copy[0];
+        document.querySelector("[data-subtitle]").textContent = copy[1];
+        const actions = actionByHash[hash] || actionByHash["#input"];
+        const actionNodes = Array.from(document.querySelectorAll("[data-action-a], [data-action-b], [data-action-c]"));
+        actionNodes.forEach((node, index) => {
+          if (actions[index]) {
+            node.textContent = actions[index];
+            node.style.display = "";
+          } else {
+            node.style.display = "none";
+          }
+        });
+      }
+
+      window.addEventListener("hashchange", applyState);
+      applyState();
+    </script>
+  </body>
+</html>

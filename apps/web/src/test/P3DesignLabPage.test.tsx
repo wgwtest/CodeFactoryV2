@@ -30,21 +30,38 @@ afterEach(() => {
 
 test("renders P3 Design Lab as a Lab workspace with software design document, structured data, and P4 projection tree", async () => {
   const inputPackage = buildInputPackage();
-  const createdSession = buildSession(inputPackage, "created");
-  const generatedSession = buildSession(inputPackage, "baseline_ready");
+  const newDesignTitle = "空域协同规划软件设计说明（设计方案 01）";
+  const newVersionLabel = "v0.1";
+  const createdSession = buildSession(inputPackage, "created", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
+    status: "created",
+    conversion: null,
+  });
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
+    conversion: buildConversion("draft_ready", "component_first"),
+  });
   const savedSession = buildSession(inputPackage, "draft_saved", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
     runtime_events: [
       { event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" },
       { event_id: "evt-2", event_type: "save", message: "保存软件设计说明草稿", created_at: "2026-05-13T10:22:00Z" },
     ],
   });
   const projectedSession = buildSession(inputPackage, "projection_ready", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
     runtime_events: [
       { event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" },
       { event_id: "evt-3", event_type: "projection", message: "生成 P4 工单投影候选", created_at: "2026-05-13T10:23:00Z" },
     ],
   });
   const turnedSession = buildSession(inputPackage, "patch_ready", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
     turns: [
       {
         turn_id: "p3turn-1",
@@ -56,6 +73,8 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
     ],
   });
   const checkedSession = buildSession(inputPackage, "patch_ready", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
     check_result: {
       blocking_count: 0,
       warning_count: 1,
@@ -64,10 +83,12 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
     },
   });
   const frozenSession = buildSession(inputPackage, "frozen", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
     check_result: checkedSession.check_result,
     frozen_package: {
       package_id: "sdp-p3dl-1",
-      version_label: "SoftwareDesignBaseline v2",
+      version_label: newVersionLabel,
       status: "frozen",
       frozen_at: "2026-05-13T10:30:00Z",
     },
@@ -84,8 +105,8 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
     if (url === "/software-design-v2/sessions") {
       return Promise.resolve({ data: createdSession });
     }
-    if (url === "/software-design-v2/sessions/p3dl-1/generate") {
-      return Promise.resolve({ data: generatedSession });
+    if (url === "/software-design-v2/sessions/p3dl-1/conversion") {
+      return Promise.resolve({ data: convertedSession });
     }
     if (url === "/software-design-v2/sessions/p3dl-1/turns") {
       return Promise.resolve({ data: { turn: turnedSession.turns[0], session: turnedSession } });
@@ -111,7 +132,7 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
       return Promise.resolve({ data: { items: [inputPackage] } });
     }
     if (url === "/software-design-v2/sessions/p3dl-1") {
-      return Promise.resolve({ data: generatedSession });
+      return Promise.resolve({ data: convertedSession });
     }
     throw new Error(`unexpected get url: ${url}`);
   });
@@ -132,6 +153,7 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(screen.getByText("从 P2 需求规格冻结包生成软件设计说明、设计基线和 P4 投影")).toBeInTheDocument();
   const navigation = screen.getByTestId("p3-design-lab-navigation");
   expect(within(navigation).getByRole("tab", { name: /需规输入/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /P4 投影/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /当前 Turn/ })).toBeInTheDocument();
@@ -141,33 +163,87 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   const workspace = screen.getByTestId("p3-design-lab-workspace");
   expect(within(workspace).getByTestId("p3-design-lab-input-view")).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+  expect(screen.getByRole("dialog", { name: "新建软件设计说明" })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("软设名称"), { target: { value: newDesignTitle } });
+  fireEvent.change(screen.getByLabelText("版本标识"), { target: { value: newVersionLabel } });
+  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
 
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate"));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith(
+      "/software-design-v2/sessions",
+      expect.objectContaining({
+        design_title: newDesignTitle,
+        version_label: newVersionLabel,
+      }),
+    ),
+  );
+  expect(postMock).not.toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate");
+  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(workspace).getByRole("heading", { name: "需规转软设" })).toBeInTheDocument();
+  expect(within(workspace).getByText("已选需规 A4 预览")).toBeInTheDocument();
+  expect(within(workspace).getByText("转换策略")).toBeInTheDocument();
+  expect(within(workspace).getByRole("combobox", { name: "转换策略" })).toBeInTheDocument();
+  expect(within(workspace).getAllByText("标准软设草稿生成").length).toBeGreaterThanOrEqual(1);
+  fireEvent.mouseDown(within(workspace).getByRole("combobox", { name: "转换策略" }));
+  fireEvent.click(await screen.findByText("组件优先拆解"));
+  expect(within(workspace).getByText("软设草稿 A4 预览")).toBeInTheDocument();
+  expect(within(workspace).getByText("读取需规冻结包")).toBeInTheDocument();
+  expect(within(workspace).getByText("抽取设计对象")).toBeInTheDocument();
+  expect(within(workspace).getByText("生成软设草稿")).toBeInTheDocument();
+  expect(within(workspace).getByText("建立追溯映射")).toBeInTheDocument();
+  const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
+  expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "执行基础转换" }));
+  expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(conversionControl).queryByText("加载正文、结构化条款和冻结快照。")).not.toBeInTheDocument();
+  expect(within(conversionControl).queryByText("执行基础转换后生成软设草稿、结构化设计事实和追溯摘要。")).not.toBeInTheDocument();
+  expect(within(conversionControl).queryByText("转换完成后进入软设工作区微调。")).not.toBeInTheDocument();
+  expect(within(conversionControl).queryByText("当前策略")).not.toBeInTheDocument();
+  expect(within(conversionControl).queryByText("转换状态")).not.toBeInTheDocument();
+  expect(within(conversionControl).queryByText("待执行")).not.toBeInTheDocument();
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-read_requirement")).toHaveClass("is-current");
+  fireEvent.click(within(workspace).getByRole("button", { name: "执行基础转换" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/conversion", {
+      strategy: "component_first",
+    }),
+  );
+  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(workspace).getByText("软设草稿 A4 预览")).toBeInTheDocument();
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
   expect(within(workspace).getByRole("button", { name: "文档视图" })).toHaveAttribute("aria-pressed", "true");
   expect(within(workspace).getByRole("button", { name: "结构化数据" })).toBeInTheDocument();
 
-  expect(await screen.findByText("空域协同规划软件设计说明")).toBeInTheDocument();
+  expect(await screen.findByText(newDesignTitle)).toBeInTheDocument();
+  expect(within(workspace).getByText("章节对象")).toBeInTheDocument();
+  expect(within(workspace).getByText("选中章节交互对象")).toBeInTheDocument();
+  expect(within(workspace).getByText("需规到软设生成过程")).toBeInTheDocument();
+  expect(within(workspace).getByText("扩写本节")).toBeInTheDocument();
   expect(within(workspace).getByTestId("document-body-panel")).toBeInTheDocument();
   expect(within(workspace).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
-  expect(within(workspace).getAllByText("SoftwareDesignBaseline v2").length).toBeGreaterThanOrEqual(1);
+  expect(within(workspace).getAllByText(newVersionLabel).length).toBeGreaterThanOrEqual(1);
   fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));
   expect(await screen.findByText("设计会话：draft_saved")).toBeInTheDocument();
 
   fireEvent.click(within(workspace).getByRole("button", { name: "结构化数据" }));
   expect(within(workspace).getByTestId("p3-design-structured-data-view")).toBeInTheDocument();
-  expect(within(workspace).getByText("规划任务管理")).toBeInTheDocument();
-  expect(within(workspace).getByText("unified_service")).toBeInTheDocument();
+  expect(within(workspace).getByText("结构化数据导航")).toBeInTheDocument();
+  expect(within(workspace).getByText("选中结构化对象：architecture")).toBeInTheDocument();
+  expect(within(workspace).getByText("结构化数据动作")).toBeInTheDocument();
+  expect(within(workspace).getAllByText("规划任务管理").length).toBeGreaterThanOrEqual(1);
+  expect(within(workspace).getAllByText("unified_service").length).toBeGreaterThanOrEqual(1);
   fireEvent.click(within(workspace).getByRole("button", { name: "生成投影候选" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/projection"));
 
   fireEvent.click(within(navigation).getByRole("tab", { name: /P4 投影/ }));
   expect(screen.getByTestId("p3-design-lab-projection-tree")).toBeInTheDocument();
   expect(screen.getByRole("tree", { name: "P4 工单投影树" })).toBeInTheDocument();
-  expect(screen.getByText("规划任务管理模块实现")).toBeInTheDocument();
+  expect(screen.getByText("P4-WO-StageLab-Workbench")).toBeInTheDocument();
+  expect(screen.getByText("B. P3 适配工具包")).toBeInTheDocument();
+  expect(screen.getByText("选中树节点详情")).toBeInTheDocument();
+  expect(screen.getByText("节点：B. P3 适配工具包")).toBeInTheDocument();
 
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   const inputView = screen.getByTestId("p3-design-lab-input-view");
@@ -176,7 +252,8 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(within(inputView).getByText("关联软设")).toBeInTheDocument();
   expect(within(inputView).getAllByText("空域协同规划软件需求规格说明").length).toBeGreaterThan(0);
   expect(within(inputView).getByText("2026-05-13 10:20")).toBeInTheDocument();
-  expect(within(inputView).getByText("baseline_ready")).toBeInTheDocument();
+  expect(within(inputView).getByText("projection_ready")).toBeInTheDocument();
+  expect(within(inputView).getByText(`版本：${newVersionLabel}`)).toBeInTheDocument();
 
   fireEvent.click(within(inputView).getByRole("button", { name: "进入编辑" }));
   await waitFor(() => expect(getMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
@@ -257,6 +334,42 @@ test("refreshes P3 input packages while the page stays open", async () => {
   expect(screen.getByRole("button", { name: "刷新输入包" })).toBeInTheDocument();
 });
 
+test("prefills new software design metadata from the selected requirement and existing related designs", async () => {
+  const inputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-existing",
+        title: "空域协同规划软件设计说明（设计方案 01）",
+        version_label: "v0.1",
+        status: "draft_saved",
+        created_at: "2026-05-13T09:00:00Z",
+        updated_at: "2026-05-13T09:20:00Z",
+      },
+    ],
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const workspace = await screen.findByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+
+  expect(screen.getByRole("dialog", { name: "新建软件设计说明" })).toBeInTheDocument();
+  expect(screen.getByLabelText("软设名称")).toHaveValue("空域协同规划软件设计说明（设计方案 02）");
+  expect(screen.getByLabelText("版本标识")).toHaveValue("v0.2");
+});
+
 function buildInputPackage() {
   return {
     input_package_id: "p2frozen-doc-1",
@@ -294,10 +407,14 @@ function buildSession(
   status: string,
   overrides: Record<string, unknown> = {},
 ) {
+  const designTitle = typeof overrides.design_title === "string" ? overrides.design_title : "空域协同规划软件设计说明";
+  const versionLabel = typeof overrides.version_label === "string" ? overrides.version_label : "SoftwareDesignBaseline v2";
   const session = {
     session_id: "p3dl-1",
     input_package: inputPackage,
-    status,
+    status: typeof overrides.status === "string" ? overrides.status : status,
+    design_title: designTitle,
+    version_label: versionLabel,
     generation_policy: {
       architecture_preference: "统一服务优先，保留拆分点",
       module_granularity: "3-5 个业务模块，不拆太细",
@@ -307,7 +424,8 @@ function buildSession(
       status === "created"
         ? null
         : {
-            title: "空域协同规划软件设计说明",
+            title: designTitle,
+            version_label: versionLabel,
             sections: [{ section_id: "goal", title: "1. 设计目标与范围", content: "覆盖协同规划核心能力。" }],
           },
     design_baseline:
@@ -324,20 +442,37 @@ function buildSession(
         : {
             tree: {
               node_id: "p4-projection-root",
-              title: "P4 模块工单投影包",
+              title: "P4-WO-StageLab-Workbench",
               node_type: "projection_package",
+              description: "P3 软件设计说明向 P4 研发工单的候选投影。",
+              readiness: "preview_only",
               children: [
                 {
-                  node_id: "branch-core-service",
-                  title: "统一服务实现分支",
-                  node_type: "module_branch",
-                  children: [{ node_id: "wo-1", title: "规划任务管理模块实现", node_type: "module_workorder" }],
+                  node_id: "branch-common-workbench",
+                  title: "A. 共性工作台工具包",
+                  node_type: "toolkit_branch",
+                  readiness: "ready",
+                  children: [{ node_id: "wo-a1", title: "WO-A1 StageLabShell 组件生成器", node_type: "workorder", readiness: "ready" }],
+                },
+                {
+                  node_id: "branch-p3-adapter",
+                  title: "B. P3 适配工具包",
+                  node_type: "toolkit_branch",
+                  description: "该分支是 P4 工单投影的一部分，包含 P3 专属 Adapter、输入列表快照适配器和 ViewModel 组装脚本。",
+                  readiness: "pending",
+                  source_refs: ["SoftwareDesign.modules.p3Adapter"],
+                  depends_on: ["A. 共性工作台工具包"],
+                  acceptance: "能把需规列表和当前需规对象映射到工作台模型。",
+                  children: [{ node_id: "wo-b1", title: "WO-B1 DTO -> ViewModel Adapter", node_type: "workorder", readiness: "ready" }],
                 },
               ],
             },
-            items: [{ item_id: "wo-1", title: "规划任务管理模块实现" }],
+            items: [{ item_id: "wo-b1", title: "WO-B1 DTO -> ViewModel Adapter", module_id: "p3-adapter", readiness: "ready" }],
           },
     turns: [],
+    conversion:
+      overrides.conversion ??
+      (status === "created" ? buildConversion("conversion_pending", "standard_sdd_draft") : buildConversion("draft_ready", "standard_sdd_draft")),
     check_result: null,
     frozen_package: null,
     runtime_events: [{ event_id: "evt-1", event_type: "generate", message: "生成软件设计说明", created_at: "2026-05-13T10:20:00Z" }],
@@ -348,20 +483,46 @@ function buildSession(
   return {
     ...session,
     input_package:
-      status === "created"
+      status === "created" || session.status === "conversion_pending"
         ? inputPackage
         : {
             ...inputPackage,
             related_designs: [
               {
                 software_design_id: session.session_id,
-                title: "空域协同规划软件设计说明",
-                version_label: "SoftwareDesignBaseline v2",
-                status: "baseline_ready",
+                title: designTitle,
+                version_label: versionLabel,
+                status: session.status,
                 created_at: "2026-05-13T10:00:00Z",
                 updated_at: "2026-05-13T10:20:00Z",
               },
             ],
           },
+  };
+}
+
+function buildConversion(status: string, strategy: string) {
+  const done = status === "draft_ready";
+  return {
+    status,
+    strategy,
+    strategy_options: [
+      { value: "standard_sdd_draft", label: "标准软设草稿生成", description: "按标准软设章节生成初稿。" },
+      { value: "component_first", label: "组件优先拆解", description: "优先抽取组件、接口和可复用工作台对象。" },
+      { value: "p4_projection_first", label: "P4 投影优先", description: "优先组织下游工具包和工单分支。" },
+    ],
+    steps: [
+      { step_id: "read_requirement", title: "读取需规冻结包", description: "加载正文、结构化条款和冻结快照。", status: done ? "done" : "pending" },
+      { step_id: "extract_design_objects", title: "抽取设计对象", description: "抽取模块、接口、数据对象和质量属性候选。", status: done ? "done" : "pending" },
+      { step_id: "generate_design_draft", title: "生成软设草稿", description: "生成 A4 正文草稿和结构化设计事实初稿。", status: done ? "done" : "pending" },
+      { step_id: "map_traceability", title: "建立追溯映射", description: "建立需规条款到章节、模块和接口的追溯。", status: done ? "done" : "pending" },
+    ],
+    draft_preview: done
+      ? {
+          title: "空域协同规划软件设计说明（设计方案 01）",
+          sections: ["1. 设计目标与范围", "2. 总体架构", "3. 模块划分"],
+        }
+      : null,
+    traceability_summary: done ? { mapped_clause_count: 2, target_count: 4, pending_confirmation_count: 0 } : null,
   };
 }

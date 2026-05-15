@@ -2319,6 +2319,7 @@ export type P3DesignLabDocumentSection = {
 
 export type P3DesignLabDesignDocument = {
   title: string;
+  version_label?: string;
   sections: P3DesignLabDocumentSection[];
 };
 
@@ -2334,13 +2335,18 @@ export type P3DesignLabDesignBaseline = {
 export type P3DesignLabWorkorderProjection = {
   package_overview?: Record<string, unknown>;
   tree?: P3DesignLabProjectionTreeNode;
-  items: Array<{ item_id: string; title: string; module_id?: string }>;
+  items: Array<{ item_id: string; title: string; module_id?: string; description?: string; readiness?: string }>;
 };
 
 export type P3DesignLabProjectionTreeNode = {
   node_id: string;
   title: string;
   node_type: string;
+  description?: string;
+  readiness?: string;
+  source_refs?: string[];
+  depends_on?: string[];
+  acceptance?: string;
   children?: P3DesignLabProjectionTreeNode[];
 };
 
@@ -2361,11 +2367,38 @@ export type P3DesignLabRuntimeEvent = {
   created_at: string;
 };
 
+export type P3DesignLabConversionStep = {
+  step_id: string;
+  title: string;
+  description: string;
+  status: "pending" | "running" | "done" | "failed" | string;
+};
+
+export type P3DesignLabConversionState = {
+  status: "conversion_pending" | "conversion_running" | "conversion_failed" | "draft_ready" | string;
+  strategy: string;
+  strategy_options: Array<{ value: string; label: string; description: string }>;
+  steps: P3DesignLabConversionStep[];
+  draft_preview?: {
+    title: string;
+    version_label?: string;
+    sections: string[];
+  } | null;
+  traceability_summary?: {
+    mapped_clause_count: number;
+    target_count: number;
+    pending_confirmation_count: number;
+  } | null;
+};
+
 export type P3DesignLabSession = {
   session_id: string;
   input_package: P3DesignLabInputPackage;
+  design_title?: string;
+  version_label?: string;
   generation_policy: Record<string, string>;
   status: string;
+  conversion?: P3DesignLabConversionState | null;
   design_document: P3DesignLabDesignDocument | null;
   design_baseline: P3DesignLabDesignBaseline | null;
   workorder_projection: P3DesignLabWorkorderProjection | null;
