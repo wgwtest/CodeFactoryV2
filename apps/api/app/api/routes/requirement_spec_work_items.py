@@ -7,6 +7,8 @@ from app.requirement_spec_work_items.models import (
     RequirementSpecWorkItemConfigure,
     RequirementSpecWorkItemCreate,
     RequirementSpecWorkItemRevisionCreate,
+    RequirementSpecWorkItemSaveAs,
+    RequirementSpecWorkItemSaveSessionArtifacts,
     RequirementSpecWorkItemUpdate,
 )
 from app.requirement_spec_work_items.service import RequirementSpecWorkItemService
@@ -117,6 +119,36 @@ def create_requirement_spec_work_item_revision(
 ):
     try:
         item = service.create_revision(spec_item_id, payload or RequirementSpecWorkItemRevisionCreate())
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    if item is None:
+        raise _not_found()
+    return item
+
+
+@router.post("/{spec_item_id}/save-session-artifacts")
+def save_requirement_spec_work_item_session_artifacts(
+    spec_item_id: str,
+    payload: RequirementSpecWorkItemSaveSessionArtifacts | None = None,
+    service: RequirementSpecWorkItemService = Depends(get_requirement_spec_work_item_service),
+):
+    try:
+        item = service.save_session_artifacts(spec_item_id, payload or RequirementSpecWorkItemSaveSessionArtifacts())
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    if item is None:
+        raise _not_found()
+    return item
+
+
+@router.post("/{spec_item_id}/save-session-artifacts-as")
+def save_requirement_spec_work_item_session_artifacts_as(
+    spec_item_id: str,
+    payload: RequirementSpecWorkItemSaveAs,
+    service: RequirementSpecWorkItemService = Depends(get_requirement_spec_work_item_service),
+):
+    try:
+        item = service.save_session_artifacts_as(spec_item_id, payload)
     except ValueError as exc:
         raise _bad_request(exc) from exc
     if item is None:

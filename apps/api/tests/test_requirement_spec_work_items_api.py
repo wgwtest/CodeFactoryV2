@@ -137,3 +137,124 @@ def test_requirement_spec_work_item_create_accepts_lab_template_instance_id() ->
     document = client.get(f"/api/requirement-authoring/documents/{item['authoring_document_id']}")
     assert document.status_code == 200
     assert document.json()["template_id"] == "tpl-81433-default"
+
+
+def test_requirement_spec_work_item_saves_and_saves_as_session_artifacts() -> None:
+    client = TestClient(create_app())
+    lab_config = client.get("/api/requirement-analysis/lab-config")
+    assert lab_config.status_code == 200
+    lab_template_id = lab_config.json()["defaults"]["template_id"]
+
+    created = client.post(
+        "/api/requirement-analysis/spec-items",
+        json={
+            "title": "态势分析系统需求规格说明",
+            "initial_description": "用于态势分析系统的需求分析。",
+            "template_id": lab_template_id,
+            "create_action": "enter_config",
+        },
+    )
+    assert created.status_code == 200
+    item = created.json()
+
+    configured = client.post(
+        f"/api/requirement-analysis/spec-items/{item['spec_item_id']}/configure",
+        json={
+            "topic": "态势分析系统需求规格说明",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": lab_template_id,
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert configured.status_code == 200
+    configured_item = configured.json()
+    session_id = configured_item["analysis_session_id"]
+
+    turn = client.post(
+        f"/api/requirement-analysis/sessions/{session_id}/turns",
+        json={"user_input": "系统面向态势分析人员，支持多源态势数据汇聚、态势展示和分析报告输出。"},
+    )
+    assert turn.status_code == 200
+
+    saved = client.post(f"/api/requirement-analysis/spec-items/{item['spec_item_id']}/save-session-artifacts")
+    assert saved.status_code == 200
+    saved_item = saved.json()
+    assert saved_item["spec_item_id"] == item["spec_item_id"]
+    assert saved_item["status"] == "configured"
+
+    document = client.get(f"/api/requirement-authoring/documents/{item['authoring_document_id']}")
+    assert document.status_code == 200
+    semantic_state = document.json()["semantic_state"]
+    assert semantic_state["lab_session_artifacts"]["session_id"] == session_id
+    assert semantic_state["lab_session_artifacts"]["decision_state_document"]["title"] == "需求分析结构化状态"
+    assert semantic_state["lab_session_artifacts"]["working_document"]["title"]
+    assert semantic_state["lab_session_artifacts"]["spec_tree"]
+    assert semantic_state["lab_session_artifacts"]["turn_path"]
+
+    saved_as = client.post(
+        f"/api/requirement-analysis/spec-items/{item['spec_item_id']}/save-session-artifacts-as",
+        json={"title": "态势分析系统需求规格说明 - 另存副本"},
+    )
+    assert saved_as.status_code == 200
+    saved_as_item = saved_as.json()
+    assert saved_as_item["spec_item_id"] != item["spec_item_id"]
+    assert saved_as_item["title"] == "态势分析系统需求规格说明 - 另存副本"
+    assert saved_as_item["status"] == "draft"
+    assert saved_as_item["analysis_session_id"] == session_id
+
+    saved_as_document = client.get(f"/api/requirement-authoring/documents/{saved_as_item['authoring_document_id']}")
+    assert saved_as_document.status_code == 200
+    saved_as_state = saved_as_document.json()["semantic_state"]
+    assert saved_as_state["lab_session_artifacts"]["source_spec_item_id"] == item["spec_item_id"]
+    assert saved_as_state["lab_session_artifacts"]["session_id"] == session_id
+
+
+def test_requirement_spec_work_item_save_as_accepts_explicit_session_id() -> None:
+    client = TestClient(create_app())
+    lab_config = client.get("/api/requirement-analysis/lab-config")
+    assert lab_config.status_code == 200
+    lab_template_id = lab_config.json()["defaults"]["template_id"]
+
+    created = client.post(
+        "/api/requirement-analysis/spec-items",
+        json={
+            "title": "态势分析系统需求规格说明",
+            "initial_description": "用于态势分析系统的需求分析。",
+            "template_id": lab_template_id,
+            "create_action": "stay",
+        },
+    )
+    assert created.status_code == 200
+    item = created.json()
+    assert item["analysis_session_id"] is None
+
+    session = client.post(
+        "/api/requirement-analysis/sessions",
+        json={
+            "topic": "态势分析系统需求规格说明",
+            "orchestrator_id": "brainstorm-v1",
+            "provider_id": "mock",
+            "model": "mock-requirement-analysis-v1",
+            "template_id": lab_template_id,
+            "knowledge_package_id": "airspace-domain-demo",
+            "write_policy": "patch_suggestion_only",
+        },
+    )
+    assert session.status_code == 200
+    session_id = session.json()["session_id"]
+
+    saved_as = client.post(
+        f"/api/requirement-analysis/spec-items/{item['spec_item_id']}/save-session-artifacts-as",
+        json={"title": "态势分析系统需求规格说明 - 手动会话副本", "session_id": session_id},
+    )
+    assert saved_as.status_code == 200
+    saved_as_item = saved_as.json()
+    assert saved_as_item["title"] == "态势分析系统需求规格说明 - 手动会话副本"
+    assert saved_as_item["analysis_session_id"] == session_id
+
+    refreshed = client.get(f"/api/requirement-analysis/spec-items/{item['spec_item_id']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["analysis_session_id"] == session_id

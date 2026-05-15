@@ -13,6 +13,8 @@ from app.requirement_spec_work_items.models import (
     RequirementSpecWorkItemConfigure,
     RequirementSpecWorkItemCreate,
     RequirementSpecWorkItemRevisionCreate,
+    RequirementSpecWorkItemSaveAs,
+    RequirementSpecWorkItemSaveSessionArtifacts,
     RequirementSpecWorkItemUpdate,
 )
 from app.requirement_spec_work_items.repository import RequirementSpecWorkItemRepository
@@ -193,6 +195,63 @@ class RequirementSpecWorkItemService:
         )
         return self.serialize_item(self.repository.add_item(revision))
 
+    def save_session_artifacts(self, spec_item_id: str, payload: RequirementSpecWorkItemSaveSessionArtifacts) -> dict | None:
+        item = self.repository.get_item(spec_item_id)
+        if item is None:
+            return None
+        artifacts = self._session_artifacts_for_item(item, session_id=payload.session_id)
+        document = self.authoring_service.repository.get_document(item.authoring_document_id)
+        if document is None:
+            raise ValueError("Requirement authoring document not found")
+        if document.status == "frozen":
+            raise ValueError("published item requires revision before editing")
+        semantic_state = dict(document.semantic_state or {})
+        semantic_state["lab_session_artifacts"] = artifacts
+        document.semantic_state = semantic_state
+        document.status = "draft"
+        self.authoring_service.repository.save_document(document)
+        item.analysis_session_id = artifacts["session_id"]
+        return self.serialize_item(self.repository.save_item(item))
+
+    def save_session_artifacts_as(self, spec_item_id: str, payload: RequirementSpecWorkItemSaveAs) -> dict | None:
+        item = self.repository.get_item(spec_item_id)
+        if item is None:
+            return None
+        artifacts = self._session_artifacts_for_item(item, session_id=payload.session_id)
+        next_title = payload.title.strip() or f"{item.title} 副本"
+        created = self.authoring_service.create_document(
+            RequirementAuthoringDocumentCreate(
+                title=next_title,
+                template_id=self._resolve_authoring_template_id(item.template_id),
+                archive_ids=[],
+            )
+        )
+        document = self.authoring_service.repository.get_document(created["document_id"])
+        if document is None:
+            raise ValueError("Requirement authoring document not found")
+        semantic_state = dict(document.semantic_state or {})
+        semantic_state["lab_session_artifacts"] = {
+            **artifacts,
+            "source_spec_item_id": item.id,
+        }
+        document.semantic_state = semantic_state
+        self.authoring_service.repository.save_document(document)
+        if item.analysis_session_id != artifacts["session_id"]:
+            item.analysis_session_id = artifacts["session_id"]
+            self.repository.save_item(item)
+        saved_as_item = RequirementSpecWorkItem(
+            title=next_title,
+            initial_description=item.initial_description,
+            status="draft",
+            template_id=item.template_id,
+            knowledge_binding=item.knowledge_binding,
+            authoring_document_id=document.id,
+            analysis_session_id=artifacts["session_id"],
+            version=1,
+            p3_consumable=False,
+        )
+        return self.serialize_item(self.repository.add_item(saved_as_item))
+
     def delete_item(self, spec_item_id: str) -> bool:
         item = self.repository.get_item(spec_item_id)
         if item is None:
@@ -230,6 +289,22 @@ class RequirementSpecWorkItemService:
         if status in {"archived", "deleted"}:
             return []
         return ["enter_config", "publish"]
+
+    def _session_artifacts_for_item(self, item: RequirementSpecWorkItem, *, session_id: str | None = None) -> dict:
+        resolved_session_id = (session_id or "").strip() or item.analysis_session_id
+        if not resolved_session_id:
+            raise ValueError("Requirement Analysis session not found")
+        session = self.analysis_service.get_session(resolved_session_id)
+        if session is None:
+            raise ValueError("Requirement Analysis session not found")
+        return {
+            "session_id": session["session_id"],
+            "topic": session["topic"],
+            "decision_state_document": session.get("decision_state_document") or {},
+            "working_document": session.get("working_document") or {},
+            "spec_tree": session.get("spec_tree") or [],
+            "turn_path": session.get("turn_path") or [],
+        }
 
     def _resolve_authoring_template_id(self, template_id: str) -> str:
         self.authoring_service.template_application_service.ensure_default_templates()
