@@ -8,7 +8,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from app.tool_hub.query_models import EvolutionWorkspaceProjection, OverviewProjection, ToolListProjection
+from app.tool_hub.query_models import (
+    EvolutionWorkspaceProjection,
+    OverviewProjection,
+    P4ObjectWorkbenchProjection,
+    ToolListProjection,
+)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -28,7 +33,8 @@ class ToolHubProjectionRepository:
         self.overview_dir = self.projections_dir / "overview"
         self.registry_dir = self.projections_dir / "registry"
         self.evolution_dir = self.projections_dir / "evolution"
-        for directory in (self.projections_dir, self.overview_dir, self.registry_dir, self.evolution_dir):
+        self.workbench_dir = self.projections_dir / "workbench"
+        for directory in (self.projections_dir, self.overview_dir, self.registry_dir, self.evolution_dir, self.workbench_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
     def get_overview_projection(self) -> OverviewProjection | None:
@@ -55,18 +61,26 @@ class ToolHubProjectionRepository:
         self._write_json(self.evolution_dir / "workspace.json", projection.model_dump(mode="json"))
         return projection
 
+    def get_object_workbench_projection(self) -> P4ObjectWorkbenchProjection | None:
+        return self._read_model(self.workbench_dir / "object_view.json", P4ObjectWorkbenchProjection)
+
+    def save_object_workbench_projection(self, projection: P4ObjectWorkbenchProjection) -> P4ObjectWorkbenchProjection:
+        self._write_json(self.workbench_dir / "object_view.json", projection.model_dump(mode="json"))
+        return projection
+
     def has_core_projections(self) -> bool:
         with self._lock:
             return (
                 (self.overview_dir / "default.json").exists()
                 and (self.registry_dir / "tool_list.json").exists()
                 and (self.evolution_dir / "workspace.json").exists()
+                and (self.workbench_dir / "object_view.json").exists()
             )
 
     def clear_all(self) -> int:
         with self._lock:
             removed = 0
-            for directory in (self.overview_dir, self.registry_dir, self.evolution_dir):
+            for directory in (self.overview_dir, self.registry_dir, self.evolution_dir, self.workbench_dir):
                 for path in directory.glob("*.json"):
                     path.unlink(missing_ok=True)
                     removed += 1

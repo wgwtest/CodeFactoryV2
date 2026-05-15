@@ -431,6 +431,7 @@ def test_tool_hub_internal_runtime_port_can_refresh_projections_and_run_cycle(tm
         "overview",
         "tool_list",
         "evolution_workspace",
+        "object_workbench",
     }
 
     demand_response = client.post("/api/tool-hub/mock-generators/demand-sheets/navigation_planning")
@@ -460,3 +461,94 @@ def test_tool_hub_internal_runtime_port_can_refresh_projections_and_run_cycle(tm
     progress_response = client.get(f"/api/tool-hub/demand-items/{target_item['item_id']}/progress")
     assert progress_response.status_code == 200
     assert progress_response.json()["status"] in {"manufacturing_in_progress", "ready_for_fetch"}
+
+
+def test_tool_hub_operator_object_view_projects_p4_v8_workbench(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+
+    tool_response = client.post(
+        "/api/tool-hub/tools",
+        json={
+            "name": "航路规划编译器",
+            "slug": "route-plan-compiler",
+            "status": "active",
+            "summary": "根据任务区域和约束条件生成可执行航路方案。",
+            "problem_statement": "支撑导航规划阶段的航路方案自动生成。",
+            "primary_domain_id": "navigation_planning",
+            "tool_form_id": "frontend_component",
+            "runtime_platform_ids": ["agent_runtime"],
+            "tags": [
+                "domain:navigation_planning",
+                "form:frontend_component",
+                "runtime:agent_runtime",
+                "lifecycle:solution_design",
+                "input:manual_text",
+                "output:structured_json",
+            ],
+            "lifecycle_stage_ids": ["solution_design"],
+            "input_types": ["manual_text"],
+            "output_types": ["structured_json"],
+            "supported_sources": ["manual_input"],
+            "usage_notes": "用于导航规划工单的工具构建验证。",
+            "keywords": ["导航", "航路", "规划"],
+            "verification": {
+                "status": "verified",
+                "last_verified_result": "样例通过",
+                "sample_case_ids": ["route-sample"],
+            },
+        },
+    )
+    assert tool_response.status_code == 201
+
+    demand_response = client.post("/api/tool-hub/mock-generators/demand-sheets/navigation_planning")
+    assert demand_response.status_code == 201
+    demand_payload = demand_response.json()
+    existing_item = next(item for item in demand_payload["items"] if item["recommendation_type"] == "existing_tool")
+
+    review_response = client.post(
+        f"/api/tool-hub/demand-items/{existing_item['item_id']}/review",
+        json={
+            "decision": "approve_delivery",
+            "reviewed_by": "object-view-tester",
+            "review_comment": "对象视图取用驾驶舱测试。",
+            "importance_score": 90,
+            "urgency_score": 80,
+            "rationality_verdict": "approved",
+        },
+    )
+    assert review_response.status_code == 200
+
+    object_view_response = client.get("/api/tool-hub/operator/workbench/object-view")
+    assert object_view_response.status_code == 200
+    object_view_payload = object_view_response.json()
+    snapshot_id = _assert_snapshot_meta(object_view_payload)
+    data = object_view_payload["data"]
+
+    assert [item["key"] for item in data["object_tabs"]] == [
+        "pool",
+        "processing",
+        "build",
+        "usage",
+        "registry",
+        "graph",
+        "asset",
+        "config",
+        "lineage",
+    ]
+    assert data["workorder_pool"]["active_sheet"]["sheet_name"] == "导航规划一期工具需求单"
+    assert data["workorder_processing"]["active_item"]["component_name"] == "航路规划编译器"
+    assert data["tool_build"]["selected_tool"]["name"] == "航路规划编译器"
+    assert data["usage_cockpit"]["active_items"][0]["item_id"] == existing_item["item_id"]
+    assert data["tool_resources"]["tools"][0]["tool_id"] == tool_response.json()["tool_id"]
+    assert data["coverage_knowledge_graph"]["matrix"]["title"] == "业务域 × 工具形态"
+    assert data["delivered_tool_attribute"]["selected_tool"]["tool_id"] == tool_response.json()["tool_id"]
+    assert data["evolution_config"]["config"]["config_id"] == "default"
+    assert data["evolution_lineage"]["runs"] == []
+
+    refreshed_response = client.post("/api/tool-hub/internal-runtime/projections/refresh")
+    assert refreshed_response.status_code == 200
+    assert "object_workbench" in refreshed_response.json()["refreshed_projection_names"]
+
+    object_view_after_refresh = client.get("/api/tool-hub/operator/workbench/object-view")
+    assert object_view_after_refresh.status_code == 200
+    assert _assert_snapshot_meta(object_view_after_refresh.json()) == snapshot_id

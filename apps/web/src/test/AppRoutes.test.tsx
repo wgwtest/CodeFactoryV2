@@ -889,8 +889,8 @@ test("renders xx-p4 route outside the main shell", async () => {
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("XX-P4")).toBeInTheDocument();
-  expect(await screen.findByText("工具中台 / Tool Hub")).toBeInTheDocument();
+  expect(await screen.findByText("P4 工具仓库工作台")).toBeInTheDocument();
+  expect(await screen.findByText("承接 P3 工具需求工单，完成工具匹配、构建、资产登记与演进巡检。")).toBeInTheDocument();
   expect(screen.queryByText("知识仓库")).not.toBeInTheDocument();
 });
 

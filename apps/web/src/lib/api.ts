@@ -1336,6 +1336,23 @@ export type ToolHubReadEnvelope<T> = {
   data: T;
 };
 
+export type P4ObjectViewTabKey =
+  | "pool"
+  | "processing"
+  | "build"
+  | "usage"
+  | "registry"
+  | "graph"
+  | "asset"
+  | "config"
+  | "lineage";
+
+export type P4ObjectViewTab = {
+  key: P4ObjectViewTabKey;
+  title: string;
+  caption: string;
+};
+
 export type ToolHubCatalogs = {
   domains: ToolHubCatalogItem[];
   lifecycle_stages: ToolHubCatalogItem[];
@@ -1572,6 +1589,51 @@ export type ToolHubOverview = {
   recent_match_runs: ToolHubRecentRunSummary[];
   recent_evolution_runs: ToolHubRecentRunSummary[];
   catalogs: ToolHubCatalogs;
+};
+
+export type P4ObjectWorkbenchProjection = {
+  snapshot_id: string;
+  meta: ToolHubSnapshotMeta;
+  object_tabs: P4ObjectViewTab[];
+  workorder_pool: {
+    sheets: ToolDemandSheet[];
+    active_sheet: ToolDemandSheet | null;
+  };
+  workorder_processing: {
+    active_sheet: ToolDemandSheet | null;
+    active_item: ToolDemandItem | null;
+  };
+  tool_build: {
+    selected_tool: ToolDefinition | null;
+    active_item: ToolDemandItem | null;
+    manufacture_plan: ToolManufacturePlanView | null;
+  };
+  usage_cockpit: {
+    active_items: ToolDemandItem[];
+    hot_tools: ToolDefinition[];
+    cold_tools: ToolDefinition[];
+    hot_domains: ToolHubCatalogItem[];
+    cold_domains: ToolHubCatalogItem[];
+  };
+  tool_resources: {
+    tools: ToolDefinition[];
+  };
+  coverage_knowledge_graph: {
+    matrix: ToolHubCoverageMatrix;
+  };
+  delivered_tool_attribute: {
+    selected_tool: ToolDefinition | null;
+    used_by_items: ToolDemandItem[];
+    evolution_task_count: number;
+    rollback_available_count: number;
+  };
+  evolution_config: {
+    config: EvolutionInspectionConfig | null;
+  };
+  evolution_lineage: {
+    runs: EvolutionRun[];
+    tasks: EvolutionTask[];
+  };
 };
 
 export type ToolDemandSheetLifecycleStatus = "submitted" | "accepted" | "rejected" | "withdrawn" | "closed";

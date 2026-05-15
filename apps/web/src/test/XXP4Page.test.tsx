@@ -474,6 +474,178 @@ beforeEach(() => {
   deleteMock.mockReset();
 });
 
+test("renders the P4 object workbench with left object tabs", async () => {
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: buildManufacturePlans() });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P4 工具仓库工作台")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-object-workbench")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-object-nav")).toBeInTheDocument();
+  expect(document.querySelectorAll('#xx-p4-object-nav [data-object-nav="p4-object-workbench"]').length).toBe(9);
+  expect(screen.getByRole("tab", { name: "工单池与工单" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "工单处理" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "工具构建" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "取用驾驶舱" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "工具资源列表" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "覆盖知识图谱" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "成品工具属性" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "演进配置" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "演进轨迹" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "总览" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "工单处理" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("工单生命周期");
+  });
+  expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("模拟蓝军一期工具需求单");
+  expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("工单内工具进展");
+
+  fireEvent.click(screen.getByRole("tab", { name: "工具构建" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-tool-build-view")).toHaveTextContent("工具构建");
+  });
+  expect(document.querySelector("#xx-p4-tool-build-view")).toHaveTextContent("蓝军编组树构造器");
+  expect(document.querySelector("#xx-p4-tool-build-view")).toHaveTextContent("匹配策略");
+  expect(document.querySelector("#xx-p4-tool-build-view")).toHaveTextContent("交付约束");
+  expect(document.querySelector("#xx-p4-tool-build-view")).toHaveTextContent("版本控制");
+  expect(document.querySelector("#xx-p4-tool-build-process-values")).toHaveTextContent("实时过程值");
+
+  fireEvent.click(screen.getByRole("tab", { name: "取用驾驶舱" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("取用驾驶舱");
+  });
+  expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("正在使用工具");
+  expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("热点工具");
+  expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("冷门工具");
+  expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("热点领域");
+  expect(document.querySelector("#xx-p4-usage-cockpit-view")).toHaveTextContent("冷门领域");
+
+  fireEvent.click(screen.getByRole("tab", { name: "工具资源列表" }));
+  expect(await screen.findByText("工具资产资源列表")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-tool-resource-list-view")).toHaveTextContent("蓝军编组树构造器");
+
+  fireEvent.click(screen.getByRole("tab", { name: "覆盖知识图谱" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-coverage-knowledge-graph-view")).toHaveTextContent("覆盖知识图谱");
+  });
+  expect(document.querySelector("#xx-p4-coverage-knowledge-graph-view")).toHaveTextContent("业务变化");
+  expect(document.querySelector("#xx-p4-coverage-knowledge-graph-view")).toHaveTextContent("时序变化");
+
+  fireEvent.click(screen.getByRole("tab", { name: "演进配置" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Config" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("巡检范围")).toBeInTheDocument();
+  expect(within(dialog).getByText("匹配策略 / 交付约束 / 版本控制")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "演进轨迹" }));
+  expect(await screen.findByText("被演进对象分支轨迹图")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-evolution-lineage-view")).toHaveTextContent("版本主干");
+  expect(document.querySelector("#xx-p4-evolution-lineage-view")).toHaveTextContent("演进分支");
+  expect(document.querySelector("#xx-p4-evolution-lineage-view")).toHaveTextContent("回退点");
+});
+
+test("switches workorder and tool selection by clicking entity rows", async () => {
+  const pendingDetail = buildPendingDemandSheetDetail();
+  const approvedDetail = {
+    ...buildApprovedDemandSheetDetail(),
+    sheet_id: "tds-002",
+    sheet_name: "模拟蓝军二期工具需求单",
+  };
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/tool-hub/overview") {
+      return Promise.resolve({
+        data: buildReadEnvelope(
+          buildOverview(buildDemandSheetSummaries(pendingDetail, approvedDetail).items),
+        ),
+      });
+    }
+    if (url === "/tool-hub/tools") {
+      return Promise.resolve({ data: buildReadEnvelope(buildTools()) });
+    }
+    const evolutionResponse = buildEvolutionReadResponse(url);
+    if (evolutionResponse) {
+      return evolutionResponse;
+    }
+    if (url === "/tool-hub/evolution-runs") {
+      return Promise.resolve({ data: buildReadEnvelope({ items: [] }) });
+    }
+    if (url === "/tool-hub/manufacture-plans") {
+      return Promise.resolve({ data: buildManufacturePlans() });
+    }
+    if (url === "/tool-hub/demand-sheets") {
+      return Promise.resolve({ data: buildDemandSheetSummaries(pendingDetail, approvedDetail) });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-001") {
+      return Promise.resolve({ data: pendingDetail });
+    }
+    if (url === "/tool-hub/demand-sheets/tds-002") {
+      return Promise.resolve({ data: approvedDetail });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/xx-p4"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 工单池")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("模拟蓝军二期工具需求单"));
+
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-workorder-pool-view")).toHaveTextContent("tds-002");
+  });
+
+  const currentToolList = screen.getByRole("list", { name: "当前工单工具列表" });
+  fireEvent.click(within(currentToolList).getByText("蓝军编组树构造器"));
+
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-workorder-pool-view")).toHaveTextContent("匹配现有工具");
+  });
+});
+
 test("renders XX-P4 review-first input chain and can approve an existing tool demand item", async () => {
   let cleared = false;
   let pendingDetail: ToolDemandSheet = buildPendingDemandSheetDetail();
@@ -620,52 +792,31 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("XX-P4")).toBeInTheDocument();
-  expect(screen.getByText("工具中台 / Tool Hub")).toBeInTheDocument();
+  expect(await screen.findByText("P4 工具仓库工作台")).toBeInTheDocument();
+  expect(screen.getByText("P3 工单接入")).toBeInTheDocument();
   expect(screen.queryByText(/当前知识库：/)).not.toBeInTheDocument();
   expect(screen.queryByText(/待演进建议：/)).not.toBeInTheDocument();
   expect(screen.queryByText(/最近成功率：/)).not.toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "输入工序链" })).toBeInTheDocument();
-  expect(document.querySelectorAll('#xx-p4-workspace-nav [data-nav-variant="segmented"]').length).toBe(4);
+  expect(screen.getByRole("tab", { name: "工单池与工单" })).toBeInTheDocument();
+  expect(document.querySelectorAll('#xx-p4-object-nav [data-object-nav="p4-object-workbench"]').length).toBe(9);
 
-  fireEvent.click(screen.getByRole("tab", { name: "输入工序链" }));
-  expect(await screen.findByText("工序单受理区")).toBeInTheDocument();
-  expect(screen.getByText("工具需求列表")).toBeInTheDocument();
-  expect(screen.getByText("需求审批与处置面板")).toBeInTheDocument();
-  expect(screen.queryByText("总单树审查区")).not.toBeInTheDocument();
-  expect(screen.queryByText("供给结果输出区")).not.toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-review-panel")).toHaveTextContent(
-    "建议直接交付现有工具：蓝军编组树构造器（匹配得分 85）。",
-  );
+  fireEvent.click(screen.getByRole("tab", { name: "工单池与工单" }));
+  expect(await screen.findByText("P3 工单池")).toBeInTheDocument();
+  expect(screen.getAllByText("当前工单").length).toBeGreaterThan(0);
+  expect(screen.getByText("接入概况")).toBeInTheDocument();
+  expect(screen.getByText("工单动作")).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText("重要性评分"), { target: { value: "5" } });
-  fireEvent.change(screen.getByLabelText("紧急性评分"), { target: { value: "4" } });
-  fireEvent.change(screen.getByLabelText("合理性判断"), { target: { value: "合理" } });
-  fireEvent.change(screen.getByLabelText("审定备注"), { target: { value: "已有合适工具，直接交付。" } });
-  fireEvent.click(screen.getByRole("button", { name: "批准并直接交付" }));
-
-  expect(postMock).toHaveBeenCalledWith(
-    "/tool-hub/demand-items/tdi-001/review",
-    expect.objectContaining({
-      decision: "approve_delivery",
-      importance_score: 5,
-      urgency_score: 4,
-      rationality_verdict: "合理",
-      review_comment: "已有合适工具，直接交付。",
-    }),
-  );
+  fireEvent.click(screen.getByRole("tab", { name: "工单处理" }));
   await waitFor(() => {
-    expect(document.querySelector("#xx-p4-review-panel")).toHaveTextContent("approved_delivery");
+    expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("工单生命周期");
   });
-  await waitFor(() => {
-    expect(document.querySelector("#xx-p4-review-supply-result")).toHaveTextContent(
-      "/api/tool-hub/tools/tool-blue-force-tree-builder/fetch",
-    );
-  });
+  expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("工单内工具进展");
+  expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("当前工具处理入口");
+  expect(screen.getAllByRole("button", { name: "进入工具构建" }).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("button", { name: "驳回当前工单" }));
   await waitFor(() => {
-    expect(document.querySelector("#xx-p4-demand-sheet-intake-card")).toHaveTextContent("rejected");
+    expect(document.querySelector("#xx-p4-workorder-processing-view")).toHaveTextContent("rejected");
   });
   expect(postMock).toHaveBeenCalledWith(
     "/tool-hub/demand-sheets/tds-001/reject",
@@ -679,13 +830,13 @@ test("renders XX-P4 review-first input chain and can approve an existing tool de
   expect(postMock).toHaveBeenCalledWith("/tool-hub/testing/clear-demand-sheets");
   expect(await screen.findByText("当前没有工具需求单")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("tab", { name: "自演进巡检" }));
+  fireEvent.click(screen.getByRole("tab", { name: "演进配置" }));
   fireEvent.click(await screen.findByRole("button", { name: "触发巡检" }));
   expect((await screen.findAllByText("案例标签修复器描述缺失")).length).toBeGreaterThan(0);
 
-  fireEvent.click(screen.getByRole("tab", { name: "工具仓库" }));
+  fireEvent.click(screen.getByRole("tab", { name: "覆盖知识图谱" }));
   expect(await screen.findByText("业务域 × 工具形态")).toBeInTheDocument();
-  expect(document.querySelector("#xx-p4-registry-coverage-matrix")).toBeInTheDocument();
+  expect(document.querySelector("#xx-p4-coverage-knowledge-graph-view")).toHaveTextContent("业务变化");
 });
 
 test("creates a tool from registry workspace", async () => {
@@ -776,7 +927,7 @@ test("creates a tool from registry workspace", async () => {
     </MemoryRouter>,
   );
 
-  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "工具资源列表" }));
   fireEvent.click(await screen.findByRole("button", { name: "新建工具" }));
 
   const dialog = await screen.findByRole("dialog");
@@ -912,7 +1063,7 @@ test("renders evolution workspace as decoupled cards", async () => {
     </MemoryRouter>,
   );
 
-  fireEvent.click(await screen.findByRole("tab", { name: "自演进巡检" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "演进配置" }));
 
   expect(document.querySelector("#xx-p4-evolution-config-card")).toBeInTheDocument();
   expect(document.querySelector("#xx-p4-evolution-run-list-card")).toBeInTheDocument();
@@ -980,14 +1131,16 @@ test("removes a single tool from registry workspace", async () => {
     </MemoryRouter>,
   );
 
-  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
-  expect(await screen.findByText("蓝军编组树构造器")).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("tab", { name: "工具资源列表" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-tool-resource-list-view")).toHaveTextContent("蓝军编组树构造器");
+  });
 
   fireEvent.click(screen.getByLabelText("移除工具 蓝军编组树构造器"));
 
   expect(deleteMock).toHaveBeenCalledWith("/tool-hub/tools/tool-blue-force-tree-builder");
   await waitFor(() => {
-    expect(screen.queryByText("蓝军编组树构造器")).not.toBeInTheDocument();
+    expect(document.querySelector("#xx-p4-tool-resource-list-view")).not.toHaveTextContent("蓝军编组树构造器");
   });
 });
 
@@ -1050,14 +1203,16 @@ test("clears all tools from registry workspace for testing", async () => {
     </MemoryRouter>,
   );
 
-  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
-  expect(await screen.findByText("蓝军编组树构造器")).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("tab", { name: "工具资源列表" }));
+  await waitFor(() => {
+    expect(document.querySelector("#xx-p4-tool-resource-list-view")).toHaveTextContent("蓝军编组树构造器");
+  });
 
   fireEvent.click(screen.getByRole("button", { name: "测试清空全部工具" }));
 
   expect(postMock).toHaveBeenCalledWith("/tool-hub/testing/clear-tools");
   await waitFor(() => {
-    expect(screen.queryByText("蓝军编组树构造器")).not.toBeInTheDocument();
+    expect(document.querySelector("#xx-p4-tool-resource-list-view")).not.toHaveTextContent("蓝军编组树构造器");
   });
 });
 
@@ -1105,7 +1260,7 @@ test("shows simulated manufacture queue in registry workspace", async () => {
     </MemoryRouter>,
   );
 
-  fireEvent.click(await screen.findByRole("tab", { name: "工具仓库" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "工具资源列表" }));
   expect(await screen.findByText("模拟研制队列")).toBeInTheDocument();
   expect(document.querySelector("#xx-p4-registry-manufacture-queue")).toHaveTextContent("蓝军战术推演器");
   expect(document.querySelector("#xx-p4-registry-manufacture-queue")).toHaveTextContent("manufacturing_in_progress");
