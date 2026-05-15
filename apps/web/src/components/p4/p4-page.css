@@ -572,6 +572,10 @@
   white-space: nowrap;
 }
 
+.xx-p4-workspace-entry-button.ant-btn {
+  width: 100%;
+}
+
 .xx-p4-pane-stack {
   display: flex;
   flex-direction: column;
