@@ -61,6 +61,8 @@
 | worktree | 分支 | 用途 |
 | --- | --- | --- |
 | `.worktrees/p1-knowledge-base-review` | `feat/p1-knowledge-base-review` | P1 业务知识库审阅与建议型辅助分支 |
+| `.worktrees/p-base-platform` | `feat/p-base-platform` | 跨阶段平台基础能力辅助分支 |
+| `.worktrees/p-test` | `feat/p-test` | 跨阶段测试验证辅助分支 |
 | `.worktrees/p2-requirement-analysis-system` | `feat/p2-requirement-analysis-system` | P2 需求分析系统辅助分支 |
 | `.worktrees/p3-software-design-system` | `feat/p3-software-design-system` | P3 软件设计系统历史集成分支工作树 |
 | `.worktrees/p4-tool-hub` | `feat/p4-tool-hub` | P4 工具仓库辅助分支 |
@@ -190,7 +192,27 @@ just api-dev
 just web-dev
 ```
 
-常用地址：
+启动端口读取规则：
+
+1. `just api-dev` 和 `just web-dev` 都会先读取当前目录 `.env.local`。
+2. 如果当前目录没有 `.env.local`，启动脚本会按当前 git 分支读取 `config/dev-ports.env`。
+3. 如果分支没有登记端口，才回退到主目录默认值：API `8020`、Web `5173`。
+
+分支端口表：
+
+| 目录 | API | Web | 默认入口 |
+| --- | --- | --- | --- |
+| 主目录 `main` | `8020` | `5173` | `/documents` |
+| `.worktrees/p1-knowledge-base-review` | `8021` | `5171` | `/documents` |
+| `.worktrees/p2-requirement-analysis-system` | `8060` | `5183` | `/requirements` |
+| `.worktrees/p3-software-design-system` | `8030` | `5174` | `/xx-p3` |
+| `.worktrees/p4-tool-hub` | `8010` | `5180` | `/xx-p4` |
+| `.worktrees/p5-software-construction-system` | `8040` | `5181` | `/build` |
+| `.worktrees/p6-portal-platform-entry` | `8050` | `5182` | `/portal` |
+| `.worktrees/p-test` | `8070` | `5190` | `/portal` |
+| `.worktrees/p-base-platform` | `8080` | `5191` | `/portal` |
+
+主目录常用地址：
 
 - Web：`http://127.0.0.1:5173`
 - API：`http://127.0.0.1:8020/api`

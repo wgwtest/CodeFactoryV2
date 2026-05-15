@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -f ".env.local" ]]; then
-  set -a
-  source ".env.local"
-  set +a
-fi
+source scripts/load_dev_ports.sh
 
 WEB_HOST="${VITE_WEB_HOST:-127.0.0.1}"
 WEB_PORT="${VITE_WEB_PORT:-5173}"

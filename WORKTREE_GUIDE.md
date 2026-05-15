@@ -182,7 +182,30 @@ POST /api/software-design-v2/sessions
 
 首版目标是保持页面兼容，同时把输入来源逐步切换到平台交换层。
 
-## 8. 验证命令
+## 8. 本地启动端口
+
+启动命令：
+
+```bash
+just api-dev
+just web-dev
+```
+
+端口读取优先级：
+
+1. 当前目录 `.env.local`；
+2. 当前 git 分支在 `config/dev-ports.env` 中登记的端口；
+3. 主目录默认端口：API `8020`、Web `5173`。
+
+当前 `P-BasePlatform` 分支登记端口：
+
+- API：`http://127.0.0.1:8080/api`
+- Web：`http://127.0.0.1:5191`
+- 默认入口：`/portal`
+
+完整端口表见主目录 `CODEX_START_HERE.md` 的“常用启动命令”章节。
+
+## 9. 验证命令
 
 后端最小验证：
 
@@ -199,7 +222,7 @@ corepack pnpm --dir apps/web exec vitest run src/test/RequirementAnalysisLabPage
 
 若只改后端平台交换层，前端测试不是每次必跑；但如果改了 `apps/web/src/lib/api.ts`、P2 或 P3 页面，必须跑对应前端测试。
 
-## 9. 验收标准
+## 10. 验收标准
 
 首版完成必须满足：
 
@@ -211,7 +234,7 @@ corepack pnpm --dir apps/web exec vitest run src/test/RequirementAnalysisLabPage
 6. 当前 `/api/software-design-v2/input-packages` 仍可被 `/p3-design-lab` 使用。
 7. 现有 P2 需规管理测试和 P3 Design Lab 测试不回退。
 
-## 10. 与主线同步规则
+## 11. 与主线同步规则
 
 - 工作前执行：`git status --short --branch`、`git log --oneline --decorate -n 10`。
 - 若远端恢复可达，再执行 `git fetch origin`。
@@ -219,7 +242,7 @@ corepack pnpm --dir apps/web exec vitest run src/test/RequirementAnalysisLabPage
 - 正式启动服务、用户验收、主线提交和推送默认回到仓库主目录执行。
 - 将本分支成果合入主线前，必须说明它是否改动了 `P2`、`P3` 的业务接口，以及是否影响现有页面。
 
-## 11. 交接输出格式
+## 12. 交接输出格式
 
 每轮重要工作后，建议补充交接记录，至少写清：
 
