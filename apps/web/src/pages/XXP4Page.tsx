@@ -510,11 +510,7 @@ export function XXP4Page() {
       return null;
     }
     if (activeTab.key === "processing") {
-      return (
-        <Button type="primary" onClick={() => setActiveObjectView("build")} disabled={!activeDemandItem}>
-          进入工具构建
-        </Button>
-      );
+      return null;
     }
     if (activeTab.key === "build") {
       return (
@@ -698,7 +694,7 @@ export function XXP4Page() {
                 </div>
                 <div className="xx-p4-object-summary-body">{activeDemandItem.problem_statement}</div>
               </div>
-              <Button type="primary" onClick={() => setActiveObjectView("build")}>
+              <Button className="xx-p4-workspace-entry-button" type="primary" onClick={() => setActiveObjectView("build")}>
                 进入工具构建
               </Button>
             </Space>
