@@ -4,7 +4,7 @@ from app.db.models.requirements import RequirementSpecWorkItem
 from app.requirement_analysis.models import RequirementAnalysisSessionCreate
 from app.requirement_analysis.session_application_service import RequirementAnalysisApplicationService
 from app.requirement_analysis.template_service import RequirementAnalysisTemplateService
-from app.requirement_authoring.models import RequirementAuthoringDocumentCreate, RequirementAuthoringDocumentSave
+from app.requirement_authoring.models import RequirementAuthoringDocumentCreate, RequirementAuthoringDocumentSave, RequirementAuthoringFormPatch
 from app.requirement_authoring.service import RequirementAuthoringService
 from app.requirement_exchange.requirement_spec_service import RequirementSpecApplicationService
 from app.platform_exchange.models import PublishArtifactCommand
@@ -31,6 +31,8 @@ class RequirementSpecWorkItemService:
         self.platform_exchange_service = PlatformExchangeService(session)
 
     def list_items(self) -> dict:
+        if not self.repository.list_items():
+            self._bootstrap_default_publishable_item()
         return {"items": [self.serialize_item(item) for item in self.repository.list_items()]}
 
     def create_item(self, payload: RequirementSpecWorkItemCreate) -> dict:
@@ -261,6 +263,42 @@ class RequirementSpecWorkItemService:
         self.repository.delete_item(item)
         return True
 
+    def _bootstrap_default_publishable_item(self) -> RequirementSpecWorkItem:
+        self.authoring_service.template_application_service.ensure_default_templates()
+        templates = self.authoring_service.template_application_service.list_templates()
+        template_id = templates[0]["template_id"]
+        title = "空域协同规划软件需求规格说明"
+        document = self.authoring_service.create_document(
+            RequirementAuthoringDocumentCreate(
+                title=title,
+                template_id=template_id,
+                archive_ids=["20161116-nas"],
+            )
+        )
+        patched = self.authoring_service.patch_form_fields(
+            document["document_id"],
+            RequirementAuthoringFormPatch(fields=self._default_publishable_fields()),
+        )
+        if patched is None:
+            raise ValueError("Requirement authoring document not found")
+        item = RequirementSpecWorkItem(
+            title=title,
+            initial_description="面向运行协调员和体系架构师的协同规划工具，用于 P2 到 P3 联调测试。",
+            status="draft",
+            template_id=template_id,
+            knowledge_binding={
+                "editor_badge": "领域知识：空域规划",
+                "domain": {"domain_id": "airspace-planning", "domain_name": "空域规划领域知识"},
+            },
+            authoring_document_id=document["document_id"],
+            analysis_session_id=None,
+            published_requirement_spec_id=None,
+            published_package_id=None,
+            version=1,
+            p3_consumable=False,
+        )
+        return self.repository.add_item(item)
+
     @staticmethod
     def serialize_item(item: RequirementSpecWorkItem, *, next_action: str | None = None) -> dict:
         return {
@@ -322,6 +360,38 @@ class RequirementSpecWorkItemService:
 
         candidates = self.authoring_service.template_application_service.repository.list_templates_by_code(template_code)
         return candidates[0].id if candidates else template_id
+
+    @staticmethod
+    def _default_publishable_fields() -> dict[str, str]:
+        return {
+            "application_name": "空域协同规划软件",
+            "domain_scope": "国家空域管理",
+            "application_scope": "空域协同规划任务链",
+            "business_goals": "支撑协同规划与冲突处置闭环。",
+            "main_scenarios": "规划任务创建、冲突识别、协同确认和处置复核。",
+            "usage_modes": "运行协调员主用，体系架构师复核配置。",
+            "in_scope": "规划任务、冲突识别、协同确认和处置记录。",
+            "out_of_scope": "不包含自动生成最优处置方案。",
+            "target_users": "运行协调员、体系架构师、空域规划专家",
+            "main_process": "协同规划与冲突处置",
+            "normal_flow": "创建规划任务、识别冲突、协同确认、形成处置记录。",
+            "exception_flow": "异常流程包含超时提醒和人工确认，不扩展复杂补偿链路。",
+            "situational_display": "展示规划任务、冲突状态和处置进展。",
+            "gis_analysis_tools": "支持基础地图定位、空间查询和冲突区域查看。",
+            "deployment_analysis": "支持规划方案影响范围辅助分析。",
+            "result_outputs": "输出处置记录、冲突清单和简化报告。",
+            "collaboration_mode": "支持运行协调员提交、体系架构师复核。",
+            "input_data_sources": "空域基础数据、规划任务、冲突规则和处置记录。",
+            "input_data_mode": "人工录入和文件导入结合。",
+            "performance_requirements": "关键告警 2 分钟内反馈。",
+            "reliability_requirements": "关键状态变更需留痕。",
+            "security_requirements": "按用户身份和任务范围授权。",
+            "permission_model": "运行协调员可编辑，体系架构师可复核，其他用户只读。",
+            "deployment_environment": "内网环境部署。",
+            "accuracy_constraints": "辅助规划级精度，不承诺工程测绘精度。",
+            "acceptance_scenarios": "完成规划任务创建、冲突识别、协同确认和处置记录导出。",
+            "acceptance_criteria": "关键流程可追溯，超时提醒和处置导出结果可验证。",
+        }
 
     @staticmethod
     def _build_requirement_spec_package_payload(

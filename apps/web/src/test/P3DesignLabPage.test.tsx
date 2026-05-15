@@ -131,22 +131,24 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
   expect(screen.getByText("从 P2 需求规格冻结包生成软件设计说明、设计基线和 P4 投影")).toBeInTheDocument();
   const navigation = screen.getByTestId("p3-design-lab-navigation");
-  expect(within(navigation).getByRole("tab", { name: /需规输入/ })).toBeInTheDocument();
-  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(navigation).getByRole("tab", { name: /需规输入/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /P4 投影/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /当前 Turn/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /检查评审/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /运行日志/ })).toBeInTheDocument();
 
   const workspace = screen.getByTestId("p3-design-lab-workspace");
+  expect(within(workspace).getByTestId("p3-design-lab-input-view")).toBeInTheDocument();
+  fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate"));
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
   expect(within(workspace).getByRole("button", { name: "文档视图" })).toHaveAttribute("aria-pressed", "true");
   expect(within(workspace).getByRole("button", { name: "结构化数据" })).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "生成软件设计说明" }));
-
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
-  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate"));
   expect(await screen.findByText("空域协同规划软件设计说明")).toBeInTheDocument();
   expect(within(workspace).getByTestId("document-body-panel")).toBeInTheDocument();
   expect(within(workspace).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();

@@ -114,6 +114,30 @@ def test_requirement_spec_work_item_create_list_configure_and_publish() -> None:
     assert specs.json()[0]["application_name"] == "空域协同规划软件"
 
 
+def test_requirement_spec_work_items_bootstraps_publishable_default_for_lab_testing() -> None:
+    client = TestClient(create_app())
+
+    listed = client.get("/api/requirement-analysis/spec-items")
+
+    assert listed.status_code == 200
+    items = listed.json()["items"]
+    assert len(items) == 1
+    default_item = items[0]
+    assert default_item["title"] == "空域协同规划软件需求规格说明"
+    assert default_item["status"] == "draft"
+    assert default_item["p3_consumable"] is False
+    assert "publish" in default_item["available_actions"]
+
+    published = client.post(f"/api/requirement-analysis/spec-items/{default_item['spec_item_id']}/publish")
+    assert published.status_code == 200
+    assert published.json()["status"] == "published_to_p3"
+    assert published.json()["p3_consumable"] is True
+
+    p3_inputs = client.get("/api/software-design-v2/input-packages")
+    assert p3_inputs.status_code == 200
+    assert p3_inputs.json()["items"][0]["source_title"] == "空域协同规划软件需求规格说明"
+
+
 def test_requirement_spec_work_item_create_accepts_lab_template_instance_id() -> None:
     client = TestClient(create_app())
     lab_config = client.get("/api/requirement-analysis/lab-config")

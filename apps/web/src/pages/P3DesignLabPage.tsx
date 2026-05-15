@@ -43,7 +43,7 @@ export function P3DesignLabPage() {
   const [inputPackages, setInputPackages] = useState<P3DesignLabInputPackage[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [designSession, setDesignSession] = useState<P3DesignLabSession | null>(null);
-  const [activeNavigationKey, setActiveNavigationKey] = useState<P3DesignLabNavigationKey>("workspace");
+  const [activeNavigationKey, setActiveNavigationKey] = useState<P3DesignLabNavigationKey>("input");
   const [workspaceMode, setWorkspaceMode] = useState<P3DesignWorkspaceMode>("document");
   const [cliInput, setCliInput] = useState("按保守方案，先不要拆成微服务；模块名要能直接下发给 P4。");
   const [submitting, setSubmitting] = useState(false);
@@ -264,6 +264,7 @@ export function P3DesignLabPage() {
     setWorkspaceMode,
     onDeleteDesignSession: (sessionId) => void handleDeleteDesignSession(sessionId),
     onFreeze: () => void handleFreeze(),
+    onGenerate: () => void handleGenerate(),
     onGenerateProjection: () => void handleGenerateProjection(),
     onOpenDesignSession: (sessionId) => void handleOpenDesignSession(sessionId),
     onRunCheck: () => void handleRunCheck(),
@@ -370,6 +371,7 @@ function renderWorkspace({
   setWorkspaceMode,
   onDeleteDesignSession,
   onFreeze,
+  onGenerate,
   onGenerateProjection,
   onOpenDesignSession,
   onRunCheck,
@@ -388,6 +390,7 @@ function renderWorkspace({
   setWorkspaceMode: (value: P3DesignWorkspaceMode) => void;
   onDeleteDesignSession: (sessionId: string) => void;
   onFreeze: () => void;
+  onGenerate: () => void;
   onGenerateProjection: () => void;
   onOpenDesignSession: (sessionId: string) => void;
   onRunCheck: () => void;
@@ -405,6 +408,7 @@ function renderWorkspace({
         selectedPackageId={selectedPackageId}
         workbench={workbench}
         onDeleteDesignSession={onDeleteDesignSession}
+        onGenerate={onGenerate}
         onOpenDesignSession={onOpenDesignSession}
         onRefreshInputPackages={onRefreshInputPackages}
         onSelectPackage={setSelectedPackageId}
@@ -474,6 +478,7 @@ function InputPackageView({
   selectedPackageId,
   workbench,
   onDeleteDesignSession,
+  onGenerate,
   onOpenDesignSession,
   onRefreshInputPackages,
   onSelectPackage,
@@ -483,6 +488,7 @@ function InputPackageView({
   selectedPackageId: string | null;
   workbench: StageDocumentWorkbenchViewModel;
   onDeleteDesignSession: (sessionId: string) => void;
+  onGenerate: () => void;
   onOpenDesignSession: (sessionId: string) => void;
   onRefreshInputPackages: () => void;
   onSelectPackage: (value: string) => void;
@@ -600,7 +606,9 @@ function InputPackageView({
                 </Space>
               </article>
             )}
-            <Button type="primary">新建软设</Button>
+            <Button disabled={!inputFacts.title} type="primary" onClick={onGenerate}>
+              新建软设
+            </Button>
           </div>
         </section>
       </div>
