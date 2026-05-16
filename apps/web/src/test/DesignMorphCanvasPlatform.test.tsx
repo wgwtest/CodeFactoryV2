@@ -4,12 +4,46 @@ import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  calculateTrackViewportFrame,
   DesignMorphCanvasPlatform,
   type DesignMorphStageViewModel,
   type DesignMorphWindowViewModel,
 } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
 
 describe("DesignMorphCanvasPlatform", () => {
+  test("projects the real canvas viewport as the primary track window", () => {
+    const items = [
+      { x: 80, y: 120, w: 500, h: 640 },
+      { x: 720, y: 120, w: 520, h: 640 },
+      { x: 1380, y: 140, w: 520, h: 520 },
+      { x: 2080, y: 60, w: 1180, h: 820 },
+      { x: 3460, y: 150, w: 560, h: 560 },
+      { x: 4200, y: 120, w: 560, h: 600 },
+      { x: 4920, y: 150, w: 560, h: 520 },
+    ];
+
+    const zoomedIn = calculateTrackViewportFrame({
+      height: 88,
+      items,
+      left: 36,
+      right: 964,
+      viewport: { x: -314, y: -3, scale: 0.9 },
+      width: 1000,
+    });
+    const zoomedOut = calculateTrackViewportFrame({
+      height: 88,
+      items,
+      left: 36,
+      right: 964,
+      viewport: { x: 30, y: 120, scale: 0.44 },
+      width: 1000,
+    });
+
+    expect(zoomedIn.y).toBeLessThanOrEqual(18);
+    expect(zoomedIn.height).toBeGreaterThanOrEqual(48);
+    expect(zoomedOut.width).toBeGreaterThan(zoomedIn.width);
+  });
+
   test("keeps the user viewport when the parent refreshes data without changing the active window", () => {
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(buildCanvasContextMock());
     const getBoundingClientRect = vi.spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect").mockReturnValue({

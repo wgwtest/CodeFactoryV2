@@ -39,6 +39,22 @@ type MorphCanvasItem = DesignMorphStageViewModel & {
   h: number;
 };
 
+type TrackViewportFrameInput = {
+  height: number;
+  items: Pick<MorphCanvasItem, "x" | "w">[];
+  left: number;
+  right: number;
+  viewport: CanvasViewportState;
+  width: number;
+};
+
+export type TrackViewportFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type DragState = {
   pointerId: number;
   sx: number;
@@ -361,26 +377,11 @@ function renderTrackCanvas(
   context.lineTo(right, y);
   context.stroke();
 
-  const activeX = left + activePairIndex * gap;
-  context.fillStyle = "rgba(20, 62, 82, 0.05)";
+  const viewportFrame = calculateTrackViewportFrame({ height, items, left, right, viewport, width });
+  context.fillStyle = "rgba(40, 118, 111, 0.13)";
   context.strokeStyle = "#143e52";
   context.lineWidth = 2;
-  roundRect(context, activeX - 44, 14, gap + 88, height - 30, 8);
-  context.fill();
-  context.stroke();
-
-  const worldLeft = Math.min(...items.map((item) => item.x));
-  const worldRight = Math.max(...items.map((item) => item.x + item.w));
-  const visibleWorldLeft = (-viewport.x) / viewport.scale;
-  const visibleWorldRight = (width - viewport.x) / viewport.scale;
-  const overviewLeft = left + ((visibleWorldLeft - worldLeft) / (worldRight - worldLeft)) * (right - left);
-  const overviewRight = left + ((visibleWorldRight - worldLeft) / (worldRight - worldLeft)) * (right - left);
-  const windowX = Math.max(left, Math.min(right, overviewLeft));
-  const windowW = Math.max(28, Math.min(right - windowX, overviewRight - overviewLeft));
-  context.fillStyle = "rgba(40, 118, 111, 0.14)";
-  context.strokeStyle = "#28766f";
-  context.lineWidth = 2;
-  roundRect(context, windowX, height - 24, windowW, 10, 5);
+  roundRect(context, viewportFrame.x, viewportFrame.y, viewportFrame.width, viewportFrame.height, 8);
   context.fill();
   context.stroke();
 
@@ -400,6 +401,34 @@ function renderTrackCanvas(
     context.fillText(item.title, x, y + 34);
   });
   context.textAlign = "left";
+}
+
+export function calculateTrackViewportFrame({
+  height,
+  items,
+  left,
+  right,
+  viewport,
+  width,
+}: TrackViewportFrameInput): TrackViewportFrame {
+  if (!items.length) {
+    return { x: left, y: 14, width: right - left, height: Math.max(44, height - 30) };
+  }
+  const worldLeft = Math.min(...items.map((item) => item.x));
+  const worldRight = Math.max(...items.map((item) => item.x + item.w));
+  const worldWidth = Math.max(1, worldRight - worldLeft);
+  const visibleWorldLeft = (-viewport.x) / viewport.scale;
+  const visibleWorldRight = (width - viewport.x) / viewport.scale;
+  const overviewLeft = left + ((visibleWorldLeft - worldLeft) / worldWidth) * (right - left);
+  const overviewRight = left + ((visibleWorldRight - worldLeft) / worldWidth) * (right - left);
+  const x = Math.max(left, Math.min(right, overviewLeft));
+  const frameRight = Math.max(left, Math.min(right, overviewRight));
+  return {
+    x,
+    y: 14,
+    width: Math.max(36, Math.min(right - x, frameRight - x)),
+    height: Math.max(48, height - 30),
+  };
 }
 
 function prepareCanvas(
