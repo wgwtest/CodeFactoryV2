@@ -1,0 +1,652 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
+import "./design-morph-canvas.css";
+
+export type DesignMorphStageViewModel = {
+  id: string;
+  title: string;
+  subtitle: string;
+  summary: string;
+  items: string[];
+};
+
+export type DesignMorphWindowViewModel = {
+  id: string;
+  title: string;
+  fromStageId: string;
+  toStageId: string;
+};
+
+type CanvasViewportState = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+type MorphCanvasItem = DesignMorphStageViewModel & {
+  index: number;
+  type: "paper" | "tree" | "architecture" | "table" | "cards";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+type DragState = {
+  pointerId: number;
+  sx: number;
+  sy: number;
+  vx: number;
+  vy: number;
+  moved: boolean;
+};
+
+type DesignMorphCanvasPlatformProps = {
+  stages: DesignMorphStageViewModel[];
+  windows: DesignMorphWindowViewModel[];
+  activeWindowId: string;
+  onActiveWindowChange: (windowId: string) => void;
+};
+
+const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
+const STAGE_LAYOUTS = [
+  { x: 80, y: 120, w: 500, h: 640, type: "paper" },
+  { x: 720, y: 120, w: 520, h: 640, type: "paper" },
+  { x: 1380, y: 140, w: 520, h: 520, type: "tree" },
+  { x: 2080, y: 60, w: 1180, h: 820, type: "architecture" },
+  { x: 3460, y: 150, w: 560, h: 560, type: "table" },
+  { x: 4200, y: 120, w: 560, h: 600, type: "cards" },
+  { x: 4920, y: 150, w: 560, h: 520, type: "tree" },
+] as const;
+
+export function DesignMorphCanvasPlatform({
+  stages,
+  windows,
+  activeWindowId,
+  onActiveWindowChange,
+}: DesignMorphCanvasPlatformProps) {
+  const trackCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const itemsRef = useRef<MorphCanvasItem[]>([]);
+  const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
+  const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
+  const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  const items = useMemo(() => buildCanvasItems(stages), [stages]);
+  const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
+  const activeWindow = windows[activePairIndex] ?? windows[0];
+  const activeWindowKey = activeWindow ? `${activeWindow.id}:${activeWindow.toStageId}:${activePairIndex}` : "none";
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const centerItem = useCallback(
+    (stageId: string, scale: number) => {
+      const item = itemsRef.current.find((candidate) => candidate.id === stageId);
+      if (!item) {
+        return;
+      }
+      const rect = mainCanvasRef.current?.getBoundingClientRect();
+      const width = rect?.width || 1190;
+      const height = rect?.height || 788;
+      setSelectedStageId(stageId);
+      setViewport({
+        scale,
+        x: width / 2 - (item.x + item.w / 2) * scale,
+        y: height / 2 - (item.y + item.h / 2) * scale,
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const targetStageId = activeWindow?.toStageId ?? items[1]?.id ?? items[0]?.id;
+    if (!targetStageId) {
+      return;
+    }
+    if (lastAutoCenteredWindowKeyRef.current === activeWindowKey) {
+      return;
+    }
+    lastAutoCenteredWindowKeyRef.current = activeWindowKey;
+    centerItem(targetStageId, activePairIndex === 3 ? 0.72 : 0.9);
+  }, [activePairIndex, activeWindow?.toStageId, activeWindowKey, centerItem, items]);
+
+  useEffect(() => {
+    const mainCanvas = mainCanvasRef.current;
+    const trackCanvas = trackCanvasRef.current;
+    if (!mainCanvas || !trackCanvas || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => setLayoutRevision((value) => value + 1));
+    observer.observe(mainCanvas);
+    observer.observe(trackCanvas);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const mainCanvas = mainCanvasRef.current;
+    const trackCanvas = trackCanvasRef.current;
+    if (!mainCanvas || !trackCanvas || window.navigator.userAgent.toLowerCase().includes("jsdom")) {
+      return;
+    }
+    const mainContext = mainCanvas.getContext("2d");
+    const trackContext = trackCanvas.getContext("2d");
+    if (!mainContext || !trackContext) {
+      return;
+    }
+    renderMainCanvas(mainCanvas, mainContext, items, selectedStageId, viewport);
+    renderTrackCanvas(trackCanvas, trackContext, items, activePairIndex, viewport);
+  }, [activePairIndex, items, layoutRevision, selectedStageId, viewport]);
+
+  function handleTrackPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = rect.width || 1190;
+    const left = 36;
+    const right = width - 36;
+    const gap = (right - left) / Math.max(1, stages.length - 1);
+    const index = Math.max(0, Math.min(windows.length - 1, Math.round((event.clientX - rect.left - left) / gap)));
+    const nextWindow = windows[index];
+    if (nextWindow) {
+      onActiveWindowChange(nextWindow.id);
+    }
+  }
+
+  function handleMainPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      sx: event.clientX,
+      sy: event.clientY,
+      vx: viewport.x,
+      vy: viewport.y,
+      moved: false,
+    };
+  }
+
+  function handleMainPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.sx;
+    const deltaY = event.clientY - drag.sy;
+    drag.moved = drag.moved || Math.abs(deltaX) + Math.abs(deltaY) > 6;
+    setViewport((current) => ({ ...current, x: drag.vx + deltaX, y: drag.vy + deltaY }));
+  }
+
+  function handleMainPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    dragRef.current = null;
+    if (drag.moved) {
+      return;
+    }
+    const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
+    const hit = hitTest(items, screenToWorld(point, viewport));
+    if (hit) {
+      setSelectedStageId(hit.id);
+    }
+  }
+
+  function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
+    const before = screenToWorld(point, viewport);
+    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    const nextScale = Math.max(0.42, Math.min(1.65, viewport.scale * factor));
+    setViewport({
+      scale: nextScale,
+      x: point.x - before.x * nextScale,
+      y: point.y - before.y * nextScale,
+    });
+  }
+
+  function moveWindow(delta: number) {
+    const nextWindow = windows[Math.max(0, Math.min(windows.length - 1, activePairIndex + delta))];
+    if (nextWindow) {
+      onActiveWindowChange(nextWindow.id);
+    }
+  }
+
+  function fitViewport() {
+    setViewport({ scale: 0.44, x: 30, y: 120 });
+  }
+
+  function centerLargeArchitecture() {
+    centerItem(stages[3]?.id ?? items[3]?.id ?? selectedStageId, 0.62);
+  }
+
+  return (
+    <div className="design-morph-platform" data-testid="design-morph-canvas-platform">
+      <div className="design-morph-semantic-model" data-testid="design-morph-semantic-model">
+        {items.map((item) => (
+          <section key={item.id} aria-label={`${item.title} Canvas 语义对象`}>
+            <h4>{item.title}</h4>
+            <p>{item.summary}</p>
+            <ul>
+              {item.items.map((entry) => (
+                <li key={`${item.id}-${entry}`}>{entry}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+      <div className="design-morph-track-shell">
+        <canvas
+          aria-label="软设形态滑窗 Canvas"
+          className="design-morph-track-canvas"
+          data-testid="design-morph-track-canvas"
+          ref={trackCanvasRef}
+          onPointerUp={handleTrackPointerUp}
+        />
+      </div>
+      <div className="design-morph-canvas-shell">
+        <canvas
+          aria-label="软设工作区 Canvas"
+          className="design-morph-main-canvas"
+          data-testid="design-morph-main-canvas"
+          ref={mainCanvasRef}
+          onPointerDown={handleMainPointerDown}
+          onPointerLeave={handleMainPointerUp}
+          onPointerMove={handleMainPointerMove}
+          onPointerUp={handleMainPointerUp}
+          onWheel={handleWheel}
+        />
+        <div className="design-morph-hud">
+          <span>Canvas 窗口：{activeWindow?.title ?? "需规 -> 软设文档"}</span>
+          <span>缩放 {Math.round(viewport.scale * 100)}%</span>
+          <span>
+            平移 {Math.round(viewport.x)},{Math.round(viewport.y)}
+          </span>
+          <span>拖拽平移 · 滚轮缩放 · 点击对象选中</span>
+        </div>
+      </div>
+      <footer className="design-morph-controls">
+        <span>{selectedStageId ? `选中：${items.find((item) => item.id === selectedStageId)?.title ?? selectedStageId}` : "选中：-"}</span>
+        <div>
+          <button type="button" onClick={fitViewport}>
+            适配视口
+          </button>
+          <button type="button" onClick={() => moveWindow(-1)}>
+            上一窗口
+          </button>
+          <button type="button" onClick={() => moveWindow(1)}>
+            下一窗口
+          </button>
+          <button type="button" onClick={centerLargeArchitecture}>
+            定位大型架构图
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function buildCanvasItems(stages: DesignMorphStageViewModel[]): MorphCanvasItem[] {
+  return stages.map((stage, index) => {
+    const layout = STAGE_LAYOUTS[index] ?? {
+      x: 80 + index * 680,
+      y: 140,
+      w: 540,
+      h: 560,
+      type: "cards" as const,
+    };
+    return {
+      ...stage,
+      index,
+      type: layout.type,
+      x: layout.x,
+      y: layout.y,
+      w: layout.w,
+      h: layout.h,
+    };
+  });
+}
+
+function renderMainCanvas(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  items: MorphCanvasItem[],
+  selectedStageId: string,
+  viewport: CanvasViewportState,
+) {
+  const { width, height } = prepareCanvas(canvas, context, 1190, 788);
+  context.clearRect(0, 0, width, height);
+  drawCanvasBackground(context, width, height);
+  context.save();
+  context.translate(viewport.x, viewport.y);
+  context.scale(viewport.scale, viewport.scale);
+  for (let index = 0; index < items.length - 1; index += 1) {
+    drawArrow(context, items[index], items[index + 1]);
+  }
+  items.forEach((item) => drawItem(context, item, item.id === selectedStageId));
+  context.restore();
+}
+
+function renderTrackCanvas(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  items: MorphCanvasItem[],
+  activePairIndex: number,
+  viewport: CanvasViewportState,
+) {
+  const { width, height } = prepareCanvas(canvas, context, 1190, 96);
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#f8fbfa";
+  context.fillRect(0, 0, width, height);
+  if (!items.length) {
+    return;
+  }
+
+  const left = 36;
+  const right = width - 36;
+  const y = Math.max(42, height * 0.48);
+  const gap = (right - left) / Math.max(1, items.length - 1);
+
+  context.strokeStyle = "#bfd0cc";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(left, y);
+  context.lineTo(right, y);
+  context.stroke();
+
+  const activeX = left + activePairIndex * gap;
+  context.fillStyle = "rgba(20, 62, 82, 0.05)";
+  context.strokeStyle = "#143e52";
+  context.lineWidth = 2;
+  roundRect(context, activeX - 44, 14, gap + 88, height - 30, 8);
+  context.fill();
+  context.stroke();
+
+  const worldLeft = Math.min(...items.map((item) => item.x));
+  const worldRight = Math.max(...items.map((item) => item.x + item.w));
+  const visibleWorldLeft = (-viewport.x) / viewport.scale;
+  const visibleWorldRight = (width - viewport.x) / viewport.scale;
+  const overviewLeft = left + ((visibleWorldLeft - worldLeft) / (worldRight - worldLeft)) * (right - left);
+  const overviewRight = left + ((visibleWorldRight - worldLeft) / (worldRight - worldLeft)) * (right - left);
+  const windowX = Math.max(left, Math.min(right, overviewLeft));
+  const windowW = Math.max(28, Math.min(right - windowX, overviewRight - overviewLeft));
+  context.fillStyle = "rgba(40, 118, 111, 0.14)";
+  context.strokeStyle = "#28766f";
+  context.lineWidth = 2;
+  roundRect(context, windowX, height - 24, windowW, 10, 5);
+  context.fill();
+  context.stroke();
+
+  items.forEach((item, index) => {
+    const x = left + index * gap;
+    const active = index === activePairIndex || index === activePairIndex + 1;
+    context.fillStyle = active ? "#143e52" : index < activePairIndex ? "#e4f2e9" : "#fff";
+    context.strokeStyle = active ? "#143e52" : index < activePairIndex ? "#80b995" : "#aebfba";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.rect(x - 8, y - 8, 16, 16);
+    context.fill();
+    context.stroke();
+    context.fillStyle = index < activePairIndex ? "#2b7448" : "#14211f";
+    context.font = "900 13px Microsoft YaHei, sans-serif";
+    context.textAlign = "center";
+    context.fillText(item.title, x, y + 34);
+  });
+  context.textAlign = "left";
+}
+
+function prepareCanvas(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  fallbackWidth: number,
+  fallbackHeight: number,
+) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width || fallbackWidth));
+  const height = Math.max(1, Math.floor(rect.height || fallbackHeight));
+  const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  canvas.width = Math.floor(width * ratio);
+  canvas.height = Math.floor(height * ratio);
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  return { width, height };
+}
+
+function drawCanvasBackground(context: CanvasRenderingContext2D, width: number, height: number) {
+  context.fillStyle = "#f9fbfa";
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = "rgba(20, 62, 82, 0.055)";
+  context.lineWidth = 1;
+  for (let x = 0; x < width; x += 56) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+    context.stroke();
+  }
+  for (let y = 0; y < height; y += 56) {
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
+  }
+}
+
+function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
+  context.fillStyle = item.type === "architecture" ? "#fbfcfb" : "#fffdf8";
+  context.strokeStyle = selected ? "#143e52" : "#c7d0cb";
+  context.lineWidth = selected ? 3 : 1.4;
+  roundRect(context, item.x, item.y, item.w, item.h, 8);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = selected ? "#143e52" : "#60706c";
+  context.font = "850 15px Microsoft YaHei, sans-serif";
+  context.fillText(item.subtitle, item.x + 24, item.y + 34);
+  context.fillStyle = "#172221";
+  context.font = "950 25px Microsoft YaHei, sans-serif";
+  wrapCanvasText(context, item.title, item.x + 24, item.y + 74, item.w - 48, 30, 2);
+  context.fillStyle = "#40514d";
+  context.font = "14px Microsoft YaHei, sans-serif";
+  wrapCanvasText(context, item.summary, item.x + 24, item.y + 132, item.w - 48, 23, 4);
+
+  if (item.type === "architecture") {
+    drawArchitectureItem(context, item);
+    return;
+  }
+  if (item.type === "tree") {
+    drawTreeItem(context, item);
+    return;
+  }
+  if (item.type === "table") {
+    drawTableItem(context, item);
+    return;
+  }
+  if (item.type === "cards") {
+    drawCardsItem(context, item);
+    return;
+  }
+  drawPaperItem(context, item);
+}
+
+function drawPaperItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
+  const top = item.y + 234;
+  context.fillStyle = "#f7faf9";
+  roundRect(context, item.x + 28, top - 28, item.w - 56, item.h - 270, 6);
+  context.fill();
+  item.items.slice(0, 6).forEach((line, index) => {
+    const y = top + index * 54;
+    context.fillStyle = "#14211f";
+    context.font = "850 14px Microsoft YaHei, sans-serif";
+    context.fillText(`${index + 1}. ${line}`, item.x + 48, y);
+    context.strokeStyle = "#d9e3df";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(item.x + 48, y + 16);
+    context.lineTo(item.x + item.w - 48, y + 16);
+    context.stroke();
+  });
+}
+
+function drawTreeItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
+  const startX = item.x + 52;
+  const startY = item.y + 220;
+  context.strokeStyle = "#9ab7ae";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(startX, startY - 22);
+  context.lineTo(startX, startY + Math.min(4, item.items.length - 1) * 58);
+  context.stroke();
+  item.items.slice(0, 5).forEach((line, index) => {
+    const y = startY + index * 58;
+    context.strokeStyle = "#9ab7ae";
+    context.beginPath();
+    context.moveTo(startX, y);
+    context.lineTo(startX + 34, y);
+    context.stroke();
+    context.fillStyle = index === 0 ? "#e6f0f4" : "#f6faf8";
+    roundRect(context, startX + 34, y - 20, item.w - 104, 40, 6);
+    context.fill();
+    context.strokeStyle = "#cbd9d4";
+    context.stroke();
+    context.fillStyle = "#172221";
+    context.font = "850 14px Microsoft YaHei, sans-serif";
+    context.fillText(line, startX + 50, y + 5);
+  });
+}
+
+function drawArchitectureItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
+  const labels = item.items.length ? item.items : ["展示层", "功能层", "服务层", "数据层"];
+  const top = item.y + 220;
+  const layerHeight = 118;
+  labels.slice(0, 5).forEach((label, index) => {
+    const y = top + index * (layerHeight + 18);
+    context.fillStyle = ["#e6f0f4", "#e4f2e9", "#f5e9d6", "#edf2f0", "#f8fbfa"][index] ?? "#f8fbfa";
+    roundRect(context, item.x + 34, y, item.w - 68, layerHeight, 8);
+    context.fill();
+    context.strokeStyle = "#cad8d3";
+    context.stroke();
+    context.fillStyle = "#143e52";
+    context.font = "950 16px Microsoft YaHei, sans-serif";
+    context.fillText(label, item.x + 58, y + 32);
+    context.fillStyle = "#40514d";
+    context.font = "13px Microsoft YaHei, sans-serif";
+    wrapCanvasText(context, `模块边界、服务职责、数据依赖和下游投影在本层形成可追溯设计对象。`, item.x + 58, y + 62, item.w - 116, 22, 2);
+  });
+}
+
+function drawTableItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
+  const top = item.y + 218;
+  item.items.slice(0, 6).forEach((line, index) => {
+    const y = top + index * 54;
+    context.fillStyle = index % 2 === 0 ? "#f7faf9" : "#fffdf8";
+    context.fillRect(item.x + 28, y, item.w - 56, 48);
+    context.strokeStyle = "#d7e0dc";
+    context.strokeRect(item.x + 28, y, item.w - 56, 48);
+    context.fillStyle = "#172221";
+    context.font = "850 14px Microsoft YaHei, sans-serif";
+    context.fillText(line, item.x + 48, y + 30);
+  });
+}
+
+function drawCardsItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
+  const top = item.y + 216;
+  const cardWidth = (item.w - 78) / 2;
+  item.items.slice(0, 6).forEach((line, index) => {
+    const x = item.x + 28 + (index % 2) * (cardWidth + 22);
+    const y = top + Math.floor(index / 2) * 106;
+    context.fillStyle = "#f8fbfa";
+    roundRect(context, x, y, cardWidth, 82, 8);
+    context.fill();
+    context.strokeStyle = "#d7e0dc";
+    context.stroke();
+    context.fillStyle = "#172221";
+    context.font = "850 14px Microsoft YaHei, sans-serif";
+    wrapCanvasText(context, line, x + 16, y + 30, cardWidth - 32, 22, 2);
+  });
+}
+
+function drawArrow(context: CanvasRenderingContext2D, from: MorphCanvasItem, to: MorphCanvasItem) {
+  const startX = from.x + from.w;
+  const startY = from.y + from.h * 0.5;
+  const endX = to.x;
+  const endY = to.y + to.h * 0.5;
+  const midX = startX + (endX - startX) * 0.5;
+  context.strokeStyle = "#28766f";
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(startX + 28, startY);
+  context.bezierCurveTo(midX, startY, midX, endY, endX - 28, endY);
+  context.stroke();
+  context.fillStyle = "#28766f";
+  context.beginPath();
+  context.moveTo(endX - 28, endY);
+  context.lineTo(endX - 46, endY - 9);
+  context.lineTo(endX - 46, endY + 9);
+  context.closePath();
+  context.fill();
+}
+
+function hitTest(items: MorphCanvasItem[], world: { x: number; y: number }) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (world.x >= item.x && world.x <= item.x + item.w && world.y >= item.y && world.y <= item.y + item.h) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+function screenToWorld(point: { x: number; y: number }, viewport: CanvasViewportState) {
+  return { x: (point.x - viewport.x) / viewport.scale, y: (point.y - viewport.y) / viewport.scale };
+}
+
+function wrapCanvasText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+) {
+  const chars = text.split("");
+  let line = "";
+  let lineCount = 0;
+  for (const char of chars) {
+    const testLine = `${line}${char}`;
+    if (context.measureText(testLine).width > maxWidth && line) {
+      context.fillText(line, x, y + lineCount * lineHeight);
+      line = char;
+      lineCount += 1;
+      if (lineCount >= maxLines) {
+        return;
+      }
+    } else {
+      line = testLine;
+    }
+  }
+  if (line && lineCount < maxLines) {
+    context.fillText(line, x, y + lineCount * lineHeight);
+  }
+}
+
+function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.arcTo(x + width, y, x + width, y + height, radius);
+  context.arcTo(x + width, y + height, x, y + height, radius);
+  context.arcTo(x, y + height, x, y, radius);
+  context.arcTo(x, y, x + width, y, radius);
+  context.closePath();
+}
