@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -64,6 +65,31 @@ type DragState = {
   moved: boolean;
 };
 
+type TrackDragMode = "move" | "resize-left" | "resize-right";
+
+type TrackMetrics = {
+  frame: TrackViewportFrame;
+  left: number;
+  mainHeight: number;
+  mainWidth: number;
+  rect: DOMRect;
+  right: number;
+  worldLeft: number;
+  worldRight: number;
+  worldWidth: number;
+};
+
+type TrackDragState = {
+  mode: TrackDragMode;
+  pointerId: number | null;
+  source: "mouse" | "pointer";
+  startClientX: number;
+  startLeftWorld: number;
+  startRightWorld: number;
+  startViewport: CanvasViewportState;
+  metrics: TrackMetrics;
+};
+
 type DesignMorphCanvasPlatformProps = {
   stages: DesignMorphStageViewModel[];
   windows: DesignMorphWindowViewModel[];
@@ -71,6 +97,10 @@ type DesignMorphCanvasPlatformProps = {
   onActiveWindowChange: (windowId: string) => void;
 };
 
+const MIN_CANVAS_SCALE = 0.42;
+const MAX_CANVAS_SCALE = 1.65;
+const TRACK_PADDING_X = 36;
+const TRACK_HANDLE_HIT_WIDTH = 16;
 const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
 const STAGE_LAYOUTS = [
   { x: 80, y: 120, w: 500, h: 640, type: "paper" },
@@ -91,6 +121,7 @@ export function DesignMorphCanvasPlatform({
   const trackCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const trackDragRef = useRef<TrackDragState | null>(null);
   const itemsRef = useRef<MorphCanvasItem[]>([]);
   const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
@@ -160,20 +191,159 @@ export function DesignMorphCanvasPlatform({
       return;
     }
     renderMainCanvas(mainCanvas, mainContext, items, selectedStageId, viewport);
-    renderTrackCanvas(trackCanvas, trackContext, items, activePairIndex, viewport);
+    const mainRect = mainCanvas.getBoundingClientRect();
+    renderTrackCanvas(trackCanvas, trackContext, items, activePairIndex, viewport, mainRect.width || 1190);
   }, [activePairIndex, items, layoutRevision, selectedStageId, viewport]);
 
-  function handleTrackPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const width = rect.width || 1190;
-    const left = 36;
-    const right = width - 36;
-    const gap = (right - left) / Math.max(1, stages.length - 1);
-    const index = Math.max(0, Math.min(windows.length - 1, Math.round((event.clientX - rect.left - left) / gap)));
-    const nextWindow = windows[index];
-    if (nextWindow) {
-      onActiveWindowChange(nextWindow.id);
+  function handleTrackPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    beginTrackDrag(event.currentTarget, event.clientX, event.clientY, event.pointerId, "pointer");
+    if (trackDragRef.current && typeof event.currentTarget.setPointerCapture === "function" && typeof event.pointerId === "number") {
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
+  }
+
+  function handleTrackMouseDown(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (event.button !== 0 || trackDragRef.current) {
+      return;
+    }
+    beginTrackDrag(event.currentTarget, event.clientX, event.clientY, null, "mouse");
+  }
+
+  function beginTrackDrag(
+    canvas: HTMLCanvasElement,
+    clientX: number,
+    clientY: number,
+    pointerId: number | null,
+    source: TrackDragState["source"],
+  ) {
+    const metrics = getTrackMetrics(canvas, mainCanvasRef.current, itemsRef.current, viewport);
+    if (!metrics) {
+      return;
+    }
+    const localX = clientX - metrics.rect.left;
+    const localY = clientY - metrics.rect.top;
+    const mode = hitTrackControl(metrics.frame, localX, localY);
+    if (!mode) {
+      canvas.style.cursor = "default";
+      return;
+    }
+    canvas.style.cursor = mode === "move" ? "grabbing" : "ew-resize";
+    trackDragRef.current = {
+      mode,
+      pointerId,
+      source,
+      startClientX: clientX,
+      startLeftWorld: -viewport.x / viewport.scale,
+      startRightWorld: (-viewport.x + metrics.mainWidth) / viewport.scale,
+      startViewport: viewport,
+      metrics,
+    };
+  }
+
+  function handleTrackPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const drag = trackDragRef.current;
+    if (!drag || drag.source !== "pointer" || (drag.pointerId !== null && drag.pointerId !== event.pointerId)) {
+      updateTrackCursor(event.currentTarget, event.clientX, event.clientY);
+      return;
+    }
+    applyTrackDrag(drag, event.clientX);
+  }
+
+  function handleTrackMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
+    const drag = trackDragRef.current;
+    if (!drag || drag.source !== "mouse") {
+      updateTrackCursor(event.currentTarget, event.clientX, event.clientY);
+      return;
+    }
+    applyTrackDrag(drag, event.clientX);
+  }
+
+  function handleTrackPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (
+      trackDragRef.current?.source === "pointer" &&
+      (trackDragRef.current.pointerId === null || trackDragRef.current.pointerId === event.pointerId)
+    ) {
+      trackDragRef.current = null;
+    }
+    updateTrackCursor(event.currentTarget, event.clientX, event.clientY);
+  }
+
+  function handleTrackMouseUp(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (trackDragRef.current?.source === "mouse") {
+      trackDragRef.current = null;
+    }
+    updateTrackCursor(event.currentTarget, event.clientX, event.clientY);
+  }
+
+  function handleTrackPointerLeave(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (!trackDragRef.current) {
+      event.currentTarget.style.cursor = "default";
+    }
+  }
+
+  function applyTrackDrag(drag: TrackDragState, clientX: number) {
+    const deltaTrackX = clientX - drag.startClientX;
+    const deltaWorld = trackDeltaToWorld(deltaTrackX, drag.metrics);
+    if (drag.mode === "move") {
+      moveViewportFromTrackDrag(drag, deltaWorld);
+      return;
+    }
+    resizeViewportFromTrackDrag(drag, deltaWorld);
+  }
+
+  function handleTrackWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    const metrics = getTrackMetrics(event.currentTarget, mainCanvasRef.current, itemsRef.current, viewport);
+    if (!metrics) {
+      return;
+    }
+    const localX = event.clientX - metrics.rect.left;
+    const localY = event.clientY - metrics.rect.top;
+    if (!hitTrackControl(metrics.frame, localX, localY)) {
+      return;
+    }
+    event.preventDefault();
+    const visibleCenterX = (-viewport.x + metrics.mainWidth / 2) / viewport.scale;
+    const visibleCenterY = (-viewport.y + metrics.mainHeight / 2) / viewport.scale;
+    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    const nextScale = clamp(viewport.scale * factor, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE);
+    setViewport({
+      scale: nextScale,
+      x: metrics.mainWidth / 2 - visibleCenterX * nextScale,
+      y: metrics.mainHeight / 2 - visibleCenterY * nextScale,
+    });
+  }
+
+  function updateTrackCursor(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const metrics = getTrackMetrics(canvas, mainCanvasRef.current, itemsRef.current, viewport);
+    if (!metrics) {
+      canvas.style.cursor = "default";
+      return;
+    }
+    const localX = clientX - metrics.rect.left;
+    const localY = clientY - metrics.rect.top;
+    const mode = hitTrackControl(metrics.frame, localX, localY);
+    canvas.style.cursor = mode === "move" ? "grab" : mode ? "ew-resize" : "default";
+  }
+
+  function moveViewportFromTrackDrag(drag: TrackDragState, deltaWorld: number) {
+    const visibleWorldWidth = drag.startRightWorld - drag.startLeftWorld;
+    const nextLeft = clampVisibleWorldLeft(drag.startLeftWorld + deltaWorld, visibleWorldWidth, drag.metrics);
+    setViewport(buildViewportFromVisibleRange(drag.startViewport, drag.metrics, nextLeft, visibleWorldWidth));
+  }
+
+  function resizeViewportFromTrackDrag(drag: TrackDragState, deltaWorld: number) {
+    const minVisibleWorldWidth = drag.metrics.mainWidth / MAX_CANVAS_SCALE;
+    const maxVisibleWorldWidth = drag.metrics.mainWidth / MIN_CANVAS_SCALE;
+    const startWidth = drag.startRightWorld - drag.startLeftWorld;
+    const nextWidth =
+      drag.mode === "resize-left"
+        ? clamp(startWidth - deltaWorld, minVisibleWorldWidth, maxVisibleWorldWidth)
+        : clamp(startWidth + deltaWorld, minVisibleWorldWidth, maxVisibleWorldWidth);
+    const nextLeft =
+      drag.mode === "resize-left"
+        ? clampVisibleWorldLeft(drag.startRightWorld - nextWidth, nextWidth, drag.metrics)
+        : clampVisibleWorldLeft(drag.startLeftWorld, nextWidth, drag.metrics);
+    setViewport(buildViewportFromVisibleRange(drag.startViewport, drag.metrics, nextLeft, nextWidth));
   }
 
   function handleMainPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -220,7 +390,7 @@ export function DesignMorphCanvasPlatform({
     const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
     const before = screenToWorld(point, viewport);
     const factor = event.deltaY < 0 ? 1.08 : 0.92;
-    const nextScale = Math.max(0.42, Math.min(1.65, viewport.scale * factor));
+    const nextScale = clamp(viewport.scale * factor, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE);
     setViewport({
       scale: nextScale,
       x: point.x - before.x * nextScale,
@@ -264,7 +434,14 @@ export function DesignMorphCanvasPlatform({
           className="design-morph-track-canvas"
           data-testid="design-morph-track-canvas"
           ref={trackCanvasRef}
+          onMouseDown={handleTrackMouseDown}
+          onMouseMove={handleTrackMouseMove}
+          onMouseUp={handleTrackMouseUp}
+          onPointerDown={handleTrackPointerDown}
+          onPointerLeave={handleTrackPointerLeave}
+          onPointerMove={handleTrackPointerMove}
           onPointerUp={handleTrackPointerUp}
+          onWheel={handleTrackWheel}
         />
       </div>
       <div className="design-morph-canvas-shell">
@@ -356,6 +533,7 @@ function renderTrackCanvas(
   items: MorphCanvasItem[],
   activePairIndex: number,
   viewport: CanvasViewportState,
+  mainCanvasWidth: number,
 ) {
   const { width, height } = prepareCanvas(canvas, context, 1190, 96);
   context.clearRect(0, 0, width, height);
@@ -365,7 +543,7 @@ function renderTrackCanvas(
     return;
   }
 
-  const left = 36;
+  const left = TRACK_PADDING_X;
   const right = width - 36;
   const y = Math.max(42, height * 0.48);
   const gap = (right - left) / Math.max(1, items.length - 1);
@@ -377,13 +555,16 @@ function renderTrackCanvas(
   context.lineTo(right, y);
   context.stroke();
 
-  const viewportFrame = calculateTrackViewportFrame({ height, items, left, right, viewport, width });
-  context.fillStyle = "rgba(40, 118, 111, 0.13)";
+  const viewportFrame = calculateTrackViewportFrame({ height, items, left, right, viewport, width: mainCanvasWidth });
+  context.fillStyle = "rgba(40, 118, 111, 0.16)";
   context.strokeStyle = "#143e52";
   context.lineWidth = 2;
   roundRect(context, viewportFrame.x, viewportFrame.y, viewportFrame.width, viewportFrame.height, 8);
   context.fill();
   context.stroke();
+
+  drawTrackHandle(context, viewportFrame.x, viewportFrame.y, viewportFrame.height);
+  drawTrackHandle(context, viewportFrame.x + viewportFrame.width, viewportFrame.y, viewportFrame.height);
 
   items.forEach((item, index) => {
     const x = left + index * gap;
@@ -401,6 +582,99 @@ function renderTrackCanvas(
     context.fillText(item.title, x, y + 34);
   });
   context.textAlign = "left";
+}
+
+function drawTrackHandle(context: CanvasRenderingContext2D, x: number, y: number, height: number) {
+  context.fillStyle = "#143e52";
+  roundRect(context, x - 4, y + 8, 8, height - 16, 4);
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(x - 1.5, y + 19);
+  context.lineTo(x - 1.5, y + height - 19);
+  context.moveTo(x + 1.5, y + 19);
+  context.lineTo(x + 1.5, y + height - 19);
+  context.stroke();
+}
+
+function getTrackMetrics(
+  trackCanvas: HTMLCanvasElement,
+  mainCanvas: HTMLCanvasElement | null,
+  items: MorphCanvasItem[],
+  viewport: CanvasViewportState,
+): TrackMetrics | null {
+  if (!items.length) {
+    return null;
+  }
+  const rect = trackCanvas.getBoundingClientRect();
+  const mainRect = mainCanvas?.getBoundingClientRect();
+  const width = rect.width || 1190;
+  const height = rect.height || 96;
+  const mainWidth = mainRect?.width || 1190;
+  const mainHeight = mainRect?.height || 788;
+  const left = TRACK_PADDING_X;
+  const right = Math.max(left + 1, width - TRACK_PADDING_X);
+  const worldLeft = Math.min(...items.map((item) => item.x));
+  const worldRight = Math.max(...items.map((item) => item.x + item.w));
+  const worldWidth = Math.max(1, worldRight - worldLeft);
+  return {
+    frame: calculateTrackViewportFrame({ height, items, left, right, viewport, width: mainWidth }),
+    left,
+    mainHeight,
+    mainWidth,
+    rect,
+    right,
+    worldLeft,
+    worldRight,
+    worldWidth,
+  };
+}
+
+function hitTrackControl(frame: TrackViewportFrame, localX: number, localY: number): TrackDragMode | null {
+  const inFrameY = localY >= frame.y && localY <= frame.y + frame.height;
+  if (!inFrameY) {
+    return null;
+  }
+  const nearLeft = Math.abs(localX - frame.x) <= TRACK_HANDLE_HIT_WIDTH;
+  const nearRight = Math.abs(localX - (frame.x + frame.width)) <= TRACK_HANDLE_HIT_WIDTH;
+  if (nearLeft) {
+    return "resize-left";
+  }
+  if (nearRight) {
+    return "resize-right";
+  }
+  if (localX >= frame.x && localX <= frame.x + frame.width) {
+    return "move";
+  }
+  return null;
+}
+
+function buildViewportFromVisibleRange(
+  startViewport: CanvasViewportState,
+  metrics: TrackMetrics,
+  visibleWorldLeft: number,
+  visibleWorldWidth: number,
+): CanvasViewportState {
+  const nextScale = clamp(metrics.mainWidth / visibleWorldWidth, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE);
+  const centerY = (-startViewport.y + metrics.mainHeight / 2) / startViewport.scale;
+  const nextX = -visibleWorldLeft * nextScale;
+  const nextY = metrics.mainHeight / 2 - centerY * nextScale;
+  return { x: nextX, y: nextY, scale: nextScale };
+}
+
+function trackDeltaToWorld(deltaTrackX: number, metrics: TrackMetrics) {
+  return (deltaTrackX / Math.max(1, metrics.right - metrics.left)) * metrics.worldWidth;
+}
+
+function clampVisibleWorldLeft(visibleWorldLeft: number, visibleWorldWidth: number, metrics: TrackMetrics) {
+  const minLeft = metrics.worldLeft;
+  const maxLeft = Math.max(minLeft, metrics.worldRight - visibleWorldWidth);
+  return clamp(visibleWorldLeft, minLeft, maxLeft);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 export function calculateTrackViewportFrame({

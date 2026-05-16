@@ -34,7 +34,9 @@
 }
 
 .design-morph-track-canvas {
-  cursor: pointer;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
 }
 
 .design-morph-canvas-shell {

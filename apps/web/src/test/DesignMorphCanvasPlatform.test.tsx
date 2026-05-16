@@ -45,18 +45,7 @@ describe("DesignMorphCanvasPlatform", () => {
   });
 
   test("keeps the user viewport when the parent refreshes data without changing the active window", () => {
-    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(buildCanvasContextMock());
-    const getBoundingClientRect = vi.spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 0,
-      width: 1000,
-      height: 620,
-      top: 0,
-      right: 1000,
-      bottom: 620,
-      left: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
+    const canvasMock = mockCanvasEnvironment();
 
     render(<CanvasRefreshHarness />);
 
@@ -72,10 +61,90 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(within(platform).getByText("缩放 97%")).toBeInTheDocument();
     expect(within(platform).queryByText("缩放 90%")).not.toBeInTheDocument();
 
-    getContext.mockRestore();
-    getBoundingClientRect.mockRestore();
+    canvasMock.restore();
+  });
+
+  test("zooms the main viewport symmetrically when the user wheels over the real track window", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const trackCanvas = within(platform).getByTestId("design-morph-track-canvas");
+    expect(within(platform).getByText("缩放 90%")).toBeInTheDocument();
+
+    fireEvent.wheel(trackCanvas, { deltaY: -600, clientX: 170, clientY: 30 });
+
+    expect(within(platform).getByText("缩放 97%")).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("pans the main viewport when the user drags the real track window body", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const trackCanvas = within(platform).getByTestId("design-morph-track-canvas");
+    const initialPan = within(platform).getByText(/^平移 /).textContent;
+
+    fireEvent.mouseDown(trackCanvas, { button: 0, clientX: 170, clientY: 30 });
+    fireEvent.mouseMove(trackCanvas, { clientX: 240, clientY: 30 });
+    fireEvent.mouseUp(trackCanvas, { clientX: 240, clientY: 30 });
+
+    expect(within(platform).getByText("缩放 90%")).toBeInTheDocument();
+    expect(within(platform).getByText(/^平移 /).textContent).not.toBe(initialPan);
+
+    canvasMock.restore();
+  });
+
+  test("resizes the main viewport when the user drags the real track window handles", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const trackCanvas = within(platform).getByTestId("design-morph-track-canvas");
+
+    fireEvent.mouseDown(trackCanvas, { button: 0, clientX: 286, clientY: 30 });
+    fireEvent.mouseMove(trackCanvas, { clientX: 336, clientY: 30 });
+    fireEvent.mouseUp(trackCanvas, { clientX: 336, clientY: 30 });
+
+    expect(within(platform).queryByText("缩放 90%")).not.toBeInTheDocument();
+    expect(readZoomPercent(platform)).toBeLessThan(90);
+
+    canvasMock.restore();
+  });
+
+  test("keeps stage landmarks passive when the user clicks the track outside the real window", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onActiveWindowChange = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={onActiveWindowChange}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const trackCanvas = within(platform).getByTestId("design-morph-track-canvas");
+
+    fireEvent.pointerUp(trackCanvas, { pointerId: 9, clientX: 500, clientY: 42 });
+
+    expect(onActiveWindowChange).not.toHaveBeenCalled();
+
+    canvasMock.restore();
   });
 });
+
+function readZoomPercent(platform: HTMLElement) {
+  const label = within(platform).getByText(/^缩放 /).textContent ?? "";
+  return Number(label.replace(/[^\d]/g, ""));
+}
 
 function CanvasRefreshHarness() {
   const [revision, setRevision] = useState(0);
@@ -149,4 +218,39 @@ function buildCanvasContextMock() {
     strokeStyle: "",
     textAlign: "left",
   } as unknown as CanvasRenderingContext2D;
+}
+
+function mockCanvasEnvironment() {
+  if (!HTMLCanvasElement.prototype.setPointerCapture) {
+    HTMLCanvasElement.prototype.setPointerCapture = () => undefined;
+  }
+  const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(buildCanvasContextMock());
+  const getBoundingClientRect = vi
+    .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
+    .mockImplementation(function getCanvasRect(this: HTMLCanvasElement) {
+      const isTrack = this.className.toString().includes("track");
+      const height = isTrack ? 88 : 620;
+      return {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height,
+        top: 0,
+        right: 1000,
+        bottom: height,
+        left: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+  const setPointerCapture = vi
+    .spyOn(HTMLCanvasElement.prototype, "setPointerCapture")
+    .mockImplementation(() => undefined);
+
+  return {
+    restore: () => {
+      getContext.mockRestore();
+      getBoundingClientRect.mockRestore();
+      setPointerCapture.mockRestore();
+    },
+  };
 }
