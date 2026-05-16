@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P3 Design Lab 软设形态传递链滑窗原型 v9</title>
+    <style>
+      :root {
+        --bg: #edf2f0;
+        --ink: #14211f;
+        --muted: #65736f;
+        --line: #c7d4cf;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #153e52;
+        --teal: #2a756d;
+        --green: #2a7448;
+        --amber: #9a631d;
+        --red: #994238;
+        --violet: #585c8b;
+        --soft-navy: #e6f0f4;
+        --soft-teal: #e4f3ef;
+        --soft-green: #e4f2e9;
+        --soft-amber: #f5e9d6;
+        --soft-red: #f5dedb;
+        --soft-violet: #ececfa;
+        --shadow: 0 18px 42px rgba(42, 55, 51, 0.12);
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        color: var(--ink);
+        background: var(--bg);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px 0;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      .topbar {
+        height: 82px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 12px 34px rgba(45, 61, 56, 0.1);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 17px;
+        font-weight: 950;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 36px;
+        font-weight: 950;
+      }
+
+      .subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .pill-row,
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill,
+      .badge,
+      .button {
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-weight: 850;
+      }
+
+      .pill,
+      .badge {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .button {
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+        font-size: 13px;
+      }
+
+      .button.primary {
+        color: #fff;
+        border-color: var(--navy);
+        background: var(--navy);
+      }
+
+      .button.teal {
+        color: #fff;
+        border-color: var(--teal);
+        background: var(--teal);
+      }
+
+      .navy { color: var(--navy); border-color: #a9c1cd; background: var(--soft-navy); }
+      .teal { color: var(--teal); border-color: #95c7c0; background: var(--soft-teal); }
+      .green { color: var(--green); border-color: #94c6a7; background: var(--soft-green); }
+      .amber { color: var(--amber); border-color: #dcb47a; background: var(--soft-amber); }
+      .red { color: var(--red); border-color: #d8b1aa; background: var(--soft-red); }
+      .violet { color: var(--violet); border-color: #bebce0; background: var(--soft-violet); }
+
+      .layout {
+        height: 954px;
+        display: grid;
+        grid-template-columns: 294px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .panel,
+      .card,
+      .chain-card,
+      .viewport,
+      .rail {
+        border: 1px solid rgba(162, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 18px 17px 15px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        min-height: 0;
+        padding: 13px;
+        display: grid;
+        align-content: start;
+        gap: 9px;
+      }
+
+      .tab-item {
+        min-height: 76px;
+        padding: 11px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .tab-item.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .tab-desc {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.38;
+      }
+
+      .tab-meta,
+      .row-meta {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #536260;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+      }
+
+      .side-rule {
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.52;
+        font-weight: 850;
+      }
+
+      .workspace {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        overflow: hidden;
+      }
+
+      .work-head {
+        height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 18px 0 20px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .head-title {
+        font-size: 18px;
+        font-weight: 950;
+      }
+
+      .head-sub {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .chain-map {
+        height: 134px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        padding: 14px 18px 12px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .chain-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 10px;
+      }
+
+      .chain-title strong {
+        font-size: 13px;
+      }
+
+      .chain-rail {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .chain-rail::before {
+        content: "";
+        position: absolute;
+        left: 58px;
+        right: 58px;
+        top: 32px;
+        border-top: 2px solid #b7c9c4;
+      }
+
+      .chain-node {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        align-content: start;
+        justify-items: center;
+        gap: 6px;
+      }
+
+      .node-dot {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        border: 2px solid #9fb4af;
+        background: #fff;
+        color: #33423f;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .chain-node.active .node-dot,
+      .chain-node.window .node-dot {
+        border-color: var(--navy);
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .chain-node.done .node-dot {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .node-label {
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .node-meta {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .body {
+        min-height: 0;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .slider-board {
+        height: 100%;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) 122px;
+        gap: 14px;
+      }
+
+      .viewport {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .phase-card {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        border: 1px solid #c5d3cf;
+        background: #fff;
+      }
+
+      .phase-card.focus {
+        border-color: var(--navy);
+        box-shadow: inset 0 4px 0 var(--navy);
+      }
+
+      .phase-head {
+        min-height: 74px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .phase-title {
+        font-size: 14px;
+        font-weight: 950;
+      }
+
+      .phase-sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .phase-body {
+        min-height: 0;
+        padding: 12px;
+        overflow: hidden;
+      }
+
+      .phase-foot {
+        min-height: 52px;
+        display: grid;
+        align-content: center;
+        padding: 10px 12px;
+        border-top: 1px solid #d7e0dc;
+        background: #fafbfb;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .paper {
+        height: 100%;
+        padding: 24px 28px;
+        border: 1px solid #eadfcd;
+        background: var(--paper);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+      }
+
+      .paper h3 {
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e0d7c8;
+        text-align: center;
+        font-size: 17px;
+      }
+
+      .paper h4 {
+        margin-top: 16px;
+        font-size: 13px;
+      }
+
+      .paper p {
+        margin-top: 8px;
+        color: #35423f;
+        font-size: 12px;
+        line-height: 1.56;
+      }
+
+      .stack {
+        display: grid;
+        align-content: start;
+        gap: 9px;
+      }
+
+      .row,
+      .tree-row,
+      .table-row,
+      .trace-item,
+      .module-chip,
+      .shape-card {
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .row,
+      .tree-row,
+      .trace-item {
+        min-height: 48px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+      }
+
+      .row.active,
+      .tree-row.active,
+      .trace-item.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tree-row.level-2 { margin-left: 20px; }
+      .tree-row.level-3 { margin-left: 40px; }
+
+      .row-title {
+        min-width: 0;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .row-desc {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.38;
+      }
+
+      .table {
+        display: grid;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .table-row {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr) 86px;
+        align-items: center;
+        border-bottom: 1px solid #d7e0dc;
+        color: #34413e;
+        font-size: 12px;
+      }
+
+      .table-row:last-child { border-bottom: 0; }
+      .table-row.head {
+        background: #f7f9f8;
+        color: var(--muted);
+        font-weight: 950;
+      }
+
+      .table-row span {
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding: 8px 10px;
+        border-right: 1px solid #d7e0dc;
+      }
+
+      .table-row span:last-child { border-right: 0; }
+
+      .layer-grid {
+        height: 100%;
+        display: grid;
+        grid-template-rows: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .layer-row {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .layer-label {
+        display: grid;
+        place-items: center;
+        border: 1px solid #bfd0cc;
+        background: #f6faf8;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .layer-modules {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .module-chip {
+        display: grid;
+        align-content: center;
+        gap: 4px;
+        padding: 8px;
+      }
+
+      .module-chip.active {
+        border-color: var(--teal);
+        background: var(--soft-teal);
+      }
+
+      .module-chip strong {
+        font-size: 11px;
+      }
+
+      .module-chip span {
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.28;
+      }
+
+      .shape-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .shape-card {
+        min-height: 118px;
+        padding: 11px;
+      }
+
+      .shape-card.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+      }
+
+      .mini-layout {
+        height: 48px;
+        margin-top: 9px;
+        display: grid;
+        grid-template-columns: 1fr 46px;
+        gap: 6px;
+      }
+
+      .mini-layout span {
+        border: 1px solid #bdcace;
+        background: #f7faf9;
+      }
+
+      .mini-layout .focus {
+        background: var(--soft-teal);
+        border-color: #95c7c0;
+      }
+
+      .handoff {
+        position: relative;
+        min-height: 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid #bfd0cc;
+        background: #f7faf9;
+      }
+
+      .arrow {
+        height: 2px;
+        background: var(--navy);
+        position: relative;
+      }
+
+      .arrow::after {
+        content: "";
+        position: absolute;
+        right: -2px;
+        top: -5px;
+        width: 10px;
+        height: 10px;
+        border-right: 2px solid var(--navy);
+        border-top: 2px solid var(--navy);
+        transform: rotate(45deg);
+      }
+
+      .handoff-label {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .rail {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 420px;
+        gap: 12px;
+        padding: 12px;
+      }
+
+      .rail-title {
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .rail-copy {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .trace-chain {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 7px;
+      }
+
+      .trace-item {
+        min-height: 66px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: center;
+      }
+
+      .slider-mini {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        align-items: center;
+      }
+
+      .mini-seg {
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #bdcace;
+        background: #fff;
+        color: #41514e;
+        font-size: 10px;
+        font-weight: 950;
+      }
+
+      .mini-seg.window {
+        border-color: var(--navy);
+        background: var(--soft-navy);
+        color: var(--navy);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P3</div>
+          <div>
+            <h1>P3 Software Design Lab</h1>
+            <p class="subtitle">用软设形态传递链表达：需规如何变成文档、功能树、架构、技术实现、展示形态和 P4 工单</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">需规：REQ-2026-05-10-Authoring</span>
+          <span class="pill green">设计包：SDP-2026-05-16-P0004</span>
+          <span class="pill amber">当前滑窗：文档 -> 功能树 -> 架构</span>
+          <button class="button">刷新需规</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">Lab 导航</div>
+            <p class="side-note">左侧仍是阶段工作台导航；软设工作区内部改为横向传递链，而不是普通 Tab。</p>
+          </div>
+          <nav class="tab-list">
+            <div class="tab-item"><div class="tab-name"><span>需规输入</span><span class="badge green">12</span></div><p class="tab-desc">管理可进入 P3 的需规列表和关联软设。</p><div class="tab-meta"><span>入口</span><span>列表+对象</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>需规转软设</span><span class="badge teal">转换</span></div><p class="tab-desc">左侧需规、右侧软设草稿，中间执行基础转换。</p><div class="tab-meta"><span>新建后</span><span>草稿生成</span></div></div>
+            <div class="tab-item active"><div class="tab-name"><span>软设工作区</span><span class="badge amber">链</span></div><p class="tab-desc">用滑窗观察同一设计包的连续形态传递。</p><div class="tab-meta"><span>主产物</span><span>形态链</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>P4 投影</span><span class="badge violet">树</span></div><p class="tab-desc">从技术实现和展示形态派生工单组织树。</p><div class="tab-meta"><span>下游</span><span>技术+展示</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>当前 Turn</span><span class="badge amber">回合</span></div><p class="tab-desc">解释形态链上的增量变化和用户输入。</p><div class="tab-meta"><span>审计</span><span>回合列表</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>检查评审</span><span class="badge red">1</span></div><p class="tab-desc">检查追溯链、完整性和冻结门禁。</p><div class="tab-meta"><span>门禁</span><span>阻断项</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>运行日志</span><span class="badge green">42</span></div><p class="tab-desc">展示 API、组织器、检查器和状态迁移。</p><div class="tab-meta"><span>观察</span><span>事件流</span></div></div>
+          </nav>
+          <div class="side-foot">
+            <p class="side-rule">设计原则：形态链不是装饰导航。用户必须能看见当前对象从上游到下游如何传递、拆解、映射和派生。</p>
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <header class="work-head">
+            <div>
+              <div class="head-title" data-title>软设工作区：形态传递链总览</div>
+              <p class="head-sub" data-subtitle>同一软件设计包在横向长卷中逐级展开；滑窗一次聚焦 2 到 3 个相邻形态。</p>
+            </div>
+            <div class="head-actions">
+              <button class="button">上一段</button>
+              <button class="button primary">下一段</button>
+              <button class="button teal">定位选中对象</button>
+            </div>
+          </header>
+
+          <section class="chain-map">
+            <div class="chain-title">
+              <strong>SoftwareDesignPackage 传递链</strong>
+              <div class="pill-row">
+                <span class="pill navy" data-window-label>滑窗：文档 -> 功能树 -> 架构</span>
+                <span class="pill amber">阻断：技术实现缺展示映射</span>
+                <span class="pill green">追溯：18/21</span>
+              </div>
+            </div>
+            <div class="chain-rail" data-chain-rail></div>
+          </section>
+
+          <section class="body">
+            <div class="slider-board">
+              <div class="viewport" data-viewport></div>
+              <div class="rail">
+                <div>
+                  <div class="rail-title">当前选中对象</div>
+                  <p class="rail-copy" data-selected-copy>R-006：多软设关联管理。它从需规条款进入软设章节，再拆成 F-01.3 功能节点。</p>
+                  <div class="row-meta"><span>对象状态：待复核</span><span>可编辑</span></div>
+                </div>
+                <div class="trace-chain" data-trace-chain></div>
+                <div>
+                  <div class="rail-title">长卷滑窗</div>
+                  <p class="rail-copy">上方是完整长卷位置，下方主视口显示当前相邻形态。可以通过滑窗或横向拖拽在链条上移动。</p>
+                  <div class="slider-mini" data-slider-mini></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const chain = [
+        { key: "req", label: "需规", meta: "P2 冻结包", status: "done" },
+        { key: "doc", label: "软设文档", meta: "A4 投影", status: "window" },
+        { key: "func", label: "功能树", meta: "18 节点", status: "window" },
+        { key: "arch", label: "分层架构", meta: "5 层", status: "window" },
+        { key: "tech", label: "技术实现", meta: "候选", status: "" },
+        { key: "shape", label: "展示形态", meta: "4 方案", status: "" },
+        { key: "p4", label: "P4 投影", meta: "工单树", status: "" }
+      ];
+
+      const cards = {
+        req: {
+          badge: "需规",
+          title: "需求规格说明",
+          sub: "P2 已冻结的输入事实源。",
+          body: `<div class="paper"><h3>需求规格说明</h3><h4>4. 核心功能</h4><p>系统应支持需规列表、会话交互、章节化正文、冻结发布和下游输入标记。</p><h4>8. 下游交付</h4><p>P3 读取已发布需规后，应生成软件设计说明草稿，并保留条款到设计对象的追溯关系。</p></div>`,
+          foot: "输出给下一形态：条款、结构化需求节点、来源追溯、冻结状态。"
+        },
+        doc: {
+          badge: "A4",
+          title: "软设文档",
+          sub: "软件设计包的正式文档投影。",
+          body: `<div class="paper"><h3>软件设计说明</h3><h4>4. 总体架构</h4><p>P3 Design Lab 由需规输入、需规转软设、软设工作区、P4 投影、当前 Turn、检查评审和运行日志组成。</p><h4>5. 工作区设计</h4><p>软设工作区不再使用普通 Tab，而以形态链表达文档、功能树、架构、技术实现和展示形态的传递关系。</p></div>`,
+          foot: "输出给下一形态：章节、段落、设计决策和章节级追溯。"
+        },
+        func: {
+          badge: "树",
+          title: "功能树",
+          sub: "把文档章节和需规条款拆成可设计功能节点。",
+          body: `<div class="stack"><div class="tree-row active"><div><div class="row-title">F-01 需规列表与关联软设</div><div class="row-desc">来源：R-001、文档 5.1</div></div><span class="badge green">已承接</span></div><div class="tree-row level-2"><div><div class="row-title">F-01.1 可消费需规列表</div><div class="row-desc">列表、状态、筛选、刷新</div></div><span class="badge navy">R-001</span></div><div class="tree-row level-2 active"><div><div class="row-title">F-01.3 关联多份软设</div><div class="row-desc">一条需规可创建多个设计分支</div></div><span class="badge amber">选中</span></div><div class="tree-row"><div><div class="row-title">F-02 需规转软设基础转换</div><div class="row-desc">新建软设后生成设计包初稿</div></div><span class="badge green">已承接</span></div></div>`,
+          foot: "输出给下一形态：功能节点、父子关系、覆盖状态、待确认问题。"
+        },
+        arch: {
+          badge: "架构",
+          title: "分层架构",
+          sub: "把功能节点放入理论软件层。",
+          body: `<div class="layer-grid"><div class="layer-row"><div class="layer-label">展示层</div><div class="layer-modules"><div class="module-chip active"><strong>RequirementListView</strong><span>承载 F-01.1 / F-01.3</span></div><div class="module-chip"><strong>DesignPackageWindow</strong><span>形态链滑窗</span></div></div></div><div class="layer-row"><div class="layer-label">功能层</div><div class="layer-modules"><div class="module-chip active"><strong>DesignBranchManager</strong><span>多软设分支管理</span></div><div class="module-chip"><strong>ConversionController</strong><span>基础转换</span></div></div></div><div class="layer-row"><div class="layer-label">服务层</div><div class="layer-modules"><div class="module-chip"><strong>DesignPackageService</strong><span>设计包聚合</span></div><div class="module-chip active"><strong>TraceabilityService</strong><span>链路追溯</span></div></div></div><div class="layer-row"><div class="layer-label">数据层</div><div class="layer-modules"><div class="module-chip"><strong>software_designs</strong><span>设计分支</span></div><div class="module-chip"><strong>trace_links</strong><span>追溯矩阵</span></div></div></div><div class="layer-row"><div class="layer-label">集成层</div><div class="layer-modules"><div class="module-chip"><strong>P2 FrozenPackage</strong><span>输入</span></div><div class="module-chip"><strong>P4 Workorder</strong><span>下游</span></div></div></div></div>`,
+          foot: "输出给下一形态：架构节点、跨层关系、接口边界和数据流。"
+        },
+        tech: {
+          badge: "技术",
+          title: "真实技术实现",
+          sub: "表达真实框架和插件如何承载理论层。",
+          body: `<div class="stack"><div class="table"><div class="table-row head"><span>技术模块</span><span>承载关系</span><span>状态</span></div><div class="table-row"><span>RuoYi Admin</span><span>权限、菜单、审计，横跨展示和服务层</span><span>候选</span></div><div class="table-row"><span>P3 Adapter</span><span>DTO 到 ViewModel 的专属适配</span><span>已定</span></div><div class="table-row"><span>Trace Service</span><span>维护条款、节点、模块、工单追溯</span><span>待设计</span></div></div><div class="handoff"><div><div class="row-title">来自架构层</div><div class="row-desc">DesignBranchManager + TraceabilityService</div></div><div class="arrow"></div><div><div class="row-title">输出到展示形态</div><div class="row-desc">列表详情、形态链、右侧属性面板</div></div></div></div>`,
+          foot: "输出给下一形态：真实模块、框架绑定、组件边界、接口和验收点。"
+        },
+        shape: {
+          badge: "展示",
+          title: "展示形态",
+          sub: "表达可见模块在哪里出现和如何交互。",
+          body: `<div class="shape-grid"><div class="shape-card active"><div class="row-title">形态链：横向长卷</div><p class="row-desc">用滑窗表现形态递进关系。</p><div class="mini-layout"><span class="focus"></span><span></span></div></div><div class="shape-card"><div class="row-title">属性面板：右侧常驻</div><p class="row-desc">选中对象后展示追溯和动作。</p><div class="mini-layout"><span></span><span class="focus"></span></div></div><div class="shape-card"><div class="row-title">追溯轨：底部</div><p class="row-desc">展示当前对象从需规到 P4 的链路。</p><div class="mini-layout"><span class="focus"></span><span></span></div></div><div class="shape-card"><div class="row-title">局部编辑：就地展开</div><p class="row-desc">在当前形态卡片内完成轻量修订。</p><div class="mini-layout"><span></span><span class="focus"></span></div></div></div>`,
+          foot: "输出给下一形态：前端组件、交互约束、原型绑定和截图验收点。"
+        },
+        p4: {
+          badge: "P4",
+          title: "P4 工单投影",
+          sub: "从技术实现和展示形态派生工具包工单。",
+          body: `<div class="stack"><div class="tree-row active"><div><div class="row-title">P4-WO-P3-DesignPackage</div><div class="row-desc">软件设计包工具仓库投影</div></div><span class="badge violet">投影</span></div><div class="tree-row level-2"><div><div class="row-title">A. 设计包模型工具包</div><div class="row-desc">SoftwareDesignPackage / TraceLink</div></div><span class="badge green">可投影</span></div><div class="tree-row level-2"><div><div class="row-title">B. 形态链工作台工具包</div><div class="row-desc">横向长卷、滑窗、底部追溯轨</div></div><span class="badge amber">候选</span></div><div class="tree-row level-2"><div><div class="row-title">C. 截图验收工具包</div><div class="row-desc">原型图到运行态对照</div></div><span class="badge green">可投影</span></div></div>`,
+          foot: "下游交付：工具包、模块工单、验收点和来源追溯。"
+        }
+      };
+
+      const windows = {
+        overview: { title: "软设工作区：形态传递链总览", sub: "完整长卷表达从需规到 P4 的连续链路；底部追溯轨显示当前对象的端到端映射。", active: ["req", "doc", "func", "arch", "tech", "shape", "p4"], viewport: ["doc", "func", "arch"], selected: "R-006：多软设关联管理。它从需规条款进入软设章节，再拆成 F-01.3 功能节点。" },
+        early: { title: "滑窗：需规 -> 软设文档 -> 功能树", sub: "聚焦基础转换后的前半段：从输入条款到 A4 正文，再到功能节点。", active: ["req", "doc", "func"], viewport: ["req", "doc", "func"], selected: "R-006 被写入软设第 5.1 节，并拆成 F-01.3 关联多份软设。" },
+        middle: { title: "滑窗：功能树 -> 分层架构 -> 技术实现", sub: "聚焦设计拆解：功能节点进入理论层，再映射到真实框架和服务模块。", active: ["func", "arch", "tech"], viewport: ["func", "arch", "tech"], selected: "F-01.3 由 DesignBranchManager 承载，并映射到 P3 Adapter 与 Trace Service。" },
+        late: { title: "滑窗：技术实现 -> 展示形态 -> P4 投影", sub: "聚焦下游派生：真实技术模块产生展示方案，再派生 P4 工具包工单。", active: ["tech", "shape", "p4"], viewport: ["tech", "shape", "p4"], selected: "P3 Adapter 与形态链工作台共同派生 B. 形态链工作台工具包。" }
+      };
+
+      const trace = ["R-006", "软设 5.1", "F-01.3", "DesignBranchManager", "P3 Adapter", "形态链滑窗", "WO-B"];
+
+      function cardHtml(key, focusKey) {
+        const c = cards[key];
+        const focus = key === focusKey ? " focus" : "";
+        return `<article class="phase-card${focus}"><div class="phase-head"><div><div class="phase-title">${c.title}</div><div class="phase-sub">${c.sub}</div></div><span class="badge navy">${c.badge}</span></div><div class="phase-body">${c.body}</div><div class="phase-foot">${c.foot}</div></article>`;
+      }
+
+      function render() {
+        const mode = (location.hash || "#overview").slice(1);
+        const view = windows[mode] || windows.overview;
+        document.querySelector("[data-title]").textContent = view.title;
+        document.querySelector("[data-subtitle]").textContent = view.sub;
+        document.querySelector("[data-window-label]").textContent = `滑窗：${view.viewport.map((k) => cards[k].title).join(" -> ")}`;
+        document.querySelector("[data-selected-copy]").textContent = view.selected;
+        document.querySelector("[data-chain-rail]").innerHTML = chain.map((n, index) => {
+          const state = view.active.includes(n.key) ? " window" : n.status === "done" ? " done" : "";
+          return `<div class="chain-node${state}"><div class="node-dot">${index + 1}</div><div class="node-label">${n.label}</div><div class="node-meta">${n.meta}</div></div>`;
+        }).join("");
+        const focusKey = view.viewport[1] || view.viewport[0];
+        document.querySelector("[data-viewport]").innerHTML = view.viewport.map((key) => cardHtml(key, focusKey)).join("");
+        document.querySelector("[data-trace-chain]").innerHTML = trace.map((item, index) => `<div class="trace-item ${index === 2 ? "active" : ""}"><div class="row-title">${item}</div><div class="row-desc">${index === 0 ? "需规" : index === 6 ? "工单" : "传递节点"}</div></div>`).join("");
+        document.querySelector("[data-slider-mini]").innerHTML = chain.map((n) => `<div class="mini-seg ${view.active.includes(n.key) ? "window" : ""}">${n.label}</div>`).join("");
+      }
+
+      window.addEventListener("hashchange", render);
+      render();
+    </script>
+  </body>
+</html>
