@@ -400,15 +400,18 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(720px, 1fr) 360px;
+  align-items: stretch;
   gap: 16px;
 }
 
 .p3-design-morph-main,
 .p3-design-morph-side {
+  align-self: stretch;
   min-height: 0;
 }
 
 .p3-design-morph-main {
+  display: grid;
   overflow: hidden;
 }
 

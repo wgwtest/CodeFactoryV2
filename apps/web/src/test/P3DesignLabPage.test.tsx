@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -190,6 +192,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
   expect(within(morphPlatform).getByText("缩放 90%")).toBeInTheDocument();
   expect(within(morphPlatform).getByText(/^平移 /)).toBeInTheDocument();
+  expectCanvasWorkspaceColumnsToStretch();
   expect(within(workspace).getByRole("combobox", { name: "转换策略" })).toBeInTheDocument();
   expect(within(workspace).getAllByText("标准软设草稿生成").length).toBeGreaterThanOrEqual(1);
   fireEvent.mouseDown(within(workspace).getByRole("combobox", { name: "转换策略" }));
@@ -279,6 +282,10 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
+});
+
+test("keeps the canvas carrier stretched to the same bottom edge as the inspector", () => {
+  expectCanvasWorkspaceColumnsToStretch();
 });
 
 test("refreshes P3 input packages while the page stays open", async () => {
@@ -524,4 +531,15 @@ function buildConversion(status: string, strategy: string) {
       : null,
     traceability_summary: done ? { mapped_clause_count: 2, target_count: 4, pending_confirmation_count: 0 } : null,
   };
+}
+
+function expectCanvasWorkspaceColumnsToStretch() {
+  const pageCss = readFileSync(resolve(process.cwd(), "src/pages/P3DesignLabPage.css"), "utf8");
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+
+  expect(pageCss).toMatch(/\.p3-design-morph-workspace\s*{[^}]*align-items:\s*stretch;/s);
+  expect(pageCss).toMatch(/\.p3-design-morph-main,\s*\.p3-design-morph-side\s*{[^}]*align-self:\s*stretch;/s);
+  expect(pageCss).toMatch(/\.p3-design-morph-main\s*{[^}]*display:\s*grid;/s);
+  expect(canvasCss).toMatch(/\.design-morph-platform\s*{[^}]*height:\s*100%;/s);
+  expect(canvasCss).toMatch(/\.design-morph-canvas-shell\s*{[^}]*min-height:\s*0;/s);
 }
