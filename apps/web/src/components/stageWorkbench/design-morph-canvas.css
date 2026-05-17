@@ -51,6 +51,145 @@
   background-size: 56px 56px;
 }
 
+.design-morph-object-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.design-morph-object-frame {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: 28px minmax(0, 1fr);
+  border: 1px solid #c4d1e0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 26px rgba(21, 32, 47, 0.14);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.design-morph-object-frame.is-selected {
+  border-color: #2f77bd;
+  box-shadow: 0 16px 34px rgba(47, 119, 189, 0.18);
+}
+
+.design-morph-object-frame.is-active {
+  border-color: #5a6ce0;
+}
+
+.design-morph-object-titlebar {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid #dde6ef;
+  background: linear-gradient(180deg, #f8fbff 0%, #edf3fa 100%);
+  color: #143e52;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.design-morph-object-title-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.design-morph-object-title-copy strong,
+.design-morph-object-title-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-object-title-copy span {
+  color: #607186;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.design-morph-object-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.design-morph-object-actions button {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid #c4d1e0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #314b63;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.design-morph-object-actions button[aria-pressed="true"] {
+  border-color: #2f77bd;
+  background: #2f77bd;
+  color: #fff;
+}
+
+.design-morph-object-body {
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #f5f9fd;
+}
+
+.design-morph-object-scroll {
+  height: 100%;
+  min-height: 0;
+}
+
+.design-morph-object-paper {
+  min-height: 100%;
+}
+
+.design-morph-object-paper.is-edit-mode {
+  outline: 1px solid rgba(47, 119, 189, 0.24);
+}
+
+.design-morph-object-resize {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(47, 119, 189, 0.85) 48% 56%, transparent 56% 100%),
+    linear-gradient(135deg, transparent 0 70%, rgba(47, 119, 189, 0.5) 70% 78%, transparent 78% 100%);
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
+.design-morph-object-resize:focus-visible,
+.design-morph-object-actions button:focus-visible {
+  outline: 2px solid #2f77bd;
+  outline-offset: 2px;
+}
+
+.design-morph-object-titlebar-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 40px;
+  height: 28px;
+  z-index: 1;
+  cursor: move;
+  pointer-events: auto;
+}
+
 .design-morph-main-canvas {
   cursor: grab;
   touch-action: none;

@@ -200,6 +200,40 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("renders requirement and software design as compact executable document objects", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const objectLayer = within(platform).getByTestId("design-morph-object-layer");
+    const requirementObject = within(objectLayer).getByTestId("stage-object-requirement");
+    const documentObject = within(objectLayer).getByTestId("stage-object-document");
+
+    expect(requirementObject).toHaveClass("is-document-stage-object");
+    expect(documentObject).toHaveClass("is-document-stage-object");
+    expect(within(requirementObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
+    expect(within(documentObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
+    expect(within(requirementObject).getByRole("button", { name: "需规 A4" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(requirementObject).getByRole("button", { name: "需规 编辑区" })).toBeInTheDocument();
+    expect(within(documentObject).getByRole("button", { name: "软设文档 A4" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(documentObject).getByRole("button", { name: "软设文档 编辑区" })).toBeInTheDocument();
+    expect(within(requirementObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
+    expect(within(documentObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
+    expect(within(requirementObject).getByTestId("document-stage-paper")).toHaveTextContent("支持规划任务管理。");
+    expect(within(documentObject).getByTestId("document-stage-paper")).toHaveTextContent("采用统一服务优先。");
+    expect(within(objectLayer).queryByTestId("stage-object-functionTree")).not.toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
   test("resizes a stage node from its bottom-right handle and updates the track projection", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -256,8 +290,52 @@ function CanvasRefreshHarness() {
 
 function buildStages(revision: number): DesignMorphStageViewModel[] {
   return [
-    buildStage("requirement", "requirement_specification", "paper", "需规", "P2 冻结输入", `需规 ${revision}`, ["需规正文"]),
-    buildStage("document", "software_design_document", "paper", "软设文档", "A4 正文形态", `软设 ${revision}`, ["总体架构"]),
+    buildStage("requirement", "requirement_specification", "paper", "需规", "P2 冻结输入", `需规 ${revision}`, ["需规正文"], {
+      title: "空域协同规划需求规格说明",
+      subtitle: "P2 冻结输入 / 只读消费",
+      headerLeft: "CodeFactoryV2 / P2",
+      headerRight: "Requirement Specification",
+      footerLeft: "P2 Frozen Package",
+      footerRight: "Page 1",
+      ariaLabel: "需规 A4 预览",
+      emptyDescription: "没有可用的 P2 冻结包",
+      structuredSections: [
+        {
+          sectionId: "req-1",
+          title: "功能需求",
+          status: "generated",
+          blocks: [
+            { blockId: "REQ-1", kind: "clause", title: "规划任务", content: "支持规划任务管理。", sourceRefs: ["REQ-1"], qualityRefs: [] },
+          ],
+        },
+      ],
+      sections: [
+        { sectionId: "REQ-1", title: "规划任务", content: "支持规划任务管理。", status: "generated" },
+      ],
+    }),
+    buildStage("document", "software_design_document", "paper", "软设文档", "A4 正文形态", `软设 ${revision}`, ["总体架构"], {
+      title: "空域协同规划软件设计说明",
+      subtitle: "基于 P2 需求规格冻结包生成",
+      headerLeft: "CodeFactoryV2 / P3",
+      headerRight: "Software Design Description",
+      footerLeft: "v0.1",
+      footerRight: "Page 1",
+      ariaLabel: "软设文档 A4 预览",
+      emptyDescription: "尚未生成软件设计说明",
+      structuredSections: [
+        {
+          sectionId: "sdd-1",
+          title: "总体架构",
+          status: "generated",
+          blocks: [
+            { blockId: "sdd-1-body", kind: "paragraph", content: "采用统一服务优先。", sourceRefs: ["REQ-1"], qualityRefs: [] },
+          ],
+        },
+      ],
+      sections: [
+        { sectionId: "sdd-1", title: "总体架构", content: "采用统一服务优先。", status: "generated" },
+      ],
+    }),
     buildStage("functionTree", "software_function_tree", "tree", "功能树", "从正文拆解功能项", `功能树 ${revision}`, ["规划任务管理"]),
     buildStage("layeredArchitecture", "software_layered_architecture", "architecture", "分层架构", "按层次放置设计对象", `架构 ${revision}`, ["展示层"]),
     buildStage("technicalImplementation", "technical_implementation", "table", "技术实现", "映射框架与真实模块", `技术 ${revision}`, ["unified_service"]),
@@ -274,6 +352,7 @@ function buildStage(
   subtitle: string,
   summary: string,
   items: string[],
+  document?: Partial<DesignMorphStageViewModel["document"]>,
 ): DesignMorphStageViewModel {
   return {
     id,
@@ -285,6 +364,21 @@ function buildStage(
     items,
     sourceRefs: [`source:${id}`],
     constraintSummary: `约束 ${id}`,
+    viewModes: document ? [{ id: "a4", label: "A4" }, { id: "edit", label: "编辑区" }] : undefined,
+    document: document
+      ? {
+          title: document.title ?? title,
+          subtitle: document.subtitle,
+          headerLeft: document.headerLeft ?? "",
+          headerRight: document.headerRight ?? "",
+          footerLeft: document.footerLeft ?? "",
+          footerRight: document.footerRight,
+          ariaLabel: document.ariaLabel ?? `${title} A4`,
+          emptyDescription: document.emptyDescription ?? "尚未生成文档",
+          structuredSections: document.structuredSections,
+          sections: document.sections ?? [],
+        }
+      : undefined,
   };
 }
 

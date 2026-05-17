@@ -1,9 +1,12 @@
 import type {
+  DesignMorphDocumentViewModel,
   DesignMorphStageViewModel,
+  DesignMorphStageViewMode,
   DesignMorphWindowViewModel,
 } from "../../components/stageWorkbench/DesignMorphCanvasPlatform";
 import type { DesignMorphCanvasStageKind } from "../../components/stageWorkbench/designMorphRenderers";
 import type { StageDocumentWorkbenchViewModel } from "../../components/stageWorkbench/models";
+import { buildRequirementDocumentSections } from "./p3DesignLabWorkbenchAdapter";
 
 type P3MorphStageSeed = {
   id: string;
@@ -15,6 +18,8 @@ type P3MorphStageSeed = {
   items: (workbench: StageDocumentWorkbenchViewModel) => string[];
   sourceRefs: (workbench: StageDocumentWorkbenchViewModel) => string[];
   constraintSummary: (workbench: StageDocumentWorkbenchViewModel) => string;
+  document?: (workbench: StageDocumentWorkbenchViewModel) => DesignMorphDocumentViewModel;
+  viewModes?: (workbench: StageDocumentWorkbenchViewModel) => DesignMorphStageViewMode[];
 };
 
 const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
@@ -31,6 +36,9 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     },
     sourceRefs: () => ["P2:frozen_requirement_specification"],
     constraintSummary: (workbench) => `${workbench.inputFacts.sections.length} 个需规章节；P3 只读消费`,
+    document: (workbench) =>
+      buildRequirementDocumentViewModel(workbench),
+    viewModes: () => buildDocumentViewModes(),
   },
   {
     id: "document",
@@ -45,6 +53,9 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     },
     sourceRefs: (workbench) => [workbench.product.documentId],
     constraintSummary: (workbench) => `${workbench.product.sections.length} 个正文小节；版本 ${workbench.product.versionLabel}`,
+    document: (workbench) =>
+      buildSoftwareDesignDocumentViewModel(workbench),
+    viewModes: () => buildDocumentViewModes(),
   },
   {
     id: "functionTree",
@@ -125,6 +136,8 @@ export function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewMod
       items: seed.items(workbench),
       sourceRefs: seed.sourceRefs(workbench).filter(Boolean),
       constraintSummary: seed.constraintSummary(workbench),
+      document: seed.document?.(workbench),
+      viewModes: seed.viewModes?.(workbench),
     })),
     windows: [
       { id: "reqdoc", title: "需规 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
@@ -134,6 +147,55 @@ export function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewMod
       { id: "techshape", title: "技术实现 -> 展示形态", fromStageId: "technicalImplementation", toStageId: "presentationShape" },
       { id: "shapep4", title: "展示形态 -> P4 投影", fromStageId: "presentationShape", toStageId: "p4Projection" },
     ],
+  };
+}
+
+function buildDocumentViewModes(): DesignMorphStageViewMode[] {
+  return [
+    { id: "a4", label: "A4" },
+    { id: "edit", label: "编辑区" },
+  ];
+}
+
+function buildRequirementDocumentViewModel(workbench: StageDocumentWorkbenchViewModel): DesignMorphDocumentViewModel {
+  return {
+    title: workbench.inputFacts.title || "需求规格说明",
+    subtitle: "P2 冻结输入 / 只读消费",
+    headerLeft: "CodeFactoryV2 / P2",
+    headerRight: "Requirement Specification",
+    footerLeft: workbench.inputFacts.sourceTitle || "P2 Frozen Package",
+    footerRight: "Page 1",
+    ariaLabel: "需规 A4 预览",
+    emptyDescription: "没有可用的 P2 冻结包",
+    structuredSections: buildRequirementDocumentSections(workbench.inputFacts.sections),
+    sections: workbench.inputFacts.sections.flatMap((section) =>
+      section.clauses.map((clause) => ({
+        sectionId: clause.clauseId,
+        title: clause.title,
+        content: clause.content,
+        status: "generated",
+      })),
+    ),
+  };
+}
+
+function buildSoftwareDesignDocumentViewModel(workbench: StageDocumentWorkbenchViewModel): DesignMorphDocumentViewModel {
+  return {
+    title: workbench.product.title || "软件设计说明",
+    subtitle: workbench.product.subtitle || "基于 P2 需求规格冻结包生成",
+    headerLeft: "CodeFactoryV2 / P3",
+    headerRight: "Software Design Description",
+    footerLeft: workbench.product.versionLabel,
+    footerRight: "Page 1",
+    ariaLabel: "软设文档 A4 预览",
+    emptyDescription: "尚未生成软件设计说明",
+    structuredSections: workbench.product.sections,
+    sections: workbench.product.sections.flatMap((section) => ({
+      sectionId: section.sectionId,
+      title: section.title,
+      content: section.blocks.map((block) => block.content).join("\n"),
+      status: section.status,
+    })),
   };
 }
 

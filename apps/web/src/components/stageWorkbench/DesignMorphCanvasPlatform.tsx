@@ -8,6 +8,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { A4DocumentSurface } from "./A4DocumentSurface";
+import type { StandardDocumentSectionViewModel } from "./models";
 import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
 import "./design-morph-canvas.css";
 
@@ -30,6 +32,33 @@ export type DesignMorphStageViewModel = {
   items: string[];
   sourceRefs: string[];
   constraintSummary: string;
+  viewModes?: DesignMorphStageViewMode[];
+  document?: DesignMorphDocumentViewModel;
+};
+
+export type DesignMorphStageViewMode = {
+  id: string;
+  label: string;
+};
+
+export type DesignMorphDocumentSectionViewModel = {
+  sectionId: string;
+  title: string;
+  content: string;
+  status?: string;
+};
+
+export type DesignMorphDocumentViewModel = {
+  title: string;
+  subtitle?: string;
+  headerLeft: string;
+  headerRight: string;
+  footerLeft: string;
+  footerRight?: string;
+  ariaLabel: string;
+  emptyDescription: string;
+  structuredSections?: StandardDocumentSectionViewModel[];
+  sections: DesignMorphDocumentSectionViewModel[];
 };
 
 export type DesignMorphWindowViewModel = {
@@ -145,6 +174,18 @@ type TrackDragState = {
   metrics: TrackMetrics;
 };
 
+type DocumentDragMode = "move" | "resize";
+
+type DocumentDragState = {
+  mode: DocumentDragMode;
+  pointerId: number | null;
+  source: "pointer";
+  stageId: string;
+  startClientX: number;
+  startClientY: number;
+  startLayout: Pick<MorphCanvasItem, "x" | "y" | "w" | "h">;
+};
+
 type DesignMorphCanvasPlatformProps = {
   stages: DesignMorphStageViewModel[];
   windows: DesignMorphWindowViewModel[];
@@ -192,12 +233,14 @@ export function DesignMorphCanvasPlatform({
   const dragRef = useRef<DragState | null>(null);
   const nodeDragRef = useRef<NodeDragState | null>(null);
   const trackDragRef = useRef<TrackDragState | null>(null);
+  const documentDragRef = useRef<DocumentDragState | null>(null);
   const itemsRef = useRef<MorphCanvasItem[]>([]);
   const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
   const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
   const [layoutRevision, setLayoutRevision] = useState(0);
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
+  const [documentViewModes, setDocumentViewModes] = useState<Record<string, string>>(() => buildDocumentViewModeState(stages));
   const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
   const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
   const activeWindow = windows[activePairIndex] ?? windows[0];
@@ -210,6 +253,10 @@ export function DesignMorphCanvasPlatform({
 
   useEffect(() => {
     setStageLayouts((current) => reconcileCanvasLayouts(stages, current));
+  }, [stages]);
+
+  useEffect(() => {
+    setDocumentViewModes((current) => reconcileDocumentViewModes(stages, current));
   }, [stages]);
 
   useEffect(() => {
@@ -433,6 +480,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     beginMainDrag(event.currentTarget, event.clientX, event.clientY, event.pointerId, "pointer");
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -440,7 +490,7 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseDown(event: ReactMouseEvent<HTMLCanvasElement>) {
-    if (event.button !== 0 || dragRef.current || nodeDragRef.current) {
+    if (event.button !== 0 || dragRef.current || nodeDragRef.current || documentDragRef.current) {
       return;
     }
     beginMainDrag(event.currentTarget, event.clientX, event.clientY, null, "mouse");
@@ -497,6 +547,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "mouse") {
       applyNodeDrag(nodeDrag, event.clientX, event.clientY);
@@ -541,6 +594,10 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "pointer" && (nodeDrag.pointerId === null || nodeDrag.pointerId === event.pointerId)) {
       nodeDragRef.current = null;
@@ -555,6 +612,10 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseUp(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "mouse") {
       nodeDragRef.current = null;
@@ -582,6 +643,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerLeave(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+    }
     handleMainPointerUp(event);
     if (!dragRef.current && !nodeDragRef.current) {
       event.currentTarget.style.cursor = "grab";
@@ -589,6 +653,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseLeave(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+    }
     if (nodeDragRef.current?.source === "mouse") {
       nodeDragRef.current = null;
     }
@@ -608,6 +675,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     event.preventDefault();
     const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
     const before = screenToWorld(point, viewport);
@@ -633,6 +703,61 @@ export function DesignMorphCanvasPlatform({
 
   function centerLargeArchitecture() {
     centerItem(stages[3]?.id ?? items[3]?.id ?? selectedStageId, 0.62);
+  }
+
+  function beginDocumentDrag(
+    stageId: string,
+    mode: DocumentDragMode,
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+  ) {
+    documentDragRef.current = {
+      mode,
+      pointerId,
+      source: "pointer",
+      stageId,
+      startClientX: clientX,
+      startClientY: clientY,
+      startLayout: {
+        x: itemsRef.current.find((item) => item.id === stageId)?.x ?? 0,
+        y: itemsRef.current.find((item) => item.id === stageId)?.y ?? 0,
+        w: itemsRef.current.find((item) => item.id === stageId)?.w ?? 0,
+        h: itemsRef.current.find((item) => item.id === stageId)?.h ?? 0,
+      },
+    };
+    setSelectedStageId(stageId);
+  }
+
+  function handleDocumentDragMove(
+    stageId: string,
+    mode: DocumentDragMode,
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+  ) {
+    const drag = documentDragRef.current;
+    if (!drag || drag.stageId !== stageId || drag.mode !== mode || drag.pointerId !== pointerId) {
+      return;
+    }
+    const deltaX = (clientX - drag.startClientX) / viewport.scale;
+    const deltaY = (clientY - drag.startClientY) / viewport.scale;
+    setStageLayouts((current) => {
+      const start = drag.startLayout;
+      const nextLayout =
+        mode === "resize"
+          ? {
+              ...start,
+              w: Math.max(MIN_STAGE_NODE_WIDTH, Math.round(start.w + deltaX)),
+              h: Math.max(MIN_STAGE_NODE_HEIGHT, Math.round(start.h + deltaY)),
+            }
+          : {
+              ...start,
+              x: Math.round(start.x + deltaX),
+              y: Math.round(start.y + deltaY),
+            };
+      return { ...current, [stageId]: nextLayout };
+    });
   }
 
   return (
@@ -682,6 +807,32 @@ export function DesignMorphCanvasPlatform({
           onPointerUp={handleMainPointerUp}
           onWheel={handleWheel}
         />
+        <div className="design-morph-object-layer" data-testid="design-morph-object-layer">
+          {items.map((item) =>
+            item.document ? (
+              <DocumentStageObject
+                active={item.id === activeWindow?.fromStageId || item.id === activeWindow?.toStageId}
+                item={item}
+                key={item.id}
+                onDragEnd={() => {
+                  documentDragRef.current = null;
+                }}
+                onDragMove={(stageId, mode, clientX, clientY, pointerId) => {
+                  handleDocumentDragMove(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
+                  beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onViewModeChange={(stageId, modeId) => {
+                  setDocumentViewModes((current) => ({ ...current, [stageId]: modeId }));
+                }}
+                selected={item.id === selectedStageId}
+                viewMode={documentViewModes[item.id] ?? item.viewModes?.[0]?.id ?? "a4"}
+                viewport={viewport}
+              />
+            ) : null,
+          )}
+        </div>
         <div className="design-morph-hud">
           <span>Canvas 窗口：{activeWindow?.title ?? "需规 -> 软设文档"}</span>
           <span>缩放 {Math.round(viewport.scale * 100)}%</span>
@@ -717,10 +868,152 @@ export function DesignMorphCanvasPlatform({
   );
 }
 
+function DocumentStageObject({
+  active,
+  item,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onViewModeChange,
+  selected,
+  viewMode,
+  viewport,
+}: {
+  active: boolean;
+  item: MorphCanvasItem;
+  onDragEnd: () => void;
+  onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onViewModeChange: (stageId: string, modeId: string) => void;
+  selected: boolean;
+  viewMode: string;
+  viewport: CanvasViewportState;
+}) {
+  const document = item.document;
+  if (!document) {
+    return null;
+  }
+
+  const objectStyle = {
+    transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
+    transformOrigin: "top left",
+    width: `${item.w}px`,
+    height: `${item.h}px`,
+    zIndex: selected ? 6 : active ? 5 : 4,
+  } as const;
+
+  return (
+    <section
+      className={[
+        "design-morph-object-frame",
+        "is-document-stage-object",
+        selected ? "is-selected" : "",
+        active ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`stage-object-${item.id}`}
+      style={objectStyle}
+    >
+      <header className="design-morph-object-titlebar" data-testid="stage-object-compact-titlebar">
+        <div className="design-morph-object-title-copy">
+          <strong>{item.title}</strong>
+          <span>{item.subtitle}</span>
+        </div>
+        <div className="design-morph-object-actions">
+          {item.viewModes?.map((mode) => (
+            <button
+              aria-pressed={viewMode === mode.id}
+              aria-label={`${item.title} ${mode.label}`}
+              key={mode.id}
+              type="button"
+              onClick={() => onViewModeChange(item.id, mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
+          <button type="button">更多</button>
+        </div>
+      </header>
+      <div className="design-morph-object-body">
+        <div className="stage-document-scroll design-morph-object-scroll" data-testid="document-stage-scroll">
+          <div className={`design-morph-object-paper${viewMode === "edit" ? " is-edit-mode" : ""}`} data-testid="document-stage-paper">
+            <A4DocumentSurface
+              ariaLabel={document.ariaLabel}
+              emptyDescription={document.emptyDescription}
+              footerLeft={document.footerLeft}
+              footerRight={document.footerRight}
+              headerLeft={document.headerLeft}
+              headerRight={document.headerRight}
+              sections={document.sections.map((section) => ({
+                section_id: section.sectionId,
+                title: section.title,
+                content: section.content,
+                status: section.status,
+              }))}
+              structuredSections={document.structuredSections}
+              subtitle={document.subtitle}
+              title={document.title}
+            />
+          </div>
+        </div>
+      </div>
+      <button
+        aria-label={`${item.title} resize`}
+        className="design-morph-object-resize"
+        type="button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      />
+      <div
+        className="design-morph-object-titlebar-hit"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={() => {
+          onDragEnd();
+        }}
+      />
+    </section>
+  );
+}
+
 function buildCanvasLayoutState(stages: DesignMorphStageViewModel[]): Record<string, CanvasStageLayoutState> {
   return stages.reduce<Record<string, CanvasStageLayoutState>>((layouts, stage, index) => {
     layouts[stage.id] = getDefaultStageLayout(index);
     return layouts;
+  }, {});
+}
+
+function buildDocumentViewModeState(stages: DesignMorphStageViewModel[]): Record<string, string> {
+  return stages.reduce<Record<string, string>>((viewModes, stage) => {
+    if (stage.document) {
+      viewModes[stage.id] = stage.viewModes?.[0]?.id ?? "a4";
+    }
+    return viewModes;
   }, {});
 }
 
@@ -735,6 +1028,21 @@ function reconcileCanvasLayouts(
     layouts[stage.id] = existing ?? getDefaultStageLayout(index);
     changed = changed || !existing;
     return layouts;
+  }, {});
+  return changed ? next : current;
+}
+
+function reconcileDocumentViewModes(stages: DesignMorphStageViewModel[], current: Record<string, string>): Record<string, string> {
+  const stageIds = new Set(stages.filter((stage) => stage.document).map((stage) => stage.id));
+  let changed = Object.keys(current).some((stageId) => !stageIds.has(stageId));
+  const next = stages.reduce<Record<string, string>>((viewModes, stage) => {
+    if (!stage.document) {
+      return viewModes;
+    }
+    const existing = current[stage.id];
+    viewModes[stage.id] = existing ?? stage.viewModes?.[0]?.id ?? "a4";
+    changed = changed || !existing;
+    return viewModes;
   }, {});
   return changed ? next : current;
 }
