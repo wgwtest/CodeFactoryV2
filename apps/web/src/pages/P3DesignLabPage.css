@@ -45,6 +45,19 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.p3-design-lab-workspace-panel.is-web-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: #fdfefd;
+  border: 0;
+  box-shadow: none;
+}
+
+.p3-design-lab-workspace-panel.is-compact-head {
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+
 .p3-design-lab-workspace-head {
   min-height: 86px;
   display: flex;
@@ -56,14 +69,30 @@
   background: #ffffff;
 }
 
+.p3-design-lab-workspace-panel.is-compact-head .p3-design-lab-workspace-head {
+  min-height: 48px;
+  padding: 0 14px 0 16px;
+}
+
 .p3-design-lab-workspace-head h3.ant-typography {
   margin: 0 0 4px !important;
+}
+
+.p3-design-lab-workspace-panel.is-compact-head .p3-design-lab-workspace-head h3.ant-typography {
+  margin: 0 !important;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .p3-design-lab-workspace-body {
   min-height: 0;
   overflow: auto;
   padding: 16px;
+}
+
+.p3-design-lab-workspace-panel.is-web-fullscreen .p3-design-lab-workspace-body {
+  overflow: hidden;
+  padding: 10px;
 }
 
 .p3-design-lab-panel {

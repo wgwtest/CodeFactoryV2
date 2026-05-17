@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 
 import { DesignMorphCanvasPlatform } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
@@ -770,12 +770,27 @@ function SoftwareDesignWorkspaceView({
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
   onSetWindowId: (value: string) => void;
 }) {
+  const [isWorkspaceFullscreen, setWorkspaceFullscreen] = useState(false);
   const morphModel = buildP3DesignMorphModel(workbench);
   const activeWindow = morphModel.windows.find((window) => window.id === activeWindowId) ?? morphModel.windows[0];
   const activeStepId = getActiveConversionStepId(workbench.conversion.status, workbench.conversion.steps);
   const hasSession = workbench.product.documentId !== "p3-design-lab-draft";
   const hasDraft = workbench.product.status !== "empty";
   const strategyOptions = workbench.conversion.strategyOptions.map((item) => ({ label: item.label, value: item.value }));
+  const fullscreenButtonLabel = isWorkspaceFullscreen ? "缩回工作区" : "网页全屏";
+
+  useEffect(() => {
+    if (!isWorkspaceFullscreen) {
+      return undefined;
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setWorkspaceFullscreen(false);
+      }
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isWorkspaceFullscreen]);
 
   return (
     <WorkspacePanel
@@ -787,8 +802,13 @@ function SoftwareDesignWorkspaceView({
           <Button aria-label="生成投影候选" disabled={!hasDraft} onClick={onGenerateProjection}>
             生成投影候选
           </Button>
+          <Button aria-label={fullscreenButtonLabel} onClick={() => setWorkspaceFullscreen((current) => !current)}>
+            {fullscreenButtonLabel}
+          </Button>
         </>
       }
+      compactHeader={isWorkspaceFullscreen}
+      fullscreen={isWorkspaceFullscreen}
       subtitle="需规、软设文档、功能树、分层架构、技术实现、展示形态和 P4 投影在同一个 Canvas 工作区中传递。"
       title="软设工作区"
     >
@@ -1345,19 +1365,31 @@ function WorkspacePanel({
   title,
   subtitle,
   actions,
+  fullscreen = false,
+  compactHeader = false,
   children,
 }: {
   title: string;
   subtitle: string;
   actions?: ReactNode;
+  fullscreen?: boolean;
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
+  const panelClassName = [
+    "p3-design-lab-workspace-panel",
+    fullscreen ? "is-web-fullscreen" : "",
+    compactHeader ? "is-compact-head" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="p3-design-lab-workspace-panel">
+    <div className={panelClassName} data-testid="p3-workspace-panel">
       <header className="p3-design-lab-workspace-head">
         <div>
           <Title level={3}>{title}</Title>
-          <Text type="secondary">{subtitle}</Text>
+          {!compactHeader ? <Text type="secondary">{subtitle}</Text> : null}
         </div>
         {actions ? <Space wrap>{actions}</Space> : null}
       </header>

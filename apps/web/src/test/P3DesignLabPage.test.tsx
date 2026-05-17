@@ -193,6 +193,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(morphPlatform).getByText("缩放 90%")).toBeInTheDocument();
   expect(within(morphPlatform).getByText(/^平移 /)).toBeInTheDocument();
   expectCanvasWorkspaceColumnsToStretch();
+  expectWorkspaceFullscreenToCoverViewport();
   expect(within(workspace).getByRole("combobox", { name: "转换策略" })).toBeInTheDocument();
   expect(within(workspace).getAllByText("标准软设草稿生成").length).toBeGreaterThanOrEqual(1);
   fireEvent.mouseDown(within(workspace).getByRole("combobox", { name: "转换策略" }));
@@ -204,6 +205,17 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
   expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "执行基础转换" }));
   expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(workspace).getByRole("button", { name: "网页全屏" })).toBeInTheDocument();
+  fireEvent.click(within(workspace).getByRole("button", { name: "网页全屏" }));
+  expect(within(workspace).getByTestId("p3-workspace-panel")).toHaveClass("is-web-fullscreen");
+  expect(within(workspace).getByTestId("p3-workspace-panel")).toHaveClass("is-compact-head");
+  expect(within(workspace).queryByText("需规、软设文档、功能树、分层架构、技术实现、展示形态和 P4 投影在同一个 Canvas 工作区中传递。")).not.toBeInTheDocument();
+  expect(within(workspace).getByRole("button", { name: "缩回工作区" })).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(within(workspace).getByTestId("p3-workspace-panel")).not.toHaveClass("is-web-fullscreen");
+  fireEvent.click(within(workspace).getByRole("button", { name: "网页全屏" }));
+  fireEvent.click(within(workspace).getByRole("button", { name: "缩回工作区" }));
+  expect(within(workspace).getByTestId("p3-workspace-panel")).not.toHaveClass("is-web-fullscreen");
   expect(within(conversionControl).queryByText("加载正文、结构化条款和冻结快照。")).not.toBeInTheDocument();
   expect(within(conversionControl).queryByText("执行基础转换后生成软设草稿、结构化设计事实和追溯摘要。")).not.toBeInTheDocument();
   expect(within(conversionControl).queryByText("转换完成后进入软设工作区微调。")).not.toBeInTheDocument();
@@ -542,4 +554,10 @@ function expectCanvasWorkspaceColumnsToStretch() {
   expect(pageCss).toMatch(/\.p3-design-morph-main\s*{[^}]*display:\s*grid;/s);
   expect(canvasCss).toMatch(/\.design-morph-platform\s*{[^}]*height:\s*100%;/s);
   expect(canvasCss).toMatch(/\.design-morph-canvas-shell\s*{[^}]*min-height:\s*0;/s);
+}
+
+function expectWorkspaceFullscreenToCoverViewport() {
+  const pageCss = readFileSync(resolve(process.cwd(), "src/pages/P3DesignLabPage.css"), "utf8");
+
+  expect(pageCss).toMatch(/\.p3-design-lab-workspace-panel\.is-web-fullscreen\s*{[^}]*inset:\s*0;/s);
 }
