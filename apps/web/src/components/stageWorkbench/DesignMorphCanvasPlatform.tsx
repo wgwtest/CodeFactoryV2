@@ -8,14 +8,57 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { A4DocumentSurface } from "./A4DocumentSurface";
+import type { StandardDocumentBlockViewModel, StandardDocumentSectionViewModel } from "./models";
+import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
 import "./design-morph-canvas.css";
+
+export type DesignMorphStageEntityType =
+  | "requirement_specification"
+  | "software_design_document"
+  | "software_function_tree"
+  | "software_layered_architecture"
+  | "technical_implementation"
+  | "presentation_shape"
+  | "module_workorder_projection";
 
 export type DesignMorphStageViewModel = {
   id: string;
+  entityType: DesignMorphStageEntityType;
+  layoutKind: DesignMorphCanvasStageKind;
   title: string;
   subtitle: string;
   summary: string;
   items: string[];
+  sourceRefs: string[];
+  constraintSummary: string;
+  viewModes?: DesignMorphStageViewMode[];
+  document?: DesignMorphDocumentViewModel;
+};
+
+export type DesignMorphStageViewMode = {
+  id: string;
+  label: string;
+};
+
+export type DesignMorphDocumentSectionViewModel = {
+  sectionId: string;
+  title: string;
+  content: string;
+  status?: string;
+};
+
+export type DesignMorphDocumentViewModel = {
+  title: string;
+  subtitle?: string;
+  headerLeft: string;
+  headerRight: string;
+  footerLeft: string;
+  footerRight?: string;
+  ariaLabel: string;
+  emptyDescription: string;
+  structuredSections?: StandardDocumentSectionViewModel[];
+  sections: DesignMorphDocumentSectionViewModel[];
 };
 
 export type DesignMorphWindowViewModel = {
@@ -23,6 +66,41 @@ export type DesignMorphWindowViewModel = {
   title: string;
   fromStageId: string;
   toStageId: string;
+};
+
+export type DesignMorphSelectableKind =
+  | "stage"
+  | "stage_relation"
+  | "requirement_section"
+  | "requirement_clause"
+  | "design_section"
+  | "design_block"
+  | "function_node"
+  | "architecture_layer"
+  | "architecture_module"
+  | "technical_mapping"
+  | "presentation_shape"
+  | "projection_node";
+
+export type DesignMorphSelectionAction = {
+  actionId: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  commandHint?: string;
+};
+
+export type DesignMorphSelection = {
+  stageId: string;
+  objectId: string;
+  kind: DesignMorphSelectableKind;
+  title: string;
+  summary?: string;
+  status?: string;
+  sourceRefs: string[];
+  qualityRefs?: string[];
+  actions: DesignMorphSelectionAction[];
+  payload?: Record<string, unknown>;
 };
 
 type CanvasViewportState = {
@@ -40,11 +118,17 @@ type CanvasStageLayoutState = {
 
 type MorphCanvasItem = DesignMorphStageViewModel & {
   index: number;
-  type: "paper" | "tree" | "architecture" | "table" | "cards";
   x: number;
   y: number;
   w: number;
   h: number;
+};
+
+type SelectableDocumentSection = {
+  section_id: string;
+  title: string;
+  status?: string;
+  blocks: StandardDocumentBlockViewModel[];
 };
 
 type TrackViewportFrameInput = {
@@ -60,6 +144,20 @@ type TrackStageLandmarkInput = {
   items: Array<Pick<MorphCanvasItem, "id" | "title" | "x" | "w">>;
   left: number;
   right: number;
+};
+
+type RelationGeometryItem = Pick<MorphCanvasItem, "x" | "y" | "w" | "h">;
+
+export type RelationArrowGeometry = {
+  start: { x: number; y: number };
+  controlStart: { x: number; y: number };
+  controlEnd: { x: number; y: number };
+  shaftEnd: { x: number; y: number };
+  tip: { x: number; y: number };
+  baseCenter: { x: number; y: number };
+  baseLeft: { x: number; y: number };
+  baseRight: { x: number; y: number };
+  labelCenter: { x: number; y: number };
 };
 
 export type TrackViewportFrame = {
@@ -132,11 +230,25 @@ type TrackDragState = {
   metrics: TrackMetrics;
 };
 
+type DocumentDragMode = "move" | "resize";
+
+type DocumentDragState = {
+  mode: DocumentDragMode;
+  pointerId: number | null;
+  source: "pointer";
+  stageId: string;
+  startClientX: number;
+  startClientY: number;
+  startLayout: Pick<MorphCanvasItem, "x" | "y" | "w" | "h">;
+};
+
 type DesignMorphCanvasPlatformProps = {
   stages: DesignMorphStageViewModel[];
   windows: DesignMorphWindowViewModel[];
   activeWindowId: string;
   onActiveWindowChange: (windowId: string) => void;
+  selectedMorphObjectId?: string | null;
+  onSelectMorphObject?: (selection: DesignMorphSelection) => void;
 };
 
 const MIN_CANVAS_SCALE = 0.42;
@@ -146,6 +258,7 @@ const MIN_STAGE_NODE_HEIGHT = 360;
 const STAGE_NODE_TITLE_BAR_HEIGHT = 168;
 const STAGE_NODE_RESIZE_HIT_SIZE = 40;
 const STAGE_NODE_CONTROL_OUTSET = 72;
+const STAGE_RELATION_HIT_WIDTH = 24;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
 const TRACK_STAGE_STYLES: TrackStageStyle[] = [
@@ -159,13 +272,13 @@ const TRACK_STAGE_STYLES: TrackStageStyle[] = [
 ];
 const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
 const STAGE_LAYOUTS = [
-  { x: 80, y: 120, w: 500, h: 640, type: "paper" },
-  { x: 720, y: 120, w: 520, h: 640, type: "paper" },
-  { x: 1380, y: 140, w: 520, h: 520, type: "tree" },
-  { x: 2080, y: 60, w: 1180, h: 820, type: "architecture" },
-  { x: 3460, y: 150, w: 560, h: 560, type: "table" },
-  { x: 4200, y: 120, w: 560, h: 600, type: "cards" },
-  { x: 4920, y: 150, w: 560, h: 520, type: "tree" },
+  { x: 80, y: 120, w: 500, h: 640 },
+  { x: 720, y: 120, w: 520, h: 640 },
+  { x: 1380, y: 140, w: 520, h: 520 },
+  { x: 2080, y: 60, w: 1180, h: 820 },
+  { x: 3460, y: 150, w: 560, h: 560 },
+  { x: 4200, y: 120, w: 560, h: 600 },
+  { x: 4920, y: 150, w: 560, h: 520 },
 ] as const;
 
 export function DesignMorphCanvasPlatform({
@@ -173,23 +286,33 @@ export function DesignMorphCanvasPlatform({
   windows,
   activeWindowId,
   onActiveWindowChange,
+  selectedMorphObjectId,
+  onSelectMorphObject,
 }: DesignMorphCanvasPlatformProps) {
   const trackCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const nodeDragRef = useRef<NodeDragState | null>(null);
   const trackDragRef = useRef<TrackDragState | null>(null);
+  const documentDragRef = useRef<DocumentDragState | null>(null);
   const itemsRef = useRef<MorphCanvasItem[]>([]);
   const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
+  const suppressedAutoCenterWindowKeyRef = useRef<string | null>(null);
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
   const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
+  const [localSelectedObjectId, setLocalSelectedObjectId] = useState<string | null>(activeWindowId);
   const [layoutRevision, setLayoutRevision] = useState(0);
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
+  const [documentViewModes, setDocumentViewModes] = useState<Record<string, string>>(() => buildDocumentViewModeState(stages));
   const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
   const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
   const activeWindow = windows[activePairIndex] ?? windows[0];
-  const activeWindowKey = activeWindow ? `${activeWindow.id}:${activeWindow.toStageId}:${activePairIndex}` : "none";
+  const activeWindowKey = activeWindow ? buildActiveWindowKey(activeWindow, activePairIndex) : "none";
   const selectedItem = items.find((item) => item.id === selectedStageId) ?? items[1] ?? items[0];
+  const effectiveSelectedObjectId = selectedMorphObjectId ?? localSelectedObjectId;
+  const selectedRelationId = windows.some((window) => window.id === effectiveSelectedObjectId) ? effectiveSelectedObjectId : null;
+  const selectedRelationTitle = selectedRelationId ? windows.find((window) => window.id === selectedRelationId)?.title : null;
+  const selectedBlockId = selectedRelationId ? null : effectiveSelectedObjectId;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -197,6 +320,10 @@ export function DesignMorphCanvasPlatform({
 
   useEffect(() => {
     setStageLayouts((current) => reconcileCanvasLayouts(stages, current));
+  }, [stages]);
+
+  useEffect(() => {
+    setDocumentViewModes((current) => reconcileDocumentViewModes(stages, current));
   }, [stages]);
 
   useEffect(() => {
@@ -233,6 +360,11 @@ export function DesignMorphCanvasPlatform({
     if (lastAutoCenteredWindowKeyRef.current === activeWindowKey) {
       return;
     }
+    if (suppressedAutoCenterWindowKeyRef.current === activeWindowKey) {
+      suppressedAutoCenterWindowKeyRef.current = null;
+      lastAutoCenteredWindowKeyRef.current = activeWindowKey;
+      return;
+    }
     lastAutoCenteredWindowKeyRef.current = activeWindowKey;
     centerItem(targetStageId, activePairIndex === 3 ? 0.72 : 0.9);
   }, [activePairIndex, activeWindow?.toStageId, activeWindowKey, centerItem, items]);
@@ -263,10 +395,39 @@ export function DesignMorphCanvasPlatform({
     if (!mainContext || !trackContext) {
       return;
     }
-    renderMainCanvas(mainCanvas, mainContext, items, selectedStageId, viewport);
+    renderMainCanvas(mainCanvas, mainContext, items, windows, selectedStageId, selectedRelationId, activeWindowId, viewport);
     const mainRect = mainCanvas.getBoundingClientRect();
     renderTrackCanvas(trackCanvas, trackContext, items, activePairIndex, viewport, mainRect.width || 1190);
-  }, [activePairIndex, items, layoutRevision, selectedStageId, viewport]);
+  }, [activePairIndex, activeWindowId, items, layoutRevision, selectedRelationId, selectedStageId, viewport, windows]);
+
+  function emitMorphSelection(selection: DesignMorphSelection) {
+    setLocalSelectedObjectId(selection.objectId);
+    onSelectMorphObject?.(selection);
+  }
+
+  function selectStageRelation(
+    window: DesignMorphWindowViewModel,
+    options: { focusDestination?: boolean; recenter?: boolean } = {},
+  ) {
+    if (options.focusDestination) {
+      setSelectedStageId(window.toStageId);
+    }
+    if (options.recenter === false) {
+      const nextPairIndex = Math.max(0, windows.findIndex((candidate) => candidate.id === window.id));
+      suppressedAutoCenterWindowKeyRef.current = buildActiveWindowKey(window, nextPairIndex);
+    }
+    onActiveWindowChange(window.id);
+    emitMorphSelection(buildDesignMorphStageRelationSelection(window));
+  }
+
+  function selectDocumentBlock(
+    item: MorphCanvasItem,
+    block: StandardDocumentBlockViewModel,
+    section: SelectableDocumentSection,
+  ) {
+    setSelectedStageId(item.id);
+    emitMorphSelection(buildDocumentBlockSelection(item, block, section));
+  }
 
   function handleTrackPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     beginTrackDrag(event.currentTarget, event.clientX, event.clientY, event.pointerId, "pointer");
@@ -420,6 +581,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     beginMainDrag(event.currentTarget, event.clientX, event.clientY, event.pointerId, "pointer");
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -427,7 +591,7 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseDown(event: ReactMouseEvent<HTMLCanvasElement>) {
-    if (event.button !== 0 || dragRef.current || nodeDragRef.current) {
+    if (event.button !== 0 || dragRef.current || nodeDragRef.current || documentDragRef.current) {
       return;
     }
     beginMainDrag(event.currentTarget, event.clientX, event.clientY, null, "mouse");
@@ -484,6 +648,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "mouse") {
       applyNodeDrag(nodeDrag, event.clientX, event.clientY);
@@ -528,6 +695,10 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "pointer" && (nodeDrag.pointerId === null || nodeDrag.pointerId === event.pointerId)) {
       nodeDragRef.current = null;
@@ -542,6 +713,10 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseUp(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+      return;
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag?.source === "mouse") {
       nodeDragRef.current = null;
@@ -562,13 +737,22 @@ export function DesignMorphCanvasPlatform({
       return;
     }
     const point = canvasPoint(canvas, clientX, clientY);
-    const hit = hitTest(itemsRef.current, screenToWorld(point, viewport));
+    const world = screenToWorld(point, viewport);
+    const relationHit = hitTestRelation(itemsRef.current, windows, world);
+    if (relationHit) {
+      selectStageRelation(relationHit, { focusDestination: false, recenter: false });
+      return;
+    }
+    const hit = hitTest(itemsRef.current, world);
     if (hit) {
       setSelectedStageId(hit.id);
     }
   }
 
   function handleMainPointerLeave(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+    }
     handleMainPointerUp(event);
     if (!dragRef.current && !nodeDragRef.current) {
       event.currentTarget.style.cursor = "grab";
@@ -576,6 +760,9 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainMouseLeave(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      documentDragRef.current = null;
+    }
     if (nodeDragRef.current?.source === "mouse") {
       nodeDragRef.current = null;
     }
@@ -590,11 +777,19 @@ export function DesignMorphCanvasPlatform({
       return;
     }
     const point = canvasPoint(canvas, clientX, clientY);
-    const hit = hitTestNodeControl(itemsRef.current, screenToWorld(point, viewport));
-    canvas.style.cursor = hit?.mode === "resize" ? "nwse-resize" : hit ? "move" : "grab";
+    const world = screenToWorld(point, viewport);
+    const hit = hitTestNodeControl(itemsRef.current, world);
+    if (hit) {
+      canvas.style.cursor = hit.mode === "resize" ? "nwse-resize" : "move";
+      return;
+    }
+    canvas.style.cursor = hitTestRelation(itemsRef.current, windows, world) ? "pointer" : "grab";
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    if (documentDragRef.current) {
+      return;
+    }
     event.preventDefault();
     const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
     const before = screenToWorld(point, viewport);
@@ -610,7 +805,7 @@ export function DesignMorphCanvasPlatform({
   function moveWindow(delta: number) {
     const nextWindow = windows[Math.max(0, Math.min(windows.length - 1, activePairIndex + delta))];
     if (nextWindow) {
-      onActiveWindowChange(nextWindow.id);
+      selectStageRelation(nextWindow, { focusDestination: true, recenter: true });
     }
   }
 
@@ -620,6 +815,61 @@ export function DesignMorphCanvasPlatform({
 
   function centerLargeArchitecture() {
     centerItem(stages[3]?.id ?? items[3]?.id ?? selectedStageId, 0.62);
+  }
+
+  function beginDocumentDrag(
+    stageId: string,
+    mode: DocumentDragMode,
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+  ) {
+    documentDragRef.current = {
+      mode,
+      pointerId,
+      source: "pointer",
+      stageId,
+      startClientX: clientX,
+      startClientY: clientY,
+      startLayout: {
+        x: itemsRef.current.find((item) => item.id === stageId)?.x ?? 0,
+        y: itemsRef.current.find((item) => item.id === stageId)?.y ?? 0,
+        w: itemsRef.current.find((item) => item.id === stageId)?.w ?? 0,
+        h: itemsRef.current.find((item) => item.id === stageId)?.h ?? 0,
+      },
+    };
+    setSelectedStageId(stageId);
+  }
+
+  function handleDocumentDragMove(
+    stageId: string,
+    mode: DocumentDragMode,
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+  ) {
+    const drag = documentDragRef.current;
+    if (!drag || drag.stageId !== stageId || drag.mode !== mode || drag.pointerId !== pointerId) {
+      return;
+    }
+    const deltaX = (clientX - drag.startClientX) / viewport.scale;
+    const deltaY = (clientY - drag.startClientY) / viewport.scale;
+    setStageLayouts((current) => {
+      const start = drag.startLayout;
+      const nextLayout =
+        mode === "resize"
+          ? {
+              ...start,
+              w: Math.max(MIN_STAGE_NODE_WIDTH, Math.round(start.w + deltaX)),
+              h: Math.max(MIN_STAGE_NODE_HEIGHT, Math.round(start.h + deltaY)),
+            }
+          : {
+              ...start,
+              x: Math.round(start.x + deltaX),
+              y: Math.round(start.y + deltaY),
+            };
+      return { ...current, [stageId]: nextLayout };
+    });
   }
 
   return (
@@ -669,6 +919,34 @@ export function DesignMorphCanvasPlatform({
           onPointerUp={handleMainPointerUp}
           onWheel={handleWheel}
         />
+        <div className="design-morph-object-layer" data-testid="design-morph-object-layer">
+          {items.map((item) =>
+            item.document ? (
+              <DocumentStageObject
+                active={item.id === activeWindow?.fromStageId || item.id === activeWindow?.toStageId}
+                item={item}
+                key={item.id}
+                onDragEnd={() => {
+                  documentDragRef.current = null;
+                }}
+                onDragMove={(stageId, mode, clientX, clientY, pointerId) => {
+                  handleDocumentDragMove(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
+                  beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onViewModeChange={(stageId, modeId) => {
+                  setDocumentViewModes((current) => ({ ...current, [stageId]: modeId }));
+                }}
+                onSelectBlock={selectDocumentBlock}
+                selected={item.id === selectedStageId}
+                selectedBlockId={selectedBlockId}
+                viewMode={documentViewModes[item.id] ?? item.viewModes?.[0]?.id ?? "a4"}
+                viewport={viewport}
+              />
+            ) : null,
+          )}
+        </div>
         <div className="design-morph-hud">
           <span>Canvas 窗口：{activeWindow?.title ?? "需规 -> 软设文档"}</span>
           <span>缩放 {Math.round(viewport.scale * 100)}%</span>
@@ -684,7 +962,13 @@ export function DesignMorphCanvasPlatform({
         </div>
       </div>
       <footer className="design-morph-controls">
-        <span>{selectedStageId ? `选中：${items.find((item) => item.id === selectedStageId)?.title ?? selectedStageId}` : "选中：-"}</span>
+        <span>
+          {selectedRelationTitle
+            ? `选中关系：${selectedRelationTitle}`
+            : selectedStageId
+              ? `选中：${items.find((item) => item.id === selectedStageId)?.title ?? selectedStageId}`
+              : "选中：-"}
+        </span>
         <div>
           <button type="button" onClick={fitViewport}>
             适配视口
@@ -704,10 +988,174 @@ export function DesignMorphCanvasPlatform({
   );
 }
 
+function DocumentStageObject({
+  active,
+  item,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onSelectBlock,
+  onViewModeChange,
+  selected,
+  selectedBlockId,
+  viewMode,
+  viewport,
+}: {
+  active: boolean;
+  item: MorphCanvasItem;
+  onDragEnd: () => void;
+  onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onSelectBlock: (item: MorphCanvasItem, block: StandardDocumentBlockViewModel, section: SelectableDocumentSection) => void;
+  onViewModeChange: (stageId: string, modeId: string) => void;
+  selected: boolean;
+  selectedBlockId: string | null;
+  viewMode: string;
+  viewport: CanvasViewportState;
+}) {
+  const document = item.document;
+  if (!document) {
+    return null;
+  }
+
+  const objectStyle = {
+    transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
+    transformOrigin: "top left",
+    width: `${item.w}px`,
+    height: `${item.h}px`,
+    zIndex: selected ? 6 : active ? 5 : 4,
+  } as const;
+
+  return (
+    <section
+      className={[
+        "design-morph-object-frame",
+        "is-document-stage-object",
+        selected ? "is-selected" : "",
+        active ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`stage-object-${item.id}`}
+      style={objectStyle}
+    >
+      <header
+        className="design-morph-object-titlebar"
+        data-testid="stage-object-compact-titlebar"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
+        <div className="design-morph-object-title-copy">
+          <span className="design-morph-object-title-row">
+            <strong>{item.title}</strong>
+            <span className="design-morph-object-title-meta">{item.subtitle}</span>
+          </span>
+        </div>
+        <div
+          className="design-morph-object-actions"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerMove={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          {item.viewModes?.map((mode) => (
+            <button
+              aria-pressed={viewMode === mode.id}
+              aria-label={`${item.title} ${mode.label}`}
+              key={mode.id}
+              type="button"
+              onClick={() => onViewModeChange(item.id, mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
+          <button type="button">更多</button>
+        </div>
+      </header>
+      <div className="design-morph-object-body">
+        <div className="stage-document-scroll design-morph-object-scroll" data-testid="document-stage-scroll">
+          <div className={`design-morph-object-paper${viewMode === "edit" ? " is-edit-mode" : ""}`} data-testid="document-stage-paper">
+            <A4DocumentSurface
+              ariaLabel={document.ariaLabel}
+              emptyDescription={document.emptyDescription}
+              footerLeft={document.footerLeft}
+              footerRight={document.footerRight}
+              headerLeft={document.headerLeft}
+              headerRight={document.headerRight}
+              onSelectBlock={(block, section) => onSelectBlock(item, block, section)}
+              sections={document.sections.map((section) => ({
+                section_id: section.sectionId,
+                title: section.title,
+                content: section.content,
+                status: section.status,
+              }))}
+              structuredSections={document.structuredSections}
+              selectedBlockId={selectedBlockId ?? undefined}
+              subtitle={document.subtitle}
+              title={document.title}
+            />
+          </div>
+        </div>
+      </div>
+      <button
+        aria-label={`${item.title} resize`}
+        className="design-morph-object-resize"
+        type="button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      />
+    </section>
+  );
+}
+
 function buildCanvasLayoutState(stages: DesignMorphStageViewModel[]): Record<string, CanvasStageLayoutState> {
   return stages.reduce<Record<string, CanvasStageLayoutState>>((layouts, stage, index) => {
     layouts[stage.id] = getDefaultStageLayout(index);
     return layouts;
+  }, {});
+}
+
+function buildDocumentViewModeState(stages: DesignMorphStageViewModel[]): Record<string, string> {
+  return stages.reduce<Record<string, string>>((viewModes, stage) => {
+    if (stage.document) {
+      viewModes[stage.id] = stage.viewModes?.[0]?.id ?? "a4";
+    }
+    return viewModes;
   }, {});
 }
 
@@ -726,13 +1174,27 @@ function reconcileCanvasLayouts(
   return changed ? next : current;
 }
 
+function reconcileDocumentViewModes(stages: DesignMorphStageViewModel[], current: Record<string, string>): Record<string, string> {
+  const stageIds = new Set(stages.filter((stage) => stage.document).map((stage) => stage.id));
+  let changed = Object.keys(current).some((stageId) => !stageIds.has(stageId));
+  const next = stages.reduce<Record<string, string>>((viewModes, stage) => {
+    if (!stage.document) {
+      return viewModes;
+    }
+    const existing = current[stage.id];
+    viewModes[stage.id] = existing ?? stage.viewModes?.[0]?.id ?? "a4";
+    changed = changed || !existing;
+    return viewModes;
+  }, {});
+  return changed ? next : current;
+}
+
 function getDefaultStageLayout(index: number): CanvasStageLayoutState {
   const layout = STAGE_LAYOUTS[index] ?? {
     x: 80 + index * 680,
     y: 140,
     w: 540,
     h: 560,
-    type: "cards" as const,
   };
   return { x: layout.x, y: layout.y, w: layout.w, h: layout.h };
 }
@@ -747,12 +1209,10 @@ function buildCanvasItems(
       y: 140,
       w: 540,
       h: 560,
-      type: "cards" as const,
     };
     return {
       ...stage,
       index,
-      type: layout.type,
       x: stageLayouts[stage.id]?.x ?? layout.x,
       y: stageLayouts[stage.id]?.y ?? layout.y,
       w: stageLayouts[stage.id]?.w ?? layout.w,
@@ -761,11 +1221,18 @@ function buildCanvasItems(
   });
 }
 
+function buildActiveWindowKey(window: DesignMorphWindowViewModel, activePairIndex: number) {
+  return `${window.id}:${window.toStageId}:${activePairIndex}`;
+}
+
 function renderMainCanvas(
   canvas: HTMLCanvasElement,
   context: CanvasRenderingContext2D,
   items: MorphCanvasItem[],
+  windows: DesignMorphWindowViewModel[],
   selectedStageId: string,
+  selectedRelationId: string | null,
+  activeWindowId: string,
   viewport: CanvasViewportState,
 ) {
   const { width, height } = prepareCanvas(canvas, context, 1190, 788);
@@ -774,9 +1241,17 @@ function renderMainCanvas(
   context.save();
   context.translate(viewport.x, viewport.y);
   context.scale(viewport.scale, viewport.scale);
-  for (let index = 0; index < items.length - 1; index += 1) {
-    drawArrow(context, items[index], items[index + 1]);
-  }
+  windows.forEach((window) => {
+    const from = items.find((item) => item.id === window.fromStageId);
+    const to = items.find((item) => item.id === window.toStageId);
+    if (from && to) {
+      drawArrow(context, from, to, {
+        active: window.id === activeWindowId,
+        label: getStageRelationLabel(window.id),
+        selected: window.id === selectedRelationId,
+      });
+    }
+  });
   items.forEach((item) => drawItem(context, item, item.id === selectedStageId));
   context.restore();
 }
@@ -1080,7 +1555,7 @@ function drawCanvasBackground(context: CanvasRenderingContext2D, width: number, 
 }
 
 function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
-  context.fillStyle = item.type === "architecture" ? "#fbfcfb" : "#fffdf8";
+  context.fillStyle = item.layoutKind === "architecture" ? "#fbfcfb" : "#fffdf8";
   context.strokeStyle = selected ? "#143e52" : "#c7d0cb";
   context.lineWidth = selected ? 3 : 1.4;
   roundRect(context, item.x, item.y, item.w, item.h, 8);
@@ -1097,35 +1572,25 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
   context.lineTo(item.x + item.w - 18, item.y + STAGE_NODE_TITLE_BAR_HEIGHT);
   context.stroke();
 
-  context.fillStyle = selected ? "#143e52" : "#60706c";
-  context.font = "850 15px Microsoft YaHei, sans-serif";
-  context.fillText(item.subtitle, item.x + 24, item.y + 34);
   context.fillStyle = "#172221";
   context.font = "950 25px Microsoft YaHei, sans-serif";
-  wrapCanvasText(context, item.title, item.x + 24, item.y + 74, item.w - 48, 30, 2);
+  const titleX = item.x + 24;
+  const titleY = item.y + 44;
+  const maxTitleWidth = item.w - 128;
+  const titleText = measureClampedCanvasText(context, item.title, maxTitleWidth);
+  context.fillText(titleText, titleX, titleY);
+  const titleWidth = context.measureText(titleText).width;
+  drawCanvasSubtitlePill(context, item.subtitle, titleX + titleWidth + 12, item.y + 22, item.x + item.w - 82, selected);
   context.fillStyle = "#40514d";
   context.font = "14px Microsoft YaHei, sans-serif";
-  wrapCanvasText(context, item.summary, item.x + 24, item.y + 132, item.w - 48, 23, 4);
+  wrapCanvasText(context, item.summary, item.x + 24, item.y + 96, item.w - 48, 23, 4);
+  context.fillStyle = "#60706c";
+  context.font = "12px Microsoft YaHei, sans-serif";
+  wrapCanvasText(context, item.constraintSummary, item.x + 24, item.y + 162, item.w - 48, 18, 2);
 
   drawItemControls(context, item, selected);
 
-  if (item.type === "architecture") {
-    drawArchitectureItem(context, item);
-    return;
-  }
-  if (item.type === "tree") {
-    drawTreeItem(context, item);
-    return;
-  }
-  if (item.type === "table") {
-    drawTableItem(context, item);
-    return;
-  }
-  if (item.type === "cards") {
-    drawCardsItem(context, item);
-    return;
-  }
-  drawPaperItem(context, item);
+  resolveCanvasStageRenderer(item.layoutKind)(context, item);
 }
 
 function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
@@ -1165,122 +1630,89 @@ function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasIt
   });
 }
 
-function drawPaperItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 234;
-  context.fillStyle = "#f7faf9";
-  roundRect(context, item.x + 28, top - 28, item.w - 56, item.h - 270, 6);
+function drawCanvasSubtitlePill(
+  context: CanvasRenderingContext2D,
+  subtitle: string,
+  x: number,
+  y: number,
+  maxRight: number,
+  selected: boolean,
+) {
+  const availableWidth = Math.max(0, maxRight - x);
+  if (availableWidth < 44) {
+    return;
+  }
+  context.font = "850 12px Microsoft YaHei, sans-serif";
+  const label = measureClampedCanvasText(context, subtitle, availableWidth - 18);
+  const width = Math.min(availableWidth, context.measureText(label).width + 18);
+  context.fillStyle = selected ? "rgba(47, 119, 189, 0.14)" : "rgba(47, 119, 189, 0.1)";
+  roundRect(context, x, y, width, 24, 12);
   context.fill();
-  item.items.slice(0, 6).forEach((line, index) => {
-    const y = top + index * 54;
-    context.fillStyle = "#14211f";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(`${index + 1}. ${line}`, item.x + 48, y);
-    context.strokeStyle = "#d9e3df";
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(item.x + 48, y + 16);
-    context.lineTo(item.x + item.w - 48, y + 16);
-    context.stroke();
-  });
+  context.fillStyle = selected ? "#225b87" : "#607186";
+  context.fillText(label, x + 9, y + 16);
 }
 
-function drawTreeItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const startX = item.x + 52;
-  const startY = item.y + 220;
-  context.strokeStyle = "#9ab7ae";
-  context.lineWidth = 2;
+function measureClampedCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (context.measureText(text).width <= maxWidth) {
+    return text;
+  }
+  let nextText = text;
+  while (nextText.length > 1 && context.measureText(`${nextText}...`).width > maxWidth) {
+    nextText = nextText.slice(0, -1);
+  }
+  return `${nextText}...`;
+}
+
+function drawArrow(
+  context: CanvasRenderingContext2D,
+  from: MorphCanvasItem,
+  to: MorphCanvasItem,
+  state: { active: boolean; label: string; selected: boolean },
+) {
+  const geometry = calculateRelationArrowGeometry(from, to);
+  const color = state.selected ? "#a66a1f" : state.active ? "#14536b" : "#28766f";
+  const shadowColor = state.selected ? "rgba(166, 106, 31, 0.14)" : "rgba(20, 83, 107, 0.1)";
+  context.strokeStyle = state.selected ? "#9a631d" : state.active ? "#14536b" : "#28766f";
+  context.lineWidth = state.selected ? 8 : state.active ? 6 : 5;
+  context.lineCap = "round";
   context.beginPath();
-  context.moveTo(startX, startY - 22);
-  context.lineTo(startX, startY + Math.min(4, item.items.length - 1) * 58);
+  context.moveTo(geometry.start.x, geometry.start.y);
+  context.bezierCurveTo(
+    geometry.controlStart.x,
+    geometry.controlStart.y,
+    geometry.controlEnd.x,
+    geometry.controlEnd.y,
+    geometry.shaftEnd.x,
+    geometry.shaftEnd.y,
+  );
   context.stroke();
-  item.items.slice(0, 5).forEach((line, index) => {
-    const y = startY + index * 58;
-    context.strokeStyle = "#9ab7ae";
-    context.beginPath();
-    context.moveTo(startX, y);
-    context.lineTo(startX + 34, y);
-    context.stroke();
-    context.fillStyle = index === 0 ? "#e6f0f4" : "#f6faf8";
-    roundRect(context, startX + 34, y - 20, item.w - 104, 40, 6);
-    context.fill();
-    context.strokeStyle = "#cbd9d4";
-    context.stroke();
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(line, startX + 50, y + 5);
-  });
-}
-
-function drawArchitectureItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const labels = item.items.length ? item.items : ["展示层", "功能层", "服务层", "数据层"];
-  const top = item.y + 220;
-  const layerHeight = 118;
-  labels.slice(0, 5).forEach((label, index) => {
-    const y = top + index * (layerHeight + 18);
-    context.fillStyle = ["#e6f0f4", "#e4f2e9", "#f5e9d6", "#edf2f0", "#f8fbfa"][index] ?? "#f8fbfa";
-    roundRect(context, item.x + 34, y, item.w - 68, layerHeight, 8);
-    context.fill();
-    context.strokeStyle = "#cad8d3";
-    context.stroke();
-    context.fillStyle = "#143e52";
-    context.font = "950 16px Microsoft YaHei, sans-serif";
-    context.fillText(label, item.x + 58, y + 32);
-    context.fillStyle = "#40514d";
-    context.font = "13px Microsoft YaHei, sans-serif";
-    wrapCanvasText(context, `模块边界、服务职责、数据依赖和下游投影在本层形成可追溯设计对象。`, item.x + 58, y + 62, item.w - 116, 22, 2);
-  });
-}
-
-function drawTableItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 218;
-  item.items.slice(0, 6).forEach((line, index) => {
-    const y = top + index * 54;
-    context.fillStyle = index % 2 === 0 ? "#f7faf9" : "#fffdf8";
-    context.fillRect(item.x + 28, y, item.w - 56, 48);
-    context.strokeStyle = "#d7e0dc";
-    context.strokeRect(item.x + 28, y, item.w - 56, 48);
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(line, item.x + 48, y + 30);
-  });
-}
-
-function drawCardsItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 216;
-  const cardWidth = (item.w - 78) / 2;
-  item.items.slice(0, 6).forEach((line, index) => {
-    const x = item.x + 28 + (index % 2) * (cardWidth + 22);
-    const y = top + Math.floor(index / 2) * 106;
-    context.fillStyle = "#f8fbfa";
-    roundRect(context, x, y, cardWidth, 82, 8);
-    context.fill();
-    context.strokeStyle = "#d7e0dc";
-    context.stroke();
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    wrapCanvasText(context, line, x + 16, y + 30, cardWidth - 32, 22, 2);
-  });
-}
-
-function drawArrow(context: CanvasRenderingContext2D, from: MorphCanvasItem, to: MorphCanvasItem) {
-  const startX = from.x + from.w;
-  const startY = from.y + from.h * 0.5;
-  const endX = to.x;
-  const endY = to.y + to.h * 0.5;
-  const midX = startX + (endX - startX) * 0.5;
-  context.strokeStyle = "#28766f";
-  context.lineWidth = 3;
+  context.lineCap = "butt";
+  context.fillStyle = color;
   context.beginPath();
-  context.moveTo(startX + 28, startY);
-  context.bezierCurveTo(midX, startY, midX, endY, endX - 28, endY);
-  context.stroke();
-  context.fillStyle = "#28766f";
-  context.beginPath();
-  context.moveTo(endX - 28, endY);
-  context.lineTo(endX - 46, endY - 9);
-  context.lineTo(endX - 46, endY + 9);
+  context.moveTo(geometry.tip.x, geometry.tip.y);
+  context.lineTo(geometry.baseLeft.x, geometry.baseLeft.y);
+  context.lineTo(geometry.baseRight.x, geometry.baseRight.y);
   context.closePath();
   context.fill();
+
+  const labelWidth = Math.max(76, Math.min(116, context.measureText(state.label).width + 32));
+  const labelHeight = 26;
+  const labelX = geometry.labelCenter.x - labelWidth / 2;
+  const labelY = geometry.labelCenter.y - 14;
+  context.font = "900 12px Microsoft YaHei, sans-serif";
+  context.fillStyle = shadowColor;
+  roundRect(context, labelX + 2, labelY + 3, labelWidth, labelHeight, 13);
+  context.fill();
+  context.fillStyle = "rgba(255, 255, 255, 0.96)";
+  context.strokeStyle = state.selected ? "rgba(166, 106, 31, 0.5)" : "rgba(20, 83, 107, 0.32)";
+  context.lineWidth = state.selected ? 1.8 : 1.2;
+  roundRect(context, labelX, labelY, labelWidth, labelHeight, 13);
+  context.fill();
+  context.stroke();
+  context.fillStyle = state.selected ? "#7c4e17" : "#143e52";
+  context.textAlign = "center";
+  context.fillText(state.label, geometry.labelCenter.x, labelY + 17);
+  context.textAlign = "left";
 }
 
 function hitTest(items: MorphCanvasItem[], world: { x: number; y: number }) {
@@ -1319,6 +1751,289 @@ function hitTestNodeControl(items: MorphCanvasItem[], world: { x: number; y: num
     }
   }
   return null;
+}
+
+function hitTestRelation(
+  items: MorphCanvasItem[],
+  windows: DesignMorphWindowViewModel[],
+  world: { x: number; y: number },
+): DesignMorphWindowViewModel | null {
+  for (let index = windows.length - 1; index >= 0; index -= 1) {
+    const window = windows[index];
+    const from = items.find((item) => item.id === window.fromStageId);
+    const to = items.find((item) => item.id === window.toStageId);
+    if (!from || !to) {
+      continue;
+    }
+    const points = calculateRelationPolyline(from, to);
+    for (let pointIndex = 0; pointIndex < points.length - 1; pointIndex += 1) {
+      if (distanceToSegment(world, points[pointIndex], points[pointIndex + 1]) <= STAGE_RELATION_HIT_WIDTH) {
+        return window;
+      }
+    }
+    const labelCenter = points[Math.floor(points.length / 2)];
+    if (
+      world.x >= labelCenter.x - 44 &&
+      world.x <= labelCenter.x + 44 &&
+      world.y >= labelCenter.y - 26 &&
+      world.y <= labelCenter.y + 12
+    ) {
+      return window;
+    }
+  }
+  return null;
+}
+
+function calculateRelationPolyline(from: MorphCanvasItem, to: MorphCanvasItem) {
+  const geometry = calculateRelationArrowGeometry(from, to);
+  const points: Array<{ x: number; y: number }> = [];
+  for (let index = 0; index <= 16; index += 1) {
+    const t = index / 16;
+    points.push(cubicBezierPoint(
+      geometry.start,
+      geometry.controlStart,
+      geometry.controlEnd,
+      geometry.shaftEnd,
+      t,
+    ));
+  }
+  return points;
+}
+
+export function calculateRelationArrowGeometry(from: RelationGeometryItem, to: RelationGeometryItem): RelationArrowGeometry {
+  const start = {
+    x: from.x + from.w + 28,
+    y: from.y + from.h * 0.5,
+  };
+  const tip = {
+    x: to.x - 28,
+    y: to.y + to.h * 0.5,
+  };
+  const midX = from.x + from.w + (to.x - (from.x + from.w)) * 0.5;
+  const baseDistance = 24;
+  const baseHalfHeight = 12;
+  const baseCenter = {
+    x: tip.x - baseDistance,
+    y: tip.y,
+  };
+  return {
+    start,
+    controlStart: { x: midX, y: start.y },
+    controlEnd: { x: midX, y: tip.y },
+    shaftEnd: baseCenter,
+    tip,
+    baseCenter,
+    baseLeft: { x: baseCenter.x, y: baseCenter.y - baseHalfHeight },
+    baseRight: { x: baseCenter.x, y: baseCenter.y + baseHalfHeight },
+    labelCenter: {
+      x: midX,
+      y: (start.y + tip.y) / 2,
+    },
+  };
+}
+
+function cubicBezierPoint(
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  t: number,
+) {
+  const oneMinusT = 1 - t;
+  return {
+    x: oneMinusT ** 3 * p0.x + 3 * oneMinusT ** 2 * t * p1.x + 3 * oneMinusT * t ** 2 * p2.x + t ** 3 * p3.x,
+    y: oneMinusT ** 3 * p0.y + 3 * oneMinusT ** 2 * t * p1.y + 3 * oneMinusT * t ** 2 * p2.y + t ** 3 * p3.y,
+  };
+}
+
+function distanceToSegment(point: { x: number; y: number }, start: { x: number; y: number }, end: { x: number; y: number }) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+  const t = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+}
+
+function buildDocumentBlockSelection(
+  item: MorphCanvasItem,
+  block: StandardDocumentBlockViewModel,
+  section: SelectableDocumentSection,
+): DesignMorphSelection {
+  const isRequirement = item.entityType === "requirement_specification";
+  return {
+    objectId: block.blockId,
+    stageId: item.id,
+    kind: isRequirement ? "requirement_clause" : "design_block",
+    title: block.title ?? section.title,
+    summary: block.content,
+    status: section.status,
+    sourceRefs: block.sourceRefs,
+    qualityRefs: block.qualityRefs,
+    actions: isRequirement
+      ? [
+          {
+            actionId: "view_requirement_source",
+            label: "查看来源",
+            description: "定位 P2 冻结需规中的原始条款。",
+          },
+          {
+            actionId: "locate_design_mapping",
+            label: "定位软设映射",
+            description: "查看该条款映射到哪些软设章节和结构化对象。",
+          },
+        ]
+      : [
+          {
+            actionId: "expand_current_block",
+            label: "扩写本段",
+            description: "围绕当前软设段落补充设计理由、边界和接口说明。",
+            commandHint: "扩写当前段落，补充模块边界和设计理由。",
+          },
+          {
+            actionId: "append_subsection",
+            label: "补充小节",
+            description: "在当前章节下追加一个局部小节。",
+          },
+          {
+            actionId: "apply_document_patch",
+            label: "应用补丁",
+            description: "把当前局部修改同步到正文和结构化事实。",
+          },
+        ],
+    payload: {
+      blockKind: block.kind,
+      sectionId: section.section_id,
+      sectionTitle: section.title,
+      entityType: item.entityType,
+    },
+  };
+}
+
+export function buildDesignMorphStageRelationSelection(window: DesignMorphWindowViewModel): DesignMorphSelection {
+  const relation = getStageRelationDefinition(window);
+  return {
+    objectId: window.id,
+    stageId: `${window.fromStageId}:${window.toStageId}`,
+    kind: "stage_relation",
+    title: window.title,
+    summary: relation.summary,
+    status: relation.status,
+    sourceRefs: [window.fromStageId, window.toStageId],
+    qualityRefs: [],
+    actions: relation.actions,
+    payload: {
+      relationType: relation.relationType,
+      label: relation.label,
+      fromStageId: window.fromStageId,
+      toStageId: window.toStageId,
+      inputSummary: relation.inputSummary,
+      outputSummary: relation.outputSummary,
+    },
+  };
+}
+
+function getStageRelationDefinition(window: DesignMorphWindowViewModel) {
+  const definitions: Record<
+    string,
+    {
+      relationType: string;
+      label: string;
+      status: string;
+      summary: string;
+      inputSummary: string;
+      outputSummary: string;
+      actions: DesignMorphSelectionAction[];
+    }
+  > = {
+    reqdoc: {
+      relationType: "requirement_to_design_document",
+      label: "基础转换",
+      status: "待执行",
+      summary: "从 P2 冻结需规生成软件设计说明草稿，并建立正文、结构化事实和追溯映射。",
+      inputSummary: "P2 冻结需求规格说明",
+      outputSummary: "软件设计说明 A4 正文草稿",
+      actions: [
+        {
+          actionId: "run_basic_conversion",
+          label: "执行基础转换",
+          description: "读取需规冻结包并生成软设草稿。",
+        },
+        {
+          actionId: "view_relation_input",
+          label: "查看输入",
+          description: "定位当前转换关系使用的需规输入。",
+        },
+        {
+          actionId: "view_relation_output",
+          label: "查看输出",
+          description: "定位基础转换生成的软设文档。",
+        },
+      ],
+    },
+    docfunc: {
+      relationType: "design_document_to_function_tree",
+      label: "功能拆解",
+      status: "待生成",
+      summary: "从软设章节拆解功能项和功能层级。",
+      inputSummary: "软件设计说明正文",
+      outputSummary: "功能树候选节点",
+      actions: [{ actionId: "generate_function_tree", label: "生成功能树" }],
+    },
+    funcarch: {
+      relationType: "function_tree_to_layered_architecture",
+      label: "分层归属",
+      status: "待生成",
+      summary: "把功能节点归入展示层、功能层、服务层和数据层。",
+      inputSummary: "功能树节点",
+      outputSummary: "分层架构图",
+      actions: [{ actionId: "generate_layered_architecture", label: "生成分层架构" }],
+    },
+    archtech: {
+      relationType: "layered_architecture_to_technical_implementation",
+      label: "技术映射",
+      status: "待生成",
+      summary: "把理论架构层映射到框架、模块、服务和数据对象。",
+      inputSummary: "分层架构对象",
+      outputSummary: "技术实现映射",
+      actions: [{ actionId: "generate_technical_mapping", label: "生成技术映射" }],
+    },
+    techshape: {
+      relationType: "technical_implementation_to_presentation_shape",
+      label: "展示映射",
+      status: "待生成",
+      summary: "把技术模块映射到界面位置、组件形态和交互方式。",
+      inputSummary: "技术实现模块",
+      outputSummary: "展示形态候选",
+      actions: [{ actionId: "generate_presentation_shape", label: "生成展示形态" }],
+    },
+    shapep4: {
+      relationType: "presentation_shape_to_p4_projection",
+      label: "投影候选",
+      status: "待生成",
+      summary: "从设计包派生 P4 工单和工具包树。",
+      inputSummary: "展示形态和设计基线",
+      outputSummary: "P4 工单投影树",
+      actions: [{ actionId: "generate_projection_candidate", label: "生成投影候选" }],
+    },
+  };
+  return (
+    definitions[window.id] ?? {
+      relationType: "custom_stage_relation",
+      label: "阶段关系",
+      status: "待处理",
+      summary: `${window.fromStageId} 到 ${window.toStageId} 的阶段关系。`,
+      inputSummary: window.fromStageId,
+      outputSummary: window.toStageId,
+      actions: [{ actionId: "inspect_relation", label: "查看关系" }],
+    }
+  );
+}
+
+function getStageRelationLabel(windowId: string) {
+  return getStageRelationDefinition({ id: windowId, title: "", fromStageId: "", toStageId: "" }).label;
 }
 
 function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {

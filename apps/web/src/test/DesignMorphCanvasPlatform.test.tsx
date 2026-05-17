@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, test, vi, type Mock } from "vitest";
 
 import {
+  calculateRelationArrowGeometry,
   calculateTrackLabelY,
   calculateTrackStageLandmarks,
   calculateTrackViewportFrame,
@@ -200,6 +201,185 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("renders requirement and software design as compact executable document objects", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const objectLayer = within(platform).getByTestId("design-morph-object-layer");
+    const requirementObject = within(objectLayer).getByTestId("stage-object-requirement");
+    const documentObject = within(objectLayer).getByTestId("stage-object-document");
+
+    expect(requirementObject).toHaveClass("is-document-stage-object");
+    expect(documentObject).toHaveClass("is-document-stage-object");
+    expect(within(requirementObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
+    expect(within(documentObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
+    expect(within(requirementObject).getByRole("button", { name: "需规 A4" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(requirementObject).getByRole("button", { name: "需规 编辑区" })).toBeInTheDocument();
+    expect(within(documentObject).getByRole("button", { name: "软设文档 A4" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(documentObject).getByRole("button", { name: "软设文档 编辑区" })).toBeInTheDocument();
+    expect(within(requirementObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
+    expect(within(documentObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
+    expect(within(requirementObject).getByTestId("document-stage-paper")).toHaveTextContent("支持规划任务管理。");
+    expect(within(documentObject).getByTestId("document-stage-paper")).toHaveTextContent("采用统一服务优先。");
+    expect(within(objectLayer).queryByTestId("stage-object-functionTree")).not.toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("reports a selected document block when the user clicks inside an A4 object", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+
+    fireEvent.click(within(documentObject).getByText("采用统一服务优先。"));
+
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "sdd-1-body",
+        stageId: "document",
+        kind: "design_block",
+        title: "总体架构",
+        summary: "采用统一服务优先。",
+        sourceRefs: ["REQ-1"],
+      }),
+    );
+
+    canvasMock.restore();
+  });
+
+  test("selects a stage relation when the user clicks the arrow between two stage objects", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const initialPan = readPanLabel(platform);
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 205, clientY: 310 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 205, clientY: 310 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "reqdoc",
+        stageId: "requirement:document",
+        kind: "stage_relation",
+        title: "需规 -> 软设文档",
+      }),
+    );
+
+    canvasMock.restore();
+  });
+
+  test("keeps relation clicks focused on the arrow without jumping to the destination stage", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const initialPan = readPanLabel(platform);
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 800, clientY: 292 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 800, clientY: 292 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("选中关系：软设文档 -> 功能树")).toBeInTheDocument();
+    expect(within(platform).queryByText("选中：功能树")).not.toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("terminates the arrow shaft at the arrowhead base instead of the visual tip", () => {
+    const geometry = calculateRelationArrowGeometry(
+      { x: 80, y: 120, w: 500, h: 640 },
+      { x: 720, y: 120, w: 520, h: 640 },
+    );
+
+    expect(geometry.shaftEnd.x).toBeLessThan(geometry.tip.x);
+    expect(geometry.shaftEnd.x).toBe(geometry.baseCenter.x);
+    expect(geometry.baseLeft.x).toBeLessThan(geometry.tip.x);
+    expect(geometry.baseRight.x).toBeLessThan(geometry.tip.x);
+  });
+
+  test("moves a document object when the user drags its visible compact title bar", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+    const titlebar = within(documentObject).getByTestId("stage-object-compact-titlebar");
+    const initialPan = readPanLabel(platform);
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.pointerDown(titlebar, { pointerId: 23, clientX: 280, clientY: 140 });
+    fireEvent.pointerMove(titlebar, { pointerId: 23, clientX: 340, clientY: 170 });
+    fireEvent.pointerUp(titlebar, { pointerId: 23, clientX: 340, clientY: 170 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("keeps document object title actions clickable without starting a title-bar drag", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+    const editButton = within(documentObject).getByRole("button", { name: "软设文档 编辑区" });
+    const initialPan = readPanLabel(platform);
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.pointerDown(editButton, { pointerId: 24, clientX: 520, clientY: 140 });
+    fireEvent.pointerMove(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
+    fireEvent.pointerUp(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
+    fireEvent.click(editButton);
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+    expect(editButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(documentObject).getByTestId("document-stage-paper")).toHaveClass("is-edit-mode");
+
+    canvasMock.restore();
+  });
+
   test("resizes a stage node from its bottom-right handle and updates the track projection", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -256,14 +436,96 @@ function CanvasRefreshHarness() {
 
 function buildStages(revision: number): DesignMorphStageViewModel[] {
   return [
-    { id: "requirement", title: "需规", subtitle: "P2 冻结输入", summary: `需规 ${revision}`, items: ["需规正文"] },
-    { id: "document", title: "软设文档", subtitle: "A4 正文形态", summary: `软设 ${revision}`, items: ["总体架构"] },
-    { id: "functionTree", title: "功能树", subtitle: "从正文拆解功能项", summary: `功能树 ${revision}`, items: ["规划任务管理"] },
-    { id: "layeredArchitecture", title: "分层架构", subtitle: "按层次放置设计对象", summary: `架构 ${revision}`, items: ["展示层"] },
-    { id: "technicalImplementation", title: "技术实现", subtitle: "映射框架与真实模块", summary: `技术 ${revision}`, items: ["unified_service"] },
-    { id: "presentationShape", title: "展示形态", subtitle: "表达 UI 呈现方式", summary: `展示 ${revision}`, items: ["Canvas 长卷"] },
-    { id: "p4Projection", title: "P4 投影", subtitle: "下游工具包树", summary: `投影 ${revision}`, items: ["P4-WO"] },
+    buildStage("requirement", "requirement_specification", "paper", "需规", "P2 冻结输入", `需规 ${revision}`, ["需规正文"], {
+      title: "空域协同规划需求规格说明",
+      subtitle: "P2 冻结输入 / 只读消费",
+      headerLeft: "CodeFactoryV2 / P2",
+      headerRight: "Requirement Specification",
+      footerLeft: "P2 Frozen Package",
+      footerRight: "Page 1",
+      ariaLabel: "需规 A4 预览",
+      emptyDescription: "没有可用的 P2 冻结包",
+      structuredSections: [
+        {
+          sectionId: "req-1",
+          title: "功能需求",
+          status: "generated",
+          blocks: [
+            { blockId: "REQ-1", kind: "clause", title: "规划任务", content: "支持规划任务管理。", sourceRefs: ["REQ-1"], qualityRefs: [] },
+          ],
+        },
+      ],
+      sections: [
+        { sectionId: "REQ-1", title: "规划任务", content: "支持规划任务管理。", status: "generated" },
+      ],
+    }),
+    buildStage("document", "software_design_document", "paper", "软设文档", "A4 正文形态", `软设 ${revision}`, ["总体架构"], {
+      title: "空域协同规划软件设计说明",
+      subtitle: "基于 P2 需求规格冻结包生成",
+      headerLeft: "CodeFactoryV2 / P3",
+      headerRight: "Software Design Description",
+      footerLeft: "v0.1",
+      footerRight: "Page 1",
+      ariaLabel: "软设文档 A4 预览",
+      emptyDescription: "尚未生成软件设计说明",
+      structuredSections: [
+        {
+          sectionId: "sdd-1",
+          title: "总体架构",
+          status: "generated",
+          blocks: [
+            { blockId: "sdd-1-body", kind: "paragraph", content: "采用统一服务优先。", sourceRefs: ["REQ-1"], qualityRefs: [] },
+          ],
+        },
+      ],
+      sections: [
+        { sectionId: "sdd-1", title: "总体架构", content: "采用统一服务优先。", status: "generated" },
+      ],
+    }),
+    buildStage("functionTree", "software_function_tree", "tree", "功能树", "从正文拆解功能项", `功能树 ${revision}`, ["规划任务管理"]),
+    buildStage("layeredArchitecture", "software_layered_architecture", "architecture", "分层架构", "按层次放置设计对象", `架构 ${revision}`, ["展示层"]),
+    buildStage("technicalImplementation", "technical_implementation", "table", "技术实现", "映射框架与真实模块", `技术 ${revision}`, ["unified_service"]),
+    buildStage("presentationShape", "presentation_shape", "cards", "展示形态", "表达 UI 呈现方式", `展示 ${revision}`, ["Canvas 长卷"]),
+    buildStage("p4Projection", "module_workorder_projection", "tree", "P4 投影", "下游工具包树", `投影 ${revision}`, ["P4-WO"]),
   ];
+}
+
+function buildStage(
+  id: DesignMorphStageViewModel["id"],
+  entityType: DesignMorphStageViewModel["entityType"],
+  layoutKind: DesignMorphStageViewModel["layoutKind"],
+  title: string,
+  subtitle: string,
+  summary: string,
+  items: string[],
+  document?: Partial<DesignMorphStageViewModel["document"]>,
+): DesignMorphStageViewModel {
+  return {
+    id,
+    entityType,
+    layoutKind,
+    title,
+    subtitle,
+    summary,
+    items,
+    sourceRefs: [`source:${id}`],
+    constraintSummary: `约束 ${id}`,
+    viewModes: document ? [{ id: "a4", label: "A4" }, { id: "edit", label: "编辑区" }] : undefined,
+    document: document
+      ? {
+          title: document.title ?? title,
+          subtitle: document.subtitle,
+          headerLeft: document.headerLeft ?? "",
+          headerRight: document.headerRight ?? "",
+          footerLeft: document.footerLeft ?? "",
+          footerRight: document.footerRight,
+          ariaLabel: document.ariaLabel ?? `${title} A4`,
+          emptyDescription: document.emptyDescription ?? "尚未生成文档",
+          structuredSections: document.structuredSections,
+          sections: document.sections ?? [],
+        }
+      : undefined,
+  };
 }
 
 function buildWindows(): DesignMorphWindowViewModel[] {
@@ -315,6 +577,10 @@ function mockCanvasEnvironment() {
   if (!HTMLCanvasElement.prototype.setPointerCapture) {
     HTMLCanvasElement.prototype.setPointerCapture = () => undefined;
   }
+  const previousPointerEvent = window.PointerEvent;
+  if (!window.PointerEvent) {
+    window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+  }
   const context = buildCanvasContextMock();
   const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
   const getBoundingClientRect = vi
@@ -344,6 +610,7 @@ function mockCanvasEnvironment() {
       getContext.mockRestore();
       getBoundingClientRect.mockRestore();
       setPointerCapture.mockRestore();
+      window.PointerEvent = previousPointerEvent;
     },
   };
 }

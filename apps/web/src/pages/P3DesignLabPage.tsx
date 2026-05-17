@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 
-import { DesignMorphCanvasPlatform, type DesignMorphStageViewModel, type DesignMorphWindowViewModel } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
+import {
+  buildDesignMorphStageRelationSelection,
+  DesignMorphCanvasPlatform,
+  type DesignMorphSelection,
+} from "../components/stageWorkbench/DesignMorphCanvasPlatform";
 import { StageLabShell, type StageLabNavigationItem } from "../components/stageWorkbench/StageLabShell";
 import type {
   StageDocumentWorkbenchViewModel,
@@ -23,6 +27,7 @@ import {
   saveSoftwareDesignV2Draft,
 } from "../lib/softwareDesignV2";
 import { usePollingResource } from "../lib/usePollingResource";
+import { buildP3DesignMorphModel } from "./adapters/p3DesignMorphAdapter";
 import { buildP3DesignLabWorkbenchViewModel } from "./adapters/p3DesignLabWorkbenchAdapter";
 import "./P3DesignLabPage.css";
 
@@ -769,12 +774,57 @@ function SoftwareDesignWorkspaceView({
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
   onSetWindowId: (value: string) => void;
 }) {
-  const morphModel = buildP3DesignMorphModel(workbench);
-  const activeWindow = morphModel.windows.find((window) => window.id === activeWindowId) ?? morphModel.windows[0];
+  const [isWorkspaceFullscreen, setWorkspaceFullscreen] = useState(false);
+  const morphModel = useMemo(() => buildP3DesignMorphModel(workbench), [workbench]);
+  const activeWindow = useMemo(
+    () => morphModel.windows.find((window) => window.id === activeWindowId) ?? morphModel.windows[0],
+    [activeWindowId, morphModel.windows],
+  );
+  const [selectedMorphObject, setSelectedMorphObject] = useState<DesignMorphSelection | null>(() =>
+    activeWindow ? buildDesignMorphStageRelationSelection(activeWindow) : null,
+  );
   const activeStepId = getActiveConversionStepId(workbench.conversion.status, workbench.conversion.steps);
   const hasSession = workbench.product.documentId !== "p3-design-lab-draft";
   const hasDraft = workbench.product.status !== "empty";
   const strategyOptions = workbench.conversion.strategyOptions.map((item) => ({ label: item.label, value: item.value }));
+  const fullscreenButtonLabel = isWorkspaceFullscreen ? "缩回工作区" : "网页全屏";
+
+  useEffect(() => {
+    if (!isWorkspaceFullscreen) {
+      return undefined;
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setWorkspaceFullscreen(false);
+      }
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isWorkspaceFullscreen]);
+
+  useEffect(() => {
+    if (!activeWindow || selectedMorphObject) {
+      return;
+    }
+    setSelectedMorphObject(buildDesignMorphStageRelationSelection(activeWindow));
+  }, [activeWindow, selectedMorphObject]);
+
+  useEffect(() => {
+    if (!activeWindow || selectedMorphObject?.kind !== "stage_relation") {
+      return;
+    }
+    if (selectedMorphObject.objectId !== activeWindow.id) {
+      setSelectedMorphObject(buildDesignMorphStageRelationSelection(activeWindow));
+    }
+  }, [activeWindow, selectedMorphObject]);
+
+  function handleMorphWindowChange(windowId: string) {
+    onSetWindowId(windowId);
+    const nextWindow = morphModel.windows.find((window) => window.id === windowId);
+    if (nextWindow) {
+      setSelectedMorphObject(buildDesignMorphStageRelationSelection(nextWindow));
+    }
+  }
 
   return (
     <WorkspacePanel
@@ -786,8 +836,13 @@ function SoftwareDesignWorkspaceView({
           <Button aria-label="生成投影候选" disabled={!hasDraft} onClick={onGenerateProjection}>
             生成投影候选
           </Button>
+          <Button aria-label={fullscreenButtonLabel} onClick={() => setWorkspaceFullscreen((current) => !current)}>
+            {fullscreenButtonLabel}
+          </Button>
         </>
       }
+      compactHeader={isWorkspaceFullscreen}
+      fullscreen={isWorkspaceFullscreen}
       subtitle="需规、软设文档、功能树、分层架构、技术实现、展示形态和 P4 投影在同一个 Canvas 工作区中传递。"
       title="软设工作区"
     >
@@ -795,107 +850,27 @@ function SoftwareDesignWorkspaceView({
         <section className="p3-design-morph-main">
           <DesignMorphCanvasPlatform
             activeWindowId={activeWindow?.id ?? "reqdoc"}
+            selectedMorphObjectId={selectedMorphObject?.objectId}
             stages={morphModel.stages}
             windows={morphModel.windows}
-            onActiveWindowChange={onSetWindowId}
+            onActiveWindowChange={handleMorphWindowChange}
+            onSelectMorphObject={setSelectedMorphObject}
           />
         </section>
         <aside className="p3-design-morph-side" data-testid="design-morph-inspector">
-          <PanelHead title="当前选中对象" subtitle={activeWindow?.title ?? "需规 -> 软设文档"} />
-          <div className="p3-design-lab-conversion-control" data-testid="p3-design-lab-conversion-control">
-            <div className="p3-design-lab-conversion-strategy-picker">
-              <Text className="p3-design-lab-conversion-strategy-label" type="secondary">
-                转换策略
-              </Text>
-              <Select
-                aria-label="转换策略"
-                className="p3-design-lab-conversion-strategy"
-                disabled={!hasSession || workbench.conversion.status === "conversion_running"}
-                options={strategyOptions}
-                value={strategy}
-                onChange={(value) => onSetStrategy(toConversionStrategy(value))}
-              />
-            </div>
-            <div className="p3-design-lab-conversion-action-stack">
-              <Button
-                block
-                disabled={!hasSession || workbench.conversion.status === "conversion_running"}
-                type="primary"
-                onClick={onRunConversion}
-              >
-                执行基础转换
-              </Button>
-            </div>
-            <div className="p3-design-lab-conversion-timeline" aria-label="需规转软设转换进度">
-              {workbench.conversion.steps.map((step, index) => (
-                <div
-                  className={[
-                    "p3-design-lab-conversion-step",
-                    step.status === "done" ? "is-done" : "",
-                    step.status === "running" ? "is-running" : "",
-                    step.stepId === activeStepId ? "is-current" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  data-testid={`p3-design-lab-conversion-step-${step.stepId}`}
-                  key={step.stepId}
-                >
-                  <span>{index + 1}</span>
-                  <strong>{step.title}</strong>
-                </div>
-              ))}
-            </div>
-            <Button
-              block
-              className="p3-design-lab-conversion-workspace-action"
-              disabled={!hasDraft}
-              type={hasDraft ? "primary" : "default"}
-              onClick={onOpenWorkspace}
-            >
-              进入软设工作区微调
-            </Button>
-          </div>
-
-          <div className="p3-design-morph-inspector-section">
-            <Text strong>追溯链</Text>
-            <div className="p3-design-lab-runline compact" aria-label="软设形态追溯链">
-              {workbench.interaction.runline.map((step) => (
-                <span className={step.state === "done" ? "is-done" : step.state === "active" ? "is-active" : ""} key={step.key}>
-                  {step.label}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="p3-design-morph-inspector-section">
-            <Text strong>{workbench.product.title ?? "待生成软件设计说明草稿"}</Text>
-            <Text type="secondary">版本：{workbench.product.versionLabel}</Text>
-            <div className="p3-design-lab-command-list">
-              <CommandRow title="扩写本节" description="围绕当前窗口补充设计理由、模块边界和接口说明。" />
-              <CommandRow title="补充小节" description="在软设文档或结构化对象中增加一段细化内容。" />
-              <CommandRow title="应用补丁" description="把当前修改同步到正文、结构化事实和投影候选。" />
-            </div>
-          </div>
-
-          <div className="p3-design-morph-inspector-section">
-            <Text strong>结构化摘要</Text>
-            <div className="p3-design-lab-baseline-summary">
-              <Metric label="架构模式" value={workbench.outline.baseline?.architectureMode ?? "-"} />
-              <Metric label="模块数量" value={`${workbench.outline.baseline?.moduleCount ?? 0}`} />
-              <Metric label="投影节点" value={`${workbench.projection.items.length}`} />
-            </div>
-          </div>
-
-          <div className="p3-design-morph-inspector-section">
-            <Text strong>投影树</Text>
-            {workbench.projection.tree ? (
-              <div className="p3-design-lab-projection-tree compact" role="tree" aria-label="P4 工单投影树">
-                <ProjectionTreeNode node={workbench.projection.tree} selectedNodeId={getProjectionDetailNode(workbench.projection.tree)?.nodeId} />
-              </div>
-            ) : (
-              <div className="p3-design-lab-empty-state">{workbench.projection.emptyDescription}</div>
-            )}
-          </div>
+          <SelectedMorphObjectInspector
+            activeStepId={activeStepId}
+            activeWindowTitle={activeWindow?.title ?? "需规 -> 软设文档"}
+            hasDraft={hasDraft}
+            hasSession={hasSession}
+            selection={selectedMorphObject}
+            strategy={strategy}
+            strategyOptions={strategyOptions}
+            workbench={workbench}
+            onOpenWorkspace={onOpenWorkspace}
+            onRunConversion={onRunConversion}
+            onSetStrategy={onSetStrategy}
+          />
         </aside>
       </div>
     </WorkspacePanel>
@@ -921,83 +896,296 @@ function getActiveConversionStepId(
   return undefined;
 }
 
-function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewModel): {
-  stages: DesignMorphStageViewModel[];
-  windows: DesignMorphWindowViewModel[];
-} {
-  const requirementItems = workbench.inputFacts.sections.flatMap((section) => section.clauses.map((clause) => clause.title));
-  const documentItems = workbench.product.sections.map((section) => section.title);
-  const moduleItems = workbench.outline.baseline?.modules.map((module) => module.name) ?? [];
-  const projectionItems = collectProjectionTitles(workbench.projection.tree).slice(0, 5);
+function SelectedMorphObjectInspector({
+  activeStepId,
+  activeWindowTitle,
+  hasDraft,
+  hasSession,
+  selection,
+  strategy,
+  strategyOptions,
+  workbench,
+  onOpenWorkspace,
+  onRunConversion,
+  onSetStrategy,
+}: {
+  activeStepId?: string;
+  activeWindowTitle: string;
+  hasDraft: boolean;
+  hasSession: boolean;
+  selection: DesignMorphSelection | null;
+  strategy: P3DesignConversionStrategy;
+  strategyOptions: Array<{ label: string; value: string }>;
+  workbench: StageDocumentWorkbenchViewModel;
+  onOpenWorkspace: () => void;
+  onRunConversion: () => void;
+  onSetStrategy: (value: P3DesignConversionStrategy) => void;
+}) {
+  const subtitle = selection ? `${getSelectionKindLabel(selection.kind)} · ${selection.status ?? "待处理"}` : activeWindowTitle;
 
-  return {
-    stages: [
-      {
-        id: "requirement",
-        title: "需规",
-        subtitle: "P2 冻结输入",
-        summary: workbench.inputFacts.title || "等待选择已发布的需求规格说明。",
-        items: requirementItems.length ? requirementItems : ["需规正文", "结构化条款", "冻结快照"],
-      },
-      {
-        id: "document",
-        title: "软设文档",
-        subtitle: "A4 正文形态",
-        summary: workbench.product.title || "基础转换完成后生成软件设计说明正文草稿。",
-        items: documentItems.length ? documentItems : ["设计目标与范围", "总体架构", "模块划分"],
-      },
-      {
-        id: "functionTree",
-        title: "功能树",
-        subtitle: "从正文拆解功能项",
-        summary: "把需规功能拆成可追溯的树形设计对象，保持与文档章节一一对应。",
-        items: moduleItems.length ? moduleItems : ["规划任务管理", "冲突识别", "协同确认", "处置记录"],
-      },
-      {
-        id: "layeredArchitecture",
-        title: "分层架构",
-        subtitle: "按层次放置设计对象",
-        summary: `当前架构模式：${workbench.outline.baseline?.architectureMode ?? "待生成"}`,
-        items: ["展示层", "功能层", "服务层", "数据层"],
-      },
-      {
-        id: "technicalImplementation",
-        title: "技术实现",
-        subtitle: "映射框架与真实模块",
-        summary: "把理论模块落到框架、组件、服务和数据对象，允许一个框架覆盖多个理论层次。",
-        items: ["unified_service", "StageLabShell", "Adapter", "Provider"],
-      },
-      {
-        id: "presentationShape",
-        title: "展示形态",
-        subtitle: "表达 UI 呈现方式",
-        summary: "说明关键模块在界面上的布局位置、交互形式和可替换呈现方式。",
-        items: ["A4 文档", "Canvas 长卷", "右侧 Inspector", "CLI 微调"],
-      },
-      {
-        id: "p4Projection",
-        title: "P4 投影",
-        subtitle: "下游工具包树",
-        summary: workbench.projection.status === "empty" ? "生成投影候选后显示 P4 工单组织树。" : "P3 设计基线已投影为 P4 工单候选。",
-        items: projectionItems.length ? projectionItems : ["P4-WO-StageLab-Workbench", "共性工作台工具包", "P3 适配工具包"],
-      },
-    ],
-    windows: [
-      { id: "reqdoc", title: "需规 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
-      { id: "docfunc", title: "软设文档 -> 功能树", fromStageId: "document", toStageId: "functionTree" },
-      { id: "funcarch", title: "功能树 -> 分层架构", fromStageId: "functionTree", toStageId: "layeredArchitecture" },
-      { id: "archtech", title: "分层架构 -> 技术实现", fromStageId: "layeredArchitecture", toStageId: "technicalImplementation" },
-      { id: "techshape", title: "技术实现 -> 展示形态", fromStageId: "technicalImplementation", toStageId: "presentationShape" },
-      { id: "shapep4", title: "展示形态 -> P4 投影", fromStageId: "presentationShape", toStageId: "p4Projection" },
-    ],
-  };
+  return (
+    <>
+      <PanelHead title="当前选中对象" subtitle={subtitle} />
+      {selection?.kind === "stage_relation" ? (
+        <StageRelationInspector
+          activeStepId={activeStepId}
+          hasDraft={hasDraft}
+          hasSession={hasSession}
+          selection={selection}
+          strategy={strategy}
+          strategyOptions={strategyOptions}
+          workbench={workbench}
+          onOpenWorkspace={onOpenWorkspace}
+          onRunConversion={onRunConversion}
+          onSetStrategy={onSetStrategy}
+        />
+      ) : selection ? (
+        <MorphObjectDetailInspector selection={selection} workbench={workbench} />
+      ) : (
+        <MorphWorkspaceSummaryInspector activeWindowTitle={activeWindowTitle} workbench={workbench} />
+      )}
+    </>
+  );
 }
 
-function collectProjectionTitles(tree: StageDocumentWorkbenchViewModel["projection"]["tree"]): string[] {
-  if (!tree) {
-    return [];
+function StageRelationInspector({
+  activeStepId,
+  hasDraft,
+  hasSession,
+  selection,
+  strategy,
+  strategyOptions,
+  workbench,
+  onOpenWorkspace,
+  onRunConversion,
+  onSetStrategy,
+}: {
+  activeStepId?: string;
+  hasDraft: boolean;
+  hasSession: boolean;
+  selection: DesignMorphSelection;
+  strategy: P3DesignConversionStrategy;
+  strategyOptions: Array<{ label: string; value: string }>;
+  workbench: StageDocumentWorkbenchViewModel;
+  onOpenWorkspace: () => void;
+  onRunConversion: () => void;
+  onSetStrategy: (value: P3DesignConversionStrategy) => void;
+}) {
+  const relationType = typeof selection.payload?.relationType === "string" ? selection.payload.relationType : "";
+  const isBasicConversion = selection.objectId === "reqdoc";
+
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
+        <Text strong>关系：{selection.title}</Text>
+        <Text type="secondary">{selection.summary}</Text>
+        <div className="p3-design-lab-baseline-summary">
+          <Metric label="关系类型" value={relationType || "stage_relation"} />
+          <Metric label="输入" value={toInspectorText(selection.payload?.inputSummary)} />
+          <Metric label="输出" value={toInspectorText(selection.payload?.outputSummary)} />
+        </div>
+      </div>
+
+      {isBasicConversion ? (
+        <div className="p3-design-lab-conversion-control" data-testid="p3-design-lab-conversion-control">
+          <div className="p3-design-lab-conversion-strategy-picker">
+            <Text className="p3-design-lab-conversion-strategy-label" type="secondary">
+              转换策略
+            </Text>
+            <Select
+              aria-label="转换策略"
+              className="p3-design-lab-conversion-strategy"
+              disabled={!hasSession || workbench.conversion.status === "conversion_running"}
+              options={strategyOptions}
+              value={strategy}
+              onChange={(value) => onSetStrategy(toConversionStrategy(value))}
+            />
+          </div>
+          <div className="p3-design-lab-conversion-action-stack">
+            <Button
+              block
+              disabled={!hasSession || workbench.conversion.status === "conversion_running"}
+              type="primary"
+              onClick={onRunConversion}
+            >
+              执行基础转换
+            </Button>
+          </div>
+          <ConversionTimeline activeStepId={activeStepId} steps={workbench.conversion.steps} />
+          <Button
+            block
+            className="p3-design-lab-conversion-workspace-action"
+            disabled={!hasDraft}
+            type={hasDraft ? "primary" : "default"}
+            onClick={onOpenWorkspace}
+          >
+            进入软设工作区微调
+          </Button>
+        </div>
+      ) : (
+        <div className="p3-design-morph-inspector-section">
+          <Text strong>关系动作</Text>
+          <SelectionActionList actions={selection.actions} />
+        </div>
+      )}
+
+      <MorphTraceAndStructureSummary workbench={workbench} />
+    </>
+  );
+}
+
+function ConversionTimeline({
+  activeStepId,
+  steps,
+}: {
+  activeStepId?: string;
+  steps: StageDocumentWorkbenchViewModel["conversion"]["steps"];
+}) {
+  return (
+    <div className="p3-design-lab-conversion-timeline" aria-label="需规转软设转换进度">
+      {steps.map((step, index) => (
+        <div
+          className={[
+            "p3-design-lab-conversion-step",
+            step.status === "done" ? "is-done" : "",
+            step.status === "running" ? "is-running" : "",
+            step.stepId === activeStepId ? "is-current" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          data-testid={`p3-design-lab-conversion-step-${step.stepId}`}
+          key={step.stepId}
+        >
+          <span>{index + 1}</span>
+          <strong>{step.title}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MorphObjectDetailInspector({
+  selection,
+  workbench,
+}: {
+  selection: DesignMorphSelection;
+  workbench: StageDocumentWorkbenchViewModel;
+}) {
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
+        <Text strong>对象：{selection.title}</Text>
+        {selection.summary ? <Text type="secondary">{selection.summary}</Text> : null}
+        <Space wrap>
+          <Tag>{getSelectionKindLabel(selection.kind)}</Tag>
+          {selection.status ? <Tag color="blue">{selection.status}</Tag> : null}
+          {selection.sourceRefs.map((sourceRef) => (
+            <Tag key={sourceRef}>{sourceRef}</Tag>
+          ))}
+        </Space>
+      </div>
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>局部动作</Text>
+        <SelectionActionList actions={selection.actions} />
+      </div>
+      <MorphTraceAndStructureSummary workbench={workbench} />
+    </>
+  );
+}
+
+function MorphWorkspaceSummaryInspector({
+  activeWindowTitle,
+  workbench,
+}: {
+  activeWindowTitle: string;
+  workbench: StageDocumentWorkbenchViewModel;
+}) {
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>{workbench.product.title ?? "待生成软件设计说明草稿"}</Text>
+        <Text type="secondary">当前窗口：{activeWindowTitle}</Text>
+        <Text type="secondary">版本：{workbench.product.versionLabel}</Text>
+      </div>
+      <MorphTraceAndStructureSummary workbench={workbench} />
+    </>
+  );
+}
+
+function SelectionActionList({ actions }: { actions: DesignMorphSelection["actions"] }) {
+  if (!actions.length) {
+    return <div className="p3-design-lab-empty-state">当前对象没有可执行动作。</div>;
   }
-  return [tree.title, ...(tree.children ?? []).flatMap((child) => collectProjectionTitles(child))];
+  return (
+    <div className="p3-design-lab-command-list">
+      {actions.map((action) => (
+        <CommandRow
+          description={action.description ?? action.commandHint ?? "作用于当前选中对象。"}
+          key={action.actionId}
+          title={action.label}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MorphTraceAndStructureSummary({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>追溯链</Text>
+        <div className="p3-design-lab-runline compact" aria-label="软设形态追溯链">
+          {workbench.interaction.runline.map((step) => (
+            <span className={step.state === "done" ? "is-done" : step.state === "active" ? "is-active" : ""} key={step.key}>
+              {step.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>结构化摘要</Text>
+        <div className="p3-design-lab-baseline-summary">
+          <Metric label="架构模式" value={workbench.outline.baseline?.architectureMode ?? "-"} />
+          <Metric label="模块数量" value={`${workbench.outline.baseline?.moduleCount ?? 0}`} />
+          <Metric label="投影节点" value={`${workbench.projection.items.length}`} />
+        </div>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>投影树</Text>
+        {workbench.projection.tree ? (
+          <div className="p3-design-lab-projection-tree compact" role="tree" aria-label="P4 工单投影树">
+            <ProjectionTreeNode node={workbench.projection.tree} selectedNodeId={getProjectionDetailNode(workbench.projection.tree)?.nodeId} />
+          </div>
+        ) : (
+          <div className="p3-design-lab-empty-state">{workbench.projection.emptyDescription}</div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function getSelectionKindLabel(kind: DesignMorphSelection["kind"]) {
+  const labels: Record<DesignMorphSelection["kind"], string> = {
+    stage: "阶段对象",
+    stage_relation: "阶段关系",
+    requirement_section: "需规章节",
+    requirement_clause: "需规条款",
+    design_section: "软设章节",
+    design_block: "软设段落",
+    function_node: "功能节点",
+    architecture_layer: "架构层",
+    architecture_module: "架构模块",
+    technical_mapping: "技术映射",
+    presentation_shape: "展示形态",
+    projection_node: "投影节点",
+  };
+  return labels[kind];
+}
+
+function toInspectorText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : "-";
 }
 
 function DocumentSectionObjectsPanel({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
@@ -1423,19 +1611,31 @@ function WorkspacePanel({
   title,
   subtitle,
   actions,
+  fullscreen = false,
+  compactHeader = false,
   children,
 }: {
   title: string;
   subtitle: string;
   actions?: ReactNode;
+  fullscreen?: boolean;
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
+  const panelClassName = [
+    "p3-design-lab-workspace-panel",
+    fullscreen ? "is-web-fullscreen" : "",
+    compactHeader ? "is-compact-head" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="p3-design-lab-workspace-panel">
+    <div className={panelClassName} data-testid="p3-workspace-panel">
       <header className="p3-design-lab-workspace-head">
         <div>
           <Title level={3}>{title}</Title>
-          <Text type="secondary">{subtitle}</Text>
+          {!compactHeader ? <Text type="secondary">{subtitle}</Text> : null}
         </div>
         {actions ? <Space wrap>{actions}</Space> : null}
       </header>

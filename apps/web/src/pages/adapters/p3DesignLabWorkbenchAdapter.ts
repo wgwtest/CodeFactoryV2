@@ -3,7 +3,10 @@ import type {
   P3DesignLabSession,
   RequirementAuthoringCheckResult,
 } from "../../lib/api";
-import type { StageDocumentWorkbenchViewModel } from "../../components/stageWorkbench/models";
+import type {
+  StageDocumentWorkbenchViewModel,
+  StandardDocumentSectionViewModel,
+} from "../../components/stageWorkbench/models";
 
 type BuildP3DesignLabWorkbenchViewModelInput = {
   inputPackage: P3DesignLabInputPackage | null;
@@ -352,4 +355,22 @@ function buildProjectionTreeNode(
     acceptance: node.acceptance,
     children: node.children?.map((child) => buildProjectionTreeNode(child)).filter((child) => child !== undefined),
   };
+}
+
+export function buildRequirementDocumentSections(
+  sections: StageDocumentWorkbenchViewModel["inputFacts"]["sections"],
+): StandardDocumentSectionViewModel[] {
+  return sections.map<StandardDocumentSectionViewModel>((section) => ({
+    sectionId: section.sectionId,
+    title: section.title,
+    status: "generated",
+    blocks: section.clauses.map((clause) => ({
+      blockId: clause.clauseId,
+      kind: "clause" as const,
+      title: clause.title,
+      content: clause.content,
+      sourceRefs: [clause.clauseId],
+      qualityRefs: [],
+    })),
+  }));
 }

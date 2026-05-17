@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -190,6 +192,8 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
   expect(within(morphPlatform).getByText("缩放 90%")).toBeInTheDocument();
   expect(within(morphPlatform).getByText(/^平移 /)).toBeInTheDocument();
+  expectCanvasWorkspaceColumnsToStretch();
+  expectWorkspaceFullscreenToCoverViewport();
   expect(within(workspace).getByRole("combobox", { name: "转换策略" })).toBeInTheDocument();
   expect(within(workspace).getAllByText("标准软设草稿生成").length).toBeGreaterThanOrEqual(1);
   fireEvent.mouseDown(within(workspace).getByRole("combobox", { name: "转换策略" }));
@@ -201,6 +205,17 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
   expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "执行基础转换" }));
   expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(workspace).getByRole("button", { name: "网页全屏" })).toBeInTheDocument();
+  fireEvent.click(within(workspace).getByRole("button", { name: "网页全屏" }));
+  expect(within(workspace).getByTestId("p3-workspace-panel")).toHaveClass("is-web-fullscreen");
+  expect(within(workspace).getByTestId("p3-workspace-panel")).toHaveClass("is-compact-head");
+  expect(within(workspace).queryByText("需规、软设文档、功能树、分层架构、技术实现、展示形态和 P4 投影在同一个 Canvas 工作区中传递。")).not.toBeInTheDocument();
+  expect(within(workspace).getByRole("button", { name: "缩回工作区" })).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(within(workspace).getByTestId("p3-workspace-panel")).not.toHaveClass("is-web-fullscreen");
+  fireEvent.click(within(workspace).getByRole("button", { name: "网页全屏" }));
+  fireEvent.click(within(workspace).getByRole("button", { name: "缩回工作区" }));
+  expect(within(workspace).getByTestId("p3-workspace-panel")).not.toHaveClass("is-web-fullscreen");
   expect(within(conversionControl).queryByText("加载正文、结构化条款和冻结快照。")).not.toBeInTheDocument();
   expect(within(conversionControl).queryByText("执行基础转换后生成软设草稿、结构化设计事实和追溯摘要。")).not.toBeInTheDocument();
   expect(within(conversionControl).queryByText("转换完成后进入软设工作区微调。")).not.toBeInTheDocument();
@@ -216,7 +231,8 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   );
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(morphPlatform).getByText("Canvas 窗口：软设文档 -> 功能树")).toBeInTheDocument();
-  fireEvent.click(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(workspace).queryByRole("button", { name: "进入软设工作区微调" })).not.toBeInTheDocument();
+  expect(within(workspace).getByText("关系：软设文档 -> 功能树")).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
 
@@ -224,8 +240,18 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(workspace).getByTestId("design-morph-inspector")).toBeInTheDocument();
   expect(within(workspace).getByText("当前选中对象")).toBeInTheDocument();
   expect(within(workspace).getByText("追溯链")).toBeInTheDocument();
-  expect(within(workspace).getByText("扩写本节")).toBeInTheDocument();
+  expect(within(workspace).getByText("关系：软设文档 -> 功能树")).toBeInTheDocument();
   expect(within(workspace).getAllByText(new RegExp(newVersionLabel)).length).toBeGreaterThanOrEqual(1);
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
+  expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
+  expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
+  expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
+  expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
+  expect(within(workspace).getByTestId("p3-design-lab-conversion-control")).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));
   expect(await screen.findByText("设计会话：draft_saved")).toBeInTheDocument();
@@ -279,6 +305,14 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
+});
+
+test("keeps the canvas carrier stretched to the same bottom edge as the inspector", () => {
+  expectCanvasWorkspaceColumnsToStretch();
+});
+
+test("uses a compact inline title and subtitle treatment for all morph stage frames", () => {
+  expectDesignMorphStageFrameHeaderToBeInline();
 });
 
 test("refreshes P3 input packages while the page stays open", async () => {
@@ -524,4 +558,33 @@ function buildConversion(status: string, strategy: string) {
       : null,
     traceability_summary: done ? { mapped_clause_count: 2, target_count: 4, pending_confirmation_count: 0 } : null,
   };
+}
+
+function expectCanvasWorkspaceColumnsToStretch() {
+  const pageCss = readFileSync(resolve(process.cwd(), "src/pages/P3DesignLabPage.css"), "utf8");
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+
+  expect(pageCss).toMatch(/\.p3-design-morph-workspace\s*{[^}]*align-items:\s*stretch;/s);
+  expect(pageCss).toMatch(/\.p3-design-morph-main,\s*\.p3-design-morph-side\s*{[^}]*align-self:\s*stretch;/s);
+  expect(pageCss).toMatch(/\.p3-design-morph-main\s*{[^}]*display:\s*grid;/s);
+  expect(canvasCss).toMatch(/\.design-morph-platform\s*{[^}]*height:\s*100%;/s);
+  expect(canvasCss).toMatch(/\.design-morph-canvas-shell\s*{[^}]*min-height:\s*0;/s);
+}
+
+function expectDesignMorphStageFrameHeaderToBeInline() {
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+  const platformSource = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/DesignMorphCanvasPlatform.tsx"), "utf8");
+
+  expect(platformSource).toContain("design-morph-object-title-row");
+  expect(canvasCss).toMatch(/\.design-morph-object-title-copy\s*{[^}]*display:\s*flex;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-copy\s*{[^}]*align-items:\s*center;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*font-size:\s*10px;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*background:\s*rgba\(47,\s*119,\s*189,\s*0\.1\);/s);
+  expect(canvasCss).not.toMatch(/\.design-morph-object-title-copy\s*{[^}]*display:\s*grid;/s);
+}
+
+function expectWorkspaceFullscreenToCoverViewport() {
+  const pageCss = readFileSync(resolve(process.cwd(), "src/pages/P3DesignLabPage.css"), "utf8");
+
+  expect(pageCss).toMatch(/\.p3-design-lab-workspace-panel\.is-web-fullscreen\s*{[^}]*inset:\s*0;/s);
 }
