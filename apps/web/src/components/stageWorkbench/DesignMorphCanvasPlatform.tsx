@@ -31,6 +31,13 @@ type CanvasViewportState = {
   scale: number;
 };
 
+type CanvasStageLayoutState = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 type MorphCanvasItem = DesignMorphStageViewModel & {
   index: number;
   type: "paper" | "tree" | "architecture" | "table" | "cards";
@@ -57,11 +64,25 @@ export type TrackViewportFrame = {
 };
 
 type DragState = {
-  pointerId: number;
+  pointerId: number | null;
+  source: "mouse" | "pointer";
   sx: number;
   sy: number;
   vx: number;
   vy: number;
+  moved: boolean;
+};
+
+type NodeDragMode = "move" | "resize";
+
+type NodeDragState = {
+  pointerId: number | null;
+  source: "mouse" | "pointer";
+  stageId: string;
+  mode: NodeDragMode;
+  sx: number;
+  sy: number;
+  startItem: Pick<MorphCanvasItem, "x" | "y" | "w" | "h">;
   moved: boolean;
 };
 
@@ -99,6 +120,11 @@ type DesignMorphCanvasPlatformProps = {
 
 const MIN_CANVAS_SCALE = 0.42;
 const MAX_CANVAS_SCALE = 1.65;
+const MIN_STAGE_NODE_WIDTH = 360;
+const MIN_STAGE_NODE_HEIGHT = 360;
+const STAGE_NODE_TITLE_BAR_HEIGHT = 168;
+const STAGE_NODE_RESIZE_HIT_SIZE = 40;
+const STAGE_NODE_CONTROL_OUTSET = 72;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
 const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
@@ -121,20 +147,34 @@ export function DesignMorphCanvasPlatform({
   const trackCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const nodeDragRef = useRef<NodeDragState | null>(null);
   const trackDragRef = useRef<TrackDragState | null>(null);
   const itemsRef = useRef<MorphCanvasItem[]>([]);
   const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
   const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
   const [layoutRevision, setLayoutRevision] = useState(0);
-  const items = useMemo(() => buildCanvasItems(stages), [stages]);
+  const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
+  const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
   const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
   const activeWindow = windows[activePairIndex] ?? windows[0];
   const activeWindowKey = activeWindow ? `${activeWindow.id}:${activeWindow.toStageId}:${activePairIndex}` : "none";
+  const selectedItem = items.find((item) => item.id === selectedStageId) ?? items[1] ?? items[0];
 
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  useEffect(() => {
+    setStageLayouts((current) => reconcileCanvasLayouts(stages, current));
+  }, [stages]);
+
+  useEffect(() => {
+    if (!items.length || items.some((item) => item.id === selectedStageId)) {
+      return;
+    }
+    setSelectedStageId(items[1]?.id ?? items[0]?.id ?? "");
+  }, [items, selectedStageId]);
 
   const centerItem = useCallback(
     (stageId: string, scale: number) => {
@@ -182,11 +222,14 @@ export function DesignMorphCanvasPlatform({
   useEffect(() => {
     const mainCanvas = mainCanvasRef.current;
     const trackCanvas = trackCanvasRef.current;
-    if (!mainCanvas || !trackCanvas || window.navigator.userAgent.toLowerCase().includes("jsdom")) {
+    if (!mainCanvas || !trackCanvas) {
       return;
     }
-    const mainContext = mainCanvas.getContext("2d");
-    const trackContext = trackCanvas.getContext("2d");
+    if (isJsdomWithNativeCanvas(mainCanvas) || isJsdomWithNativeCanvas(trackCanvas)) {
+      return;
+    }
+    const mainContext = getCanvasContext(mainCanvas);
+    const trackContext = getCanvasContext(trackCanvas);
     if (!mainContext || !trackContext) {
       return;
     }
@@ -347,11 +390,49 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    beginMainDrag(event.currentTarget, event.clientX, event.clientY, event.pointerId, "pointer");
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  }
+
+  function handleMainMouseDown(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (event.button !== 0 || dragRef.current || nodeDragRef.current) {
+      return;
+    }
+    beginMainDrag(event.currentTarget, event.clientX, event.clientY, null, "mouse");
+  }
+
+  function beginMainDrag(
+    canvas: HTMLCanvasElement,
+    clientX: number,
+    clientY: number,
+    pointerId: number | null,
+    source: DragState["source"],
+  ) {
+    const point = canvasPoint(canvas, clientX, clientY);
+    const world = screenToWorld(point, viewport);
+    const nodeHit = hitTestNodeControl(itemsRef.current, world);
+    if (nodeHit) {
+      setSelectedStageId(nodeHit.item.id);
+      canvas.style.cursor = nodeHit.mode === "resize" ? "nwse-resize" : "move";
+      nodeDragRef.current = {
+        pointerId,
+        source,
+        stageId: nodeHit.item.id,
+        mode: nodeHit.mode,
+        sx: clientX,
+        sy: clientY,
+        startItem: { x: nodeHit.item.x, y: nodeHit.item.y, w: nodeHit.item.w, h: nodeHit.item.h },
+        moved: false,
+      };
+      return;
+    }
     dragRef.current = {
-      pointerId: event.pointerId,
-      sx: event.clientX,
-      sy: event.clientY,
+      pointerId,
+      source,
+      sx: clientX,
+      sy: clientY,
       vx: viewport.x,
       vy: viewport.y,
       moved: false,
@@ -359,30 +440,128 @@ export function DesignMorphCanvasPlatform({
   }
 
   function handleMainPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag?.source === "pointer" && (nodeDrag.pointerId === null || nodeDrag.pointerId === event.pointerId)) {
+      applyNodeDrag(nodeDrag, event.clientX, event.clientY);
       return;
     }
-    const deltaX = event.clientX - drag.sx;
-    const deltaY = event.clientY - drag.sy;
+    const drag = dragRef.current;
+    if (!drag || drag.source !== "pointer" || (drag.pointerId !== null && drag.pointerId !== event.pointerId)) {
+      updateMainCursor(event.currentTarget, event.clientX, event.clientY);
+      return;
+    }
+    applyViewportDrag(drag, event.clientX, event.clientY);
+  }
+
+  function handleMainMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag?.source === "mouse") {
+      applyNodeDrag(nodeDrag, event.clientX, event.clientY);
+      return;
+    }
+    const drag = dragRef.current;
+    if (!drag || drag.source !== "mouse") {
+      updateMainCursor(event.currentTarget, event.clientX, event.clientY);
+      return;
+    }
+    applyViewportDrag(drag, event.clientX, event.clientY);
+  }
+
+  function applyViewportDrag(drag: DragState, clientX: number, clientY: number) {
+    const deltaX = clientX - drag.sx;
+    const deltaY = clientY - drag.sy;
     drag.moved = drag.moved || Math.abs(deltaX) + Math.abs(deltaY) > 6;
     setViewport((current) => ({ ...current, x: drag.vx + deltaX, y: drag.vy + deltaY }));
   }
 
+  function applyNodeDrag(drag: NodeDragState, clientX: number, clientY: number) {
+    const deltaX = clientX - drag.sx;
+    const deltaY = clientY - drag.sy;
+    const worldDeltaX = deltaX / viewport.scale;
+    const worldDeltaY = deltaY / viewport.scale;
+    drag.moved = drag.moved || Math.abs(deltaX) + Math.abs(deltaY) > 6;
+    setStageLayouts((current) => {
+      const nextLayout =
+        drag.mode === "resize"
+          ? {
+              ...drag.startItem,
+              w: Math.max(MIN_STAGE_NODE_WIDTH, Math.round(drag.startItem.w + worldDeltaX)),
+              h: Math.max(MIN_STAGE_NODE_HEIGHT, Math.round(drag.startItem.h + worldDeltaY)),
+            }
+          : {
+              ...drag.startItem,
+              x: Math.round(drag.startItem.x + worldDeltaX),
+              y: Math.round(drag.startItem.y + worldDeltaY),
+            };
+      return { ...current, [drag.stageId]: nextLayout };
+    });
+  }
+
   function handleMainPointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag?.source === "pointer" && (nodeDrag.pointerId === null || nodeDrag.pointerId === event.pointerId)) {
+      nodeDragRef.current = null;
+      updateMainCursor(event.currentTarget, event.clientX, event.clientY);
       return;
     }
+    const drag = dragRef.current;
+    if (!drag || drag.source !== "pointer" || (drag.pointerId !== null && drag.pointerId !== event.pointerId)) {
+      return;
+    }
+    finishMainViewportDrag(event.currentTarget, event.clientX, event.clientY, drag);
+  }
+
+  function handleMainMouseUp(event: ReactMouseEvent<HTMLCanvasElement>) {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag?.source === "mouse") {
+      nodeDragRef.current = null;
+      updateMainCursor(event.currentTarget, event.clientX, event.clientY);
+      return;
+    }
+    const drag = dragRef.current;
+    if (!drag || drag.source !== "mouse") {
+      return;
+    }
+    finishMainViewportDrag(event.currentTarget, event.clientX, event.clientY, drag);
+  }
+
+  function finishMainViewportDrag(canvas: HTMLCanvasElement, clientX: number, clientY: number, drag: DragState) {
     dragRef.current = null;
+    updateMainCursor(canvas, clientX, clientY);
     if (drag.moved) {
       return;
     }
-    const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
-    const hit = hitTest(items, screenToWorld(point, viewport));
+    const point = canvasPoint(canvas, clientX, clientY);
+    const hit = hitTest(itemsRef.current, screenToWorld(point, viewport));
     if (hit) {
       setSelectedStageId(hit.id);
     }
+  }
+
+  function handleMainPointerLeave(event: ReactPointerEvent<HTMLCanvasElement>) {
+    handleMainPointerUp(event);
+    if (!dragRef.current && !nodeDragRef.current) {
+      event.currentTarget.style.cursor = "grab";
+    }
+  }
+
+  function handleMainMouseLeave(event: ReactMouseEvent<HTMLCanvasElement>) {
+    if (nodeDragRef.current?.source === "mouse") {
+      nodeDragRef.current = null;
+    }
+    if (dragRef.current?.source === "mouse") {
+      dragRef.current = null;
+    }
+    event.currentTarget.style.cursor = "grab";
+  }
+
+  function updateMainCursor(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    if (dragRef.current || nodeDragRef.current) {
+      return;
+    }
+    const point = canvasPoint(canvas, clientX, clientY);
+    const hit = hitTestNodeControl(itemsRef.current, screenToWorld(point, viewport));
+    canvas.style.cursor = hit?.mode === "resize" ? "nwse-resize" : hit ? "move" : "grab";
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
@@ -450,8 +629,12 @@ export function DesignMorphCanvasPlatform({
           className="design-morph-main-canvas"
           data-testid="design-morph-main-canvas"
           ref={mainCanvasRef}
+          onMouseDown={handleMainMouseDown}
+          onMouseLeave={handleMainMouseLeave}
+          onMouseMove={handleMainMouseMove}
+          onMouseUp={handleMainMouseUp}
           onPointerDown={handleMainPointerDown}
-          onPointerLeave={handleMainPointerUp}
+          onPointerLeave={handleMainPointerLeave}
           onPointerMove={handleMainPointerMove}
           onPointerUp={handleMainPointerUp}
           onWheel={handleWheel}
@@ -462,7 +645,12 @@ export function DesignMorphCanvasPlatform({
           <span>
             平移 {Math.round(viewport.x)},{Math.round(viewport.y)}
           </span>
-          <span>拖拽平移 · 滚轮缩放 · 点击对象选中</span>
+          {selectedItem ? (
+            <span>{`节点：${selectedItem.title} @${Math.round(selectedItem.x)},${Math.round(selectedItem.y)} · ${Math.round(
+              selectedItem.w,
+            )}x${Math.round(selectedItem.h)}`}</span>
+          ) : null}
+          <span>拖拽空白平移 · 滚轮缩放 · 拖标题栏移动节点 · 右下角缩放节点</span>
         </div>
       </div>
       <footer className="design-morph-controls">
@@ -486,7 +674,43 @@ export function DesignMorphCanvasPlatform({
   );
 }
 
-function buildCanvasItems(stages: DesignMorphStageViewModel[]): MorphCanvasItem[] {
+function buildCanvasLayoutState(stages: DesignMorphStageViewModel[]): Record<string, CanvasStageLayoutState> {
+  return stages.reduce<Record<string, CanvasStageLayoutState>>((layouts, stage, index) => {
+    layouts[stage.id] = getDefaultStageLayout(index);
+    return layouts;
+  }, {});
+}
+
+function reconcileCanvasLayouts(
+  stages: DesignMorphStageViewModel[],
+  current: Record<string, CanvasStageLayoutState>,
+): Record<string, CanvasStageLayoutState> {
+  const stageIds = new Set(stages.map((stage) => stage.id));
+  let changed = Object.keys(current).some((stageId) => !stageIds.has(stageId));
+  const next = stages.reduce<Record<string, CanvasStageLayoutState>>((layouts, stage, index) => {
+    const existing = current[stage.id];
+    layouts[stage.id] = existing ?? getDefaultStageLayout(index);
+    changed = changed || !existing;
+    return layouts;
+  }, {});
+  return changed ? next : current;
+}
+
+function getDefaultStageLayout(index: number): CanvasStageLayoutState {
+  const layout = STAGE_LAYOUTS[index] ?? {
+    x: 80 + index * 680,
+    y: 140,
+    w: 540,
+    h: 560,
+    type: "cards" as const,
+  };
+  return { x: layout.x, y: layout.y, w: layout.w, h: layout.h };
+}
+
+function buildCanvasItems(
+  stages: DesignMorphStageViewModel[],
+  stageLayouts: Record<string, CanvasStageLayoutState>,
+): MorphCanvasItem[] {
   return stages.map((stage, index) => {
     const layout = STAGE_LAYOUTS[index] ?? {
       x: 80 + index * 680,
@@ -499,10 +723,10 @@ function buildCanvasItems(stages: DesignMorphStageViewModel[]): MorphCanvasItem[
       ...stage,
       index,
       type: layout.type,
-      x: layout.x,
-      y: layout.y,
-      w: layout.w,
-      h: layout.h,
+      x: stageLayouts[stage.id]?.x ?? layout.x,
+      y: stageLayouts[stage.id]?.y ?? layout.y,
+      w: stageLayouts[stage.id]?.w ?? layout.w,
+      h: stageLayouts[stage.id]?.h ?? layout.h,
     };
   });
 }
@@ -546,7 +770,9 @@ function renderTrackCanvas(
   const left = TRACK_PADDING_X;
   const right = width - 36;
   const y = Math.max(42, height * 0.48);
-  const gap = (right - left) / Math.max(1, items.length - 1);
+  const worldLeft = Math.min(...items.map((item) => item.x));
+  const worldRight = Math.max(...items.map((item) => item.x + item.w));
+  const worldWidth = Math.max(1, worldRight - worldLeft);
 
   context.strokeStyle = "#bfd0cc";
   context.lineWidth = 2;
@@ -567,19 +793,25 @@ function renderTrackCanvas(
   drawTrackHandle(context, viewportFrame.x + viewportFrame.width, viewportFrame.y, viewportFrame.height);
 
   items.forEach((item, index) => {
-    const x = left + index * gap;
+    const itemLeft = left + ((item.x - worldLeft) / worldWidth) * (right - left);
+    const itemRight = left + ((item.x + item.w - worldLeft) / worldWidth) * (right - left);
+    const itemWidth = clamp(itemRight - itemLeft, 18, 118);
+    const itemCenter = left + ((item.x + item.w / 2 - worldLeft) / worldWidth) * (right - left);
+    const x = itemCenter - itemWidth / 2;
     const active = index === activePairIndex || index === activePairIndex + 1;
     context.fillStyle = active ? "#143e52" : index < activePairIndex ? "#e4f2e9" : "#fff";
     context.strokeStyle = active ? "#143e52" : index < activePairIndex ? "#80b995" : "#aebfba";
     context.lineWidth = 2;
     context.beginPath();
-    context.rect(x - 8, y - 8, 16, 16);
+    context.rect(x, y - 8, itemWidth, 16);
     context.fill();
     context.stroke();
+    context.fillStyle = active ? "rgba(255, 255, 255, 0.92)" : "#6f807d";
+    context.fillRect(itemCenter - 1, y - 4, 2, 8);
     context.fillStyle = index < activePairIndex ? "#2b7448" : "#14211f";
-    context.font = "900 13px Microsoft YaHei, sans-serif";
+    context.font = "900 12px Microsoft YaHei, sans-serif";
     context.textAlign = "center";
-    context.fillText(item.title, x, y + 34);
+    context.fillText(item.title, itemCenter, y + 34);
   });
   context.textAlign = "left";
 }
@@ -721,6 +953,19 @@ function prepareCanvas(
   return { width, height };
 }
 
+function getCanvasContext(canvas: HTMLCanvasElement) {
+  try {
+    return canvas.getContext("2d");
+  } catch {
+    return null;
+  }
+}
+
+function isJsdomWithNativeCanvas(canvas: HTMLCanvasElement) {
+  const getContext = canvas.getContext as HTMLCanvasElement["getContext"] & { _isMockFunction?: boolean };
+  return window.navigator.userAgent.toLowerCase().includes("jsdom") && !getContext._isMockFunction;
+}
+
 function drawCanvasBackground(context: CanvasRenderingContext2D, width: number, height: number) {
   context.fillStyle = "#f9fbfa";
   context.fillRect(0, 0, width, height);
@@ -748,6 +993,16 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
   context.fill();
   context.stroke();
 
+  context.fillStyle = selected ? "rgba(20, 62, 82, 0.08)" : "rgba(215, 224, 220, 0.28)";
+  roundRect(context, item.x + 1.5, item.y + 1.5, item.w - 3, STAGE_NODE_TITLE_BAR_HEIGHT - 3, 7);
+  context.fill();
+  context.strokeStyle = "rgba(20, 62, 82, 0.12)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(item.x + 18, item.y + STAGE_NODE_TITLE_BAR_HEIGHT);
+  context.lineTo(item.x + item.w - 18, item.y + STAGE_NODE_TITLE_BAR_HEIGHT);
+  context.stroke();
+
   context.fillStyle = selected ? "#143e52" : "#60706c";
   context.font = "850 15px Microsoft YaHei, sans-serif";
   context.fillText(item.subtitle, item.x + 24, item.y + 34);
@@ -757,6 +1012,8 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
   context.fillStyle = "#40514d";
   context.font = "14px Microsoft YaHei, sans-serif";
   wrapCanvasText(context, item.summary, item.x + 24, item.y + 132, item.w - 48, 23, 4);
+
+  drawItemControls(context, item, selected);
 
   if (item.type === "architecture") {
     drawArchitectureItem(context, item);
@@ -775,6 +1032,43 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
     return;
   }
   drawPaperItem(context, item);
+}
+
+function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
+  const gripX = item.x + item.w - 52;
+  const gripY = item.y + 24;
+  context.fillStyle = selected ? "#143e52" : "#edf2f0";
+  context.strokeStyle = selected ? "#143e52" : "#b6c6c1";
+  context.lineWidth = 1.4;
+  roundRect(context, gripX, gripY, 28, 28, 7);
+  context.fill();
+  context.stroke();
+  context.strokeStyle = selected ? "rgba(255, 255, 255, 0.86)" : "#81918d";
+  context.lineWidth = 1.5;
+  for (let index = 0; index < 3; index += 1) {
+    const y = gripY + 9 + index * 5;
+    context.beginPath();
+    context.moveTo(gripX + 8, y);
+    context.lineTo(gripX + 20, y);
+    context.stroke();
+  }
+
+  const resizeX = item.x + item.w - 34;
+  const resizeY = item.y + item.h - 34;
+  context.fillStyle = selected ? "rgba(20, 62, 82, 0.1)" : "rgba(255, 255, 255, 0.88)";
+  context.strokeStyle = selected ? "#143e52" : "#9eafaa";
+  context.lineWidth = 1.4;
+  roundRect(context, resizeX, resizeY, 24, 24, 6);
+  context.fill();
+  context.stroke();
+  context.strokeStyle = selected ? "#143e52" : "#748481";
+  context.lineWidth = 1.6;
+  [0, 6, 12].forEach((offset) => {
+    context.beginPath();
+    context.moveTo(resizeX + 8 + offset, resizeY + 20);
+    context.lineTo(resizeX + 20, resizeY + 8 + offset);
+    context.stroke();
+  });
 }
 
 function drawPaperItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
@@ -900,6 +1194,34 @@ function hitTest(items: MorphCanvasItem[], world: { x: number; y: number }) {
     const item = items[index];
     if (world.x >= item.x && world.x <= item.x + item.w && world.y >= item.y && world.y <= item.y + item.h) {
       return item;
+    }
+  }
+  return null;
+}
+
+function hitTestNodeControl(items: MorphCanvasItem[], world: { x: number; y: number }): { item: MorphCanvasItem; mode: NodeDragMode } | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    const resizeLeft = item.x + item.w - STAGE_NODE_RESIZE_HIT_SIZE;
+    const resizeTop = item.y + item.h - STAGE_NODE_RESIZE_HIT_SIZE;
+    const resizeRight = item.x + item.w + STAGE_NODE_CONTROL_OUTSET;
+    const resizeBottom = item.y + item.h + STAGE_NODE_CONTROL_OUTSET;
+    if (world.x >= resizeLeft && world.x <= resizeRight && world.y >= resizeTop && world.y <= resizeBottom) {
+      return { item, mode: "resize" };
+    }
+
+    const inTitleBar =
+      world.x >= item.x &&
+      world.x <= item.x + item.w &&
+      world.y >= item.y &&
+      world.y <= item.y + Math.min(STAGE_NODE_TITLE_BAR_HEIGHT, item.h);
+    const inTopRightGrip =
+      world.x >= item.x + item.w - STAGE_NODE_CONTROL_OUTSET &&
+      world.x <= item.x + item.w + STAGE_NODE_CONTROL_OUTSET &&
+      world.y >= item.y - STAGE_NODE_CONTROL_OUTSET * 0.5 &&
+      world.y <= item.y + STAGE_NODE_CONTROL_OUTSET;
+    if (inTitleBar || inTopRightGrip) {
+      return { item, mode: "move" };
     }
   }
   return null;

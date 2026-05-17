@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, type Mock } from "vitest";
 
 import {
   calculateTrackViewportFrame,
@@ -139,11 +139,58 @@ describe("DesignMorphCanvasPlatform", () => {
 
     canvasMock.restore();
   });
+
+  test("moves a stage node when the user drags its title bar instead of panning the whole canvas", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const initialPan = readPanLabel(platform);
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 280, clientY: 140 });
+    fireEvent.mouseMove(mainCanvas, { clientX: 340, clientY: 170 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 340, clientY: 170 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("resizes a stage node from its bottom-right handle and updates the track projection", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const trackCanvas = within(platform).getByTestId("design-morph-track-canvas");
+    const initialTrackDraws = canvasMock.context.rect.mock.calls.length;
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 780, clientY: 605 });
+    fireEvent.mouseMove(mainCanvas, { clientX: 840, clientY: 655 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 840, clientY: 655 });
+    fireEvent.wheel(trackCanvas, { deltaY: -600, clientX: 195, clientY: 30 });
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 587x696")).toBeInTheDocument();
+    expect(canvasMock.context.rect.mock.calls.length).toBeGreaterThan(initialTrackDraws);
+
+    canvasMock.restore();
+  });
 });
 
 function readZoomPercent(platform: HTMLElement) {
   const label = within(platform).getByText(/^缩放 /).textContent ?? "";
   return Number(label.replace(/[^\d]/g, ""));
+}
+
+function readPanLabel(platform: HTMLElement) {
+  return within(platform).getByText(/^平移 /).textContent;
 }
 
 function CanvasRefreshHarness() {
@@ -190,7 +237,11 @@ function buildWindows(): DesignMorphWindowViewModel[] {
   ];
 }
 
-function buildCanvasContextMock() {
+type CanvasContextMock = CanvasRenderingContext2D & {
+  rect: Mock<(x: number, y: number, w: number, h: number) => void>;
+};
+
+function buildCanvasContextMock(): CanvasContextMock {
   return {
     arcTo: vi.fn(),
     beginPath: vi.fn(),
@@ -204,7 +255,7 @@ function buildCanvasContextMock() {
     lineTo: vi.fn(),
     measureText: vi.fn((text: string) => ({ width: text.length * 12 })),
     moveTo: vi.fn(),
-    rect: vi.fn(),
+    rect: vi.fn<(x: number, y: number, w: number, h: number) => void>(),
     restore: vi.fn(),
     save: vi.fn(),
     scale: vi.fn(),
@@ -217,14 +268,15 @@ function buildCanvasContextMock() {
     lineWidth: 1,
     strokeStyle: "",
     textAlign: "left",
-  } as unknown as CanvasRenderingContext2D;
+  } as unknown as CanvasContextMock;
 }
 
 function mockCanvasEnvironment() {
   if (!HTMLCanvasElement.prototype.setPointerCapture) {
     HTMLCanvasElement.prototype.setPointerCapture = () => undefined;
   }
-  const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(buildCanvasContextMock());
+  const context = buildCanvasContextMock();
+  const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
   const getBoundingClientRect = vi
     .spyOn(HTMLCanvasElement.prototype, "getBoundingClientRect")
     .mockImplementation(function getCanvasRect(this: HTMLCanvasElement) {
@@ -247,6 +299,7 @@ function mockCanvasEnvironment() {
     .mockImplementation(() => undefined);
 
   return {
+    context,
     restore: () => {
       getContext.mockRestore();
       getBoundingClientRect.mockRestore();
