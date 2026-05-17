@@ -91,6 +91,8 @@ def test_p2_publish_registers_platform_artifact_and_p3_consumes_it() -> None:
         "/api/software-design-v2/sessions",
         json={
             "input_package_id": artifact["artifact_id"],
+            "design_title": "空域协同规划软件设计说明 - 集成测试",
+            "version_label": "v0.1",
             "generation_policy": {
                 "architecture_preference": "统一服务优先，保留拆分点",
                 "module_granularity": "3-5 个业务模块，不拆太细",

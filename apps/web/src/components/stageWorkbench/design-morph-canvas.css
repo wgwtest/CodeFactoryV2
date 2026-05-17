@@ -96,21 +96,43 @@
 
 .design-morph-object-title-copy {
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.design-morph-object-title-copy strong,
-.design-morph-object-title-copy span {
+.design-morph-object-title-row {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.design-morph-object-title-copy strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.design-morph-object-title-copy span {
+.design-morph-object-title-meta {
+  flex: 0 1 auto;
+  max-width: 128px;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border: 1px solid rgba(47, 119, 189, 0.14);
+  border-radius: 999px;
+  background: rgba(47, 119, 189, 0.1);
   color: #607186;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .design-morph-object-actions {

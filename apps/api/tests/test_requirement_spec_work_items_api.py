@@ -124,17 +124,16 @@ def test_requirement_spec_work_items_bootstraps_publishable_default_for_lab_test
     assert len(items) == 1
     default_item = items[0]
     assert default_item["title"] == "空域协同规划软件需求规格说明"
-    assert default_item["status"] == "draft"
-    assert default_item["p3_consumable"] is False
-    assert "publish" in default_item["available_actions"]
-
-    published = client.post(f"/api/requirement-analysis/spec-items/{default_item['spec_item_id']}/publish")
-    assert published.status_code == 200
-    assert published.json()["status"] == "published_to_p3"
-    assert published.json()["p3_consumable"] is True
+    assert default_item["status"] == "published_to_p3"
+    assert default_item["p3_consumable"] is True
+    assert default_item["published_requirement_spec_id"]
+    assert default_item["published_package_id"]
+    assert "revision" in default_item["available_actions"]
 
     p3_inputs = client.get("/api/software-design-v2/input-packages")
     assert p3_inputs.status_code == 200
+    assert len(p3_inputs.json()["items"]) == 1
+    assert p3_inputs.json()["items"][0]["input_package_id"] == default_item["published_package_id"]
     assert p3_inputs.json()["items"][0]["source_title"] == "空域协同规划软件需求规格说明"
 
 

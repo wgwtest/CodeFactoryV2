@@ -917,8 +917,10 @@ function DocumentStageObject({
     >
       <header className="design-morph-object-titlebar" data-testid="stage-object-compact-titlebar">
         <div className="design-morph-object-title-copy">
-          <strong>{item.title}</strong>
-          <span>{item.subtitle}</span>
+          <span className="design-morph-object-title-row">
+            <strong>{item.title}</strong>
+            <span className="design-morph-object-title-meta">{item.subtitle}</span>
+          </span>
         </div>
         <div className="design-morph-object-actions">
           {item.viewModes?.map((mode) => (
@@ -1415,18 +1417,21 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
   context.lineTo(item.x + item.w - 18, item.y + STAGE_NODE_TITLE_BAR_HEIGHT);
   context.stroke();
 
-  context.fillStyle = selected ? "#143e52" : "#60706c";
-  context.font = "850 15px Microsoft YaHei, sans-serif";
-  context.fillText(item.subtitle, item.x + 24, item.y + 34);
   context.fillStyle = "#172221";
   context.font = "950 25px Microsoft YaHei, sans-serif";
-  wrapCanvasText(context, item.title, item.x + 24, item.y + 74, item.w - 48, 30, 2);
+  const titleX = item.x + 24;
+  const titleY = item.y + 44;
+  const maxTitleWidth = item.w - 128;
+  const titleText = measureClampedCanvasText(context, item.title, maxTitleWidth);
+  context.fillText(titleText, titleX, titleY);
+  const titleWidth = context.measureText(titleText).width;
+  drawCanvasSubtitlePill(context, item.subtitle, titleX + titleWidth + 12, item.y + 22, item.x + item.w - 82, selected);
   context.fillStyle = "#40514d";
   context.font = "14px Microsoft YaHei, sans-serif";
-  wrapCanvasText(context, item.summary, item.x + 24, item.y + 132, item.w - 48, 23, 4);
+  wrapCanvasText(context, item.summary, item.x + 24, item.y + 96, item.w - 48, 23, 4);
   context.fillStyle = "#60706c";
   context.font = "12px Microsoft YaHei, sans-serif";
-  wrapCanvasText(context, item.constraintSummary, item.x + 24, item.y + 190, item.w - 48, 18, 2);
+  wrapCanvasText(context, item.constraintSummary, item.x + 24, item.y + 162, item.w - 48, 18, 2);
 
   drawItemControls(context, item, selected);
 
@@ -1468,6 +1473,39 @@ function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasIt
     context.lineTo(resizeX + 20, resizeY + 8 + offset);
     context.stroke();
   });
+}
+
+function drawCanvasSubtitlePill(
+  context: CanvasRenderingContext2D,
+  subtitle: string,
+  x: number,
+  y: number,
+  maxRight: number,
+  selected: boolean,
+) {
+  const availableWidth = Math.max(0, maxRight - x);
+  if (availableWidth < 44) {
+    return;
+  }
+  context.font = "850 12px Microsoft YaHei, sans-serif";
+  const label = measureClampedCanvasText(context, subtitle, availableWidth - 18);
+  const width = Math.min(availableWidth, context.measureText(label).width + 18);
+  context.fillStyle = selected ? "rgba(47, 119, 189, 0.14)" : "rgba(47, 119, 189, 0.1)";
+  roundRect(context, x, y, width, 24, 12);
+  context.fill();
+  context.fillStyle = selected ? "#225b87" : "#607186";
+  context.fillText(label, x + 9, y + 16);
+}
+
+function measureClampedCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (context.measureText(text).width <= maxWidth) {
+    return text;
+  }
+  let nextText = text;
+  while (nextText.length > 1 && context.measureText(`${nextText}...`).width > maxWidth) {
+    nextText = nextText.slice(0, -1);
+  }
+  return `${nextText}...`;
 }
 
 function drawArrow(context: CanvasRenderingContext2D, from: MorphCanvasItem, to: MorphCanvasItem) {

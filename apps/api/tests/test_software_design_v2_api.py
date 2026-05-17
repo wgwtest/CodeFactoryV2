@@ -182,6 +182,49 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     assert "frozen" in delete_frozen.json()["detail"]
 
 
+def test_software_design_v2_input_packages_bootstraps_default_published_requirement_when_empty() -> None:
+    client = TestClient(create_app())
+
+    packages = client.get("/api/software-design-v2/input-packages")
+
+    assert packages.status_code == 200
+    items = packages.json()["items"]
+    assert len(items) == 1
+    input_package = items[0]
+    assert input_package["source_title"] == "空域协同规划软件需求规格说明"
+    assert input_package["p3_consumable"] is True
+    assert input_package["input_package_id"].startswith("art-")
+
+    spec_items = client.get("/api/requirement-analysis/spec-items")
+    assert spec_items.status_code == 200
+    default_item = spec_items.json()["items"][0]
+    assert default_item["status"] == "published_to_p3"
+    assert default_item["published_package_id"] == input_package["input_package_id"]
+
+
+def test_software_design_v2_input_packages_publishes_existing_default_draft_requirement() -> None:
+    client = TestClient(create_app())
+
+    from app.db.session import SessionLocal
+    from app.requirement_spec_work_items.service import RequirementSpecWorkItemService
+
+    with SessionLocal() as session:
+        default_item = RequirementSpecWorkItemService(session)._bootstrap_default_publishable_item()
+        assert default_item.status == "draft"
+        assert default_item.p3_consumable is False
+
+    packages = client.get("/api/software-design-v2/input-packages")
+    assert packages.status_code == 200
+    input_package = packages.json()["items"][0]
+    assert input_package["source_title"] == "空域协同规划软件需求规格说明"
+    assert input_package["input_package_id"].startswith("art-")
+
+    republished_items = client.get("/api/requirement-analysis/spec-items")
+    republished_default = republished_items.json()["items"][0]
+    assert republished_default["status"] == "published_to_p3"
+    assert republished_default["published_package_id"] == input_package["input_package_id"]
+
+
 def test_software_design_v2_supports_multiple_related_designs_and_deletes_unfrozen_drafts() -> None:
     client = TestClient(create_app())
     _create_frozen_requirement_authoring_document(client)

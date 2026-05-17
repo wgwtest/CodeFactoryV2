@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db.models.requirements import RequirementAuthoringDocument
 from app.platform_exchange.models import ConsumeArtifactCommand
 from app.platform_exchange.service import PlatformExchangeService
+from app.requirement_spec_work_items.service import RequirementSpecWorkItemService
 from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
 
 
@@ -34,6 +35,7 @@ class SoftwareDesignV2Service:
     def __init__(self, session) -> None:
         self.session = session
         self.platform_exchange_service = PlatformExchangeService(session)
+        self.requirement_spec_work_item_service = RequirementSpecWorkItemService(session)
 
     def list_input_packages(self) -> dict:
         artifact_items = self.platform_exchange_service.list_artifacts(
@@ -52,6 +54,9 @@ class SoftwareDesignV2Service:
             for document in documents
             if document.frozen_package and document.frozen_package.get("p3_consumable") is True
         ]
+        if not items:
+            self.requirement_spec_work_item_service.ensure_default_published_test_item()
+            return self.list_input_packages()
         return {"items": items}
 
     def create_session(self, payload: P3DesignSessionCreate) -> dict:

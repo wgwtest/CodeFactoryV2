@@ -300,6 +300,10 @@ test("keeps the canvas carrier stretched to the same bottom edge as the inspecto
   expectCanvasWorkspaceColumnsToStretch();
 });
 
+test("uses a compact inline title and subtitle treatment for all morph stage frames", () => {
+  expectDesignMorphStageFrameHeaderToBeInline();
+});
+
 test("refreshes P3 input packages while the page stays open", async () => {
   vi.useFakeTimers();
   const firstPackage = buildInputPackage();
@@ -554,6 +558,18 @@ function expectCanvasWorkspaceColumnsToStretch() {
   expect(pageCss).toMatch(/\.p3-design-morph-main\s*{[^}]*display:\s*grid;/s);
   expect(canvasCss).toMatch(/\.design-morph-platform\s*{[^}]*height:\s*100%;/s);
   expect(canvasCss).toMatch(/\.design-morph-canvas-shell\s*{[^}]*min-height:\s*0;/s);
+}
+
+function expectDesignMorphStageFrameHeaderToBeInline() {
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+  const platformSource = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/DesignMorphCanvasPlatform.tsx"), "utf8");
+
+  expect(platformSource).toContain("design-morph-object-title-row");
+  expect(canvasCss).toMatch(/\.design-morph-object-title-copy\s*{[^}]*display:\s*flex;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-copy\s*{[^}]*align-items:\s*center;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*font-size:\s*10px;/s);
+  expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*background:\s*rgba\(47,\s*119,\s*189,\s*0\.1\);/s);
+  expect(canvasCss).not.toMatch(/\.design-morph-object-title-copy\s*{[^}]*display:\s*grid;/s);
 }
 
 function expectWorkspaceFullscreenToCoverViewport() {

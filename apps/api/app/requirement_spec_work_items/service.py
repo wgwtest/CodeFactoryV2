@@ -21,6 +21,8 @@ from app.requirement_spec_work_items.repository import RequirementSpecWorkItemRe
 
 
 class RequirementSpecWorkItemService:
+    DEFAULT_TEST_SPEC_TITLE = "空域协同规划软件需求规格说明"
+
     def __init__(self, session) -> None:
         self.session = session
         self.repository = RequirementSpecWorkItemRepository(session)
@@ -32,8 +34,21 @@ class RequirementSpecWorkItemService:
 
     def list_items(self) -> dict:
         if not self.repository.list_items():
-            self._bootstrap_default_publishable_item()
+            self.ensure_default_published_test_item()
         return {"items": [self.serialize_item(item) for item in self.repository.list_items()]}
+
+    def ensure_default_published_test_item(self) -> RequirementSpecWorkItem:
+        item = self._find_default_test_item()
+        if item is None:
+            item = self._bootstrap_default_publishable_item()
+        if item.status != "published_to_p3" or not item.p3_consumable or not item.published_package_id:
+            published = self.publish_item(item.id)
+            if published is None:
+                raise ValueError("Default requirement spec work item not found")
+            item = self.repository.get_item(item.id)
+            if item is None:
+                raise ValueError("Default requirement spec work item not found")
+        return item
 
     def create_item(self, payload: RequirementSpecWorkItemCreate) -> dict:
         document = self.authoring_service.create_document(
@@ -267,7 +282,7 @@ class RequirementSpecWorkItemService:
         self.authoring_service.template_application_service.ensure_default_templates()
         templates = self.authoring_service.template_application_service.list_templates()
         template_id = templates[0]["template_id"]
-        title = "空域协同规划软件需求规格说明"
+        title = self.DEFAULT_TEST_SPEC_TITLE
         document = self.authoring_service.create_document(
             RequirementAuthoringDocumentCreate(
                 title=title,
@@ -298,6 +313,12 @@ class RequirementSpecWorkItemService:
             p3_consumable=False,
         )
         return self.repository.add_item(item)
+
+    def _find_default_test_item(self) -> RequirementSpecWorkItem | None:
+        for item in self.repository.list_items():
+            if item.title == self.DEFAULT_TEST_SPEC_TITLE:
+                return item
+        return None
 
     @staticmethod
     def serialize_item(item: RequirementSpecWorkItem, *, next_action: str | None = None) -> dict:
