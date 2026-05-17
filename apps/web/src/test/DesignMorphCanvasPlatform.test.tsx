@@ -333,6 +333,26 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(geometry.baseRight.x).toBeLessThan(geometry.tip.x);
   });
 
+  test("does not paint relation labels over arrows on the main canvas", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    const paintedText = canvasMock.context.fillText.mock.calls.map(([text]) => String(text));
+
+    expect(paintedText).not.toContain("基础转换");
+    expect(paintedText).not.toContain("功能拆解");
+
+    canvasMock.restore();
+  });
+
   test("moves a document object when the user drags its visible compact title bar", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -540,6 +560,7 @@ function buildWindows(): DesignMorphWindowViewModel[] {
 }
 
 type CanvasContextMock = CanvasRenderingContext2D & {
+  fillText: Mock<(text: string, x: number, y: number, maxWidth?: number) => void>;
   rect: Mock<(x: number, y: number, w: number, h: number) => void>;
 };
 

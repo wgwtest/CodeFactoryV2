@@ -1247,7 +1247,6 @@ function renderMainCanvas(
     if (from && to) {
       drawArrow(context, from, to, {
         active: window.id === activeWindowId,
-        label: getStageRelationLabel(window.id),
         selected: window.id === selectedRelationId,
       });
     }
@@ -1667,11 +1666,10 @@ function drawArrow(
   context: CanvasRenderingContext2D,
   from: MorphCanvasItem,
   to: MorphCanvasItem,
-  state: { active: boolean; label: string; selected: boolean },
+  state: { active: boolean; selected: boolean },
 ) {
   const geometry = calculateRelationArrowGeometry(from, to);
   const color = state.selected ? "#a66a1f" : state.active ? "#14536b" : "#28766f";
-  const shadowColor = state.selected ? "rgba(166, 106, 31, 0.14)" : "rgba(20, 83, 107, 0.1)";
   context.strokeStyle = state.selected ? "#9a631d" : state.active ? "#14536b" : "#28766f";
   context.lineWidth = state.selected ? 8 : state.active ? 6 : 5;
   context.lineCap = "round";
@@ -1694,25 +1692,6 @@ function drawArrow(
   context.lineTo(geometry.baseRight.x, geometry.baseRight.y);
   context.closePath();
   context.fill();
-
-  const labelWidth = Math.max(76, Math.min(116, context.measureText(state.label).width + 32));
-  const labelHeight = 26;
-  const labelX = geometry.labelCenter.x - labelWidth / 2;
-  const labelY = geometry.labelCenter.y - 14;
-  context.font = "900 12px Microsoft YaHei, sans-serif";
-  context.fillStyle = shadowColor;
-  roundRect(context, labelX + 2, labelY + 3, labelWidth, labelHeight, 13);
-  context.fill();
-  context.fillStyle = "rgba(255, 255, 255, 0.96)";
-  context.strokeStyle = state.selected ? "rgba(166, 106, 31, 0.5)" : "rgba(20, 83, 107, 0.32)";
-  context.lineWidth = state.selected ? 1.8 : 1.2;
-  roundRect(context, labelX, labelY, labelWidth, labelHeight, 13);
-  context.fill();
-  context.stroke();
-  context.fillStyle = state.selected ? "#7c4e17" : "#143e52";
-  context.textAlign = "center";
-  context.fillText(state.label, geometry.labelCenter.x, labelY + 17);
-  context.textAlign = "left";
 }
 
 function hitTest(items: MorphCanvasItem[], world: { x: number; y: number }) {
@@ -2030,10 +2009,6 @@ function getStageRelationDefinition(window: DesignMorphWindowViewModel) {
       actions: [{ actionId: "inspect_relation", label: "查看关系" }],
     }
   );
-}
-
-function getStageRelationLabel(windowId: string) {
-  return getStageRelationDefinition({ id: windowId, title: "", fromStageId: "", toStageId: "" }).label;
 }
 
 function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
