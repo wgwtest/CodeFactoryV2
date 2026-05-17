@@ -22,3 +22,5 @@ class P3DesignConversionRun(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     strategy: str = "standard_sdd_draft"
+    converter_id: str | None = None
+    options: dict[str, str] = Field(default_factory=dict)
