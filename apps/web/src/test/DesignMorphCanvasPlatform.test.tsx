@@ -333,6 +333,26 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(geometry.baseRight.x).toBeLessThan(geometry.tip.x);
   });
 
+  test("does not paint relation labels over arrows on the main canvas", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    const paintedText = canvasMock.context.fillText.mock.calls.map(([text]) => String(text));
+
+    expect(paintedText).not.toContain("基础转换");
+    expect(paintedText).not.toContain("功能拆解");
+
+    canvasMock.restore();
+  });
+
   test("moves a document object when the user drags its visible compact title bar", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -400,6 +420,45 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(within(platform).getByText("节点：软设文档 @720,120 · 587x696")).toBeInTheDocument();
     expect(canvasMock.context.rect.mock.calls.length).toBeGreaterThan(initialTrackDraws);
 
+    canvasMock.restore();
+  });
+
+  test("records, restores, persists, and deletes canvas layout snapshots", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const layoutSelect = within(platform).getByLabelText("使用布局");
+
+    expect(layoutSelect).toHaveDisplayValue("选择布局");
+    expect(within(platform).getByRole("button", { name: "删除布局" })).toBeDisabled();
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 280, clientY: 140 });
+    fireEvent.mouseMove(mainCanvas, { clientX: 340, clientY: 170 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 340, clientY: 170 });
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+
+    fireEvent.click(within(platform).getByRole("button", { name: "记录布局" }));
+    expect(layoutSelect).toHaveDisplayValue("布局 1");
+
+    fireEvent.click(within(platform).getByRole("button", { name: "适配视口" }));
+    expect(within(platform).queryByText("缩放 90%")).not.toBeInTheDocument();
+
+    fireEvent.change(layoutSelect, { target: { value: "layout-1" } });
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+    expect(within(platform).getByText("缩放 90%")).toBeInTheDocument();
+    expect(window.localStorage.getItem("p3-design-morph-layouts")).toContain("布局 1");
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(within(platform).getByRole("button", { name: "删除布局" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("删除布局“布局 1”？");
+    expect(layoutSelect).toHaveDisplayValue("选择布局");
+    expect(window.localStorage.getItem("p3-design-morph-layouts")).toBe("[]");
+
+    confirmSpy.mockRestore();
     canvasMock.restore();
   });
 });
@@ -540,6 +599,7 @@ function buildWindows(): DesignMorphWindowViewModel[] {
 }
 
 type CanvasContextMock = CanvasRenderingContext2D & {
+  fillText: Mock<(text: string, x: number, y: number, maxWidth?: number) => void>;
   rect: Mock<(x: number, y: number, w: number, h: number) => void>;
 };
 

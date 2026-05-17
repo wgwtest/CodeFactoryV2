@@ -861,13 +861,11 @@ function SoftwareDesignWorkspaceView({
           <SelectedMorphObjectInspector
             activeStepId={activeStepId}
             activeWindowTitle={activeWindow?.title ?? "需规 -> 软设文档"}
-            hasDraft={hasDraft}
             hasSession={hasSession}
             selection={selectedMorphObject}
             strategy={strategy}
             strategyOptions={strategyOptions}
             workbench={workbench}
-            onOpenWorkspace={onOpenWorkspace}
             onRunConversion={onRunConversion}
             onSetStrategy={onSetStrategy}
           />
@@ -899,25 +897,21 @@ function getActiveConversionStepId(
 function SelectedMorphObjectInspector({
   activeStepId,
   activeWindowTitle,
-  hasDraft,
   hasSession,
   selection,
   strategy,
   strategyOptions,
   workbench,
-  onOpenWorkspace,
   onRunConversion,
   onSetStrategy,
 }: {
   activeStepId?: string;
   activeWindowTitle: string;
-  hasDraft: boolean;
   hasSession: boolean;
   selection: DesignMorphSelection | null;
   strategy: P3DesignConversionStrategy;
   strategyOptions: Array<{ label: string; value: string }>;
   workbench: StageDocumentWorkbenchViewModel;
-  onOpenWorkspace: () => void;
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
 }) {
@@ -925,17 +919,15 @@ function SelectedMorphObjectInspector({
 
   return (
     <>
-      <PanelHead title="当前选中对象" subtitle={subtitle} />
+      <CompactInspectorHead title="当前选中对象" subtitle={subtitle} />
       {selection?.kind === "stage_relation" ? (
         <StageRelationInspector
           activeStepId={activeStepId}
-          hasDraft={hasDraft}
           hasSession={hasSession}
           selection={selection}
           strategy={strategy}
           strategyOptions={strategyOptions}
           workbench={workbench}
-          onOpenWorkspace={onOpenWorkspace}
           onRunConversion={onRunConversion}
           onSetStrategy={onSetStrategy}
         />
@@ -950,24 +942,20 @@ function SelectedMorphObjectInspector({
 
 function StageRelationInspector({
   activeStepId,
-  hasDraft,
   hasSession,
   selection,
   strategy,
   strategyOptions,
   workbench,
-  onOpenWorkspace,
   onRunConversion,
   onSetStrategy,
 }: {
   activeStepId?: string;
-  hasDraft: boolean;
   hasSession: boolean;
   selection: DesignMorphSelection;
   strategy: P3DesignConversionStrategy;
   strategyOptions: Array<{ label: string; value: string }>;
   workbench: StageDocumentWorkbenchViewModel;
-  onOpenWorkspace: () => void;
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
 }) {
@@ -978,11 +966,10 @@ function StageRelationInspector({
     <>
       <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
         <Text strong>关系：{selection.title}</Text>
-        <Text type="secondary">{selection.summary}</Text>
-        <div className="p3-design-lab-baseline-summary">
-          <Metric label="关系类型" value={relationType || "stage_relation"} />
-          <Metric label="输入" value={toInspectorText(selection.payload?.inputSummary)} />
-          <Metric label="输出" value={toInspectorText(selection.payload?.outputSummary)} />
+        <div className="p3-design-morph-relation-facts" data-testid="p3-design-morph-relation-facts">
+          <RelationFact label="类型" value={formatRelationType(relationType)} />
+          <RelationFact label="输入" value={toInspectorText(selection.payload?.inputSummary)} />
+          <RelationFact label="输出" value={toInspectorText(selection.payload?.outputSummary)} />
         </div>
       </div>
 
@@ -1012,15 +999,6 @@ function StageRelationInspector({
             </Button>
           </div>
           <ConversionTimeline activeStepId={activeStepId} steps={workbench.conversion.steps} />
-          <Button
-            block
-            className="p3-design-lab-conversion-workspace-action"
-            disabled={!hasDraft}
-            type={hasDraft ? "primary" : "default"}
-            onClick={onOpenWorkspace}
-          >
-            进入软设工作区微调
-          </Button>
         </div>
       ) : (
         <div className="p3-design-morph-inspector-section">
@@ -1653,6 +1631,24 @@ function PanelHead({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
+function CompactInspectorHead({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="p3-design-morph-compact-head">
+      <Text strong>{title}</Text>
+      <Text type="secondary">{subtitle}</Text>
+    </div>
+  );
+}
+
+function RelationFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p3-design-morph-relation-fact">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="p3-design-lab-metric">
@@ -1679,6 +1675,18 @@ function formatConversionStatus(status: string) {
     return "待新建";
   }
   return status;
+}
+
+function formatRelationType(value: string) {
+  const labels: Record<string, string> = {
+    requirement_to_design_document: "需规转软设",
+    design_document_to_function_tree: "正文转功能树",
+    function_tree_to_layered_architecture: "功能归层",
+    layered_architecture_to_technical_implementation: "架构转技术",
+    technical_implementation_to_presentation_shape: "技术转展示",
+    presentation_shape_to_p4_projection: "展示转投影",
+  };
+  return labels[value] ?? value.replace(/_/g, " ");
 }
 
 function formatDateTime(value: string) {

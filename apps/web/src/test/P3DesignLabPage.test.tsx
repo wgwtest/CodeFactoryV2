@@ -204,7 +204,11 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(workspace).getByText("建立追溯映射")).toBeInTheDocument();
   const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
   expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "执行基础转换" }));
-  expect(conversionControl).toContainElement(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(conversionControl).queryByRole("button", { name: "进入软设工作区微调" })).not.toBeInTheDocument();
+  const relationFacts = within(workspace).getByTestId("p3-design-morph-relation-facts");
+  expect(within(relationFacts).getByText("需规转软设")).toBeInTheDocument();
+  expect(within(workspace).queryByText("从 P2 冻结需规生成软件设计说明草稿，并建立正文、结构化事实和追溯映射。")).not.toBeInTheDocument();
+  expect(relationFacts.querySelector(".p3-design-lab-metric")).toBeNull();
   expect(within(workspace).getByRole("button", { name: "网页全屏" })).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "网页全屏" }));
   expect(within(workspace).getByTestId("p3-workspace-panel")).toHaveClass("is-web-fullscreen");
