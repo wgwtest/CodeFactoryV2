@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P3 软设工作区 Canvas 验证 PoC v13</title>
+    <style>
+      :root {
+        --bg: #edf2f0;
+        --ink: #14211f;
+        --muted: #60716d;
+        --line: #c7d5d0;
+        --panel: #fbfcfb;
+        --navy: #143e52;
+        --teal: #28766f;
+        --green: #2b7448;
+        --amber: #9a631d;
+        --soft-navy: #e6f0f4;
+        --soft-green: #e4f2e9;
+        --soft-amber: #f5e9d6;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        min-width: 1920px;
+        min-height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      button {
+        height: 36px;
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      button.primary {
+        border-color: var(--navy);
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px;
+      }
+
+      .topbar {
+        height: 74px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 16px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 14px 32px rgba(42, 55, 51, 0.1);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 17px;
+        font-weight: 950;
+      }
+
+      h1,
+      h2,
+      h3,
+      p { margin: 0; }
+
+      h1 {
+        font-size: 25px;
+        line-height: 34px;
+        font-weight: 950;
+      }
+
+      .subtitle {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .pills {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .pill {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 12px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .pill.navy { color: var(--navy); border-color: #a9c1cd; background: var(--soft-navy); }
+      .pill.green { color: var(--green); border-color: #94c6a7; background: var(--soft-green); }
+      .pill.amber { color: var(--amber); border-color: #dcb47a; background: var(--soft-amber); }
+
+      .layout {
+        height: 934px;
+        display: grid;
+        grid-template-columns: 294px minmax(0, 1fr) 392px;
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .inspector {
+        min-height: 0;
+        border: 1px solid rgba(162, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: 0 14px 32px rgba(42, 55, 51, 0.1);
+        overflow: hidden;
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .side-head {
+        padding: 18px 17px 15px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        padding: 13px;
+        display: grid;
+        align-content: start;
+        gap: 9px;
+      }
+
+      .tab-item {
+        min-height: 82px;
+        padding: 11px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .tab-item.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .badge {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border: 1px solid #dcb47a;
+        background: var(--soft-amber);
+        color: var(--amber);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .tab-desc {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.38;
+      }
+
+      .tab-meta {
+        margin-top: 8px;
+        display: flex;
+        justify-content: space-between;
+        color: #536260;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+      }
+
+      .side-rule {
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.52;
+        font-weight: 850;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-rows: 96px minmax(0, 1fr) 50px;
+      }
+
+      .track-shell {
+        border-bottom: 1px solid #d7e0dc;
+        background: linear-gradient(180deg, #f9fbfa 0%, #f2f6f4 100%);
+      }
+
+      .canvas-shell {
+        position: relative;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(20, 62, 82, 0.06) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(20, 62, 82, 0.05) 1px, transparent 1px),
+          #f9fbfa;
+        background-size: 56px 56px;
+      }
+
+      .canvas-shell canvas,
+      .track-shell canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .hud {
+        position: absolute;
+        left: 16px;
+        bottom: 14px;
+        display: flex;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      .hud span {
+        padding: 5px 8px;
+        border: 1px solid #c7d5d0;
+        background: rgba(255, 255, 255, 0.92);
+        color: #536260;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .workspace-foot {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #fafbfb;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      .inspector {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .inspector-head {
+        padding: 16px 14px 13px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7f9f8;
+      }
+
+      .inspector-title {
+        font-size: 15px;
+        font-weight: 950;
+      }
+
+      .inspector-sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .inspector-body {
+        min-height: 0;
+        padding: 14px;
+        overflow: auto;
+      }
+
+      .info-card {
+        margin-bottom: 12px;
+        padding: 12px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .info-card h3 {
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .info-card p,
+      .info-card li {
+        color: #40514e;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .info-card ul {
+        margin: 0;
+        padding-left: 17px;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        border: 1px solid #d3ded9;
+        border-bottom: 0;
+        background: #fff;
+      }
+
+      .kv:last-child { border-bottom: 1px solid #d3ded9; }
+
+      .kv span,
+      .kv strong {
+        padding: 9px 10px;
+        font-size: 12px;
+      }
+
+      .kv span {
+        border-right: 1px solid #d3ded9;
+        color: var(--muted);
+      }
+
+      .inspector-actions {
+        padding: 12px;
+        border-top: 1px solid #d7e0dc;
+        display: grid;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P3</div>
+          <div>
+            <h1>P3 Software Design Lab Canvas PoC</h1>
+            <p class="subtitle">验证软设工作区是否适合 Canvas：拖拽平移、滚轮缩放、滑窗定位、点击选中和动态文字布局</p>
+          </div>
+        </div>
+        <div class="pills">
+          <span class="pill navy">需规：REQ-2026-05-10-Authoring</span>
+          <span class="pill green">设计包：SDP-2026-05-16-P0004</span>
+          <span class="pill amber" id="windowPill">Canvas 窗口：需规 -> 软设文档</span>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">Lab 导航</div>
+            <p class="side-note">本验证包不接入主工程。软设工作区内部用 Canvas 表达长卷、窗口和大对象。</p>
+          </div>
+          <nav class="tab-list">
+            <div class="tab-item"><div class="tab-name"><span>需规输入</span><span class="badge">12</span></div><p class="tab-desc">管理进入 P3 的需规列表。</p><div class="tab-meta"><span>入口</span><span>列表+对象</span></div></div>
+            <div class="tab-item active"><div class="tab-name"><span>软设工作区</span><span class="badge">Canvas</span></div><p class="tab-desc">统一承载转换、细化和 P4 投影。</p><div class="tab-meta"><span>主产物</span><span>可拖拽长卷</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>当前 Turn</span><span class="badge">回合</span></div><p class="tab-desc">解释形态链上的增量变化。</p><div class="tab-meta"><span>审计</span><span>回合</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>检查评审</span><span class="badge">1</span></div><p class="tab-desc">检查追溯链、完整性和冻结门禁。</p><div class="tab-meta"><span>门禁</span><span>阻断</span></div></div>
+            <div class="tab-item"><div class="tab-name"><span>运行日志</span><span class="badge">42</span></div><p class="tab-desc">展示 API、组织器、检查器和状态迁移。</p><div class="tab-meta"><span>观察</span><span>事件流</span></div></div>
+          </nav>
+          <div class="side-foot">
+            <p class="side-rule">验证点：主内容与顶部滑窗均由 Canvas 绘制，避免大型形态对象撑坏 DOM 排版。</p>
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <div class="track-shell">
+            <canvas id="trackCanvas" width="1190" height="96" aria-label="形态滑窗 Canvas"></canvas>
+          </div>
+          <div class="canvas-shell" id="canvasShell">
+            <canvas id="mainCanvas" width="1190" height="788" aria-label="软设工作区 Canvas"></canvas>
+            <div class="hud">
+              <span id="zoomHud">缩放 100%</span>
+              <span id="panHud">平移 0,0</span>
+              <span>拖拽空白移动 · 滚轮缩放 · 点击节点选中</span>
+            </div>
+          </div>
+          <footer class="workspace-foot">
+            <span id="statusLine">Canvas PoC：原生 Canvas 2D，文字通过 measureText 动态折行。</span>
+            <div class="controls">
+              <button id="fitBtn">适配视口</button>
+              <button id="prevBtn">上一窗口</button>
+              <button id="nextBtn">下一窗口</button>
+            </div>
+          </footer>
+        </section>
+
+        <aside class="inspector">
+          <div class="inspector-head">
+            <div class="inspector-title">Inspector：Canvas 选中对象</div>
+            <p class="inspector-sub" id="inspectorSub">点击 Canvas 中的对象，查看它在软设形态链中的位置、尺寸和来源。</p>
+          </div>
+          <div class="inspector-body">
+            <div class="info-card">
+              <h3>当前对象</h3>
+              <div class="kv"><span>名称</span><strong id="selName">软设文档</strong></div>
+              <div class="kv"><span>形态</span><strong id="selStage">软设文档</strong></div>
+              <div class="kv"><span>尺寸</span><strong id="selSize">520 x 640</strong></div>
+              <div class="kv"><span>位置</span><strong id="selPos">720, 120</strong></div>
+            </div>
+            <div class="info-card">
+              <h3>验证能力</h3>
+              <ul>
+                <li>主画布可以拖拽平移，适合大型分层架构。</li>
+                <li>滚轮缩放保持对象模型不变，只改变视口变换。</li>
+                <li>顶部滑窗点击后驱动画布定位。</li>
+                <li>文字用 Canvas 测量并折行，不依赖 DOM 高度撑开。</li>
+              </ul>
+            </div>
+            <div class="info-card">
+              <h3>实现策略判断</h3>
+              <p>PoC 使用原生 Canvas 2D 验证视口、命中、文本和滑窗。如果通过，正式实现可在 `react-konva` 或自研 Canvas 层之间继续评估。</p>
+            </div>
+          </div>
+          <div class="inspector-actions">
+            <button class="primary" id="centerBtn">居中选中对象</button>
+            <button id="wideBtn">定位大型架构图</button>
+            <button id="resetBtn">重置视口</button>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      const trackCanvas = document.getElementById("trackCanvas");
+      const mainCanvas = document.getElementById("mainCanvas");
+      const shell = document.getElementById("canvasShell");
+      const tctx = trackCanvas.getContext("2d");
+      const ctx = mainCanvas.getContext("2d");
+
+      const stages = [
+        { key: "req", label: "需规" },
+        { key: "doc", label: "软设文档" },
+        { key: "func", label: "功能树" },
+        { key: "arch", label: "分层架构" },
+        { key: "tech", label: "技术实现" },
+        { key: "shape", label: "展示形态" },
+        { key: "p4", label: "P4 投影" }
+      ];
+
+      const items = [
+        {
+          id: "req",
+          stage: "需规",
+          title: "需求规格说明",
+          subtitle: "P2 冻结发布包，作为 P3 输入事实源",
+          x: 80,
+          y: 120,
+          w: 500,
+          h: 640,
+          type: "paper",
+          lines: [
+            "4. 核心功能：需规列表、会话交互、章节化正文、冻结发布和下游输入标记。",
+            "8. 下游交付：P3 读取已发布需规后，应生成软件设计说明草稿，并保留条款到设计对象的追溯关系。"
+          ]
+        },
+        {
+          id: "doc",
+          stage: "软设文档",
+          title: "软件设计说明",
+          subtitle: "A4 文档投影，用于人类审核与正式交付",
+          x: 720,
+          y: 120,
+          w: 520,
+          h: 640,
+          type: "paper",
+          lines: [
+            "4. 总体架构：P3 Design Lab 由需规输入、软设工作区、当前 Turn、检查评审和运行日志组成。",
+            "5. 工作区设计：软设工作区用 Canvas 长卷表达相邻形态的传递关系。"
+          ]
+        },
+        {
+          id: "func",
+          stage: "功能树",
+          title: "功能树",
+          subtitle: "把文档章节拆成可设计功能节点",
+          x: 1380,
+          y: 140,
+          w: 520,
+          h: 520,
+          type: "tree",
+          lines: [
+            "F-01 需规列表与关联软设",
+            "F-01.1 可消费需规列表",
+            "F-01.3 关联多份软设",
+            "F-02 需规转软设基础转换"
+          ]
+        },
+        {
+          id: "arch",
+          stage: "分层架构",
+          title: "大型分层架构图",
+          subtitle: "故意放大，验证大对象不会撑坏页面，只通过视口查看",
+          x: 2080,
+          y: 60,
+          w: 1180,
+          h: 820,
+          type: "architecture",
+          lines: [
+            "展示层：RequirementListView、DesignPackageWindow、MorphCanvasViewport",
+            "功能层：DesignBranchManager、ConversionController、MorphWindowController",
+            "服务层：DesignPackageService、TraceabilityService、CanvasLayoutService",
+            "数据层：software_designs、trace_links、canvas_view_states",
+            "集成层：P2 FrozenPackage、P4 WorkorderPackage、ReviewGate"
+          ]
+        },
+        {
+          id: "tech",
+          stage: "技术实现",
+          title: "真实技术实现",
+          subtitle: "理论模块映射到真实框架与服务",
+          x: 3460,
+          y: 150,
+          w: 560,
+          h: 560,
+          type: "table",
+          lines: [
+            "RuoYi Admin：权限、菜单、审计",
+            "P3 Adapter：DTO 到 Canvas ViewModel",
+            "Trace Service：维护条款、节点、模块、工单追溯",
+            "Canvas Viewport：拖拽、缩放、命中和渲染缓存"
+          ]
+        },
+        {
+          id: "shape",
+          stage: "展示形态",
+          title: "展示形态",
+          subtitle: "表达可见模块在哪里出现和如何交互",
+          x: 4200,
+          y: 120,
+          w: 560,
+          h: 600,
+          type: "cards",
+          lines: [
+            "顶部 Canvas 滑窗轴",
+            "主 Canvas 长卷视口",
+            "右侧 Inspector 联动",
+            "快捷定位与缩放控制"
+          ]
+        },
+        {
+          id: "p4",
+          stage: "P4 投影",
+          title: "P4 工具包投影",
+          subtitle: "从技术实现和展示形态派生工具包工单",
+          x: 4920,
+          y: 150,
+          w: 560,
+          h: 520,
+          type: "tree",
+          lines: [
+            "P4-WO-P3-DesignPackage",
+            "A. 设计包模型工具包",
+            "B. Canvas 软设工作台工具包",
+            "C. 截图验收工具包"
+          ]
+        }
+      ];
+
+      const view = {
+        x: -40,
+        y: -10,
+        scale: 1,
+        activePair: 0,
+        selectedId: "doc",
+        dragging: false,
+        dragStart: null
+      };
+
+      const textCache = new Map();
+
+      function setupCanvas(canvas) {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+        const c = canvas.getContext("2d");
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function wrapText(context, text, maxWidth, font) {
+        const key = `${font}|${maxWidth}|${text}`;
+        if (textCache.has(key)) return textCache.get(key);
+        context.save();
+        context.font = font;
+        const result = [];
+        let line = "";
+        for (const char of text) {
+          const test = line + char;
+          if (context.measureText(test).width > maxWidth && line) {
+            result.push(line);
+            line = char;
+          } else {
+            line = test;
+          }
+        }
+        if (line) result.push(line);
+        context.restore();
+        textCache.set(key, result);
+        return result;
+      }
+
+      function drawLabel(context, text, x, y, maxWidth, font, color, lineHeight = 18) {
+        context.save();
+        context.font = font;
+        context.fillStyle = color;
+        const lines = wrapText(context, text, maxWidth, font);
+        lines.forEach((line, index) => context.fillText(line, x, y + index * lineHeight));
+        context.restore();
+        return lines.length * lineHeight;
+      }
+
+      function roundRect(context, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        context.beginPath();
+        context.moveTo(x + radius, y);
+        context.arcTo(x + w, y, x + w, y + h, radius);
+        context.arcTo(x + w, y + h, x, y + h, radius);
+        context.arcTo(x, y + h, x, y, radius);
+        context.arcTo(x, y, x + w, y, radius);
+        context.closePath();
+      }
+
+      function drawArrow(context, from, to) {
+        const y = Math.min(from.y + from.h / 2, to.y + to.h / 2);
+        const x1 = from.x + from.w + 28;
+        const x2 = to.x - 28;
+        context.save();
+        context.strokeStyle = "#8fb4ad";
+        context.fillStyle = "#143e52";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.moveTo(x1, y);
+        context.bezierCurveTo(x1 + 80, y, x2 - 80, y, x2, y);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(x2, y);
+        context.lineTo(x2 - 12, y - 7);
+        context.lineTo(x2 - 12, y + 7);
+        context.closePath();
+        context.fill();
+        context.restore();
+      }
+
+      function drawPaper(context, item) {
+        context.fillStyle = "#fffefa";
+        context.strokeStyle = "#eadfcd";
+        context.lineWidth = 2;
+        context.strokeRect(item.x + 34, item.y + 92, item.w - 68, item.h - 130);
+        context.fillRect(item.x + 34, item.y + 92, item.w - 68, item.h - 130);
+        context.fillStyle = "#14211f";
+        context.font = "700 22px Microsoft YaHei";
+        context.textAlign = "center";
+        context.fillText(item.title, item.x + item.w / 2, item.y + 150);
+        context.strokeStyle = "#e0d7c8";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(item.x + 80, item.y + 178);
+        context.lineTo(item.x + item.w - 80, item.y + 178);
+        context.stroke();
+        context.textAlign = "left";
+        let cursorY = item.y + 230;
+        item.lines.forEach((line) => {
+          cursorY += drawLabel(context, line, item.x + 78, cursorY, item.w - 156, "15px Microsoft YaHei", "#243331", 24) + 18;
+        });
+      }
+
+      function drawTree(context, item) {
+        let y = item.y + 112;
+        item.lines.forEach((line, index) => {
+          const indent = index === 0 ? 0 : 24;
+          roundRect(context, item.x + 34 + indent, y, item.w - 68 - indent, 58, 2);
+          context.fillStyle = index === 0 || line.includes("Canvas") ? "#eef5f7" : "#fff";
+          context.strokeStyle = index === 0 || line.includes("Canvas") ? "#143e52" : "#d3ded9";
+          context.lineWidth = index === 0 || line.includes("Canvas") ? 2 : 1;
+          context.fill();
+          context.stroke();
+          context.fillStyle = "#14211f";
+          context.font = "700 15px Microsoft YaHei";
+          context.fillText(line, item.x + 52 + indent, y + 35);
+          y += 72;
+        });
+      }
+
+      function drawArchitecture(context, item) {
+        const layers = ["展示层", "功能层", "服务层", "数据层", "集成层"];
+        const rowH = 126;
+        layers.forEach((layer, index) => {
+          const y = item.y + 106 + index * rowH;
+          context.fillStyle = "#f6faf8";
+          context.strokeStyle = "#bfd0cc";
+          context.lineWidth = 1;
+          context.fillRect(item.x + 34, y, 126, rowH - 16);
+          context.strokeRect(item.x + 34, y, 126, rowH - 16);
+          context.fillStyle = "#143e52";
+          context.font = "800 16px Microsoft YaHei";
+          context.fillText(layer, item.x + 70, y + 60);
+          for (let col = 0; col < 3; col += 1) {
+            const x = item.x + 178 + col * 308;
+            context.fillStyle = col === index % 3 ? "#e4f3ef" : "#fff";
+            context.strokeStyle = col === index % 3 ? "#28766f" : "#d3ded9";
+            context.fillRect(x, y, 288, rowH - 16);
+            context.strokeRect(x, y, 288, rowH - 16);
+          }
+          const text = item.lines[index] || "";
+          drawLabel(context, text, item.x + 194, y + 42, 860, "15px Microsoft YaHei", "#14211f", 22);
+        });
+      }
+
+      function drawList(context, item) {
+        let y = item.y + 112;
+        item.lines.forEach((line, index) => {
+          context.fillStyle = index === 1 ? "#eef5f7" : "#fff";
+          context.strokeStyle = index === 1 ? "#143e52" : "#d3ded9";
+          context.lineWidth = index === 1 ? 2 : 1;
+          context.fillRect(item.x + 34, y, item.w - 68, 64);
+          context.strokeRect(item.x + 34, y, item.w - 68, 64);
+          drawLabel(context, line, item.x + 52, y + 28, item.w - 104, "15px Microsoft YaHei", "#14211f", 20);
+          y += 82;
+        });
+      }
+
+      function drawItem(context, item) {
+        const selected = item.id === view.selectedId;
+        context.save();
+        context.shadowColor = "rgba(42, 55, 51, 0.12)";
+        context.shadowBlur = 26;
+        context.shadowOffsetY = 12;
+        roundRect(context, item.x, item.y, item.w, item.h, 2);
+        context.fillStyle = "#fbfcfb";
+        context.strokeStyle = selected ? "#143e52" : "#a9b9b4";
+        context.lineWidth = selected ? 3 : 1.5;
+        context.fill();
+        context.stroke();
+        context.shadowColor = "transparent";
+
+        context.fillStyle = selected ? "#eef5f7" : "#f7f9f8";
+        context.fillRect(item.x + 1, item.y + 1, item.w - 2, 70);
+        context.strokeStyle = "#d7e0dc";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(item.x, item.y + 70);
+        context.lineTo(item.x + item.w, item.y + 70);
+        context.stroke();
+
+        context.fillStyle = "#14211f";
+        context.font = "900 20px Microsoft YaHei";
+        context.fillText(item.title, item.x + 18, item.y + 30);
+        drawLabel(context, item.subtitle, item.x + 18, item.y + 54, item.w - 132, "13px Microsoft YaHei", "#60716d", 17);
+
+        context.fillStyle = "#e6f0f4";
+        context.strokeStyle = "#a9c1cd";
+        context.fillRect(item.x + item.w - 72, item.y + 18, 46, 28);
+        context.strokeRect(item.x + item.w - 72, item.y + 18, 46, 28);
+        context.fillStyle = "#143e52";
+        context.font = "800 13px Microsoft YaHei";
+        context.fillText(item.stage.slice(0, 2), item.x + item.w - 61, item.y + 37);
+
+        if (item.type === "paper") drawPaper(context, item);
+        else if (item.type === "architecture") drawArchitecture(context, item);
+        else if (item.type === "tree") drawTree(context, item);
+        else drawList(context, item);
+
+        context.fillStyle = "#60716d";
+        context.font = "13px Microsoft YaHei";
+        context.fillText(`Canvas 对象：${item.w} x ${item.h}`, item.x + 18, item.y + item.h - 24);
+        context.restore();
+      }
+
+      function renderMain() {
+        setupCanvas(mainCanvas);
+        const w = mainCanvas.getBoundingClientRect().width;
+        const h = mainCanvas.getBoundingClientRect().height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.save();
+        ctx.translate(view.x, view.y);
+        ctx.scale(view.scale, view.scale);
+        for (let i = 0; i < items.length - 1; i += 1) drawArrow(ctx, items[i], items[i + 1]);
+        items.forEach((item) => drawItem(ctx, item));
+        ctx.restore();
+        document.getElementById("zoomHud").textContent = `缩放 ${Math.round(view.scale * 100)}%`;
+        document.getElementById("panHud").textContent = `平移 ${Math.round(view.x)},${Math.round(view.y)}`;
+      }
+
+      function renderTrack() {
+        setupCanvas(trackCanvas);
+        const w = trackCanvas.getBoundingClientRect().width;
+        const h = trackCanvas.getBoundingClientRect().height;
+        tctx.clearRect(0, 0, w, h);
+        const left = 36;
+        const right = w - 36;
+        const y = 45;
+        const gap = (right - left) / (stages.length - 1);
+        tctx.strokeStyle = "#bfd0cc";
+        tctx.lineWidth = 2;
+        tctx.beginPath();
+        tctx.moveTo(left, y);
+        tctx.lineTo(right, y);
+        tctx.stroke();
+        const winX = left + view.activePair * gap - 68;
+        const winW = gap + 136;
+        tctx.fillStyle = "rgba(20, 62, 82, 0.045)";
+        tctx.strokeStyle = "#143e52";
+        tctx.lineWidth = 2;
+        tctx.fillRect(winX, 18, winW, 58);
+        tctx.strokeRect(winX, 18, winW, 58);
+        stages.forEach((stage, index) => {
+          const x = left + index * gap;
+          const active = index === view.activePair || index === view.activePair + 1;
+          tctx.fillStyle = active ? "#143e52" : index < view.activePair ? "#e4f2e9" : "#fff";
+          tctx.strokeStyle = active ? "#143e52" : index < view.activePair ? "#80b995" : "#aebfba";
+          tctx.lineWidth = 2;
+          tctx.beginPath();
+          tctx.rect(x - 8, y - 8, 16, 16);
+          tctx.fill();
+          tctx.stroke();
+          tctx.fillStyle = index < view.activePair ? "#2b7448" : "#14211f";
+          tctx.font = "900 13px Microsoft YaHei";
+          tctx.textAlign = "center";
+          tctx.fillText(stage.label, x, y + 34);
+        });
+        document.getElementById("windowPill").textContent = `Canvas 窗口：${stages[view.activePair].label} -> ${stages[view.activePair + 1].label}`;
+      }
+
+      function canvasPoint(event) {
+        const rect = mainCanvas.getBoundingClientRect();
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      }
+
+      function screenToWorld(point) {
+        return { x: (point.x - view.x) / view.scale, y: (point.y - view.y) / view.scale };
+      }
+
+      function hitTest(world) {
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+          const item = items[i];
+          if (world.x >= item.x && world.x <= item.x + item.w && world.y >= item.y && world.y <= item.y + item.h) return item;
+        }
+        return null;
+      }
+
+      function updateInspector() {
+        const item = items.find((it) => it.id === view.selectedId) || items[1];
+        document.getElementById("selName").textContent = item.title;
+        document.getElementById("selStage").textContent = item.stage;
+        document.getElementById("selSize").textContent = `${item.w} x ${item.h}`;
+        document.getElementById("selPos").textContent = `${item.x}, ${item.y}`;
+        document.getElementById("inspectorSub").textContent = `${item.title} 位于 ${item.stage} 形态，可通过 Canvas 视口拖拽、缩放和定位查看。`;
+      }
+
+      function centerItem(id, scale = view.scale) {
+        const item = items.find((it) => it.id === id);
+        const rect = mainCanvas.getBoundingClientRect();
+        if (!item) return;
+        view.scale = scale;
+        view.x = rect.width / 2 - (item.x + item.w / 2) * view.scale;
+        view.y = rect.height / 2 - (item.y + item.h / 2) * view.scale;
+        view.selectedId = id;
+        view.activePair = Math.min(Math.max(items.findIndex((it) => it.id === id) - 1, 0), stages.length - 2);
+        updateInspector();
+        renderAll();
+      }
+
+      function renderAll() {
+        renderTrack();
+        renderMain();
+      }
+
+      trackCanvas.addEventListener("click", (event) => {
+        const rect = trackCanvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const left = 36;
+        const right = rect.width - 36;
+        const gap = (right - left) / (stages.length - 1);
+        const index = Math.max(0, Math.min(stages.length - 2, Math.round((x - left) / gap)));
+        view.activePair = index;
+        centerItem(items[index + 1].id, index === 3 ? 0.72 : 0.9);
+      });
+
+      mainCanvas.addEventListener("mousedown", (event) => {
+        view.dragging = true;
+        view.dragStart = { sx: event.clientX, sy: event.clientY, vx: view.x, vy: view.y };
+      });
+
+      window.addEventListener("mouseup", () => {
+        view.dragging = false;
+      });
+
+      window.addEventListener("mousemove", (event) => {
+        if (!view.dragging || !view.dragStart) return;
+        view.x = view.dragStart.vx + event.clientX - view.dragStart.sx;
+        view.y = view.dragStart.vy + event.clientY - view.dragStart.sy;
+        renderMain();
+      });
+
+      mainCanvas.addEventListener("click", (event) => {
+        if (view.dragStart && Math.abs(event.clientX - view.dragStart.sx) + Math.abs(event.clientY - view.dragStart.sy) > 8) return;
+        const hit = hitTest(screenToWorld(canvasPoint(event)));
+        if (hit) {
+          view.selectedId = hit.id;
+          view.activePair = Math.min(Math.max(items.findIndex((it) => it.id === hit.id) - 1, 0), stages.length - 2);
+          updateInspector();
+          renderAll();
+        }
+      });
+
+      mainCanvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const point = canvasPoint(event);
+        const before = screenToWorld(point);
+        const factor = event.deltaY < 0 ? 1.08 : 0.92;
+        view.scale = Math.max(0.42, Math.min(1.65, view.scale * factor));
+        view.x = point.x - before.x * view.scale;
+        view.y = point.y - before.y * view.scale;
+        renderMain();
+      }, { passive: false });
+
+      document.getElementById("fitBtn").addEventListener("click", () => {
+        view.scale = 0.44;
+        view.x = 30;
+        view.y = 120;
+        renderMain();
+      });
+      document.getElementById("prevBtn").addEventListener("click", () => {
+        view.activePair = Math.max(0, view.activePair - 1);
+        centerItem(items[view.activePair + 1].id, view.activePair === 3 ? 0.72 : 0.9);
+      });
+      document.getElementById("nextBtn").addEventListener("click", () => {
+        view.activePair = Math.min(stages.length - 2, view.activePair + 1);
+        centerItem(items[view.activePair + 1].id, view.activePair === 3 ? 0.72 : 0.9);
+      });
+      document.getElementById("centerBtn").addEventListener("click", () => centerItem(view.selectedId, view.scale));
+      document.getElementById("wideBtn").addEventListener("click", () => centerItem("arch", 0.62));
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        view.activePair = 0;
+        centerItem("doc", 0.9);
+      });
+
+      new ResizeObserver(renderAll).observe(shell);
+      updateInspector();
+      centerItem("doc", 0.9);
+    </script>
+  </body>
+</html>

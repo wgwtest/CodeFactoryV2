@@ -28,7 +28,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test("renders P3 Design Lab as a Lab workspace with software design document, structured data, and P4 projection tree", async () => {
+test("renders P3 Design Lab with a unified software design morph workspace", async () => {
   const inputPackage = buildInputPackage();
   const newDesignTitle = "空域协同规划软件设计说明（设计方案 01）";
   const newVersionLabel = "v0.1";
@@ -153,12 +153,12 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
   expect(screen.getByText("从 P2 需求规格冻结包生成软件设计说明、设计基线和 P4 投影")).toBeInTheDocument();
   const navigation = screen.getByTestId("p3-design-lab-navigation");
   expect(within(navigation).getByRole("tab", { name: /需规输入/ })).toHaveAttribute("aria-selected", "true");
-  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toBeInTheDocument();
-  expect(within(navigation).getByRole("tab", { name: /P4 投影/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /当前 Turn/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /检查评审/ })).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /运行日志/ })).toBeInTheDocument();
+  expect(within(navigation).queryByRole("tab", { name: /需规转软设/ })).not.toBeInTheDocument();
+  expect(within(navigation).queryByRole("tab", { name: /P4 投影/ })).not.toBeInTheDocument();
 
   const workspace = screen.getByTestId("p3-design-lab-workspace");
   expect(within(workspace).getByTestId("p3-design-lab-input-view")).toBeInTheDocument();
@@ -178,15 +178,22 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
     ),
   );
   expect(postMock).not.toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate");
-  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toHaveAttribute("aria-selected", "true");
-  expect(within(workspace).getByRole("heading", { name: "需规转软设" })).toBeInTheDocument();
-  expect(within(workspace).getByText("已选需规 A4 预览")).toBeInTheDocument();
-  expect(within(workspace).getByText("转换策略")).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+  expect(within(workspace).getByTestId("p3-design-morph-workspace")).toBeInTheDocument();
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  expect(morphPlatform).toBeInTheDocument();
+  expect(within(morphPlatform).getByTestId("design-morph-track-canvas")).toHaveAttribute("aria-label", "软设形态滑窗 Canvas");
+  expect(within(morphPlatform).getByTestId("design-morph-main-canvas")).toHaveAttribute("aria-label", "软设工作区 Canvas");
+  expect(within(morphPlatform).queryByTestId("design-morph-html-overlay")).not.toBeInTheDocument();
+  expect(within(morphPlatform).queryByRole("button", { name: "需规 -> 软设文档" })).not.toBeInTheDocument();
+  expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
+  expect(within(morphPlatform).getByText("缩放 90%")).toBeInTheDocument();
+  expect(within(morphPlatform).getByText(/^平移 /)).toBeInTheDocument();
   expect(within(workspace).getByRole("combobox", { name: "转换策略" })).toBeInTheDocument();
   expect(within(workspace).getAllByText("标准软设草稿生成").length).toBeGreaterThanOrEqual(1);
   fireEvent.mouseDown(within(workspace).getByRole("combobox", { name: "转换策略" }));
   fireEvent.click(await screen.findByText("组件优先拆解"));
-  expect(within(workspace).getByText("软设草稿 A4 预览")).toBeInTheDocument();
   expect(within(workspace).getByText("读取需规冻结包")).toBeInTheDocument();
   expect(within(workspace).getByText("抽取设计对象")).toBeInTheDocument();
   expect(within(workspace).getByText("生成软设草稿")).toBeInTheDocument();
@@ -207,43 +214,35 @@ test("renders P3 Design Lab as a Lab workspace with software design document, st
       strategy: "component_first",
     }),
   );
-  expect(within(navigation).getByRole("tab", { name: /需规转软设/ })).toHaveAttribute("aria-selected", "true");
-  expect(within(workspace).getByText("软设草稿 A4 预览")).toBeInTheDocument();
+  expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
+  expect(within(morphPlatform).getByText("Canvas 窗口：软设文档 -> 功能树")).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
-  expect(within(workspace).getByRole("button", { name: "文档视图" })).toHaveAttribute("aria-pressed", "true");
-  expect(within(workspace).getByRole("button", { name: "结构化数据" })).toBeInTheDocument();
 
-  expect(await screen.findByText(newDesignTitle)).toBeInTheDocument();
-  expect(within(workspace).getByText("章节对象")).toBeInTheDocument();
-  expect(within(workspace).getByText("选中章节交互对象")).toBeInTheDocument();
-  expect(within(workspace).getByText("需规到软设生成过程")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getAllByText(newDesignTitle).length).toBeGreaterThanOrEqual(1));
+  expect(within(workspace).getByTestId("design-morph-inspector")).toBeInTheDocument();
+  expect(within(workspace).getByText("当前选中对象")).toBeInTheDocument();
+  expect(within(workspace).getByText("追溯链")).toBeInTheDocument();
   expect(within(workspace).getByText("扩写本节")).toBeInTheDocument();
-  expect(within(workspace).getByTestId("document-body-panel")).toBeInTheDocument();
-  expect(within(workspace).getByLabelText("A4 软件设计说明预览")).toBeInTheDocument();
-  expect(within(workspace).getAllByText(newVersionLabel).length).toBeGreaterThanOrEqual(1);
+  expect(within(workspace).getAllByText(new RegExp(newVersionLabel)).length).toBeGreaterThanOrEqual(1);
   fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));
   expect(await screen.findByText("设计会话：draft_saved")).toBeInTheDocument();
 
-  fireEvent.click(within(workspace).getByRole("button", { name: "结构化数据" }));
-  expect(within(workspace).getByTestId("p3-design-structured-data-view")).toBeInTheDocument();
-  expect(within(workspace).getByText("结构化数据导航")).toBeInTheDocument();
-  expect(within(workspace).getByText("选中结构化对象：architecture")).toBeInTheDocument();
-  expect(within(workspace).getByText("结构化数据动作")).toBeInTheDocument();
   expect(within(workspace).getAllByText("规划任务管理").length).toBeGreaterThanOrEqual(1);
   expect(within(workspace).getAllByText("unified_service").length).toBeGreaterThanOrEqual(1);
   fireEvent.click(within(workspace).getByRole("button", { name: "生成投影候选" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/projection"));
-
-  fireEvent.click(within(navigation).getByRole("tab", { name: /P4 投影/ }));
-  expect(screen.getByTestId("p3-design-lab-projection-tree")).toBeInTheDocument();
-  expect(screen.getByRole("tree", { name: "P4 工单投影树" })).toBeInTheDocument();
-  expect(screen.getByText("P4-WO-StageLab-Workbench")).toBeInTheDocument();
-  expect(screen.getByText("B. P3 适配工具包")).toBeInTheDocument();
-  expect(screen.getByText("选中树节点详情")).toBeInTheDocument();
-  expect(screen.getByText("节点：B. P3 适配工具包")).toBeInTheDocument();
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  expect(within(workspace).getByTestId("design-morph-canvas-platform")).toBeInTheDocument();
+  expect(within(morphPlatform).getByText("Canvas 窗口：展示形态 -> P4 投影")).toBeInTheDocument();
+  expect(within(workspace).getAllByText("P4-WO-StageLab-Workbench").length).toBeGreaterThanOrEqual(1);
+  expect(within(workspace).getAllByText("B. P3 适配工具包").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText("投影树")).toBeInTheDocument();
 
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   const inputView = screen.getByTestId("p3-design-lab-input-view");
