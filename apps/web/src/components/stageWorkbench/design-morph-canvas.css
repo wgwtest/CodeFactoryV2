@@ -90,8 +90,11 @@
   border-bottom: 1px solid #dde6ef;
   background: linear-gradient(180deg, #f8fbff 0%, #edf3fa 100%);
   color: #143e52;
+  cursor: move;
   font-size: 12px;
   font-weight: 850;
+  touch-action: none;
+  user-select: none;
 }
 
 .design-morph-object-title-copy {
@@ -139,6 +142,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: default;
 }
 
 .design-morph-object-actions button {
@@ -199,17 +203,6 @@
 .design-morph-object-actions button:focus-visible {
   outline: 2px solid #2f77bd;
   outline-offset: 2px;
-}
-
-.design-morph-object-titlebar-hit {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 40px;
-  height: 28px;
-  z-index: 1;
-  cursor: move;
-  pointer-events: auto;
 }
 
 .design-morph-main-canvas {

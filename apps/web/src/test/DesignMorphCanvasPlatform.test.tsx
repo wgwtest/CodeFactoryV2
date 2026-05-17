@@ -234,6 +234,53 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("moves a document object when the user drags its visible compact title bar", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+    const titlebar = within(documentObject).getByTestId("stage-object-compact-titlebar");
+    const initialPan = readPanLabel(platform);
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.pointerDown(titlebar, { pointerId: 23, clientX: 280, clientY: 140 });
+    fireEvent.pointerMove(titlebar, { pointerId: 23, clientX: 340, clientY: 170 });
+    fireEvent.pointerUp(titlebar, { pointerId: 23, clientX: 340, clientY: 170 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("keeps document object title actions clickable without starting a title-bar drag", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+    const editButton = within(documentObject).getByRole("button", { name: "软设文档 编辑区" });
+    const initialPan = readPanLabel(platform);
+
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+
+    fireEvent.pointerDown(editButton, { pointerId: 24, clientX: 520, clientY: 140 });
+    fireEvent.pointerMove(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
+    fireEvent.pointerUp(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
+    fireEvent.click(editButton);
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+    expect(editButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(documentObject).getByTestId("document-stage-paper")).toHaveClass("is-edit-mode");
+
+    canvasMock.restore();
+  });
+
   test("resizes a stage node from its bottom-right handle and updates the track projection", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -431,6 +478,10 @@ function mockCanvasEnvironment() {
   if (!HTMLCanvasElement.prototype.setPointerCapture) {
     HTMLCanvasElement.prototype.setPointerCapture = () => undefined;
   }
+  const previousPointerEvent = window.PointerEvent;
+  if (!window.PointerEvent) {
+    window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+  }
   const context = buildCanvasContextMock();
   const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
   const getBoundingClientRect = vi
@@ -460,6 +511,7 @@ function mockCanvasEnvironment() {
       getContext.mockRestore();
       getBoundingClientRect.mockRestore();
       setPointerCapture.mockRestore();
+      window.PointerEvent = previousPointerEvent;
     },
   };
 }

@@ -915,14 +915,45 @@ function DocumentStageObject({
       data-testid={`stage-object-${item.id}`}
       style={objectStyle}
     >
-      <header className="design-morph-object-titlebar" data-testid="stage-object-compact-titlebar">
+      <header
+        className="design-morph-object-titlebar"
+        data-testid="stage-object-compact-titlebar"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
         <div className="design-morph-object-title-copy">
           <span className="design-morph-object-title-row">
             <strong>{item.title}</strong>
             <span className="design-morph-object-title-meta">{item.subtitle}</span>
           </span>
         </div>
-        <div className="design-morph-object-actions">
+        <div
+          className="design-morph-object-actions"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerMove={(event) => {
+            event.stopPropagation();
+          }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+          }}
+        >
           {item.viewModes?.map((mode) => (
             <button
               aria-pressed={viewMode === mode.id}
@@ -980,23 +1011,6 @@ function DocumentStageObject({
           if (typeof event.currentTarget.releasePointerCapture === "function") {
             event.currentTarget.releasePointerCapture(event.pointerId);
           }
-        }}
-      />
-      <div
-        className="design-morph-object-titlebar-hit"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
-          if (typeof event.currentTarget.setPointerCapture === "function") {
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }
-        }}
-        onPointerMove={(event) => {
-          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
-        }}
-        onPointerUp={() => {
-          onDragEnd();
         }}
       />
     </section>
