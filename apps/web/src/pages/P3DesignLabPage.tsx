@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 
-import { DesignMorphCanvasPlatform, type DesignMorphStageViewModel, type DesignMorphWindowViewModel } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
+import { DesignMorphCanvasPlatform } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
 import { StageLabShell, type StageLabNavigationItem } from "../components/stageWorkbench/StageLabShell";
 import type {
   StageDocumentWorkbenchViewModel,
@@ -23,6 +23,7 @@ import {
   saveSoftwareDesignV2Draft,
 } from "../lib/softwareDesignV2";
 import { usePollingResource } from "../lib/usePollingResource";
+import { buildP3DesignMorphModel } from "./adapters/p3DesignMorphAdapter";
 import { buildP3DesignLabWorkbenchViewModel } from "./adapters/p3DesignLabWorkbenchAdapter";
 import "./P3DesignLabPage.css";
 
@@ -919,85 +920,6 @@ function getActiveConversionStepId(
     return steps.at(-1)?.stepId;
   }
   return undefined;
-}
-
-function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewModel): {
-  stages: DesignMorphStageViewModel[];
-  windows: DesignMorphWindowViewModel[];
-} {
-  const requirementItems = workbench.inputFacts.sections.flatMap((section) => section.clauses.map((clause) => clause.title));
-  const documentItems = workbench.product.sections.map((section) => section.title);
-  const moduleItems = workbench.outline.baseline?.modules.map((module) => module.name) ?? [];
-  const projectionItems = collectProjectionTitles(workbench.projection.tree).slice(0, 5);
-
-  return {
-    stages: [
-      {
-        id: "requirement",
-        title: "需规",
-        subtitle: "P2 冻结输入",
-        summary: workbench.inputFacts.title || "等待选择已发布的需求规格说明。",
-        items: requirementItems.length ? requirementItems : ["需规正文", "结构化条款", "冻结快照"],
-      },
-      {
-        id: "document",
-        title: "软设文档",
-        subtitle: "A4 正文形态",
-        summary: workbench.product.title || "基础转换完成后生成软件设计说明正文草稿。",
-        items: documentItems.length ? documentItems : ["设计目标与范围", "总体架构", "模块划分"],
-      },
-      {
-        id: "functionTree",
-        title: "功能树",
-        subtitle: "从正文拆解功能项",
-        summary: "把需规功能拆成可追溯的树形设计对象，保持与文档章节一一对应。",
-        items: moduleItems.length ? moduleItems : ["规划任务管理", "冲突识别", "协同确认", "处置记录"],
-      },
-      {
-        id: "layeredArchitecture",
-        title: "分层架构",
-        subtitle: "按层次放置设计对象",
-        summary: `当前架构模式：${workbench.outline.baseline?.architectureMode ?? "待生成"}`,
-        items: ["展示层", "功能层", "服务层", "数据层"],
-      },
-      {
-        id: "technicalImplementation",
-        title: "技术实现",
-        subtitle: "映射框架与真实模块",
-        summary: "把理论模块落到框架、组件、服务和数据对象，允许一个框架覆盖多个理论层次。",
-        items: ["unified_service", "StageLabShell", "Adapter", "Provider"],
-      },
-      {
-        id: "presentationShape",
-        title: "展示形态",
-        subtitle: "表达 UI 呈现方式",
-        summary: "说明关键模块在界面上的布局位置、交互形式和可替换呈现方式。",
-        items: ["A4 文档", "Canvas 长卷", "右侧 Inspector", "CLI 微调"],
-      },
-      {
-        id: "p4Projection",
-        title: "P4 投影",
-        subtitle: "下游工具包树",
-        summary: workbench.projection.status === "empty" ? "生成投影候选后显示 P4 工单组织树。" : "P3 设计基线已投影为 P4 工单候选。",
-        items: projectionItems.length ? projectionItems : ["P4-WO-StageLab-Workbench", "共性工作台工具包", "P3 适配工具包"],
-      },
-    ],
-    windows: [
-      { id: "reqdoc", title: "需规 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
-      { id: "docfunc", title: "软设文档 -> 功能树", fromStageId: "document", toStageId: "functionTree" },
-      { id: "funcarch", title: "功能树 -> 分层架构", fromStageId: "functionTree", toStageId: "layeredArchitecture" },
-      { id: "archtech", title: "分层架构 -> 技术实现", fromStageId: "layeredArchitecture", toStageId: "technicalImplementation" },
-      { id: "techshape", title: "技术实现 -> 展示形态", fromStageId: "technicalImplementation", toStageId: "presentationShape" },
-      { id: "shapep4", title: "展示形态 -> P4 投影", fromStageId: "presentationShape", toStageId: "p4Projection" },
-    ],
-  };
-}
-
-function collectProjectionTitles(tree: StageDocumentWorkbenchViewModel["projection"]["tree"]): string[] {
-  if (!tree) {
-    return [];
-  }
-  return [tree.title, ...(tree.children ?? []).flatMap((child) => collectProjectionTitles(child))];
 }
 
 function DocumentSectionObjectsPanel({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {

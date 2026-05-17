@@ -256,14 +256,36 @@ function CanvasRefreshHarness() {
 
 function buildStages(revision: number): DesignMorphStageViewModel[] {
   return [
-    { id: "requirement", title: "需规", subtitle: "P2 冻结输入", summary: `需规 ${revision}`, items: ["需规正文"] },
-    { id: "document", title: "软设文档", subtitle: "A4 正文形态", summary: `软设 ${revision}`, items: ["总体架构"] },
-    { id: "functionTree", title: "功能树", subtitle: "从正文拆解功能项", summary: `功能树 ${revision}`, items: ["规划任务管理"] },
-    { id: "layeredArchitecture", title: "分层架构", subtitle: "按层次放置设计对象", summary: `架构 ${revision}`, items: ["展示层"] },
-    { id: "technicalImplementation", title: "技术实现", subtitle: "映射框架与真实模块", summary: `技术 ${revision}`, items: ["unified_service"] },
-    { id: "presentationShape", title: "展示形态", subtitle: "表达 UI 呈现方式", summary: `展示 ${revision}`, items: ["Canvas 长卷"] },
-    { id: "p4Projection", title: "P4 投影", subtitle: "下游工具包树", summary: `投影 ${revision}`, items: ["P4-WO"] },
+    buildStage("requirement", "requirement_specification", "paper", "需规", "P2 冻结输入", `需规 ${revision}`, ["需规正文"]),
+    buildStage("document", "software_design_document", "paper", "软设文档", "A4 正文形态", `软设 ${revision}`, ["总体架构"]),
+    buildStage("functionTree", "software_function_tree", "tree", "功能树", "从正文拆解功能项", `功能树 ${revision}`, ["规划任务管理"]),
+    buildStage("layeredArchitecture", "software_layered_architecture", "architecture", "分层架构", "按层次放置设计对象", `架构 ${revision}`, ["展示层"]),
+    buildStage("technicalImplementation", "technical_implementation", "table", "技术实现", "映射框架与真实模块", `技术 ${revision}`, ["unified_service"]),
+    buildStage("presentationShape", "presentation_shape", "cards", "展示形态", "表达 UI 呈现方式", `展示 ${revision}`, ["Canvas 长卷"]),
+    buildStage("p4Projection", "module_workorder_projection", "tree", "P4 投影", "下游工具包树", `投影 ${revision}`, ["P4-WO"]),
   ];
+}
+
+function buildStage(
+  id: DesignMorphStageViewModel["id"],
+  entityType: DesignMorphStageViewModel["entityType"],
+  layoutKind: DesignMorphStageViewModel["layoutKind"],
+  title: string,
+  subtitle: string,
+  summary: string,
+  items: string[],
+): DesignMorphStageViewModel {
+  return {
+    id,
+    entityType,
+    layoutKind,
+    title,
+    subtitle,
+    summary,
+    items,
+    sourceRefs: [`source:${id}`],
+    constraintSummary: `约束 ${id}`,
+  };
 }
 
 function buildWindows(): DesignMorphWindowViewModel[] {

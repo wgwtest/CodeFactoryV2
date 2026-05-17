@@ -8,14 +8,28 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
 import "./design-morph-canvas.css";
+
+export type DesignMorphStageEntityType =
+  | "requirement_specification"
+  | "software_design_document"
+  | "software_function_tree"
+  | "software_layered_architecture"
+  | "technical_implementation"
+  | "presentation_shape"
+  | "module_workorder_projection";
 
 export type DesignMorphStageViewModel = {
   id: string;
+  entityType: DesignMorphStageEntityType;
+  layoutKind: DesignMorphCanvasStageKind;
   title: string;
   subtitle: string;
   summary: string;
   items: string[];
+  sourceRefs: string[];
+  constraintSummary: string;
 };
 
 export type DesignMorphWindowViewModel = {
@@ -40,7 +54,6 @@ type CanvasStageLayoutState = {
 
 type MorphCanvasItem = DesignMorphStageViewModel & {
   index: number;
-  type: "paper" | "tree" | "architecture" | "table" | "cards";
   x: number;
   y: number;
   w: number;
@@ -159,13 +172,13 @@ const TRACK_STAGE_STYLES: TrackStageStyle[] = [
 ];
 const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
 const STAGE_LAYOUTS = [
-  { x: 80, y: 120, w: 500, h: 640, type: "paper" },
-  { x: 720, y: 120, w: 520, h: 640, type: "paper" },
-  { x: 1380, y: 140, w: 520, h: 520, type: "tree" },
-  { x: 2080, y: 60, w: 1180, h: 820, type: "architecture" },
-  { x: 3460, y: 150, w: 560, h: 560, type: "table" },
-  { x: 4200, y: 120, w: 560, h: 600, type: "cards" },
-  { x: 4920, y: 150, w: 560, h: 520, type: "tree" },
+  { x: 80, y: 120, w: 500, h: 640 },
+  { x: 720, y: 120, w: 520, h: 640 },
+  { x: 1380, y: 140, w: 520, h: 520 },
+  { x: 2080, y: 60, w: 1180, h: 820 },
+  { x: 3460, y: 150, w: 560, h: 560 },
+  { x: 4200, y: 120, w: 560, h: 600 },
+  { x: 4920, y: 150, w: 560, h: 520 },
 ] as const;
 
 export function DesignMorphCanvasPlatform({
@@ -732,7 +745,6 @@ function getDefaultStageLayout(index: number): CanvasStageLayoutState {
     y: 140,
     w: 540,
     h: 560,
-    type: "cards" as const,
   };
   return { x: layout.x, y: layout.y, w: layout.w, h: layout.h };
 }
@@ -747,12 +759,10 @@ function buildCanvasItems(
       y: 140,
       w: 540,
       h: 560,
-      type: "cards" as const,
     };
     return {
       ...stage,
       index,
-      type: layout.type,
       x: stageLayouts[stage.id]?.x ?? layout.x,
       y: stageLayouts[stage.id]?.y ?? layout.y,
       w: stageLayouts[stage.id]?.w ?? layout.w,
@@ -1080,7 +1090,7 @@ function drawCanvasBackground(context: CanvasRenderingContext2D, width: number, 
 }
 
 function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
-  context.fillStyle = item.type === "architecture" ? "#fbfcfb" : "#fffdf8";
+  context.fillStyle = item.layoutKind === "architecture" ? "#fbfcfb" : "#fffdf8";
   context.strokeStyle = selected ? "#143e52" : "#c7d0cb";
   context.lineWidth = selected ? 3 : 1.4;
   roundRect(context, item.x, item.y, item.w, item.h, 8);
@@ -1106,26 +1116,13 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
   context.fillStyle = "#40514d";
   context.font = "14px Microsoft YaHei, sans-serif";
   wrapCanvasText(context, item.summary, item.x + 24, item.y + 132, item.w - 48, 23, 4);
+  context.fillStyle = "#60706c";
+  context.font = "12px Microsoft YaHei, sans-serif";
+  wrapCanvasText(context, item.constraintSummary, item.x + 24, item.y + 190, item.w - 48, 18, 2);
 
   drawItemControls(context, item, selected);
 
-  if (item.type === "architecture") {
-    drawArchitectureItem(context, item);
-    return;
-  }
-  if (item.type === "tree") {
-    drawTreeItem(context, item);
-    return;
-  }
-  if (item.type === "table") {
-    drawTableItem(context, item);
-    return;
-  }
-  if (item.type === "cards") {
-    drawCardsItem(context, item);
-    return;
-  }
-  drawPaperItem(context, item);
+  resolveCanvasStageRenderer(item.layoutKind)(context, item);
 }
 
 function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {
@@ -1162,103 +1159,6 @@ function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasIt
     context.moveTo(resizeX + 8 + offset, resizeY + 20);
     context.lineTo(resizeX + 20, resizeY + 8 + offset);
     context.stroke();
-  });
-}
-
-function drawPaperItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 234;
-  context.fillStyle = "#f7faf9";
-  roundRect(context, item.x + 28, top - 28, item.w - 56, item.h - 270, 6);
-  context.fill();
-  item.items.slice(0, 6).forEach((line, index) => {
-    const y = top + index * 54;
-    context.fillStyle = "#14211f";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(`${index + 1}. ${line}`, item.x + 48, y);
-    context.strokeStyle = "#d9e3df";
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(item.x + 48, y + 16);
-    context.lineTo(item.x + item.w - 48, y + 16);
-    context.stroke();
-  });
-}
-
-function drawTreeItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const startX = item.x + 52;
-  const startY = item.y + 220;
-  context.strokeStyle = "#9ab7ae";
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(startX, startY - 22);
-  context.lineTo(startX, startY + Math.min(4, item.items.length - 1) * 58);
-  context.stroke();
-  item.items.slice(0, 5).forEach((line, index) => {
-    const y = startY + index * 58;
-    context.strokeStyle = "#9ab7ae";
-    context.beginPath();
-    context.moveTo(startX, y);
-    context.lineTo(startX + 34, y);
-    context.stroke();
-    context.fillStyle = index === 0 ? "#e6f0f4" : "#f6faf8";
-    roundRect(context, startX + 34, y - 20, item.w - 104, 40, 6);
-    context.fill();
-    context.strokeStyle = "#cbd9d4";
-    context.stroke();
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(line, startX + 50, y + 5);
-  });
-}
-
-function drawArchitectureItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const labels = item.items.length ? item.items : ["展示层", "功能层", "服务层", "数据层"];
-  const top = item.y + 220;
-  const layerHeight = 118;
-  labels.slice(0, 5).forEach((label, index) => {
-    const y = top + index * (layerHeight + 18);
-    context.fillStyle = ["#e6f0f4", "#e4f2e9", "#f5e9d6", "#edf2f0", "#f8fbfa"][index] ?? "#f8fbfa";
-    roundRect(context, item.x + 34, y, item.w - 68, layerHeight, 8);
-    context.fill();
-    context.strokeStyle = "#cad8d3";
-    context.stroke();
-    context.fillStyle = "#143e52";
-    context.font = "950 16px Microsoft YaHei, sans-serif";
-    context.fillText(label, item.x + 58, y + 32);
-    context.fillStyle = "#40514d";
-    context.font = "13px Microsoft YaHei, sans-serif";
-    wrapCanvasText(context, `模块边界、服务职责、数据依赖和下游投影在本层形成可追溯设计对象。`, item.x + 58, y + 62, item.w - 116, 22, 2);
-  });
-}
-
-function drawTableItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 218;
-  item.items.slice(0, 6).forEach((line, index) => {
-    const y = top + index * 54;
-    context.fillStyle = index % 2 === 0 ? "#f7faf9" : "#fffdf8";
-    context.fillRect(item.x + 28, y, item.w - 56, 48);
-    context.strokeStyle = "#d7e0dc";
-    context.strokeRect(item.x + 28, y, item.w - 56, 48);
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    context.fillText(line, item.x + 48, y + 30);
-  });
-}
-
-function drawCardsItem(context: CanvasRenderingContext2D, item: MorphCanvasItem) {
-  const top = item.y + 216;
-  const cardWidth = (item.w - 78) / 2;
-  item.items.slice(0, 6).forEach((line, index) => {
-    const x = item.x + 28 + (index % 2) * (cardWidth + 22);
-    const y = top + Math.floor(index / 2) * 106;
-    context.fillStyle = "#f8fbfa";
-    roundRect(context, x, y, cardWidth, 82, 8);
-    context.fill();
-    context.strokeStyle = "#d7e0dc";
-    context.stroke();
-    context.fillStyle = "#172221";
-    context.font = "850 14px Microsoft YaHei, sans-serif";
-    wrapCanvasText(context, line, x + 16, y + 30, cardWidth - 32, 22, 2);
   });
 }
 
