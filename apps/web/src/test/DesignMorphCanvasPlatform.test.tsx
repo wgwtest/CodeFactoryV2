@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, test, vi, type Mock } from "vitest";
 
 import {
+  calculateTrackStageLandmarks,
   calculateTrackViewportFrame,
   DesignMorphCanvasPlatform,
   type DesignMorphStageViewModel,
@@ -42,6 +43,26 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(zoomedIn.y).toBeLessThanOrEqual(18);
     expect(zoomedIn.height).toBeGreaterThanOrEqual(48);
     expect(zoomedOut.width).toBeGreaterThan(zoomedIn.width);
+  });
+
+  test("projects stage landmark width from real canvas node width without flattening the x axis size", () => {
+    const landmarks = calculateTrackStageLandmarks({
+      items: [
+        { id: "requirement", title: "需规", x: 80, w: 500 },
+        { id: "document", title: "软设文档", x: 720, w: 520 },
+        { id: "architecture", title: "分层架构", x: 2080, w: 1180 },
+      ],
+      left: 36,
+      right: 964,
+    });
+
+    const requirement = landmarks.find((item) => item.id === "requirement");
+    const document = landmarks.find((item) => item.id === "document");
+    const architecture = landmarks.find((item) => item.id === "architecture");
+
+    expect(requirement?.width).toBeGreaterThan(140);
+    expect(document?.width).toBeGreaterThan(requirement?.width ?? 0);
+    expect(architecture?.width).toBeGreaterThan((document?.width ?? 0) * 2);
   });
 
   test("keeps the user viewport when the parent refreshes data without changing the active window", () => {

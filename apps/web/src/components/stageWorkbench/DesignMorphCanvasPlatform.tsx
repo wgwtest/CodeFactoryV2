@@ -56,11 +56,25 @@ type TrackViewportFrameInput = {
   width: number;
 };
 
+type TrackStageLandmarkInput = {
+  items: Array<Pick<MorphCanvasItem, "id" | "title" | "x" | "w">>;
+  left: number;
+  right: number;
+};
+
 export type TrackViewportFrame = {
   x: number;
   y: number;
   width: number;
   height: number;
+};
+
+export type TrackStageLandmark = {
+  id: string;
+  title: string;
+  center: number;
+  x: number;
+  width: number;
 };
 
 type DragState = {
@@ -792,26 +806,26 @@ function renderTrackCanvas(
   drawTrackHandle(context, viewportFrame.x, viewportFrame.y, viewportFrame.height);
   drawTrackHandle(context, viewportFrame.x + viewportFrame.width, viewportFrame.y, viewportFrame.height);
 
+  const stageLandmarks = calculateTrackStageLandmarks({ items, left, right });
   items.forEach((item, index) => {
-    const itemLeft = left + ((item.x - worldLeft) / worldWidth) * (right - left);
-    const itemRight = left + ((item.x + item.w - worldLeft) / worldWidth) * (right - left);
-    const itemWidth = clamp(itemRight - itemLeft, 18, 118);
-    const itemCenter = left + ((item.x + item.w / 2 - worldLeft) / worldWidth) * (right - left);
-    const x = itemCenter - itemWidth / 2;
+    const landmark = stageLandmarks[index];
+    if (!landmark) {
+      return;
+    }
     const active = index === activePairIndex || index === activePairIndex + 1;
     context.fillStyle = active ? "#143e52" : index < activePairIndex ? "#e4f2e9" : "#fff";
     context.strokeStyle = active ? "#143e52" : index < activePairIndex ? "#80b995" : "#aebfba";
     context.lineWidth = 2;
     context.beginPath();
-    context.rect(x, y - 8, itemWidth, 16);
+    context.rect(landmark.x, y - 8, landmark.width, 16);
     context.fill();
     context.stroke();
     context.fillStyle = active ? "rgba(255, 255, 255, 0.92)" : "#6f807d";
-    context.fillRect(itemCenter - 1, y - 4, 2, 8);
+    context.fillRect(landmark.center - 1, y - 4, 2, 8);
     context.fillStyle = index < activePairIndex ? "#2b7448" : "#14211f";
     context.font = "900 12px Microsoft YaHei, sans-serif";
     context.textAlign = "center";
-    context.fillText(item.title, itemCenter, y + 34);
+    context.fillText(item.title, landmark.center, y + 34);
   });
   context.textAlign = "left";
 }
@@ -935,6 +949,29 @@ export function calculateTrackViewportFrame({
     width: Math.max(36, Math.min(right - x, frameRight - x)),
     height: Math.max(48, height - 30),
   };
+}
+
+export function calculateTrackStageLandmarks({ items, left, right }: TrackStageLandmarkInput): TrackStageLandmark[] {
+  if (!items.length) {
+    return [];
+  }
+  const worldLeft = Math.min(...items.map((item) => item.x));
+  const worldRight = Math.max(...items.map((item) => item.x + item.w));
+  const worldWidth = Math.max(1, worldRight - worldLeft);
+  const trackWidth = Math.max(1, right - left);
+  const minLandmarkWidth = Math.min(18, trackWidth);
+  return items.map((item) => {
+    const itemLeft = left + ((item.x - worldLeft) / worldWidth) * trackWidth;
+    const itemRight = left + ((item.x + item.w - worldLeft) / worldWidth) * trackWidth;
+    const width = Math.max(minLandmarkWidth, itemRight - itemLeft);
+    return {
+      id: item.id,
+      title: item.title,
+      center: itemLeft + (itemRight - itemLeft) / 2,
+      x: itemLeft,
+      width: Math.min(trackWidth, width),
+    };
+  });
 }
 
 function prepareCanvas(
