@@ -4,9 +4,11 @@ import { useState } from "react";
 import { describe, expect, test, vi, type Mock } from "vitest";
 
 import {
+  calculateTrackLabelY,
   calculateTrackStageLandmarks,
   calculateTrackViewportFrame,
   DesignMorphCanvasPlatform,
+  resolveTrackStageStyle,
   type DesignMorphStageViewModel,
   type DesignMorphWindowViewModel,
 } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
@@ -63,6 +65,23 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(requirement?.width).toBeGreaterThan(140);
     expect(document?.width).toBeGreaterThan(requirement?.width ?? 0);
     expect(architecture?.width).toBeGreaterThan((document?.width ?? 0) * 2);
+  });
+
+  test("keeps stage labels away from the bottom edge of the track window", () => {
+    expect(calculateTrackLabelY(88, 42)).toBeLessThanOrEqual(70);
+    expect(calculateTrackLabelY(88, 42)).toBeGreaterThan(58);
+  });
+
+  test("uses distinctive stage colors instead of flattening all landmarks into teal and gray", () => {
+    const styles = buildStages(0).map((stage, index) => resolveTrackStageStyle(stage.id, index, 0));
+    const activeStyles = buildStages(0).map((stage, index) => resolveTrackStageStyle(stage.id, index, index));
+    const distinctFills = new Set(styles.map((style) => style.fill));
+
+    expect(distinctFills.size).toBeGreaterThanOrEqual(5);
+    expect(styles[3].fill).not.toBe("#FFFFFF");
+    expect(styles[5].fill).not.toBe("#FFFFFF");
+    expect(activeStyles[3].fill).toBe("#D59B32");
+    expect(activeStyles[5].fill).toBe("#7567D8");
   });
 
   test("keeps the user viewport when the parent refreshes data without changing the active window", () => {

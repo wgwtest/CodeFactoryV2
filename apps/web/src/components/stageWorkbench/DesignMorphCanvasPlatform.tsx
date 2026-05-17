@@ -77,6 +77,13 @@ export type TrackStageLandmark = {
   width: number;
 };
 
+export type TrackStageStyle = {
+  fill: string;
+  stroke: string;
+  marker: string;
+  text: string;
+};
+
 type DragState = {
   pointerId: number | null;
   source: "mouse" | "pointer";
@@ -141,6 +148,15 @@ const STAGE_NODE_RESIZE_HIT_SIZE = 40;
 const STAGE_NODE_CONTROL_OUTSET = 72;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
+const TRACK_STAGE_STYLES: TrackStageStyle[] = [
+  { fill: "#2E8C7D", stroke: "#17695D", marker: "#E9FFF9", text: "#174F47" },
+  { fill: "#14536B", stroke: "#0B3B50", marker: "#E7F8FF", text: "#123E52" },
+  { fill: "#69A84F", stroke: "#437D34", marker: "#F2FFE9", text: "#315D28" },
+  { fill: "#D59B32", stroke: "#9D6E19", marker: "#FFF3D4", text: "#6E4E19" },
+  { fill: "#2F77BD", stroke: "#1E5790", marker: "#EAF5FF", text: "#214E78" },
+  { fill: "#7567D8", stroke: "#5147A8", marker: "#F1EFFF", text: "#443C92" },
+  { fill: "#C4546F", stroke: "#97364F", marker: "#FFF0F4", text: "#7D2F44" },
+];
 const INITIAL_VIEWPORT: CanvasViewportState = { x: -314, y: -3, scale: 0.9 };
 const STAGE_LAYOUTS = [
   { x: 80, y: 120, w: 500, h: 640, type: "paper" },
@@ -784,6 +800,7 @@ function renderTrackCanvas(
   const left = TRACK_PADDING_X;
   const right = width - 36;
   const y = Math.max(42, height * 0.48);
+  const labelY = calculateTrackLabelY(height, y);
   const worldLeft = Math.min(...items.map((item) => item.x));
   const worldRight = Math.max(...items.map((item) => item.x + item.w));
   const worldWidth = Math.max(1, worldRight - worldLeft);
@@ -812,20 +829,21 @@ function renderTrackCanvas(
     if (!landmark) {
       return;
     }
+    const stageStyle = resolveTrackStageStyle(item.id, index, activePairIndex);
     const active = index === activePairIndex || index === activePairIndex + 1;
-    context.fillStyle = active ? "#143e52" : index < activePairIndex ? "#e4f2e9" : "#fff";
-    context.strokeStyle = active ? "#143e52" : index < activePairIndex ? "#80b995" : "#aebfba";
+    context.fillStyle = stageStyle.fill;
+    context.strokeStyle = stageStyle.stroke;
     context.lineWidth = 2;
     context.beginPath();
     context.rect(landmark.x, y - 8, landmark.width, 16);
     context.fill();
     context.stroke();
-    context.fillStyle = active ? "rgba(255, 255, 255, 0.92)" : "#6f807d";
+    context.fillStyle = stageStyle.marker;
     context.fillRect(landmark.center - 1, y - 4, 2, 8);
-    context.fillStyle = index < activePairIndex ? "#2b7448" : "#14211f";
+    context.fillStyle = active ? "#14211f" : stageStyle.text;
     context.font = "900 12px Microsoft YaHei, sans-serif";
     context.textAlign = "center";
-    context.fillText(item.title, landmark.center, y + 34);
+    context.fillText(item.title, landmark.center, labelY);
   });
   context.textAlign = "left";
 }
@@ -972,6 +990,45 @@ export function calculateTrackStageLandmarks({ items, left, right }: TrackStageL
       width: Math.min(trackWidth, width),
     };
   });
+}
+
+export function calculateTrackLabelY(height: number, axisY: number) {
+  return Math.min(height - 18, axisY + 24);
+}
+
+export function resolveTrackStageStyle(stageId: string, index: number, activePairIndex: number): TrackStageStyle {
+  const baseStyle = TRACK_STAGE_STYLES[index % TRACK_STAGE_STYLES.length];
+  const active = index === activePairIndex || index === activePairIndex + 1;
+  const completed = index < activePairIndex;
+  if (active) {
+    return baseStyle;
+  }
+  if (completed) {
+    return {
+      fill: softenHexColor(baseStyle.fill, 0.28),
+      stroke: baseStyle.stroke,
+      marker: baseStyle.marker,
+      text: baseStyle.text,
+    };
+  }
+  return {
+    fill: softenHexColor(baseStyle.fill, 0.78),
+    stroke: softenHexColor(baseStyle.stroke, 0.3),
+    marker: baseStyle.stroke,
+    text: baseStyle.text,
+  };
+}
+
+function softenHexColor(hex: string, ratio: number) {
+  const normalized = hex.replace("#", "");
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `#${toHexChannel(r + (255 - r) * ratio)}${toHexChannel(g + (255 - g) * ratio)}${toHexChannel(b + (255 - b) * ratio)}`;
+}
+
+function toHexChannel(value: number) {
+  return Math.round(value).toString(16).padStart(2, "0").toUpperCase();
 }
 
 function prepareCanvas(
