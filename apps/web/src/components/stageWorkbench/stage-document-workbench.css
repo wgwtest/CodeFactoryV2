@@ -261,6 +261,21 @@
   margin-top: 8px;
 }
 
+.a4-document-selectable-block {
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.a4-document-selectable-block:hover {
+  outline: 1px solid rgba(47, 119, 189, 0.28);
+  background: rgba(47, 119, 189, 0.06);
+}
+
+.a4-document-selectable-block.is-selected {
+  outline: 2px solid rgba(47, 119, 189, 0.54);
+  background: rgba(47, 119, 189, 0.09);
+}
+
 .a4-document-block-list {
   margin: 0;
   padding-left: 18px;

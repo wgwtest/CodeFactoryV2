@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, test, vi, type Mock } from "vitest";
 
 import {
+  calculateRelationArrowGeometry,
   calculateTrackLabelY,
   calculateTrackStageLandmarks,
   calculateTrackViewportFrame,
@@ -232,6 +233,104 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(within(objectLayer).queryByTestId("stage-object-functionTree")).not.toBeInTheDocument();
 
     canvasMock.restore();
+  });
+
+  test("reports a selected document block when the user clicks inside an A4 object", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+
+    fireEvent.click(within(documentObject).getByText("采用统一服务优先。"));
+
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "sdd-1-body",
+        stageId: "document",
+        kind: "design_block",
+        title: "总体架构",
+        summary: "采用统一服务优先。",
+        sourceRefs: ["REQ-1"],
+      }),
+    );
+
+    canvasMock.restore();
+  });
+
+  test("selects a stage relation when the user clicks the arrow between two stage objects", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const initialPan = readPanLabel(platform);
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 205, clientY: 310 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 205, clientY: 310 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "reqdoc",
+        stageId: "requirement:document",
+        kind: "stage_relation",
+        title: "需规 -> 软设文档",
+      }),
+    );
+
+    canvasMock.restore();
+  });
+
+  test("keeps relation clicks focused on the arrow without jumping to the destination stage", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    const initialPan = readPanLabel(platform);
+
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 800, clientY: 292 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 800, clientY: 292 });
+
+    expect(readPanLabel(platform)).toBe(initialPan);
+    expect(within(platform).getByText("选中关系：软设文档 -> 功能树")).toBeInTheDocument();
+    expect(within(platform).queryByText("选中：功能树")).not.toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("terminates the arrow shaft at the arrowhead base instead of the visual tip", () => {
+    const geometry = calculateRelationArrowGeometry(
+      { x: 80, y: 120, w: 500, h: 640 },
+      { x: 720, y: 120, w: 520, h: 640 },
+    );
+
+    expect(geometry.shaftEnd.x).toBeLessThan(geometry.tip.x);
+    expect(geometry.shaftEnd.x).toBe(geometry.baseCenter.x);
+    expect(geometry.baseLeft.x).toBeLessThan(geometry.tip.x);
+    expect(geometry.baseRight.x).toBeLessThan(geometry.tip.x);
   });
 
   test("moves a document object when the user drags its visible compact title bar", () => {

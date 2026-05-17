@@ -231,7 +231,8 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   );
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(morphPlatform).getByText("Canvas 窗口：软设文档 -> 功能树")).toBeInTheDocument();
-  fireEvent.click(within(workspace).getByRole("button", { name: "进入软设工作区微调" }));
+  expect(within(workspace).queryByRole("button", { name: "进入软设工作区微调" })).not.toBeInTheDocument();
+  expect(within(workspace).getByText("关系：软设文档 -> 功能树")).toBeInTheDocument();
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
 
@@ -239,8 +240,18 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(workspace).getByTestId("design-morph-inspector")).toBeInTheDocument();
   expect(within(workspace).getByText("当前选中对象")).toBeInTheDocument();
   expect(within(workspace).getByText("追溯链")).toBeInTheDocument();
-  expect(within(workspace).getByText("扩写本节")).toBeInTheDocument();
+  expect(within(workspace).getByText("关系：软设文档 -> 功能树")).toBeInTheDocument();
   expect(within(workspace).getAllByText(new RegExp(newVersionLabel)).length).toBeGreaterThanOrEqual(1);
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
+  expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
+  expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
+  expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
+  expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
+  expect(within(workspace).getByTestId("p3-design-lab-conversion-control")).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));
   expect(await screen.findByText("设计会话：draft_saved")).toBeInTheDocument();

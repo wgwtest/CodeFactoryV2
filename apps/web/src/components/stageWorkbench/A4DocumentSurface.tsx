@@ -1,4 +1,5 @@
 import { Empty } from "antd";
+import type React from "react";
 import type { StandardDocumentBlockViewModel, StandardDocumentSectionViewModel } from "./models";
 import "./stage-document-workbench.css";
 
@@ -7,6 +8,13 @@ type A4DocumentSection = {
   title: string;
   content: string;
   status?: string;
+};
+
+type NormalizedA4DocumentSection = {
+  section_id: string;
+  title: string;
+  status?: string;
+  blocks: StandardDocumentBlockViewModel[];
 };
 
 type A4DocumentSurfaceProps = {
@@ -20,6 +28,8 @@ type A4DocumentSurfaceProps = {
   structuredSections?: StandardDocumentSectionViewModel[];
   emptyDescription?: string;
   ariaLabel: string;
+  selectedBlockId?: string;
+  onSelectBlock?: (block: StandardDocumentBlockViewModel, section: NormalizedA4DocumentSection) => void;
 };
 
 export function A4DocumentSurface({
@@ -33,8 +43,10 @@ export function A4DocumentSurface({
   structuredSections,
   emptyDescription = "尚未生成文档",
   ariaLabel,
+  selectedBlockId,
+  onSelectBlock,
 }: A4DocumentSurfaceProps) {
-  const normalizedSections =
+  const normalizedSections: NormalizedA4DocumentSection[] =
     structuredSections?.map((section) => ({
       section_id: section.sectionId,
       title: section.title,
@@ -70,7 +82,12 @@ export function A4DocumentSurface({
               <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
                 <h3>{section.title}</h3>
                 {section.blocks.map((block) => (
-                  <DocumentBlock key={block.blockId} block={block} />
+                  <DocumentBlock
+                    block={block}
+                    key={block.blockId}
+                    selected={selectedBlockId === block.blockId}
+                    onSelect={() => onSelectBlock?.(block, section)}
+                  />
                 ))}
               </section>
             ))}
@@ -87,14 +104,32 @@ export function A4DocumentSurface({
   );
 }
 
-function DocumentBlock({ block }: { block: StandardDocumentBlockViewModel }) {
+function DocumentBlock({
+  block,
+  selected,
+  onSelect,
+}: {
+  block: StandardDocumentBlockViewModel;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const selectionProps = {
+    "data-selection-id": block.blockId,
+    "data-testid": `a4-document-block-${block.blockId}`,
+    onClick: (event: React.MouseEvent) => {
+      event.stopPropagation();
+      onSelect();
+    },
+  };
+  const className = `a4-document-selectable-block${selected ? " is-selected" : ""}`;
+
   if (block.kind === "list") {
     const items = block.content
       .split("\n")
       .map((item) => item.trim())
       .filter(Boolean);
     return (
-      <ul className="a4-document-block-list" id={block.anchorId}>
+      <ul className={`a4-document-block-list ${className}`} id={block.anchorId} {...selectionProps}>
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -104,14 +139,14 @@ function DocumentBlock({ block }: { block: StandardDocumentBlockViewModel }) {
 
   if (block.kind === "code") {
     return (
-      <pre className="a4-document-block-code" id={block.anchorId}>
+      <pre className={`a4-document-block-code ${className}`} id={block.anchorId} {...selectionProps}>
         {block.content}
       </pre>
     );
   }
 
   return (
-    <p className={`a4-document-block is-${block.kind}`} id={block.anchorId}>
+    <p className={`a4-document-block is-${block.kind} ${className}`} id={block.anchorId} {...selectionProps}>
       {block.title ? <strong>{block.title}：</strong> : null}
       {block.content}
     </p>
