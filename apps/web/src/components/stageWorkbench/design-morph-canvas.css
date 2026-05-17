@@ -259,10 +259,12 @@
 
 .design-morph-controls > div {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.design-morph-controls button {
+.design-morph-controls button,
+.design-morph-layout-select select {
   height: 30px;
   padding: 0 10px;
   border: 1px solid #b7c5c0;
@@ -274,9 +276,48 @@
   cursor: pointer;
 }
 
-.design-morph-controls button:hover {
+.design-morph-controls button:hover,
+.design-morph-layout-select select:hover {
   border-color: #143e52;
   color: #143e52;
+}
+
+.design-morph-controls button:disabled {
+  border-color: #d5ded9;
+  background: #f4f6f5;
+  color: #a0aca8;
+  cursor: not-allowed;
+}
+
+.design-morph-layout-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.design-morph-layout-select span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.design-morph-layout-select select {
+  min-width: 124px;
+  max-width: 180px;
+  padding-right: 26px;
+}
+
+.design-morph-layout-delete {
+  width: 30px;
+  padding: 0 !important;
+  font-size: 16px !important;
+  line-height: 1;
 }
 
 @media (max-width: 860px) {

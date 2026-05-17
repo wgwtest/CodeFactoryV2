@@ -251,6 +251,20 @@ type DesignMorphCanvasPlatformProps = {
   onSelectMorphObject?: (selection: DesignMorphSelection) => void;
 };
 
+type SavedCanvasLayoutSnapshot = {
+  activeWindowId: string;
+  documentViewModes: Record<string, string>;
+  stageLayouts: Record<string, CanvasStageLayoutState>;
+  viewport: CanvasViewportState;
+};
+
+type SavedCanvasLayoutRecord = {
+  id: string;
+  name: string;
+  createdAt: string;
+  snapshot: SavedCanvasLayoutSnapshot;
+};
+
 const MIN_CANVAS_SCALE = 0.42;
 const MAX_CANVAS_SCALE = 1.65;
 const MIN_STAGE_NODE_WIDTH = 360;
@@ -261,6 +275,7 @@ const STAGE_NODE_CONTROL_OUTSET = 72;
 const STAGE_RELATION_HIT_WIDTH = 24;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
+const SAVED_LAYOUT_STORAGE_KEY = "p3-design-morph-layouts";
 const TRACK_STAGE_STYLES: TrackStageStyle[] = [
   { fill: "#2E8C7D", stroke: "#17695D", marker: "#E9FFF9", text: "#174F47" },
   { fill: "#14536B", stroke: "#0B3B50", marker: "#E7F8FF", text: "#123E52" },
@@ -304,6 +319,8 @@ export function DesignMorphCanvasPlatform({
   const [layoutRevision, setLayoutRevision] = useState(0);
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
   const [documentViewModes, setDocumentViewModes] = useState<Record<string, string>>(() => buildDocumentViewModeState(stages));
+  const [savedLayouts, setSavedLayouts] = useState<SavedCanvasLayoutRecord[]>(() => loadSavedCanvasLayouts());
+  const [selectedSavedLayoutId, setSelectedSavedLayoutId] = useState("");
   const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
   const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
   const activeWindow = windows[activePairIndex] ?? windows[0];
@@ -325,6 +342,17 @@ export function DesignMorphCanvasPlatform({
   useEffect(() => {
     setDocumentViewModes((current) => reconcileDocumentViewModes(stages, current));
   }, [stages]);
+
+  useEffect(() => {
+    persistSavedCanvasLayouts(savedLayouts);
+  }, [savedLayouts]);
+
+  useEffect(() => {
+    if (!selectedSavedLayoutId || savedLayouts.some((layout) => layout.id === selectedSavedLayoutId)) {
+      return;
+    }
+    setSelectedSavedLayoutId("");
+  }, [savedLayouts, selectedSavedLayoutId]);
 
   useEffect(() => {
     if (!items.length || items.some((item) => item.id === selectedStageId)) {
@@ -817,6 +845,48 @@ export function DesignMorphCanvasPlatform({
     centerItem(stages[3]?.id ?? items[3]?.id ?? selectedStageId, 0.62);
   }
 
+  function recordCurrentLayout() {
+    const nextIndex = getNextSavedLayoutIndex(savedLayouts);
+    const nextLayout: SavedCanvasLayoutRecord = {
+      id: `layout-${nextIndex}`,
+      name: `布局 ${nextIndex}`,
+      createdAt: new Date().toISOString(),
+      snapshot: buildSavedCanvasLayoutSnapshot(activeWindowId, documentViewModes, stageLayouts, viewport),
+    };
+    setSavedLayouts((current) => [...current, nextLayout]);
+    setSelectedSavedLayoutId(nextLayout.id);
+  }
+
+  function applySavedLayout(layoutId: string) {
+    setSelectedSavedLayoutId(layoutId);
+    const savedLayout = savedLayouts.find((layout) => layout.id === layoutId);
+    if (!savedLayout) {
+      return;
+    }
+    setStageLayouts(reconcileCanvasLayouts(stages, savedLayout.snapshot.stageLayouts));
+    setDocumentViewModes(reconcileDocumentViewModes(stages, savedLayout.snapshot.documentViewModes));
+    setViewport(savedLayout.snapshot.viewport);
+    const nextWindow = windows.find((window) => window.id === savedLayout.snapshot.activeWindowId);
+    if (nextWindow) {
+      const nextPairIndex = Math.max(0, windows.findIndex((window) => window.id === nextWindow.id));
+      suppressedAutoCenterWindowKeyRef.current = buildActiveWindowKey(nextWindow, nextPairIndex);
+      onActiveWindowChange(nextWindow.id);
+      emitMorphSelection(buildDesignMorphStageRelationSelection(nextWindow));
+    }
+  }
+
+  function deleteSelectedSavedLayout() {
+    const savedLayout = savedLayouts.find((layout) => layout.id === selectedSavedLayoutId);
+    if (!savedLayout) {
+      return;
+    }
+    if (!window.confirm(`删除布局“${savedLayout.name}”？`)) {
+      return;
+    }
+    setSavedLayouts((current) => current.filter((layout) => layout.id !== selectedSavedLayoutId));
+    setSelectedSavedLayoutId("");
+  }
+
   function beginDocumentDrag(
     stageId: string,
     mode: DocumentDragMode,
@@ -981,6 +1051,29 @@ export function DesignMorphCanvasPlatform({
           </button>
           <button type="button" onClick={centerLargeArchitecture}>
             定位大型架构图
+          </button>
+          <button type="button" onClick={recordCurrentLayout}>
+            记录布局
+          </button>
+          <label className="design-morph-layout-select">
+            <span>使用布局</span>
+            <select aria-label="使用布局" value={selectedSavedLayoutId} onChange={(event) => applySavedLayout(event.target.value)}>
+              <option value="">选择布局</option>
+              {savedLayouts.map((layout) => (
+                <option key={layout.id} value={layout.id}>
+                  {layout.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            aria-label="删除布局"
+            className="design-morph-layout-delete"
+            disabled={!selectedSavedLayoutId}
+            type="button"
+            onClick={deleteSelectedSavedLayout}
+          >
+            ×
           </button>
         </div>
       </footer>
@@ -1219,6 +1312,91 @@ function buildCanvasItems(
       h: stageLayouts[stage.id]?.h ?? layout.h,
     };
   });
+}
+
+function buildSavedCanvasLayoutSnapshot(
+  activeWindowId: string,
+  documentViewModes: Record<string, string>,
+  stageLayouts: Record<string, CanvasStageLayoutState>,
+  viewport: CanvasViewportState,
+): SavedCanvasLayoutSnapshot {
+  return {
+    activeWindowId,
+    documentViewModes: { ...documentViewModes },
+    stageLayouts: Object.entries(stageLayouts).reduce<Record<string, CanvasStageLayoutState>>((layouts, [stageId, layout]) => {
+      layouts[stageId] = { ...layout };
+      return layouts;
+    }, {}),
+    viewport: { ...viewport },
+  };
+}
+
+function loadSavedCanvasLayouts(): SavedCanvasLayoutRecord[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(SAVED_LAYOUT_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isSavedCanvasLayoutRecord) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedCanvasLayouts(layouts: SavedCanvasLayoutRecord[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(SAVED_LAYOUT_STORAGE_KEY, JSON.stringify(layouts));
+}
+
+function getNextSavedLayoutIndex(layouts: SavedCanvasLayoutRecord[]) {
+  const usedIndexes = layouts
+    .map((layout) => Number(layout.id.replace(/^layout-/, "")))
+    .filter((value) => Number.isFinite(value));
+  return Math.max(0, ...usedIndexes) + 1;
+}
+
+function isSavedCanvasLayoutRecord(value: unknown): value is SavedCanvasLayoutRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<SavedCanvasLayoutRecord>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.createdAt === "string" &&
+    isSavedCanvasLayoutSnapshot(candidate.snapshot)
+  );
+}
+
+function isSavedCanvasLayoutSnapshot(value: unknown): value is SavedCanvasLayoutSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<SavedCanvasLayoutSnapshot>;
+  return (
+    typeof candidate.activeWindowId === "string" &&
+    isCanvasViewportState(candidate.viewport) &&
+    isRecordObject(candidate.stageLayouts) &&
+    isRecordObject(candidate.documentViewModes)
+  );
+}
+
+function isCanvasViewportState(value: unknown): value is CanvasViewportState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<CanvasViewportState>;
+  return typeof candidate.x === "number" && typeof candidate.y === "number" && typeof candidate.scale === "number";
+}
+
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function buildActiveWindowKey(window: DesignMorphWindowViewModel, activePairIndex: number) {
