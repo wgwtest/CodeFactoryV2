@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "document_id": "p2-p3-sample-srs-sx-datastore",
+      "name": "需求规格说明范本-SX-DataStore",
+      "file_name": "01-需求规格说明范本-SX-DataStore.md",
+      "document_type": "需求规格说明范本",
+      "sample_object": "SX-DataStore",
+      "source_project": "/home/wgw/CodexProject/SX-DataStore",
+      "status": "available"
+    },
+    {
+      "document_id": "p2-p3-sample-sdd-sx-datastore",
+      "name": "软件设计说明范本-SX-DataStore",
+      "file_name": "02-软件设计说明范本-SX-DataStore.md",
+      "document_type": "软件设计说明范本",
+      "sample_object": "SX-DataStore",
+      "source_project": "/home/wgw/CodexProject/SX-DataStore",
+      "status": "available"
+    }
+  ]
+}
