@@ -65,6 +65,7 @@
 | `.worktrees/p-test` | `feat/p-test` | 跨阶段测试验证辅助分支 |
 | `.worktrees/p2-requirement-analysis-system` | `feat/p2-requirement-analysis-system` | P2 需求分析系统辅助分支 |
 | `.worktrees/p3-software-design-system` | `feat/p3-software-design-system` | P3 软件设计系统历史集成分支工作树 |
+| `.worktrees/p3-requirement-to-design-conversion` | `feat/p3-requirement-to-design-conversion` | P3 需规文档到软设文档转换专项分支 |
 | `.worktrees/p4-tool-hub` | `feat/p4-tool-hub` | P4 工具仓库辅助分支 |
 | `.worktrees/p5-software-construction-system` | `feat/p5-software-construction-system` | P5 软件构建系统辅助分支 |
 | `.worktrees/p6-portal-platform-entry` | `feat/p6-portal-platform-entry` | P6 门户与平台入口辅助分支 |
@@ -100,6 +101,14 @@ P1 特别规则：
 - 不应因为该分支存在，就再次把整条历史重新 merge 到 `main`；
 - 若后续继续推进 `P3` 新工作，默认应从最新 `main` 新建干净分支，例如新的 `feat/p3-*` 分支；
 - 新会话若看到该分支相对远端 ahead 很多，不应直接解读为“有大量未进主线的新功能”，应先检查它相对 `main` 是否还有独有提交。
+
+当前已开设新的 `P3` 专项分支：
+
+- worktree：`.worktrees/p3-requirement-to-design-conversion`
+- 分支：`feat/p3-requirement-to-design-conversion`
+- 用途：专门推进“需求规格说明文档 -> 软件设计说明文档”的转换能力，包括输入包解析、章节映射、设计草稿生成、人工校核和冻结输出。
+- 默认入口：`/p3-design-lab`
+- 新会话进入该 worktree 时，先读该目录下的 `WORKTREE_GUIDE.md`。
 
 ## 4. 代码结构速览
 
@@ -206,6 +215,7 @@ just web-dev
 | `.worktrees/p1-knowledge-base-review` | `8021` | `5171` | `/documents` |
 | `.worktrees/p2-requirement-analysis-system` | `8060` | `5183` | `/requirements` |
 | `.worktrees/p3-software-design-system` | `8030` | `5174` | `/xx-p3` |
+| `.worktrees/p3-requirement-to-design-conversion` | `8031` | `5175` | `/p3-design-lab` |
 | `.worktrees/p4-tool-hub` | `8010` | `5180` | `/xx-p4` |
 | `.worktrees/p5-software-construction-system` | `8040` | `5181` | `/build` |
 | `.worktrees/p6-portal-platform-entry` | `8050` | `5182` | `/portal` |
