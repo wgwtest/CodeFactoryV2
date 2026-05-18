@@ -9,7 +9,14 @@ from app.db.models.requirements import RequirementAuthoringDocument
 from app.platform_exchange.models import ConsumeArtifactCommand
 from app.platform_exchange.service import PlatformExchangeService
 from app.requirement_spec_work_items.service import RequirementSpecWorkItemService
+from app.design_converters.adapters.base import load_design_converter_adapter
+from app.design_converters.models import DesignConverterRunRequest, DesignConverterRunResult
+from app.design_converters.plugin_registry import get_design_converter_plugin_registry
 from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
+from app.software_design_v2.sdd_template_profile import (
+    build_sdd_81435_quality_rules,
+    build_sdd_81435_template_profile,
+)
 
 
 class SoftwareDesignV2Service:
@@ -18,7 +25,7 @@ class SoftwareDesignV2Service:
         {
             "value": "standard_sdd_draft",
             "label": "标准软设草稿生成",
-            "description": "按标准软件设计说明章节生成初稿。",
+            "description": "按标准软件设计说明章节生成初稿，并作为转换器选项传入。",
         },
         {
             "value": "component_first",
@@ -58,6 +65,10 @@ class SoftwareDesignV2Service:
             self.requirement_spec_work_item_service.ensure_default_published_test_item()
             return self.list_input_packages()
         return {"items": items}
+
+    def list_converters(self) -> dict:
+        registry = get_design_converter_plugin_registry()
+        return {"items": [converter.to_api() for converter in registry.list_converters()]}
 
     def create_session(self, payload: P3DesignSessionCreate) -> dict:
         input_package = self._get_input_package(payload.input_package_id)
@@ -119,7 +130,221 @@ class SoftwareDesignV2Service:
         valid_strategies = {item["value"] for item in self._conversion_strategy_options}
         if strategy not in valid_strategies:
             raise ValueError("unsupported P3 conversion strategy")
-        return self._materialize_design_draft(design_session, strategy, target_status="draft_ready")
+        return self._run_design_converter(design_session, payload, strategy)
+
+    def _run_design_converter(self, design_session: dict, payload: P3DesignConversionRun, strategy: str) -> dict:
+        registry = get_design_converter_plugin_registry()
+        manifest = registry.require(payload.converter_id.strip() if payload.converter_id else registry.default_converter().converter_id)
+        design_session["conversion"] = self._build_conversion_state("conversion_running", strategy, None, None, converter=manifest.to_api())
+
+        request = self._build_converter_request(design_session, payload, strategy)
+        adapter = load_design_converter_adapter(manifest)
+        try:
+            result = adapter.run(request)
+        except ValueError as exc:
+            self._record_conversion_failure(design_session, strategy, manifest.to_api(), str(exc))
+            raise
+        design_document = self._normalize_converter_design_document(result, design_session)
+        design_baseline = self._build_design_baseline_from_converter_result(result, design_session)
+        workorder_projection = self._workorder_projection_from_converter_result(result)
+        design_session["design_document"] = design_document
+        design_session["design_baseline"] = design_baseline
+        design_session["workorder_projection"] = workorder_projection
+        design_session["check_result"] = self._check_seed_from_converter_result(result)
+        design_session["status"] = "draft_ready"
+        design_session["conversion"] = self._build_conversion_state(
+            "draft_ready",
+            strategy,
+            design_document,
+            design_baseline,
+            converter=result.converter,
+            process_output=result.process_output,
+        )
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("conversion", f"执行需规转软设转换器：{manifest.converter_id} / {strategy}"),
+        ]
+        self._refresh_related_designs(design_session)
+        return design_session
+
+    def _record_conversion_failure(self, design_session: dict, strategy: str, converter: dict, message: str) -> None:
+        error_message = message or "P3 design conversion failed"
+        process_output = {
+            "error": {
+                "message": error_message,
+                "source": "design_converter",
+                "recorded_at": self._now(),
+            }
+        }
+        design_session["status"] = "conversion_failed"
+        design_session["conversion"] = self._build_conversion_state(
+            "conversion_failed",
+            strategy,
+            None,
+            None,
+            converter=converter,
+            process_output=process_output,
+        )
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("conversion_failed", f"需规转软设转换失败：{error_message}"),
+        ]
+
+    def _build_converter_request(
+        self,
+        design_session: dict,
+        payload: P3DesignConversionRun,
+        strategy: str,
+    ) -> DesignConverterRunRequest:
+        input_package = dict(design_session["input_package"] or {})
+        target_design_profile = build_sdd_81435_template_profile(
+            design_title=design_session["design_title"],
+            version_label=design_session["version_label"],
+        )
+        conversion_options = {
+            "strategy": strategy,
+            "expected_output": "design_package_with_document",
+            **dict(payload.options or {}),
+            "generation_policy": dict(design_session.get("generation_policy") or {}),
+        }
+        quality_rules = build_sdd_81435_quality_rules()
+        return DesignConverterRunRequest(
+            protocol_version="p3-design-converter-protocol@1",
+            session={
+                "session_id": design_session["session_id"],
+                "design_title": design_session["design_title"],
+                "version_label": design_session["version_label"],
+                "generation_policy": dict(design_session.get("generation_policy") or {}),
+            },
+            input_package=input_package,
+            target_design_profile=target_design_profile,
+            conversion_options=conversion_options,
+            quality_rules=quality_rules,
+        )
+
+    @staticmethod
+    def _normalize_converter_design_document(result: DesignConverterRunResult, design_session: dict) -> dict:
+        design_document = dict(result.design_document or {})
+        design_document["title"] = design_document.get("title") or design_session["design_title"]
+        design_document["version_label"] = design_document.get("version_label") or design_session["version_label"]
+        design_document.setdefault("status", "draft")
+        design_document.setdefault("sections", [])
+        return design_document
+
+    def _build_design_baseline_from_converter_result(self, result: DesignConverterRunResult, design_session: dict) -> dict:
+        input_package = dict(design_session.get("input_package") or {})
+        structured_spec = dict(input_package.get("structured_spec") or {})
+        app_name = structured_spec.get("application", {}).get("name") or result.design_document.get("title") or "未命名软件"
+        design_package = dict(result.design_package or {})
+        sections = list(result.design_document.get("sections") or [])
+        modules = self._modules_from_converter_result(result)
+        pending_confirmations = [
+            str(item.get("message") or item.get("gap_id") or item)
+            for item in result.gap_list
+            if str(item.get("severity") or "").lower() in {"blocking", "warning"}
+        ]
+        return {
+            "baseline_id": design_package.get("package_id") or f"sdb2-{uuid4().hex[:10]}",
+            "application_name": app_name,
+            "architecture_mode": self._architecture_mode_from_converter_result(result),
+            "modules": modules,
+            "traceability": self._traceability_from_converter_result(result),
+            "pending_confirmations": pending_confirmations,
+            "design_package": design_package,
+            "sections": [
+                {
+                    "section_id": section.get("section_id"),
+                    "title": section.get("title"),
+                    "status": section.get("status", "generated"),
+                    "source_refs": list(section.get("source_refs") or []),
+                }
+                for section in sections
+                if isinstance(section, dict)
+            ],
+            "gap_list": list(result.gap_list),
+            "review_findings": list(result.review_findings),
+            "converter": dict(result.converter),
+            "confidence": result.confidence,
+        }
+
+    @staticmethod
+    def _modules_from_converter_result(result: DesignConverterRunResult) -> list[dict]:
+        design_package = dict(result.design_package or {})
+        functional_tree = dict(design_package.get("functional_tree_projection") or {})
+        modules = functional_tree.get("modules")
+        if isinstance(modules, list) and modules:
+            return [
+                _normalize_design_module(module, index)
+                for index, module in enumerate(modules)
+                if isinstance(module, dict)
+            ]
+        return [
+            {
+                "module_id": str(item.get("target_ref") or item.get("target_title") or item.get("target_type") or "design-target"),
+                "name": str(item.get("target_title") or item.get("target_ref") or item.get("target_type") or "设计目标"),
+                "source_refs": [str(item.get("source_ref") or item.get("source_title") or "")],
+            }
+            for item in result.traceability
+            if isinstance(item, dict)
+        ]
+
+    @staticmethod
+    def _architecture_mode_from_converter_result(result: DesignConverterRunResult) -> str:
+        design_package = dict(result.design_package or {})
+        architecture = dict(design_package.get("layered_architecture_projection") or {})
+        return str(architecture.get("architecture_mode") or architecture.get("mode") or "converter_generated")
+
+    @staticmethod
+    def _traceability_from_converter_result(result: DesignConverterRunResult) -> list[dict]:
+        normalized = []
+        for item in result.traceability:
+            source_ref = str(item.get("source_ref") or item.get("requirement_clause") or "")
+            target_title = str(item.get("target_title") or item.get("target_ref") or item.get("design_section") or "")
+            normalized.append(
+                {
+                    "requirement_clause": source_ref,
+                    "design_section": target_title,
+                    **dict(item),
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _workorder_projection_from_converter_result(result: DesignConverterRunResult) -> dict | None:
+        if result.workorder_projection_candidate:
+            return _normalize_workorder_projection(dict(result.workorder_projection_candidate), result=result)
+        design_package = dict(result.design_package or {})
+        projection = design_package.get("p4_workorder_projection")
+        if isinstance(projection, dict) and projection:
+            return _normalize_workorder_projection(projection, result=result)
+        return None
+
+    @staticmethod
+    def _check_seed_from_converter_result(result: DesignConverterRunResult) -> dict:
+        quality_summary = dict(result.process_output.get("quality_summary") or {})
+        blocking_count = int(quality_summary.get("blocking_count") or 0)
+        warning_count = int(quality_summary.get("warning_count") or len(result.gap_list))
+        passed_count = int(quality_summary.get("passed_count") or 0)
+        items = [
+            {"severity": "passed", "message": "转换器已生成软件设计说明草稿。"},
+            {"severity": "passed", "message": "转换器已生成结构化设计包初稿。"},
+            {"severity": "passed", "message": "转换器已生成需求到设计追溯。"},
+        ]
+        for gap in result.gap_list:
+            items.append(
+                {
+                    "severity": str(gap.get("severity") or "warning"),
+                    "message": str(gap.get("message") or gap.get("gap_id") or gap),
+                }
+            )
+        return {
+            "blocking_count": blocking_count,
+            "warning_count": warning_count,
+            "passed_count": passed_count or 3,
+            "items": items,
+        }
 
     def _materialize_design_draft(self, design_session: dict, strategy: str, target_status: str) -> dict:
         design_session["conversion"] = self._build_conversion_state("conversion_running", strategy, None, None)
@@ -355,12 +580,16 @@ class SoftwareDesignV2Service:
         strategy: str,
         design_document: dict | None,
         design_baseline: dict | None,
+        converter: dict | None = None,
+        process_output: dict | None = None,
     ) -> dict:
         done = status == "draft_ready"
         running = status == "conversion_running"
+        failed = status == "conversion_failed"
         return {
             "status": status,
             "strategy": strategy,
+            "converter": converter,
             "strategy_options": self._conversion_strategy_options,
             "steps": [
                 self._build_conversion_step(
@@ -369,6 +598,7 @@ class SoftwareDesignV2Service:
                     "加载正文、结构化条款、标注和冻结快照。",
                     done,
                     running,
+                    failed,
                     0,
                 ),
                 self._build_conversion_step(
@@ -377,6 +607,7 @@ class SoftwareDesignV2Service:
                     "抽取模块候选、接口候选、数据对象候选和质量属性。",
                     done,
                     running,
+                    failed,
                     1,
                 ),
                 self._build_conversion_step(
@@ -385,6 +616,7 @@ class SoftwareDesignV2Service:
                     "生成 A4 正文草稿和 SoftwareDesignBaseline v2 初稿。",
                     done,
                     running,
+                    failed,
                     2,
                 ),
                 self._build_conversion_step(
@@ -393,11 +625,13 @@ class SoftwareDesignV2Service:
                     "建立需规条款到章节、模块、接口和 P4 候选的映射。",
                     done,
                     running,
+                    failed,
                     3,
                 ),
             ],
             "draft_preview": self._build_conversion_draft_preview(design_document) if design_document else None,
             "traceability_summary": self._build_conversion_traceability_summary(design_baseline) if design_baseline else None,
+            "process_output": process_output or {},
         }
 
     def _build_conversion_step(
@@ -407,10 +641,13 @@ class SoftwareDesignV2Service:
         description: str,
         done: bool,
         running: bool,
+        failed: bool,
         index: int,
     ) -> dict:
         if done:
             status = "done"
+        elif failed and index == 0:
+            status = "failed"
         elif running and index == 0:
             status = "running"
         else:
@@ -642,3 +879,100 @@ class SoftwareDesignV2Service:
 
     def _now(self) -> str:
         return datetime.now(UTC).isoformat()
+
+
+def _normalize_design_module(module: dict, index: int) -> dict:
+    module_id = str(module.get("module_id") or module.get("id") or f"module-{index + 1}")
+    name = str(module.get("name") or module.get("title") or module_id)
+    normalized = {
+        "module_id": module_id,
+        "name": name,
+        "source_refs": list(module.get("source_refs") or []),
+    }
+    description = module.get("description")
+    if isinstance(description, str) and description.strip():
+        normalized["description"] = description
+    return normalized
+
+
+def _normalize_workorder_projection(projection: dict, *, result: DesignConverterRunResult) -> dict:
+    if isinstance(projection.get("tree"), dict) and isinstance(projection.get("items"), list):
+        return projection
+
+    candidate_batches = projection.get("candidate_batches")
+    if isinstance(candidate_batches, list) and candidate_batches:
+        batch = next((item for item in candidate_batches if isinstance(item, dict)), {})
+        batch_id = str(batch.get("batch_id") or "p4-candidate-root")
+        batch_title = str(batch.get("title") or "P4 工单投影候选")
+        readiness = str(batch.get("status") or "candidate")
+        modules_by_name = {
+            module["name"]: module
+            for index, module in enumerate(_modules_from_design_package(result.design_package))
+            if isinstance(module.get("name"), str)
+        }
+        batch_module_names = [
+            str(name)
+            for name in batch.get("modules", [])
+            if isinstance(name, str) and name.strip()
+        ]
+        items = []
+        children = []
+        for index, module_name in enumerate(batch_module_names):
+            module = modules_by_name.get(module_name) or {}
+            module_id = str(module.get("module_id") or f"{batch_id}-module-{index + 1}")
+            item = {
+                "item_id": module_id,
+                "title": module_name,
+                "module_id": module_id,
+                "description": f"由转换器候选批次 {batch_id} 派生。",
+                "readiness": readiness,
+            }
+            items.append(item)
+            children.append(
+                {
+                    "node_id": module_id,
+                    "title": module_name,
+                    "node_type": "workorder_candidate",
+                    "description": item["description"],
+                    "readiness": readiness,
+                    "source_refs": list(module.get("source_refs") or []),
+                }
+            )
+        return {
+            "package_overview": {
+                "architecture_recommendation": "converter_generated",
+                "design_notes": [f"转换器返回候选批次 {batch_id}，已归一化为前端可渲染投影树。"],
+            },
+            "tree": {
+                "node_id": batch_id,
+                "title": batch_title,
+                "node_type": "projection_candidate_batch",
+                "description": "P3 转换器生成的 P4 工单投影候选批次。",
+                "readiness": readiness,
+                "children": children,
+            },
+            "items": items,
+            "candidate_batches": candidate_batches,
+        }
+
+    return {
+        "package_overview": {
+            "architecture_recommendation": "converter_generated",
+            "design_notes": ["转换器返回了非空投影对象，但未包含 tree/items；已生成空投影占位。"],
+        },
+        "tree": None,
+        "items": [],
+        **projection,
+    }
+
+
+def _modules_from_design_package(design_package: dict) -> list[dict]:
+    functional_tree = dict((design_package or {}).get("functional_tree_projection") or {})
+    modules = functional_tree.get("modules")
+    if not isinstance(modules, list):
+        return []
+    return [
+        _normalize_design_module(module, index)
+        for index, module in enumerate(modules)
+        if isinstance(module, dict)
+    ]

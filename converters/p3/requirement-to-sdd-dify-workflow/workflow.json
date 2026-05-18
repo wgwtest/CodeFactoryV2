@@ -1,0 +1,21 @@
+{
+  "workflow_id": "p3-requirement-to-sdd-workflow",
+  "converter_id": "requirement-to-sdd-dify-workflow",
+  "protocol_version": "p3-design-converter-protocol@1",
+  "expected_output": "design_package_with_document",
+  "handoff_document": "DOC/CODEX_DOC/03_规范与流程/04_转换器协作流程/01-P3-需规转软设-Dify工作流创建执行文档.md",
+  "start_variables": [
+    "requirement_document_text",
+    "requirement_document_title",
+    "standard_document_json",
+    "structured_spec_json",
+    "annotations_json",
+    "knowledge_binding_json",
+    "frozen_trace_json",
+    "target_design_profile_json",
+    "conversion_options_json",
+    "quality_rules_json",
+    "expected_output"
+  ],
+  "output_variable": "result_json"
+}

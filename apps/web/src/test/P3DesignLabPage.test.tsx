@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 
 import App from "../App";
 
@@ -405,6 +405,81 @@ test("prefills new software design metadata from the selected requirement and ex
   expect(screen.getByRole("dialog", { name: "新建软件设计说明" })).toBeInTheDocument();
   expect(screen.getByLabelText("软设名称")).toHaveValue("空域协同规划软件设计说明（设计方案 02）");
   expect(screen.getByLabelText("版本标识")).toHaveValue("v0.2");
+});
+
+test("shows a persistent conversion waiting state and locks the conversion trigger while Dify is running", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const inputPackage = buildInputPackage();
+  const createdSession = buildSession(inputPackage, "created", {
+    status: "created",
+    conversion: buildConversion("conversion_pending", "standard_sdd_draft"),
+  });
+  let resolveConversion: (value: { data: ReturnType<typeof buildSession> }) => void = () => {};
+  const conversionPromise = new Promise<{ data: ReturnType<typeof buildSession> }>((resolve) => {
+    resolveConversion = resolve;
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions") {
+      return Promise.resolve({ data: createdSession });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/conversion") {
+      return conversionPromise;
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "生成软件设计说明" })).not.toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
+
+  const conversionButton = await within(workspace).findByRole("button", { name: "执行基础转换" });
+  expect(conversionButton).toBeEnabled();
+  fireEvent.click(conversionButton);
+
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/conversion", expect.any(Object)));
+  expect(within(workspace).getByRole("button", { name: "正在生成软设" })).toBeDisabled();
+  expect(within(workspace).getByText("正在调用 Dify 生成软件设计说明")).toBeInTheDocument();
+  expect(within(workspace).getByText("一般耗时约 200 秒，请保持本页打开。")).toBeInTheDocument();
+  expect(within(workspace).getByText("已等待 00:00")).toBeInTheDocument();
+  expect(within(workspace).getByTestId("p3-design-conversion-waiting-document")).toBeInTheDocument();
+
+  await act(async () => {
+    vi.advanceTimersByTime(65_000);
+  });
+  expect(within(workspace).getByText("已等待 01:05")).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
+  expect(await within(workspace).findByRole("button", { name: "正在生成软设" })).toBeDisabled();
+  expect(postMock.mock.calls.filter(([url]) => url === "/software-design-v2/sessions/p3dl-1/conversion")).toHaveLength(1);
+
+  await act(async () => {
+    resolveConversion({
+      data: buildSession(inputPackage, "draft_ready", {
+        conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+      }),
+    });
+  });
+
+  await waitFor(() => expect(within(workspace).queryByText("正在调用 Dify 生成软件设计说明")).not.toBeInTheDocument());
 });
 
 function buildInputPackage() {

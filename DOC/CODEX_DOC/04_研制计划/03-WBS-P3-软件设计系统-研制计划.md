@@ -22,21 +22,26 @@
 
 - `DOC/CODEX_DOC/02_设计说明/00_总纲/00-软件工厂平台总体设计.md`
 - `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
+- `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计-260518-0041-插件式转换器落地补充案.md`
 
-## 4. 当前 superpowers 参考
+## 4. 当前实施计划入口
+
+- `DOC/CODEX_DOC/04_研制计划/03.01-WBS-P3-插件式转换器落地-研制计划.md`
+
+## 5. 当前 superpowers 参考
 
 - `docs/superpowers/specs/2026-04-17-xx-p3-software-design-system-design.md`
 - `docs/superpowers/plans/2026-04-17-xx-p3-software-design-system.md`
 - `docs/superpowers/issues/2026-04-17-p3-software-design-system-issue-tree-mirror.md`
 
-## 5. 当前状态
+## 6. 当前状态
 
 - 已建立独立方案线
 - 已有设计、计划和 issue mirror
 - 2026-04-19 已完成正式设计归档同步
 - 后续工作层文档变更仍需继续与正式文档根保持同步
 
-## 6. 后续约束
+## 7. 后续约束
 
 - `P3` 只消费 `P2` 的标准需求规格
 - `P3` 只向 `P4` 输出冻结后的工具化描述

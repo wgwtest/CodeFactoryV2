@@ -12,12 +12,16 @@ type BuildP3DesignLabWorkbenchViewModelInput = {
   inputPackage: P3DesignLabInputPackage | null;
   session: P3DesignLabSession | null;
   policy: Record<string, string>;
+  conversionRunning?: boolean;
+  conversionElapsedSeconds?: number;
 };
 
 export function buildP3DesignLabWorkbenchViewModel({
   inputPackage,
   session,
   policy,
+  conversionRunning = false,
+  conversionElapsedSeconds = 0,
 }: BuildP3DesignLabWorkbenchViewModelInput): StageDocumentWorkbenchViewModel {
   const visiblePackage = session?.input_package ?? inputPackage;
   const designDocument = session?.design_document ?? null;
@@ -112,14 +116,14 @@ export function buildP3DesignLabWorkbenchViewModel({
       title: designDocument?.title,
       subtitle: "基于 P2 需求规格冻结包生成",
       versionLabel: session?.version_label ?? designDocument?.version_label ?? "SoftwareDesignBaseline v2",
-      status: designDocument ? "generated" : "empty",
+      status: designDocument ? "generated" : conversionRunning ? "draft" : "empty",
       page: {
         ariaLabel: "A4 软件设计说明预览",
         headerLeft: "CodeFactoryV2 / P3",
         headerRight: "Software Design Description",
         footerLeft: session?.version_label ?? designDocument?.version_label ?? "SoftwareDesignBaseline v2",
         footerRight: "Page 1",
-        emptyDescription: "尚未生成软件设计说明",
+        emptyDescription: conversionRunning ? "正在调用 Dify 生成软件设计说明" : "尚未生成软件设计说明",
       },
       sections:
         designDocument?.sections.map((section) => ({
@@ -160,7 +164,7 @@ export function buildP3DesignLabWorkbenchViewModel({
         : undefined,
       emptyDescription: "生成软件设计说明后显示目录和模块映射",
     },
-    conversion: buildConversionViewModel(conversion, Boolean(session && !designDocument)),
+    conversion: buildConversionViewModel(conversion, Boolean(session && !designDocument), conversionRunning, conversionElapsedSeconds),
     quality: buildQualityGateViewModel(session?.check_result ?? null),
     projection: {
       targetStage: "P4",
@@ -248,10 +252,14 @@ function buildQualityGateViewModel(checkResult: RequirementAuthoringCheckResult 
 function buildConversionViewModel(
   conversion: P3DesignLabSession["conversion"],
   conversionSessionPending = false,
+  conversionRunning = false,
+  conversionElapsedSeconds = 0,
 ): StageDocumentWorkbenchViewModel["conversion"] {
   if (!conversion) {
     return {
-      status: conversionSessionPending ? "conversion_pending" : "empty",
+      status: conversionRunning ? "conversion_running" : conversionSessionPending ? "conversion_pending" : "empty",
+      running: conversionRunning,
+      elapsedSeconds: conversionRunning ? conversionElapsedSeconds : 0,
       strategy: "standard_sdd_draft",
       strategyOptions: [
         {
@@ -298,12 +306,15 @@ function buildConversionViewModel(
       ],
       draftPreview: null,
       traceabilitySummary: null,
+      processOutput: undefined,
       emptyDescription: "新建软件设计说明后显示基础转换过程。",
     };
   }
 
   return {
-    status: conversion.status,
+    status: conversionRunning ? "conversion_running" : conversion.status,
+    running: conversionRunning || conversion.status === "conversion_running",
+    elapsedSeconds: conversionRunning ? conversionElapsedSeconds : 0,
     strategy: conversion.strategy,
     strategyOptions: conversion.strategy_options,
     steps: conversion.steps.map((step) => ({
@@ -326,6 +337,7 @@ function buildConversionViewModel(
           pendingConfirmationCount: conversion.traceability_summary.pending_confirmation_count,
         }
       : null,
+    processOutput: conversion.process_output,
     emptyDescription: "新建软件设计说明后显示基础转换过程。",
   };
 }

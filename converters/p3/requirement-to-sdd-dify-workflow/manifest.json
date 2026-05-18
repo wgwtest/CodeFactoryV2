@@ -1,0 +1,25 @@
+{
+  "converter_id": "requirement-to-sdd-dify-workflow",
+  "name": "P3 Requirement to SDD Dify Workflow",
+  "converter_type": "dify_workflow",
+  "document_type": "software_design_description",
+  "protocol": "p3-design-converter-protocol@1",
+  "status": "active",
+  "priority": 10,
+  "aliases": ["p3-requirement-to-sdd-dify", "p3-dify"],
+  "adapter_module": "adapter",
+  "adapter_class": "RequirementToSddDifyWorkflowAdapter",
+  "description": "Calls a Dify workflow that converts a frozen P2 requirement specification package into a P3 software design draft and SoftwareDesignPackage draft.",
+  "capabilities": {
+    "design_document": true,
+    "design_package": true,
+    "traceability": true,
+    "gap_list": true,
+    "review_findings": true,
+    "p4_workorder_projection": true
+  },
+  "requires": {
+    "dify_api": true,
+    "workflow_id": "external"
+  }
+}

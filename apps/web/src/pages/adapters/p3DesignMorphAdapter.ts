@@ -180,6 +180,7 @@ function buildRequirementDocumentViewModel(workbench: StageDocumentWorkbenchView
 }
 
 function buildSoftwareDesignDocumentViewModel(workbench: StageDocumentWorkbenchViewModel): DesignMorphDocumentViewModel {
+  const isConversionRunning = workbench.conversion.running && workbench.product.status !== "generated";
   return {
     title: workbench.product.title || "软件设计说明",
     subtitle: workbench.product.subtitle || "基于 P2 需求规格冻结包生成",
@@ -189,6 +190,16 @@ function buildSoftwareDesignDocumentViewModel(workbench: StageDocumentWorkbenchV
     footerRight: "Page 1",
     ariaLabel: "软设文档 A4 预览",
     emptyDescription: "尚未生成软件设计说明",
+    busyState: isConversionRunning
+      ? {
+          title: "正在调用 Dify 生成软件设计说明",
+          description: "一般耗时约 200 秒，请保持本页打开。",
+          elapsedLabel: `已等待 ${formatElapsedTime(workbench.conversion.elapsedSeconds)}`,
+          estimateLabel: "通常约 03:20",
+          detail: "完成后会自动载入软设正文、设计基线和 P4 投影候选。",
+          testId: "p3-design-conversion-waiting-document",
+        }
+      : undefined,
     structuredSections: workbench.product.sections,
     sections: workbench.product.sections.flatMap((section) => ({
       sectionId: section.sectionId,
@@ -197,6 +208,13 @@ function buildSoftwareDesignDocumentViewModel(workbench: StageDocumentWorkbenchV
       status: section.status,
     })),
   };
+}
+
+function formatElapsedTime(totalSeconds: number): string {
+  const normalized = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(normalized / 60);
+  const seconds = normalized % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function collectProjectionTitles(tree: StageDocumentWorkbenchViewModel["projection"]["tree"]): string[] {

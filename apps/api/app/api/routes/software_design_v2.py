@@ -25,6 +25,14 @@ def list_input_packages(service: SoftwareDesignV2Service = Depends(get_software_
     return service.list_input_packages()
 
 
+@router.get("/converters")
+def list_design_converters(service: SoftwareDesignV2Service = Depends(get_software_design_v2_service)):
+    try:
+        return service.list_converters()
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.post("/sessions")
 def create_design_session(
     payload: P3DesignSessionCreate,

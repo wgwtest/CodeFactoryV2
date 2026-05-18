@@ -1,6 +1,97 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from app.main import create_app
+from app.design_converters.models import DesignConverterRunResult
+
+
+@pytest.fixture(autouse=True)
+def fake_design_converter_loader(monkeypatch):
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def __init__(self, converter_id: str) -> None:
+            self.converter_id = converter_id
+
+        def run(self, request) -> DesignConverterRunResult:
+            app_name = (
+                request.input_package.get("structured_spec", {})
+                .get("application", {})
+                .get("name")
+                or "未命名软件"
+            )
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": self.converter_id,
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "goal",
+                            "title": "1. 设计目标与范围",
+                            "content": f"本设计面向{app_name}首版交付，覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                            "status": "generated",
+                            "source_refs": ["REQ-3.2"],
+                        },
+                        {
+                            "section_id": "architecture",
+                            "title": "2. 总体架构",
+                            "content": "首版采用统一服务架构，前端以 B/S 工作台承载协同规划视图，后端以任务、冲突、确认和审计四类服务对象组织核心能力。",
+                            "status": "generated",
+                            "source_refs": ["REQ-3.2"],
+                        },
+                        {
+                            "section_id": "modules",
+                            "title": "3. 模块划分",
+                            "content": "系统划分为规划任务管理、冲突识别与告警、协同确认、审计追溯四个模块。",
+                            "status": "generated",
+                            "source_refs": ["REQ-3.2", "REQ-4.1"],
+                        },
+                    ],
+                },
+                design_package={
+                    "package_id": "sdb2-test-converter",
+                    "status": "draft",
+                    "document_projection": {},
+                    "functional_tree_projection": {
+                        "modules": [
+                            {"module_id": "planning-task", "name": "规划任务管理", "source_refs": ["REQ-3.2"]},
+                            {"module_id": "conflict-alert", "name": "冲突识别与告警", "source_refs": ["REQ-3.2", "REQ-4.1"]},
+                            {"module_id": "collaboration-confirm", "name": "协同确认", "source_refs": ["REQ-3.2"]},
+                            {"module_id": "audit-trace", "name": "审计追溯", "source_refs": ["REQ-4.1"]},
+                        ]
+                    },
+                    "layered_architecture_projection": {"architecture_mode": "unified_service"},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[
+                    {"source_ref": "REQ-3.2", "target_ref": "3. 模块划分", "mapping_type": "derived_from"},
+                    {"source_ref": "REQ-4.1", "target_ref": "4. 状态机与接口约束", "mapping_type": "derived_from"},
+                ],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 4}},
+                raw_output={"raw_workflow_trace": {"mock": True}},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    def loader(manifest, **_kwargs):
+        return FakeDesignConverterAdapter(manifest.converter_id)
+
+    monkeypatch.setattr(service_module, "load_design_converter_adapter", loader, raising=False)
 
 
 def _create_frozen_requirement_authoring_document(client: TestClient) -> dict:
@@ -182,6 +273,20 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     assert "frozen" in delete_frozen.json()["detail"]
 
 
+def test_software_design_v2_lists_available_design_converters() -> None:
+    client = TestClient(create_app())
+
+    converters = client.get("/api/software-design-v2/converters")
+
+    assert converters.status_code == 200
+    items = converters.json()["items"]
+    assert items[0]["converter_id"] == "requirement-to-sdd-dify-workflow"
+    assert items[0]["converter_type"] == "dify_workflow"
+    assert items[0]["protocol"] == "p3-design-converter-protocol@1"
+    assert items[0]["observability_level"] == "limited"
+    assert items[0]["capabilities"]["design_document"] is True
+
+
 def test_software_design_v2_input_packages_bootstraps_default_published_requirement_when_empty() -> None:
     client = TestClient(create_app())
 
@@ -248,6 +353,402 @@ def test_software_design_v2_supports_multiple_related_designs_and_deletes_unfroz
     packages_after_delete = client.get("/api/software-design-v2/input-packages")
     remaining_design_ids = [item["software_design_id"] for item in packages_after_delete.json()["items"][0]["related_designs"]]
     assert remaining_design_ids == [second["session_id"]]
+
+
+def test_software_design_v2_conversion_runs_through_design_converter_adapter_loader(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    calls: list[dict] = []
+
+    class FakeDesignConverterAdapter:
+        def __init__(self, converter_id: str) -> None:
+            self.converter_id = converter_id
+
+        def run(self, request) -> DesignConverterRunResult:
+            calls.append(
+                {
+                    "converter_id": self.converter_id,
+                    "strategy": request.conversion_options["strategy"],
+                    "input_package_id": request.input_package["input_package_id"],
+                    "design_title": request.session["design_title"],
+                    "template_id": request.target_design_profile["template_id"],
+                    "template_name": request.target_design_profile["template_name"],
+                    "minimum_total_chars": request.target_design_profile["minimum_total_chars"],
+                    "required_section_count": len(request.target_design_profile["required_sections"]),
+                    "core_section_minimum_chars": {
+                        section["title"]: section["minimum_chars"]
+                        for section in request.target_design_profile["required_sections"]
+                        if section.get("section_id") in {"sdd-04", "sdd-06", "sdd-08"}
+                    },
+                    "required_table_ids": [table["table_id"] for table in request.quality_rules["required_tables"]],
+                    "quality_minimum_total_chars": request.quality_rules["minimum_total_chars"],
+                    "coverage": request.quality_rules["section_coverage"],
+                }
+            )
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": self.converter_id,
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "architecture",
+                            "title": "4. 总体架构",
+                            "content": "adapter loader sentinel",
+                            "status": "generated",
+                            "source_refs": ["REQ-3.2"],
+                        }
+                    ],
+                },
+                design_package={
+                    "package_id": "sdp-adapter-loader-sentinel",
+                    "status": "draft",
+                    "document_projection": {},
+                    "functional_tree_projection": {},
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {
+                        "tree": {
+                            "node_id": "p4-root",
+                            "title": "P4-WO-Adapter-Sentinel",
+                            "children": [],
+                        },
+                        "items": [],
+                    },
+                },
+                traceability=[
+                    {
+                        "source_ref": "REQ-3.2",
+                        "target_type": "section",
+                        "target_ref": "architecture",
+                        "mapping_type": "derived_from",
+                        "confidence": "high",
+                    }
+                ],
+                gap_list=[
+                    {
+                        "gap_id": "P3-GAP-ADAPTER-001",
+                        "severity": "warning",
+                        "message": "adapter loader sentinel gap",
+                    }
+                ],
+                review_findings=[
+                    {
+                        "finding_id": "P3-REVIEW-ADAPTER-001",
+                        "severity": "warning",
+                        "target": "总体架构",
+                        "message": "adapter loader sentinel finding",
+                        "requires_human_decision": True,
+                    }
+                ],
+                workorder_projection_candidate={
+                    "tree": {
+                        "node_id": "p4-root",
+                        "title": "P4-WO-Adapter-Sentinel",
+                        "children": [],
+                    },
+                    "items": [],
+                },
+                process_output={
+                    "annotations": ["adapter loader was used"],
+                    "quality_summary": {"blocking_count": 0, "warning_count": 1, "passed_count": 3},
+                },
+                raw_output={"raw_workflow_trace": {"sentinel": True}},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    def fake_loader(manifest, **_kwargs):
+        return FakeDesignConverterAdapter(manifest.converter_id)
+
+    monkeypatch.setattr(service_module, "load_design_converter_adapter", fake_loader, raising=False)
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 转换器分支",
+            "version_label": "v0.1",
+            "generation_policy": {
+                "architecture_preference": "统一服务优先，保留拆分点",
+                "module_granularity": "3-5 个业务模块，不拆太细",
+                "output_style": "按标准软设正文写，不写聊天语气",
+            },
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={
+            "converter_id": "requirement-to-sdd-dify-workflow",
+            "strategy": "component_first",
+            "options": {"expected_output": "design_package_with_document"},
+        },
+    )
+
+    assert converted.status_code == 200
+    converted_session = converted.json()
+    assert calls == [
+        {
+            "converter_id": "requirement-to-sdd-dify-workflow",
+            "strategy": "component_first",
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 转换器分支",
+            "template_id": "81435-sdd-quasi-template-v1",
+            "template_name": "81435-软件设计说明准模板-v1",
+            "minimum_total_chars": 12000,
+            "required_section_count": 15,
+            "core_section_minimum_chars": {
+                "总体架构": 1200,
+                "后端软件设计": 1500,
+                "API 设计": 1500,
+            },
+            "required_table_ids": [
+                "T1",
+                "T2",
+                "T3",
+                "T4",
+                "T5",
+                "T6",
+                "T7",
+                "T8",
+                "T9",
+                "T10",
+                "T11",
+                "T12",
+                "T13",
+                "T14",
+                "T15",
+            ],
+            "quality_minimum_total_chars": 12000,
+            "coverage": {"level_1_required": 1.0, "level_2_required": 0.9},
+        }
+    ]
+    assert converted_session["status"] == "draft_ready"
+    assert converted_session["conversion"]["converter"]["converter_id"] == "requirement-to-sdd-dify-workflow"
+    assert converted_session["conversion"]["converter"]["converter_type"] == "dify_workflow"
+    assert converted_session["conversion"]["traceability_summary"]["mapped_clause_count"] == 1
+    assert converted_session["design_document"]["sections"][0]["content"] == "adapter loader sentinel"
+    assert converted_session["design_baseline"]["baseline_id"] == "sdp-adapter-loader-sentinel"
+    assert converted_session["design_baseline"]["pending_confirmations"] == ["adapter loader sentinel gap"]
+    assert converted_session["workorder_projection"]["tree"]["title"] == "P4-WO-Adapter-Sentinel"
+    assert converted_session["check_result"]["warning_count"] == 1
+    assert converted_session["runtime_events"][-1]["event_type"] == "conversion"
+
+
+def test_software_design_v2_normalizes_real_dify_projection_shape_for_frontend(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": "draft",
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "purpose",
+                            "title": "1. 文档目的与设计口径",
+                            "content": "真实 Dify 形态回归。",
+                            "status": "generated",
+                            "source_refs": ["REQ-AC"],
+                        }
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-REAL-DIFY-SHAPE",
+                    "status": "draft",
+                    "document_projection": {},
+                    "functional_tree_projection": {
+                        "modules": [
+                            {
+                                "id": "module-portal",
+                                "title": "资源消费门户模块",
+                                "description": "承接消费者资源发现、资源篮和申请提交。",
+                                "source_refs": ["REQ-FR"],
+                            }
+                        ]
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {
+                        "candidate_batches": [
+                            {
+                                "batch_id": "P4-CANDIDATE-P3-DESIGN",
+                                "title": "P3 设计包派生工单候选",
+                                "modules": ["资源消费门户模块"],
+                                "status": "candidate",
+                            }
+                        ]
+                    },
+                },
+                traceability=[
+                    {
+                        "source_ref": "REQ-FR",
+                        "target_type": "module",
+                        "target_ref": "module-portal",
+                        "target_title": "资源消费门户模块",
+                    }
+                ],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={
+                    "candidate_batches": [
+                        {
+                            "batch_id": "P4-CANDIDATE-P3-DESIGN",
+                            "title": "P3 设计包派生工单候选",
+                            "modules": ["资源消费门户模块"],
+                            "status": "candidate",
+                        }
+                    ]
+                },
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={"raw_workflow_trace": {"real_dify_shape": True}},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "真实 Dify 形态软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    assert session["design_baseline"]["modules"] == [
+        {
+            "module_id": "module-portal",
+            "name": "资源消费门户模块",
+            "source_refs": ["REQ-FR"],
+            "description": "承接消费者资源发现、资源篮和申请提交。",
+        }
+    ]
+    assert session["workorder_projection"]["tree"]["node_id"] == "P4-CANDIDATE-P3-DESIGN"
+    assert session["workorder_projection"]["tree"]["title"] == "P3 设计包派生工单候选"
+    assert session["workorder_projection"]["items"] == [
+        {
+            "item_id": "module-portal",
+            "title": "资源消费门户模块",
+            "module_id": "module-portal",
+            "description": "由转换器候选批次 P4-CANDIDATE-P3-DESIGN 派生。",
+            "readiness": "candidate",
+        }
+    ]
+
+
+def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FailingDesignConverterAdapter:
+        def run(self, request):
+            raise ValueError("remote dify workflow failed (run-bad): output result_json missing")
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FailingDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 失败观测",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 400
+    assert "result_json missing" in converted.json()["detail"]
+    failed_session = client.get(f"/api/software-design-v2/sessions/{created.json()['session_id']}").json()
+    assert failed_session["status"] == "conversion_failed"
+    assert failed_session["conversion"]["status"] == "conversion_failed"
+    assert failed_session["conversion"]["process_output"]["error"]["message"] == converted.json()["detail"]
+    assert failed_session["conversion"]["steps"][0]["status"] == "failed"
+    assert failed_session["runtime_events"][-1]["event_type"] == "conversion_failed"
+    assert "result_json missing" in failed_session["runtime_events"][-1]["message"]
+
+
+def test_software_design_v2_rejects_unsupported_design_converter() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 转换器分支",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"converter_id": "missing-converter", "strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 400
+    assert converted.json()["detail"] == "unsupported P3 design converter"
 
 
 def _create_and_convert_design_session(client: TestClient, input_package_id: str) -> dict:
