@@ -1,7 +1,6 @@
 import type {
   DesignMorphDocumentViewModel,
   DesignMorphStageViewModel,
-  DesignMorphStageViewMode,
   DesignMorphWindowViewModel,
 } from "../../components/stageWorkbench/DesignMorphCanvasPlatform";
 import type { DesignMorphCanvasStageKind } from "../../components/stageWorkbench/designMorphRenderers";
@@ -19,7 +18,6 @@ type P3MorphStageSeed = {
   sourceRefs: (workbench: StageDocumentWorkbenchViewModel) => string[];
   constraintSummary: (workbench: StageDocumentWorkbenchViewModel) => string;
   document?: (workbench: StageDocumentWorkbenchViewModel) => DesignMorphDocumentViewModel;
-  viewModes?: (workbench: StageDocumentWorkbenchViewModel) => DesignMorphStageViewMode[];
 };
 
 const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
@@ -27,7 +25,7 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     id: "requirement",
     entityType: "requirement_specification",
     layoutKind: "paper",
-    title: "需规",
+    title: "需规文档",
     subtitle: "P2 冻结输入",
     summary: (workbench) => workbench.inputFacts.title || "等待选择已发布的需求规格说明。",
     items: (workbench) => {
@@ -38,7 +36,6 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     constraintSummary: (workbench) => `${workbench.inputFacts.sections.length} 个需规章节；P3 只读消费`,
     document: (workbench) =>
       buildRequirementDocumentViewModel(workbench),
-    viewModes: () => buildDocumentViewModes(),
   },
   {
     id: "document",
@@ -55,7 +52,6 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     constraintSummary: (workbench) => `${workbench.product.sections.length} 个正文小节；版本 ${workbench.product.versionLabel}`,
     document: (workbench) =>
       buildSoftwareDesignDocumentViewModel(workbench),
-    viewModes: () => buildDocumentViewModes(),
   },
   {
     id: "functionTree",
@@ -137,10 +133,9 @@ export function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewMod
       sourceRefs: seed.sourceRefs(workbench).filter(Boolean),
       constraintSummary: seed.constraintSummary(workbench),
       document: seed.document?.(workbench),
-      viewModes: seed.viewModes?.(workbench),
     })),
     windows: [
-      { id: "reqdoc", title: "需规 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
+      { id: "reqdoc", title: "需规文档 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
       { id: "docfunc", title: "软设文档 -> 功能树", fromStageId: "document", toStageId: "functionTree" },
       { id: "funcarch", title: "功能树 -> 分层架构", fromStageId: "functionTree", toStageId: "layeredArchitecture" },
       { id: "archtech", title: "分层架构 -> 技术实现", fromStageId: "layeredArchitecture", toStageId: "technicalImplementation" },
@@ -148,13 +143,6 @@ export function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewMod
       { id: "shapep4", title: "展示形态 -> P4 投影", fromStageId: "presentationShape", toStageId: "p4Projection" },
     ],
   };
-}
-
-function buildDocumentViewModes(): DesignMorphStageViewMode[] {
-  return [
-    { id: "a4", label: "A4" },
-    { id: "edit", label: "编辑区" },
-  ];
 }
 
 function buildRequirementDocumentViewModel(workbench: StageDocumentWorkbenchViewModel): DesignMorphDocumentViewModel {
@@ -165,7 +153,7 @@ function buildRequirementDocumentViewModel(workbench: StageDocumentWorkbenchView
     headerRight: "Requirement Specification",
     footerLeft: workbench.inputFacts.sourceTitle || "P2 Frozen Package",
     footerRight: "Page 1",
-    ariaLabel: "需规 A4 预览",
+    ariaLabel: "需规文档 A4 预览",
     emptyDescription: "没有可用的 P2 冻结包",
     structuredSections: buildRequirementDocumentSections(workbench.inputFacts.sections),
     sections: workbench.inputFacts.sections.flatMap((section) =>

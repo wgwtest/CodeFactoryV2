@@ -169,6 +169,7 @@
 .a4-document-surface {
   height: 100%;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   overflow: auto;
   padding: 24px;
@@ -180,12 +181,18 @@
   background-size: 18px 18px;
 }
 
+.a4-document-surface.is-parent-scroll {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
 .a4-document-page {
   position: relative;
   box-sizing: border-box;
   width: min(100%, 760px);
   min-height: 920px;
-  aspect-ratio: 210 / 297;
   padding: 46px 54px 58px;
   border: 1px solid #e1d4bf;
   background:
@@ -194,6 +201,11 @@
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.92) inset,
     0 18px 42px rgba(21, 32, 47, 0.16);
+}
+
+.a4-document-page.is-continuous-paper {
+  height: auto;
+  padding-bottom: 84px;
 }
 
 .a4-document-page::before {
@@ -207,6 +219,7 @@
 .a4-document-page.is-empty {
   display: grid;
   place-items: center;
+  aspect-ratio: 210 / 297;
 }
 
 .a4-document-meta,
@@ -240,6 +253,11 @@
   border: 1px solid #c7d5bd;
   border-radius: 6px;
   background: #fbfff8;
+}
+
+.a4-document-content {
+  position: relative;
+  z-index: 1;
 }
 
 .a4-document-section h3 {
@@ -297,10 +315,7 @@
 }
 
 .a4-document-footer {
-  position: absolute;
-  right: 54px;
-  bottom: 28px;
-  left: 54px;
+  margin-top: 26px;
   border-top: 1px solid #e7dccb;
   padding-top: 10px;
 }

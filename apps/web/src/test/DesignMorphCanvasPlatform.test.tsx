@@ -51,7 +51,7 @@ describe("DesignMorphCanvasPlatform", () => {
   test("projects stage landmark width from real canvas node width without flattening the x axis size", () => {
     const landmarks = calculateTrackStageLandmarks({
       items: [
-        { id: "requirement", title: "需规", x: 80, w: 500 },
+        { id: "requirement", title: "需规文档", x: 80, w: 500 },
         { id: "document", title: "软设文档", x: 720, w: 520 },
         { id: "architecture", title: "分层架构", x: 2080, w: 1180 },
       ],
@@ -222,10 +222,12 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(documentObject).toHaveClass("is-document-stage-object");
     expect(within(requirementObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
     expect(within(documentObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
-    expect(within(requirementObject).getByRole("button", { name: "需规 A4" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(requirementObject).getByRole("button", { name: "需规 编辑区" })).toBeInTheDocument();
-    expect(within(documentObject).getByRole("button", { name: "软设文档 A4" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(documentObject).getByRole("button", { name: "软设文档 编辑区" })).toBeInTheDocument();
+    expect(within(requirementObject).queryByRole("button", { name: "需规文档 A4" })).not.toBeInTheDocument();
+    expect(within(requirementObject).queryByRole("button", { name: "需规文档 编辑区" })).not.toBeInTheDocument();
+    expect(within(requirementObject).queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
+    expect(within(documentObject).queryByRole("button", { name: "软设文档 A4" })).not.toBeInTheDocument();
+    expect(within(documentObject).queryByRole("button", { name: "软设文档 编辑区" })).not.toBeInTheDocument();
+    expect(within(documentObject).queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
     expect(within(requirementObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
     expect(within(documentObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
     expect(within(requirementObject).getByTestId("document-stage-paper")).toHaveTextContent("支持规划任务管理。");
@@ -295,7 +297,7 @@ describe("DesignMorphCanvasPlatform", () => {
         objectId: "reqdoc",
         stageId: "requirement:document",
         kind: "stage_relation",
-        title: "需规 -> 软设文档",
+        title: "需规文档 -> 软设文档",
       }),
     );
 
@@ -375,27 +377,27 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
-  test("keeps document object title actions clickable without starting a title-bar drag", () => {
+  test("keeps the full document titlebar available for moving after removing inactive title actions", () => {
     const canvasMock = mockCanvasEnvironment();
 
     render(<CanvasRefreshHarness />);
 
     const platform = screen.getByTestId("design-morph-canvas-platform");
     const documentObject = within(platform).getByTestId("stage-object-document");
-    const editButton = within(documentObject).getByRole("button", { name: "软设文档 编辑区" });
+    const titlebar = within(documentObject).getByTestId("stage-object-compact-titlebar");
     const initialPan = readPanLabel(platform);
 
     expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
+    expect(within(documentObject).queryByRole("button", { name: "软设文档 编辑区" })).not.toBeInTheDocument();
+    expect(within(documentObject).queryByRole("button", { name: "更多" })).not.toBeInTheDocument();
 
-    fireEvent.pointerDown(editButton, { pointerId: 24, clientX: 520, clientY: 140 });
-    fireEvent.pointerMove(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
-    fireEvent.pointerUp(editButton, { pointerId: 24, clientX: 580, clientY: 170 });
-    fireEvent.click(editButton);
+    fireEvent.pointerDown(titlebar, { pointerId: 24, clientX: 520, clientY: 140 });
+    fireEvent.pointerMove(titlebar, { pointerId: 24, clientX: 580, clientY: 170 });
+    fireEvent.pointerUp(titlebar, { pointerId: 24, clientX: 580, clientY: 170 });
 
     expect(readPanLabel(platform)).toBe(initialPan);
-    expect(within(platform).getByText("节点：软设文档 @720,120 · 520x640")).toBeInTheDocument();
-    expect(editButton).toHaveAttribute("aria-pressed", "true");
-    expect(within(documentObject).getByTestId("document-stage-paper")).toHaveClass("is-edit-mode");
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+    expect(within(documentObject).getByTestId("document-stage-paper")).toBeInTheDocument();
 
     canvasMock.restore();
   });
@@ -495,14 +497,14 @@ function CanvasRefreshHarness() {
 
 function buildStages(revision: number): DesignMorphStageViewModel[] {
   return [
-    buildStage("requirement", "requirement_specification", "paper", "需规", "P2 冻结输入", `需规 ${revision}`, ["需规正文"], {
+    buildStage("requirement", "requirement_specification", "paper", "需规文档", "P2 冻结输入", `需规 ${revision}`, ["需规正文"], {
       title: "空域协同规划需求规格说明",
       subtitle: "P2 冻结输入 / 只读消费",
       headerLeft: "CodeFactoryV2 / P2",
       headerRight: "Requirement Specification",
       footerLeft: "P2 Frozen Package",
       footerRight: "Page 1",
-      ariaLabel: "需规 A4 预览",
+      ariaLabel: "需规文档 A4 预览",
       emptyDescription: "没有可用的 P2 冻结包",
       structuredSections: [
         {
@@ -569,7 +571,6 @@ function buildStage(
     items,
     sourceRefs: [`source:${id}`],
     constraintSummary: `约束 ${id}`,
-    viewModes: document ? [{ id: "a4", label: "A4" }, { id: "edit", label: "编辑区" }] : undefined,
     document: document
       ? {
           title: document.title ?? title,
@@ -589,7 +590,7 @@ function buildStage(
 
 function buildWindows(): DesignMorphWindowViewModel[] {
   return [
-    { id: "reqdoc", title: "需规 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
+    { id: "reqdoc", title: "需规文档 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
     { id: "docfunc", title: "软设文档 -> 功能树", fromStageId: "document", toStageId: "functionTree" },
     { id: "funcarch", title: "功能树 -> 分层架构", fromStageId: "functionTree", toStageId: "layeredArchitecture" },
     { id: "archtech", title: "分层架构 -> 技术实现", fromStageId: "layeredArchitecture", toStageId: "technicalImplementation" },

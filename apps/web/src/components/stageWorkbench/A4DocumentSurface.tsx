@@ -29,6 +29,7 @@ type A4DocumentSurfaceProps = {
   emptyDescription?: string;
   ariaLabel: string;
   selectedBlockId?: string;
+  scrollMode?: "self" | "parent";
   onSelectBlock?: (block: StandardDocumentBlockViewModel, section: NormalizedA4DocumentSection) => void;
 };
 
@@ -44,6 +45,7 @@ export function A4DocumentSurface({
   emptyDescription = "尚未生成文档",
   ariaLabel,
   selectedBlockId,
+  scrollMode = "self",
   onSelectBlock,
 }: A4DocumentSurfaceProps) {
   const normalizedSections: NormalizedA4DocumentSection[] =
@@ -67,9 +69,18 @@ export function A4DocumentSurface({
     }));
   const hasDocument = Boolean(title && normalizedSections.length);
 
+  const surfaceClassName = [
+    "a4-document-surface",
+    hasDocument ? "is-continuous-paper" : "",
+    scrollMode === "parent" ? "is-parent-scroll" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const pageClassName = `a4-document-page${hasDocument ? " is-continuous-paper" : " is-empty"}`;
+
   return (
-    <article className="a4-document-surface" aria-label={ariaLabel}>
-      <div className={`a4-document-page${hasDocument ? "" : " is-empty"}`}>
+    <article className={surfaceClassName} aria-label={ariaLabel}>
+      <div className={pageClassName} data-testid="a4-document-page">
         {hasDocument ? (
           <>
             <div className="a4-document-meta">
@@ -78,19 +89,21 @@ export function A4DocumentSurface({
             </div>
             <h2 className="a4-document-title">{title}</h2>
             {subtitle ? <div className="a4-document-subtitle">{subtitle}</div> : null}
-            {normalizedSections.map((section) => (
-              <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
-                <h3>{section.title}</h3>
-                {section.blocks.map((block) => (
-                  <DocumentBlock
-                    block={block}
-                    key={block.blockId}
-                    selected={selectedBlockId === block.blockId}
-                    onSelect={() => onSelectBlock?.(block, section)}
-                  />
-                ))}
-              </section>
-            ))}
+            <div className="a4-document-content" data-testid="a4-document-content">
+              {normalizedSections.map((section) => (
+                <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
+                  <h3>{section.title}</h3>
+                  {section.blocks.map((block) => (
+                    <DocumentBlock
+                      block={block}
+                      key={block.blockId}
+                      selected={selectedBlockId === block.blockId}
+                      onSelect={() => onSelectBlock?.(block, section)}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
             <footer className="a4-document-footer">
               <span>{footerLeft}</span>
               <span>{footerRight}</span>
