@@ -13,6 +13,10 @@ from app.design_converters.adapters.base import load_design_converter_adapter
 from app.design_converters.models import DesignConverterRunRequest, DesignConverterRunResult
 from app.design_converters.plugin_registry import get_design_converter_plugin_registry
 from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
+from app.software_design_v2.sdd_template_profile import (
+    build_sdd_81435_quality_rules,
+    build_sdd_81435_template_profile,
+)
 
 
 class SoftwareDesignV2Service:
@@ -135,7 +139,11 @@ class SoftwareDesignV2Service:
 
         request = self._build_converter_request(design_session, payload, strategy)
         adapter = load_design_converter_adapter(manifest)
-        result = adapter.run(request)
+        try:
+            result = adapter.run(request)
+        except ValueError as exc:
+            self._record_conversion_failure(design_session, strategy, manifest.to_api(), str(exc))
+            raise
         design_document = self._normalize_converter_design_document(result, design_session)
         design_baseline = self._build_design_baseline_from_converter_result(result, design_session)
         workorder_projection = self._workorder_projection_from_converter_result(result)
@@ -160,6 +168,30 @@ class SoftwareDesignV2Service:
         self._refresh_related_designs(design_session)
         return design_session
 
+    def _record_conversion_failure(self, design_session: dict, strategy: str, converter: dict, message: str) -> None:
+        error_message = message or "P3 design conversion failed"
+        process_output = {
+            "error": {
+                "message": error_message,
+                "source": "design_converter",
+                "recorded_at": self._now(),
+            }
+        }
+        design_session["status"] = "conversion_failed"
+        design_session["conversion"] = self._build_conversion_state(
+            "conversion_failed",
+            strategy,
+            None,
+            None,
+            converter=converter,
+            process_output=process_output,
+        )
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("conversion_failed", f"需规转软设转换失败：{error_message}"),
+        ]
+
     def _build_converter_request(
         self,
         design_session: dict,
@@ -167,30 +199,17 @@ class SoftwareDesignV2Service:
         strategy: str,
     ) -> DesignConverterRunRequest:
         input_package = dict(design_session["input_package"] or {})
-        target_design_profile = {
-            "design_title": design_session["design_title"],
-            "version_label": design_session["version_label"],
-            "required_sections": [
-                "文档目的与设计口径",
-                "系统定位",
-                "业务目标与边界",
-                "总体架构",
-                "前端软件设计",
-                "后端软件设计",
-                "核心对象模型",
-                "API 设计",
-                "关键运行流程",
-                "设计约束与质量门",
-                "验收口径",
-                "设计结论",
-            ],
-        }
+        target_design_profile = build_sdd_81435_template_profile(
+            design_title=design_session["design_title"],
+            version_label=design_session["version_label"],
+        )
         conversion_options = {
             "strategy": strategy,
             "expected_output": "design_package_with_document",
             **dict(payload.options or {}),
             "generation_policy": dict(design_session.get("generation_policy") or {}),
         }
+        quality_rules = build_sdd_81435_quality_rules()
         return DesignConverterRunRequest(
             protocol_version="p3-design-converter-protocol@1",
             session={
@@ -202,13 +221,7 @@ class SoftwareDesignV2Service:
             input_package=input_package,
             target_design_profile=target_design_profile,
             conversion_options=conversion_options,
-            quality_rules={
-                "result_status": "draft_only",
-                "must_not_freeze": True,
-                "require_traceability": True,
-                "require_gap_list": True,
-                "require_review_findings": True,
-            },
+            quality_rules=quality_rules,
         )
 
     @staticmethod
@@ -572,6 +585,7 @@ class SoftwareDesignV2Service:
     ) -> dict:
         done = status == "draft_ready"
         running = status == "conversion_running"
+        failed = status == "conversion_failed"
         return {
             "status": status,
             "strategy": strategy,
@@ -584,6 +598,7 @@ class SoftwareDesignV2Service:
                     "加载正文、结构化条款、标注和冻结快照。",
                     done,
                     running,
+                    failed,
                     0,
                 ),
                 self._build_conversion_step(
@@ -592,6 +607,7 @@ class SoftwareDesignV2Service:
                     "抽取模块候选、接口候选、数据对象候选和质量属性。",
                     done,
                     running,
+                    failed,
                     1,
                 ),
                 self._build_conversion_step(
@@ -600,6 +616,7 @@ class SoftwareDesignV2Service:
                     "生成 A4 正文草稿和 SoftwareDesignBaseline v2 初稿。",
                     done,
                     running,
+                    failed,
                     2,
                 ),
                 self._build_conversion_step(
@@ -608,6 +625,7 @@ class SoftwareDesignV2Service:
                     "建立需规条款到章节、模块、接口和 P4 候选的映射。",
                     done,
                     running,
+                    failed,
                     3,
                 ),
             ],
@@ -623,10 +641,13 @@ class SoftwareDesignV2Service:
         description: str,
         done: bool,
         running: bool,
+        failed: bool,
         index: int,
     ) -> dict:
         if done:
             status = "done"
+        elif failed and index == 0:
+            status = "failed"
         elif running and index == 0:
             status = "running"
         else:

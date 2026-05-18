@@ -204,9 +204,78 @@
   pointer-events: none;
 }
 
-.a4-document-page.is-empty {
+.a4-document-page.is-empty,
+.a4-document-page.is-busy {
   display: grid;
   place-items: center;
+}
+
+.a4-document-busy-state {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 440px);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid #b8c9c5;
+  background: rgba(248, 252, 251, 0.94);
+  color: #1f3330;
+  box-shadow: 0 14px 28px rgba(31, 51, 48, 0.1);
+}
+
+.a4-document-busy-spinner {
+  width: 38px;
+  height: 38px;
+  border: 4px solid #d3e1dd;
+  border-top-color: #2f7b7d;
+  border-radius: 50%;
+  animation: a4-document-busy-spin 900ms linear infinite;
+}
+
+.a4-document-busy-state strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.a4-document-busy-state p {
+  margin: 6px 0 0;
+  color: #4f625d;
+  line-height: 1.55;
+}
+
+.a4-document-busy-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.a4-document-busy-metrics span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid #b8c9c5;
+  background: #ffffff;
+  color: #2d4a47;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.a4-document-busy-state small {
+  display: block;
+  margin-top: 8px;
+  color: #71807b;
+  line-height: 1.45;
+}
+
+@keyframes a4-document-busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .a4-document-meta,

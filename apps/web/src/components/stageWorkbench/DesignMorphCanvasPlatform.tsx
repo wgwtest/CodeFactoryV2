@@ -57,6 +57,14 @@ export type DesignMorphDocumentViewModel = {
   footerRight?: string;
   ariaLabel: string;
   emptyDescription: string;
+  busyState?: {
+    title: string;
+    description: string;
+    detail?: string;
+    elapsedLabel?: string;
+    estimateLabel?: string;
+    testId?: string;
+  };
   structuredSections?: StandardDocumentSectionViewModel[];
   sections: DesignMorphDocumentSectionViewModel[];
 };
@@ -1190,6 +1198,7 @@ function DocumentStageObject({
           <div className={`design-morph-object-paper${viewMode === "edit" ? " is-edit-mode" : ""}`} data-testid="document-stage-paper">
             <A4DocumentSurface
               ariaLabel={document.ariaLabel}
+              busyState={document.busyState}
               emptyDescription={document.emptyDescription}
               footerLeft={document.footerLeft}
               footerRight={document.footerRight}

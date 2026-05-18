@@ -2389,6 +2389,7 @@ export type P3DesignLabConversionState = {
     target_count: number;
     pending_confirmation_count: number;
   } | null;
+  process_output?: Record<string, unknown>;
 };
 
 export type P3DesignLabSession = {

@@ -27,6 +27,14 @@ type A4DocumentSurfaceProps = {
   sections?: A4DocumentSection[];
   structuredSections?: StandardDocumentSectionViewModel[];
   emptyDescription?: string;
+  busyState?: {
+    title: string;
+    description: string;
+    detail?: string;
+    elapsedLabel?: string;
+    estimateLabel?: string;
+    testId?: string;
+  };
   ariaLabel: string;
   selectedBlockId?: string;
   onSelectBlock?: (block: StandardDocumentBlockViewModel, section: NormalizedA4DocumentSection) => void;
@@ -42,6 +50,7 @@ export function A4DocumentSurface({
   sections = [],
   structuredSections,
   emptyDescription = "尚未生成文档",
+  busyState,
   ariaLabel,
   selectedBlockId,
   onSelectBlock,
@@ -69,8 +78,23 @@ export function A4DocumentSurface({
 
   return (
     <article className="a4-document-surface" aria-label={ariaLabel}>
-      <div className={`a4-document-page${hasDocument ? "" : " is-empty"}`}>
-        {hasDocument ? (
+      <div className={`a4-document-page${busyState ? " is-busy" : hasDocument ? "" : " is-empty"}`}>
+        {busyState ? (
+          <div className="a4-document-busy-state" data-testid={busyState.testId}>
+            <span className="a4-document-busy-spinner" aria-hidden="true" />
+            <div>
+              <strong>{busyState.title}</strong>
+              <p>{busyState.description}</p>
+              {busyState.elapsedLabel || busyState.estimateLabel ? (
+                <div className="a4-document-busy-metrics">
+                  {busyState.elapsedLabel ? <span>{busyState.elapsedLabel}</span> : null}
+                  {busyState.estimateLabel ? <span>{busyState.estimateLabel}</span> : null}
+                </div>
+              ) : null}
+              {busyState.detail ? <small>{busyState.detail}</small> : null}
+            </div>
+          </div>
+        ) : hasDocument ? (
           <>
             <div className="a4-document-meta">
               <span>{headerLeft}</span>

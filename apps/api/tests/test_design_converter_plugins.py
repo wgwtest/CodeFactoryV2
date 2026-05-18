@@ -15,6 +15,10 @@ from app.design_converters.models import (
 )
 from app.design_converters.plugin_discovery import DesignConverterPluginDiscovery
 from app.design_converters.plugin_registry import DesignConverterPluginRegistry
+from app.software_design_v2.sdd_template_profile import (
+    build_sdd_81435_quality_rules,
+    build_sdd_81435_template_profile,
+)
 
 
 def _write_converter_plugin(
@@ -88,12 +92,12 @@ def _converter_request() -> DesignConverterRunRequest:
             "knowledge_binding": {},
             "frozen_at": "2026-05-18T00:00:00+00:00",
         },
-        target_design_profile={
-            "design_title": "SX-DataStore 软件设计说明",
-            "required_sections": ["总体架构", "前端软件设计", "后端软件设计", "API 设计"],
-        },
+        target_design_profile=build_sdd_81435_template_profile(
+            design_title="SX-DataStore 软件设计说明",
+            version_label="v0.1",
+        ),
         conversion_options={"strategy": "component_first"},
-        quality_rules={"result_status": "draft_only"},
+        quality_rules=build_sdd_81435_quality_rules(),
     )
 
 
@@ -258,6 +262,32 @@ def test_dify_design_converter_normalizes_remote_result(monkeypatch) -> None:
         assert headers["Authorization"] == "Bearer test-dify-key"
         assert json["inputs"]["requirement_document_title"] == "SX-DataStore 需求规格说明"
         assert json["inputs"]["expected_output"] == "design_package_with_document"
+        target_profile = json_module.loads(json["inputs"]["target_design_profile_json"])
+        quality_rules = json_module.loads(json["inputs"]["quality_rules_json"])
+        assert target_profile["template_id"] == "81435-sdd-quasi-template-v1"
+        assert target_profile["minimum_total_chars"] == 12000
+        assert len(target_profile["required_sections"]) == 15
+        assert target_profile["required_sections"][5]["title"] == "后端软件设计"
+        assert target_profile["required_sections"][5]["minimum_chars"] == 1500
+        assert quality_rules["minimum_total_chars"] == 12000
+        assert quality_rules["section_coverage"] == {"level_1_required": 1.0, "level_2_required": 0.9}
+        assert [table["table_id"] for table in quality_rules["required_tables"]] == [
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6",
+            "T7",
+            "T8",
+            "T9",
+            "T10",
+            "T11",
+            "T12",
+            "T13",
+            "T14",
+            "T15",
+        ]
         return httpx.Response(
             200,
             request=httpx.Request("POST", url),
@@ -345,3 +375,51 @@ def test_dify_design_converter_rejects_missing_result_json(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="result_json"):
         adapter.run(_converter_request())
+
+
+def test_dify_design_converter_normalizes_string_review_findings(monkeypatch) -> None:
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        payload = _result_payload()
+        payload["review_findings"] = [
+            "核心对象模型仅列出对象名称，需人工补齐字段级定义。",
+            "API 设计缺少请求响应结构、错误码和鉴权策略。",
+        ]
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-review-strings",
+                "data": {
+                    "id": "run-review-strings",
+                    "status": "succeeded",
+                    "outputs": {"result_json": json_module.dumps(payload, ensure_ascii=False)},
+                },
+            },
+        )
+
+    json_module = json
+    monkeypatch.setenv("DIFY_BASE_URL", "http://dify.local")
+    monkeypatch.setenv("DIFY_API_KEY", "test-dify-key")
+    registry = DesignConverterPluginRegistry()
+    adapter = load_design_converter_adapter(registry.require("requirement-to-sdd-dify-workflow"))
+    adapter_module = sys.modules["_codefactory_design_converter_requirement_to_sdd_dify_workflow.adapter"]
+    monkeypatch.setattr(adapter_module.httpx, "post", fake_post)
+
+    result = adapter.run(_converter_request())
+
+    assert result.review_findings == [
+        {
+            "finding_id": "P3-REVIEW-001",
+            "severity": "warning",
+            "target": "software_design_description",
+            "message": "核心对象模型仅列出对象名称，需人工补齐字段级定义。",
+            "requires_human_decision": True,
+        },
+        {
+            "finding_id": "P3-REVIEW-002",
+            "severity": "warning",
+            "target": "software_design_description",
+            "message": "API 设计缺少请求响应结构、错误码和鉴权策略。",
+            "requires_human_decision": True,
+        },
+    ]

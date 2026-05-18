@@ -169,6 +169,8 @@ export type StageInteractionViewModel = {
 
 export type StageConversionViewModel = {
   status: string;
+  running: boolean;
+  elapsedSeconds: number;
   strategy: string;
   strategyOptions: Array<{
     value: string;
@@ -192,6 +194,7 @@ export type StageConversionViewModel = {
     pendingConfirmationCount: number;
   } | null;
   emptyDescription: string;
+  processOutput?: Record<string, unknown>;
 };
 
 export type StageFreezeViewModel = {

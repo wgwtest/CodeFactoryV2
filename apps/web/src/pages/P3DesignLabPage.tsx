@@ -40,6 +40,7 @@ const DEFAULT_POLICY = {
 };
 
 const INPUT_PACKAGE_REFRESH_INTERVAL_MS = 1000;
+const CONVERSION_TIMER_INTERVAL_MS = 1000;
 
 type P3DesignLabNavigationKey = "input" | "workspace" | "turn" | "review" | "log";
 type P3DesignConversionStrategy = "standard_sdd_draft" | "component_first" | "p4_projection_first";
@@ -59,6 +60,9 @@ export function P3DesignLabPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftMeta, setDraftMeta] = useState<P3DesignDraftMeta>({ title: "", versionLabel: "v0.1" });
   const [submitting, setSubmitting] = useState(false);
+  const [conversionInFlightSessionId, setConversionInFlightSessionId] = useState<string | null>(null);
+  const [conversionStartedAtMs, setConversionStartedAtMs] = useState<number | null>(null);
+  const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const loadInputPackages = useCallback(async () => {
@@ -91,9 +95,23 @@ export function P3DesignLabPage() {
         inputPackage: selectedPackage,
         session: designSession,
         policy: DEFAULT_POLICY,
+        conversionRunning: Boolean(designSession && conversionInFlightSessionId === designSession.session_id),
+        conversionElapsedSeconds,
       }),
-    [designSession, selectedPackage],
+    [conversionElapsedSeconds, conversionInFlightSessionId, designSession, selectedPackage],
   );
+
+  useEffect(() => {
+    if (!conversionInFlightSessionId || conversionStartedAtMs === null) {
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setConversionElapsedSeconds(Math.max(0, Math.floor((Date.now() - conversionStartedAtMs) / 1000)));
+    };
+    updateElapsed();
+    const timerId = window.setInterval(updateElapsed, CONVERSION_TIMER_INTERVAL_MS);
+    return () => window.clearInterval(timerId);
+  }, [conversionInFlightSessionId, conversionStartedAtMs]);
 
   function mergeSessionIntoInputPackages(session: P3DesignLabSession) {
     setInputPackages((current) =>
@@ -205,9 +223,16 @@ export function P3DesignLabPage() {
     if (!designSession) {
       return;
     }
+    if (conversionInFlightSessionId === designSession.session_id) {
+      return;
+    }
+    const runningSessionId = designSession.session_id;
     try {
       setSubmitting(true);
-      const response = await runSoftwareDesignV2Conversion(designSession.session_id, { strategy: conversionStrategy });
+      setConversionInFlightSessionId(runningSessionId);
+      setConversionStartedAtMs(Date.now());
+      setConversionElapsedSeconds(0);
+      const response = await runSoftwareDesignV2Conversion(runningSessionId, { strategy: conversionStrategy });
       setDesignSession(response.data);
       setConversionStrategy(toConversionStrategy(response.data.conversion?.strategy));
       mergeSessionIntoInputPackages(response.data);
@@ -216,6 +241,8 @@ export function P3DesignLabPage() {
     } catch (conversionError) {
       setError(conversionError instanceof Error ? conversionError.message : "执行需规转软设基础转换失败");
     } finally {
+      setConversionInFlightSessionId((current) => (current === runningSessionId ? null : current));
+      setConversionStartedAtMs(null);
       setSubmitting(false);
     }
   }
@@ -349,9 +376,6 @@ export function P3DesignLabPage() {
               value={selectedPackageId ?? undefined}
               onChange={setSelectedPackageId}
             />
-            <Button disabled={!selectedPackage} loading={submitting} type="primary" onClick={openCreateDesignModal}>
-              生成软件设计说明
-            </Button>
           </>
         }
         activeNavigationKey={activeNavigationKey}
@@ -786,6 +810,7 @@ function SoftwareDesignWorkspaceView({
   const activeStepId = getActiveConversionStepId(workbench.conversion.status, workbench.conversion.steps);
   const hasSession = workbench.product.documentId !== "p3-design-lab-draft";
   const hasDraft = workbench.product.status !== "empty";
+  const conversionRunning = workbench.conversion.running;
   const strategyOptions = workbench.conversion.strategyOptions.map((item) => ({ label: item.label, value: item.value }));
   const fullscreenButtonLabel = isWorkspaceFullscreen ? "缩回工作区" : "网页全屏";
 
@@ -830,10 +855,10 @@ function SoftwareDesignWorkspaceView({
     <WorkspacePanel
       actions={
         <>
-          <Button aria-label="保存草稿" disabled={!hasDraft} onClick={onSaveDraft}>
+          <Button aria-label="保存草稿" disabled={!hasDraft || conversionRunning} onClick={onSaveDraft}>
             保存草稿
           </Button>
-          <Button aria-label="生成投影候选" disabled={!hasDraft} onClick={onGenerateProjection}>
+          <Button aria-label="生成投影候选" disabled={!hasDraft || conversionRunning} onClick={onGenerateProjection}>
             生成投影候选
           </Button>
           <Button aria-label={fullscreenButtonLabel} onClick={() => setWorkspaceFullscreen((current) => !current)}>
@@ -883,7 +908,7 @@ function getActiveConversionStepId(
     return steps[0]?.stepId;
   }
   if (status === "conversion_running") {
-    return steps.find((step) => step.status === "running")?.stepId ?? steps[0]?.stepId;
+    return steps.find((step) => step.status === "running")?.stepId ?? steps.find((step) => step.status !== "done")?.stepId ?? steps[0]?.stepId;
   }
   if (status === "conversion_failed") {
     return steps.find((step) => step.status === "failed")?.stepId ?? steps.find((step) => step.status !== "done")?.stepId;
@@ -982,7 +1007,7 @@ function StageRelationInspector({
             <Select
               aria-label="转换策略"
               className="p3-design-lab-conversion-strategy"
-              disabled={!hasSession || workbench.conversion.status === "conversion_running"}
+              disabled={!hasSession || workbench.conversion.running}
               options={strategyOptions}
               value={strategy}
               onChange={(value) => onSetStrategy(toConversionStrategy(value))}
@@ -991,11 +1016,13 @@ function StageRelationInspector({
           <div className="p3-design-lab-conversion-action-stack">
             <Button
               block
-              disabled={!hasSession || workbench.conversion.status === "conversion_running"}
+              aria-label={workbench.conversion.running ? "正在生成软设" : "执行基础转换"}
+              disabled={!hasSession || workbench.conversion.running}
+              loading={workbench.conversion.running}
               type="primary"
               onClick={onRunConversion}
             >
-              执行基础转换
+              {workbench.conversion.running ? "正在生成软设" : "执行基础转换"}
             </Button>
           </div>
           <ConversionTimeline activeStepId={activeStepId} steps={workbench.conversion.steps} />

@@ -190,10 +190,40 @@ class RequirementToSddDifyWorkflowAdapter:
         parsed.setdefault("confidence", "medium")
         parsed.setdefault("annotations", [])
         parsed.setdefault("risks", [])
+        parsed["review_findings"] = self._normalize_review_findings(parsed.get("review_findings") or [])
 
         result = DesignConverterRunResult(**parsed)
         self._validate_required_output(result)
         return result
+
+    @staticmethod
+    def _normalize_review_findings(value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        findings: list[dict[str, Any]] = []
+        for index, item in enumerate(value, start=1):
+            if isinstance(item, dict):
+                finding = dict(item)
+                finding.setdefault("finding_id", f"P3-REVIEW-{index:03d}")
+                finding.setdefault("severity", "warning")
+                finding.setdefault("target", "software_design_description")
+                finding.setdefault("message", str(finding.get("message") or finding.get("target") or "人工校核项"))
+                finding.setdefault("requires_human_decision", True)
+                findings.append(finding)
+                continue
+            message = str(item).strip()
+            if not message:
+                continue
+            findings.append(
+                {
+                    "finding_id": f"P3-REVIEW-{index:03d}",
+                    "severity": "warning",
+                    "target": "software_design_description",
+                    "message": message,
+                    "requires_human_decision": True,
+                }
+            )
+        return findings
 
     @staticmethod
     def _validate_required_output(result: DesignConverterRunResult) -> None:

@@ -166,6 +166,8 @@ function buildWorkbench(): StageDocumentWorkbenchViewModel {
     },
     conversion: {
       status: "draft_ready",
+      running: false,
+      elapsedSeconds: 0,
       strategy: "standard_sdd_draft",
       strategyOptions: [],
       steps: [],

@@ -371,6 +371,18 @@ def test_software_design_v2_conversion_runs_through_design_converter_adapter_loa
                     "strategy": request.conversion_options["strategy"],
                     "input_package_id": request.input_package["input_package_id"],
                     "design_title": request.session["design_title"],
+                    "template_id": request.target_design_profile["template_id"],
+                    "template_name": request.target_design_profile["template_name"],
+                    "minimum_total_chars": request.target_design_profile["minimum_total_chars"],
+                    "required_section_count": len(request.target_design_profile["required_sections"]),
+                    "core_section_minimum_chars": {
+                        section["title"]: section["minimum_chars"]
+                        for section in request.target_design_profile["required_sections"]
+                        if section.get("section_id") in {"sdd-04", "sdd-06", "sdd-08"}
+                    },
+                    "required_table_ids": [table["table_id"] for table in request.quality_rules["required_tables"]],
+                    "quality_minimum_total_chars": request.quality_rules["minimum_total_chars"],
+                    "coverage": request.quality_rules["section_coverage"],
                 }
             )
             return DesignConverterRunResult(
@@ -497,6 +509,34 @@ def test_software_design_v2_conversion_runs_through_design_converter_adapter_loa
             "strategy": "component_first",
             "input_package_id": input_package_id,
             "design_title": "空域协同规划软件设计说明 - 转换器分支",
+            "template_id": "81435-sdd-quasi-template-v1",
+            "template_name": "81435-软件设计说明准模板-v1",
+            "minimum_total_chars": 12000,
+            "required_section_count": 15,
+            "core_section_minimum_chars": {
+                "总体架构": 1200,
+                "后端软件设计": 1500,
+                "API 设计": 1500,
+            },
+            "required_table_ids": [
+                "T1",
+                "T2",
+                "T3",
+                "T4",
+                "T5",
+                "T6",
+                "T7",
+                "T8",
+                "T9",
+                "T10",
+                "T11",
+                "T12",
+                "T13",
+                "T14",
+                "T15",
+            ],
+            "quality_minimum_total_chars": 12000,
+            "coverage": {"level_1_required": 1.0, "level_2_required": 0.9},
         }
     ]
     assert converted_session["status"] == "draft_ready"
@@ -641,6 +681,50 @@ def test_software_design_v2_normalizes_real_dify_projection_shape_for_frontend(m
             "readiness": "candidate",
         }
     ]
+
+
+def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FailingDesignConverterAdapter:
+        def run(self, request):
+            raise ValueError("remote dify workflow failed (run-bad): output result_json missing")
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FailingDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 失败观测",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 400
+    assert "result_json missing" in converted.json()["detail"]
+    failed_session = client.get(f"/api/software-design-v2/sessions/{created.json()['session_id']}").json()
+    assert failed_session["status"] == "conversion_failed"
+    assert failed_session["conversion"]["status"] == "conversion_failed"
+    assert failed_session["conversion"]["process_output"]["error"]["message"] == converted.json()["detail"]
+    assert failed_session["conversion"]["steps"][0]["status"] == "failed"
+    assert failed_session["runtime_events"][-1]["event_type"] == "conversion_failed"
+    assert "result_json missing" in failed_session["runtime_events"][-1]["message"]
 
 
 def test_software_design_v2_rejects_unsupported_design_converter() -> None:
