@@ -188,8 +188,8 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(morphPlatform).getByTestId("design-morph-track-canvas")).toHaveAttribute("aria-label", "软设形态滑窗 Canvas");
   expect(within(morphPlatform).getByTestId("design-morph-main-canvas")).toHaveAttribute("aria-label", "软设工作区 Canvas");
   expect(within(morphPlatform).queryByTestId("design-morph-html-overlay")).not.toBeInTheDocument();
-  expect(within(morphPlatform).queryByRole("button", { name: "需规 -> 软设文档" })).not.toBeInTheDocument();
-  expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
+  expect(within(morphPlatform).queryByRole("button", { name: "需规文档 -> 软设文档" })).not.toBeInTheDocument();
+  expect(within(morphPlatform).getByText("Canvas 窗口：需规文档 -> 软设文档")).toBeInTheDocument();
   expect(within(morphPlatform).getByText("缩放 90%")).toBeInTheDocument();
   expect(within(morphPlatform).getByText(/^平移 /)).toBeInTheDocument();
   expectCanvasWorkspaceColumnsToStretch();
@@ -254,7 +254,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
   expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
   fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
-  expect(within(morphPlatform).getByText("Canvas 窗口：需规 -> 软设文档")).toBeInTheDocument();
+  expect(within(morphPlatform).getByText("Canvas 窗口：需规文档 -> 软设文档")).toBeInTheDocument();
   expect(within(workspace).getByTestId("p3-design-lab-conversion-control")).toBeInTheDocument();
   fireEvent.click(within(workspace).getByRole("button", { name: "保存草稿" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/save"));

@@ -32,13 +32,7 @@ export type DesignMorphStageViewModel = {
   items: string[];
   sourceRefs: string[];
   constraintSummary: string;
-  viewModes?: DesignMorphStageViewMode[];
   document?: DesignMorphDocumentViewModel;
-};
-
-export type DesignMorphStageViewMode = {
-  id: string;
-  label: string;
 };
 
 export type DesignMorphDocumentSectionViewModel = {
@@ -261,7 +255,6 @@ type DesignMorphCanvasPlatformProps = {
 
 type SavedCanvasLayoutSnapshot = {
   activeWindowId: string;
-  documentViewModes: Record<string, string>;
   stageLayouts: Record<string, CanvasStageLayoutState>;
   viewport: CanvasViewportState;
 };
@@ -326,7 +319,6 @@ export function DesignMorphCanvasPlatform({
   const [localSelectedObjectId, setLocalSelectedObjectId] = useState<string | null>(activeWindowId);
   const [layoutRevision, setLayoutRevision] = useState(0);
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
-  const [documentViewModes, setDocumentViewModes] = useState<Record<string, string>>(() => buildDocumentViewModeState(stages));
   const [savedLayouts, setSavedLayouts] = useState<SavedCanvasLayoutRecord[]>(() => loadSavedCanvasLayouts());
   const [selectedSavedLayoutId, setSelectedSavedLayoutId] = useState("");
   const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
@@ -345,10 +337,6 @@ export function DesignMorphCanvasPlatform({
 
   useEffect(() => {
     setStageLayouts((current) => reconcileCanvasLayouts(stages, current));
-  }, [stages]);
-
-  useEffect(() => {
-    setDocumentViewModes((current) => reconcileDocumentViewModes(stages, current));
   }, [stages]);
 
   useEffect(() => {
@@ -859,7 +847,7 @@ export function DesignMorphCanvasPlatform({
       id: `layout-${nextIndex}`,
       name: `布局 ${nextIndex}`,
       createdAt: new Date().toISOString(),
-      snapshot: buildSavedCanvasLayoutSnapshot(activeWindowId, documentViewModes, stageLayouts, viewport),
+      snapshot: buildSavedCanvasLayoutSnapshot(activeWindowId, stageLayouts, viewport),
     };
     setSavedLayouts((current) => [...current, nextLayout]);
     setSelectedSavedLayoutId(nextLayout.id);
@@ -872,7 +860,6 @@ export function DesignMorphCanvasPlatform({
       return;
     }
     setStageLayouts(reconcileCanvasLayouts(stages, savedLayout.snapshot.stageLayouts));
-    setDocumentViewModes(reconcileDocumentViewModes(stages, savedLayout.snapshot.documentViewModes));
     setViewport(savedLayout.snapshot.viewport);
     const nextWindow = windows.find((window) => window.id === savedLayout.snapshot.activeWindowId);
     if (nextWindow) {
@@ -1013,20 +1000,16 @@ export function DesignMorphCanvasPlatform({
                 onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
                   beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
                 }}
-                onViewModeChange={(stageId, modeId) => {
-                  setDocumentViewModes((current) => ({ ...current, [stageId]: modeId }));
-                }}
                 onSelectBlock={selectDocumentBlock}
                 selected={item.id === selectedStageId}
                 selectedBlockId={selectedBlockId}
-                viewMode={documentViewModes[item.id] ?? item.viewModes?.[0]?.id ?? "a4"}
                 viewport={viewport}
               />
             ) : null,
           )}
         </div>
         <div className="design-morph-hud">
-          <span>Canvas 窗口：{activeWindow?.title ?? "需规 -> 软设文档"}</span>
+          <span>Canvas 窗口：{activeWindow?.title ?? "需规文档 -> 软设文档"}</span>
           <span>缩放 {Math.round(viewport.scale * 100)}%</span>
           <span>
             平移 {Math.round(viewport.x)},{Math.round(viewport.y)}
@@ -1096,10 +1079,8 @@ function DocumentStageObject({
   onDragMove,
   onDragStart,
   onSelectBlock,
-  onViewModeChange,
   selected,
   selectedBlockId,
-  viewMode,
   viewport,
 }: {
   active: boolean;
@@ -1108,10 +1089,8 @@ function DocumentStageObject({
   onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
   onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
   onSelectBlock: (item: MorphCanvasItem, block: StandardDocumentBlockViewModel, section: SelectableDocumentSection) => void;
-  onViewModeChange: (stageId: string, modeId: string) => void;
   selected: boolean;
   selectedBlockId: string | null;
-  viewMode: string;
   viewport: CanvasViewportState;
 }) {
   const document = item.document;
@@ -1167,35 +1146,10 @@ function DocumentStageObject({
             <span className="design-morph-object-title-meta">{item.subtitle}</span>
           </span>
         </div>
-        <div
-          className="design-morph-object-actions"
-          onPointerDown={(event) => {
-            event.stopPropagation();
-          }}
-          onPointerMove={(event) => {
-            event.stopPropagation();
-          }}
-          onPointerUp={(event) => {
-            event.stopPropagation();
-          }}
-        >
-          {item.viewModes?.map((mode) => (
-            <button
-              aria-pressed={viewMode === mode.id}
-              aria-label={`${item.title} ${mode.label}`}
-              key={mode.id}
-              type="button"
-              onClick={() => onViewModeChange(item.id, mode.id)}
-            >
-              {mode.label}
-            </button>
-          ))}
-          <button type="button">更多</button>
-        </div>
       </header>
       <div className="design-morph-object-body">
         <div className="stage-document-scroll design-morph-object-scroll" data-testid="document-stage-scroll">
-          <div className={`design-morph-object-paper${viewMode === "edit" ? " is-edit-mode" : ""}`} data-testid="document-stage-paper">
+          <div className="design-morph-object-paper" data-testid="document-stage-paper">
             <A4DocumentSurface
               ariaLabel={document.ariaLabel}
               busyState={document.busyState}
@@ -1213,6 +1167,7 @@ function DocumentStageObject({
               }))}
               structuredSections={document.structuredSections}
               selectedBlockId={selectedBlockId ?? undefined}
+              scrollMode="parent"
               subtitle={document.subtitle}
               title={document.title}
             />
@@ -1252,15 +1207,6 @@ function buildCanvasLayoutState(stages: DesignMorphStageViewModel[]): Record<str
   }, {});
 }
 
-function buildDocumentViewModeState(stages: DesignMorphStageViewModel[]): Record<string, string> {
-  return stages.reduce<Record<string, string>>((viewModes, stage) => {
-    if (stage.document) {
-      viewModes[stage.id] = stage.viewModes?.[0]?.id ?? "a4";
-    }
-    return viewModes;
-  }, {});
-}
-
 function reconcileCanvasLayouts(
   stages: DesignMorphStageViewModel[],
   current: Record<string, CanvasStageLayoutState>,
@@ -1272,21 +1218,6 @@ function reconcileCanvasLayouts(
     layouts[stage.id] = existing ?? getDefaultStageLayout(index);
     changed = changed || !existing;
     return layouts;
-  }, {});
-  return changed ? next : current;
-}
-
-function reconcileDocumentViewModes(stages: DesignMorphStageViewModel[], current: Record<string, string>): Record<string, string> {
-  const stageIds = new Set(stages.filter((stage) => stage.document).map((stage) => stage.id));
-  let changed = Object.keys(current).some((stageId) => !stageIds.has(stageId));
-  const next = stages.reduce<Record<string, string>>((viewModes, stage) => {
-    if (!stage.document) {
-      return viewModes;
-    }
-    const existing = current[stage.id];
-    viewModes[stage.id] = existing ?? stage.viewModes?.[0]?.id ?? "a4";
-    changed = changed || !existing;
-    return viewModes;
   }, {});
   return changed ? next : current;
 }
@@ -1325,13 +1256,11 @@ function buildCanvasItems(
 
 function buildSavedCanvasLayoutSnapshot(
   activeWindowId: string,
-  documentViewModes: Record<string, string>,
   stageLayouts: Record<string, CanvasStageLayoutState>,
   viewport: CanvasViewportState,
 ): SavedCanvasLayoutSnapshot {
   return {
     activeWindowId,
-    documentViewModes: { ...documentViewModes },
     stageLayouts: Object.entries(stageLayouts).reduce<Record<string, CanvasStageLayoutState>>((layouts, [stageId, layout]) => {
       layouts[stageId] = { ...layout };
       return layouts;
@@ -1391,8 +1320,7 @@ function isSavedCanvasLayoutSnapshot(value: unknown): value is SavedCanvasLayout
   return (
     typeof candidate.activeWindowId === "string" &&
     isCanvasViewportState(candidate.viewport) &&
-    isRecordObject(candidate.stageLayouts) &&
-    isRecordObject(candidate.documentViewModes)
+    isRecordObject(candidate.stageLayouts)
   );
 }
 

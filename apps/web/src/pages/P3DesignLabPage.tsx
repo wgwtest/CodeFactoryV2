@@ -885,7 +885,7 @@ function SoftwareDesignWorkspaceView({
         <aside className="p3-design-morph-side" data-testid="design-morph-inspector">
           <SelectedMorphObjectInspector
             activeStepId={activeStepId}
-            activeWindowTitle={activeWindow?.title ?? "需规 -> 软设文档"}
+            activeWindowTitle={activeWindow?.title ?? "需规文档 -> 软设文档"}
             hasSession={hasSession}
             selection={selectedMorphObject}
             strategy={strategy}

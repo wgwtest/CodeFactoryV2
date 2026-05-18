@@ -37,6 +37,7 @@ type A4DocumentSurfaceProps = {
   };
   ariaLabel: string;
   selectedBlockId?: string;
+  scrollMode?: "self" | "parent";
   onSelectBlock?: (block: StandardDocumentBlockViewModel, section: NormalizedA4DocumentSection) => void;
 };
 
@@ -53,6 +54,7 @@ export function A4DocumentSurface({
   busyState,
   ariaLabel,
   selectedBlockId,
+  scrollMode = "self",
   onSelectBlock,
 }: A4DocumentSurfaceProps) {
   const normalizedSections: NormalizedA4DocumentSection[] =
@@ -75,10 +77,27 @@ export function A4DocumentSurface({
       ],
     }));
   const hasDocument = Boolean(title && normalizedSections.length);
+  const isBusy = Boolean(busyState);
+
+  const surfaceClassName = [
+    "a4-document-surface",
+    hasDocument && !isBusy ? "is-continuous-paper" : "",
+    scrollMode === "parent" ? "is-parent-scroll" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const pageClassName = [
+    "a4-document-page",
+    isBusy ? "is-busy" : "",
+    hasDocument && !isBusy ? "is-continuous-paper" : "",
+    !hasDocument && !isBusy ? "is-empty" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <article className="a4-document-surface" aria-label={ariaLabel}>
-      <div className={`a4-document-page${busyState ? " is-busy" : hasDocument ? "" : " is-empty"}`}>
+    <article className={surfaceClassName} aria-label={ariaLabel}>
+      <div className={pageClassName} data-testid="a4-document-page">
         {busyState ? (
           <div className="a4-document-busy-state" data-testid={busyState.testId}>
             <span className="a4-document-busy-spinner" aria-hidden="true" />
@@ -102,19 +121,21 @@ export function A4DocumentSurface({
             </div>
             <h2 className="a4-document-title">{title}</h2>
             {subtitle ? <div className="a4-document-subtitle">{subtitle}</div> : null}
-            {normalizedSections.map((section) => (
-              <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
-                <h3>{section.title}</h3>
-                {section.blocks.map((block) => (
-                  <DocumentBlock
-                    block={block}
-                    key={block.blockId}
-                    selected={selectedBlockId === block.blockId}
-                    onSelect={() => onSelectBlock?.(block, section)}
-                  />
-                ))}
-              </section>
-            ))}
+            <div className="a4-document-content" data-testid="a4-document-content">
+              {normalizedSections.map((section) => (
+                <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
+                  <h3>{section.title}</h3>
+                  {section.blocks.map((block) => (
+                    <DocumentBlock
+                      block={block}
+                      key={block.blockId}
+                      selected={selectedBlockId === block.blockId}
+                      onSelect={() => onSelectBlock?.(block, section)}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
             <footer className="a4-document-footer">
               <span>{footerLeft}</span>
               <span>{footerRight}</span>
