@@ -1,7 +1,7 @@
 # P3 需规转软设专项 worktree 启动指南
 
-> 适用目录：`.worktrees/p3-requirement-to-design-conversion`  
-> 对应分支：`feat/p3-requirement-to-design-conversion`  
+> 适用目录：`.worktrees/p3-requirement-to-design-conversion`
+> 对应分支：`feat/p3-requirement-to-design-conversion`
 > 默认角色：P3 专项开发分支；专门推进“需求规格说明文档 -> 软件设计说明文档”的转换能力。
 
 ## 1. 分支定位
