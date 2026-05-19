@@ -175,6 +175,7 @@ export type StageConversionViewModel = {
   status: string;
   running: boolean;
   elapsedSeconds: number;
+  progressNote?: string;
   strategy: string;
   strategyOptions: Array<{
     value: string;
@@ -245,6 +246,11 @@ export type DocumentOutlineViewModel = {
       moduleId: string;
       name: string;
     }>;
+    functionTree?: {
+      treeId?: string;
+      title?: string;
+      root?: unknown;
+    };
   };
   emptyDescription: string;
 };

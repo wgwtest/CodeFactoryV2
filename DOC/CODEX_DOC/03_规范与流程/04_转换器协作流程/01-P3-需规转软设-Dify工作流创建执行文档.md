@@ -399,7 +399,20 @@ System Prompt：
     "package_id": "",
     "status": "draft",
     "document_projection": {},
-    "functional_tree_projection": {},
+    "functional_tree_projection": {
+      "tree_id": "",
+      "title": "",
+      "root": {
+        "node_id": "ft-root",
+        "title": "",
+        "node_type": "root",
+        "status": "derived",
+        "source_refs": [],
+        "design_refs": [],
+        "children": []
+      },
+      "modules": []
+    },
     "layered_architecture_projection": {},
     "technical_implementation_projection": {},
     "api_projection": {},
@@ -681,7 +694,112 @@ End / Output 节点必须输出：
 - `template_required`：目标软设结构要求但需求事实不足。
 - `human_review_required`：必须人工补充或确认。
 
-### 12.2 `traceability`
+### 12.2 `design_package.functional_tree_projection`
+
+功能树是业务模块、能力、功能、接口、数据、状态和质量约束的设计对象树，不是软件设计说明目录。
+
+结构要求：
+
+```json
+{
+  "tree_id": "functional-tree-sx-datastore",
+  "title": "SX-DataStore 功能树",
+  "root": {
+    "node_id": "ft-root",
+    "title": "SX-DataStore",
+    "node_type": "root",
+    "status": "derived",
+    "source_refs": ["REQ-FR-001"],
+    "design_refs": [],
+    "children": [
+      {
+        "node_id": "module-resource-catalog",
+        "title": "资源目录模块",
+        "node_type": "module",
+        "module_id": "module-resource-catalog",
+        "status": "derived",
+        "source_refs": ["REQ-FR-001"],
+        "design_refs": ["sdd-06", "sdd-08"],
+        "description": "承接资源发现、筛选、详情查看和申请入口能力。",
+        "children": [
+          {
+            "node_id": "capability-resource-search",
+            "title": "资源检索能力",
+            "node_type": "capability",
+            "module_id": "module-resource-catalog",
+            "status": "derived",
+            "source_refs": ["REQ-FR-001"],
+            "design_refs": ["sdd-06-01", "sdd-08-01"],
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "modules": [
+    {
+      "module_id": "module-resource-catalog",
+      "name": "资源目录模块",
+      "source_refs": ["REQ-FR-001"],
+      "description": "承接资源发现、筛选、详情查看和申请入口能力。"
+    }
+  ]
+}
+```
+
+允许的 `node_type`：
+
+- `root`
+- `module`
+- `capability`
+- `function`
+- `interface`
+- `data`
+- `state`
+- `quality`
+
+节点字段约定：
+
+- `node_id`：必填，节点稳定 ID。
+- `title`：必填，树主体展示标题。
+- `node_type`：必填，只能使用上方类型。
+- `status`：建议填写 `derived`、`pending_confirmation`、`untraced` 或 `pending_decomposition`。
+- `module_id`：模块节点必填；子节点建议填写所属模块。
+- `source_refs`：来源需规条款 ID。
+- `design_refs`：软设章节或小节 ID，只用于追溯。
+- `architecture_refs`：架构层、服务或组件引用。
+- `p4_refs`：P4 候选工单引用。
+- `description`：供 Inspector 展示的简短说明。
+- `children`：必填；没有子节点时为空数组。
+
+以下软设章节标题不得作为功能树节点 `title`：
+
+```text
+文档目的
+设计口径
+系统定位
+业务目标与边界
+总体架构
+前端软件设计
+后端软件设计
+核心对象模型
+API 设计
+关键运行流程
+智能能力、模型调用或专项服务设计
+设计约束与质量门
+目标目录结构
+验收口径
+面向平台展示与验证输出接口
+设计结论
+编写依据
+章节概述
+```
+
+这些标题可以出现在 `design_document.sections[].title`，也可以作为 `design_refs` 对应的章节引用，但不能进入功能树主体。
+
+如果无法拆解到功能项，只允许输出模块骨架，并在 `review_findings` 中说明“功能树仅有模块骨架，待功能拆解”；不得用软设章节列表伪造 `root.children`。
+
+### 12.3 `traceability`
 
 每项建议包含：
 
@@ -697,7 +815,7 @@ End / Output 节点必须输出：
 }
 ```
 
-### 12.3 `gap_list`
+### 12.4 `gap_list`
 
 每项建议包含：
 
@@ -717,7 +835,7 @@ End / Output 节点必须输出：
 - `warning`
 - `info`
 
-### 12.4 `review_findings`
+### 12.5 `review_findings`
 
 每项建议包含：
 
@@ -753,7 +871,9 @@ DOC/JB_DOC/03-项目实例与样例/P2-P3主链样例-SX-DataStore/02-软件设�
 3. 识别资源发现与申请、维护发布、审批交付、治理接管、页面配置发布流程。
 4. 生成前端设计、后端设计、对象模型、API 分组、关键流程和质量门章节。
 5. 输出需求到设计的追溯映射。
-6. 输出设计缺口和人工校核项。
+6. 输出包含模块、能力或功能节点的 `functional_tree_projection.root`。
+7. 功能树节点标题不混入软设章节标题。
+8. 输出设计缺口和人工校核项。
 
 ## 14. 交付给 CodeFactoryV2 的信息
 
@@ -788,6 +908,9 @@ recommended_timeout_seconds:
 - `result_json` 可被 JSON 解析。
 - `result_json.design_document.sections` 至少包含目标软设主要章节。
 - `result_json.design_package` 至少包含文档、功能树、架构、API、流程、质量门和 P4 候选投影。
+- `result_json.design_package.functional_tree_projection.root` 存在。
+- `functional_tree_projection.root` 至少包含一个 `module` 节点，建议包含 `capability` 或 `function` 节点。
+- 功能树主体不得把软设章节标题当作节点标题。
 - `result_json.traceability` 非空。
 - `result_json.gap_list` 和 `result_json.review_findings` 字段存在。
 - workflow 不宣称结果已冻结。

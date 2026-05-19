@@ -2346,11 +2346,44 @@ export type P3DesignLabDesignDocument = {
   sections: P3DesignLabDocumentSection[];
 };
 
+export type P3DesignLabFunctionTreeNode = {
+  node_id?: string;
+  nodeId?: string;
+  id?: string;
+  title?: string;
+  name?: string;
+  node_type?: string;
+  nodeType?: string;
+  type?: string;
+  status?: string;
+  module_id?: string;
+  moduleId?: string;
+  source_refs?: string[];
+  sourceRefs?: string[];
+  design_refs?: string[];
+  designRefs?: string[];
+  architecture_refs?: string[];
+  architectureRefs?: string[];
+  p4_refs?: string[];
+  p4Refs?: string[];
+  description?: string;
+  children?: P3DesignLabFunctionTreeNode[];
+};
+
+export type P3DesignLabFunctionTree = {
+  tree_id?: string;
+  treeId?: string;
+  title?: string;
+  root?: P3DesignLabFunctionTreeNode | null;
+};
+
 export type P3DesignLabDesignBaseline = {
   baseline_id: string;
   application_name?: string;
   architecture_mode: string;
   modules: Array<{ module_id: string; name: string; source_refs?: string[] }>;
+  function_tree?: P3DesignLabFunctionTree;
+  functionTree?: P3DesignLabFunctionTree;
   traceability?: Array<Record<string, string>>;
   pending_confirmations?: string[];
 };

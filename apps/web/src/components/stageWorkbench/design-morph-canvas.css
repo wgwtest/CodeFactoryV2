@@ -206,6 +206,77 @@
   outline-offset: 2px;
 }
 
+.is-function-tree-stage-object .design-morph-object-body {
+  background: #fbfcfb;
+}
+
+.design-morph-function-tree-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.design-morph-function-tree-toolbar {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #dbe5e1;
+  background: #f8fbfa;
+}
+
+.design-morph-function-tree-toolbar .ant-input-affix-wrapper {
+  border-radius: 6px;
+}
+
+.design-morph-function-tree-toolbar .ant-btn {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.design-morph-function-tree-body {
+  min-height: 0;
+  padding: 8px 6px 10px;
+  overflow: auto;
+}
+
+.design-morph-function-tree-body .ant-tree {
+  background: transparent;
+  color: #203330;
+  font-size: 13px;
+}
+
+.design-morph-function-tree-body .ant-tree-node-content-wrapper {
+  min-width: 0;
+  height: 26px;
+  line-height: 26px;
+  border-radius: 6px;
+}
+
+.design-morph-function-tree-body .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: rgba(47, 119, 189, 0.14);
+}
+
+.design-morph-function-tree-node-title {
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.design-morph-function-tree-empty {
+  padding: 18px;
+  color: #6d7d79;
+  font-size: 12px;
+}
+
 .design-morph-main-canvas {
   cursor: grab;
   touch-action: none;

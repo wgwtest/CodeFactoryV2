@@ -21,7 +21,7 @@ export const p2SimTemplates: P2SimTemplate[] = [
     title: "平台级业务系统",
     badge: "平台协同",
     use_case: "适合平台级业务系统、跨角色协同场景和明显的系统边界输入。",
-    preview_summary: "围绕平台协同、任务分发和运行留痕构造一份可直接进入 P3 的轻量虚规。",
+    preview_summary: "围绕平台协同、任务分发和运行留痕构造一份可直接进入 P3 的轻量需规。",
     fit_for: "适合作为平台级软件工厂的标准上游样板。",
     payload: {
       application: {

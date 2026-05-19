@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P3 Design Lab 功能树交互对象原型 v14</title>
+    <style>
+      :root {
+        --bg: #eef2f0;
+        --ink: #17211f;
+        --muted: #60706b;
+        --line: #c7d5cf;
+        --panel: #fbfcfb;
+        --paper: #fffdf8;
+        --navy: #143f52;
+        --teal: #28736b;
+        --green: #2f714b;
+        --amber: #91631f;
+        --red: #9a4238;
+        --blue-soft: #e5eff3;
+        --teal-soft: #e3f2ee;
+        --green-soft: #e4f1e8;
+        --amber-soft: #f6ead4;
+        --red-soft: #f5dfdb;
+        --shadow: 0 18px 42px rgba(31, 47, 43, 0.12);
+        --soft-shadow: 0 10px 24px rgba(31, 47, 43, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(20, 63, 82, 0.05) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(20, 63, 82, 0.04) 1px, transparent 1px),
+          var(--bg);
+        background-size: 56px 56px;
+        color: var(--ink);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px;
+      }
+
+      .topbar {
+        height: 76px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 18px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(165, 181, 175, 0.92);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 17px;
+        font-weight: 950;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 34px;
+        font-weight: 950;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .pill-row,
+      .toolbar,
+      .node-meta,
+      .mini-actions,
+      .window-tabs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill,
+      .badge,
+      .button,
+      .chip {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #b8c6c1;
+        background: #fff;
+        color: #243331;
+        font-size: 12px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .pill,
+      .badge,
+      .chip {
+        padding: 4px 9px;
+      }
+
+      .button {
+        height: 36px;
+        padding: 0 14px;
+      }
+
+      .button.primary {
+        border-color: var(--navy);
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .navy {
+        border-color: #aac2ce;
+        background: var(--blue-soft);
+        color: var(--navy);
+      }
+
+      .teal {
+        border-color: #9cc9c2;
+        background: var(--teal-soft);
+        color: var(--teal);
+      }
+
+      .green {
+        border-color: #9bc5a9;
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .amber {
+        border-color: #ddba80;
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .red {
+        border-color: #d8b3ab;
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .layout {
+        height: 932px;
+        display: grid;
+        grid-template-columns: 292px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .main,
+      .canvas,
+      .object,
+      .inspector,
+      .chain,
+      .doc-row,
+      .tree-node,
+      .detail-card {
+        border: 1px solid rgba(165, 181, 175, 0.92);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .sidebar {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        overflow: hidden;
+      }
+
+      .side-head {
+        padding: 18px 17px 15px;
+        border-bottom: 1px solid #d8e1dd;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .nav-list {
+        min-height: 0;
+        padding: 14px;
+        overflow: hidden;
+      }
+
+      .nav-item {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #d1ded8;
+        background: #fff;
+      }
+
+      .nav-item.active {
+        border-color: #7eadbb;
+        background: var(--blue-soft);
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .nav-index {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #adc0bb;
+        background: #f7faf8;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .nav-label {
+        font-size: 14px;
+        font-weight: 950;
+      }
+
+      .nav-desc {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d8e1dd;
+      }
+
+      .main {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: 88px minmax(0, 1fr);
+        overflow: hidden;
+      }
+
+      .workspace-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 16px 18px;
+        border-bottom: 1px solid #d8e1dd;
+      }
+
+      .workspace-title {
+        font-size: 20px;
+        font-weight: 950;
+      }
+
+      .workspace-desc {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .workspace-body {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 346px;
+        gap: 14px;
+        padding: 14px;
+        background: #f5f8f6;
+      }
+
+      .canvas {
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(20, 63, 82, 0.07) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(20, 63, 82, 0.05) 1px, transparent 1px),
+          #f9fbfa;
+        background-size: 54px 54px;
+        box-shadow: none;
+      }
+
+      .track {
+        height: 82px;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        border-bottom: 1px solid #d6e0db;
+        background: linear-gradient(180deg, #fbfcfb 0%, #eef4f1 100%);
+      }
+
+      .track-line {
+        position: absolute;
+        left: 36px;
+        right: 36px;
+        top: 39px;
+        height: 3px;
+        background: #bfd0ca;
+      }
+
+      .track-stage {
+        position: absolute;
+        top: 18px;
+        width: 126px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #b7c8c2;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .track-stage.active {
+        border-color: var(--navy);
+        background: var(--blue-soft);
+        color: var(--navy);
+      }
+
+      .track-stage:nth-child(2) { left: 54px; }
+      .track-stage:nth-child(3) { left: 238px; }
+      .track-stage:nth-child(4) { left: 422px; }
+      .track-stage:nth-child(5) { left: 606px; }
+      .track-stage:nth-child(6) { left: 790px; }
+      .track-stage:nth-child(7) { left: 974px; }
+      .track-stage:nth-child(8) { left: 1158px; }
+
+      .view-label {
+        position: absolute;
+        top: 98px;
+        left: 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .window-tabs {
+        position: absolute;
+        top: 98px;
+        right: 18px;
+      }
+
+      .object {
+        position: absolute;
+        display: grid;
+        grid-template-rows: 32px minmax(0, 1fr);
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow: var(--shadow);
+      }
+
+      .object.doc {
+        left: 44px;
+        top: 156px;
+        width: 450px;
+        height: 650px;
+      }
+
+      .object.tree {
+        left: 548px;
+        top: 136px;
+        width: 568px;
+        height: 690px;
+        border-color: #8fb9bd;
+      }
+
+      .object-title {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 0 10px;
+        border-bottom: 1px solid #d9e3de;
+        background: linear-gradient(180deg, #f8fbff 0%, #edf4f8 100%);
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .title-copy {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .title-copy strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .title-meta {
+        max-width: 128px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 3px 7px;
+        border: 1px solid rgba(47, 119, 189, 0.16);
+        background: rgba(47, 119, 189, 0.1);
+        color: #607186;
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .resize {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background:
+          linear-gradient(135deg, transparent 0 48%, rgba(47, 119, 189, 0.8) 48% 56%, transparent 56% 100%),
+          linear-gradient(135deg, transparent 0 70%, rgba(47, 119, 189, 0.45) 70% 78%, transparent 78% 100%);
+      }
+
+      .doc-body {
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+        background: #f5f9fd;
+      }
+
+      .paper {
+        height: 100%;
+        padding: 24px 24px 30px;
+        overflow: hidden;
+        border: 1px solid #e4ddd0;
+        background: var(--paper);
+        box-shadow: 0 12px 22px rgba(58, 46, 25, 0.08);
+      }
+
+      .paper-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e2d8c8;
+        color: #6b6254;
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .paper h2 {
+        margin: 20px 0 8px;
+        color: #1f2b28;
+        font-size: 18px;
+        line-height: 1.35;
+        font-weight: 950;
+      }
+
+      .paper-section-title {
+        margin-top: 20px;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .doc-row {
+        margin-top: 10px;
+        padding: 10px;
+        box-shadow: none;
+        background: #fffef9;
+      }
+
+      .doc-row.active {
+        border-color: #91b9c4;
+        background: #edf6f8;
+      }
+
+      .doc-row strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #22312d;
+        font-size: 12px;
+      }
+
+      .doc-row p {
+        color: #4e5f59;
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .tree-body {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        background: #f7faf8;
+      }
+
+      .tree-toolbar {
+        padding: 12px;
+        border-bottom: 1px solid #dae5df;
+        background: #fbfcfb;
+      }
+
+      .search {
+        height: 34px;
+        min-width: 260px;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        border: 1px solid #bdcbc5;
+        background: #fff;
+        color: #6b7a75;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .tree-scroll {
+        min-height: 0;
+        padding: 14px 14px 16px;
+        overflow: hidden;
+      }
+
+      .tree-list {
+        position: relative;
+        display: grid;
+        gap: 7px;
+      }
+
+      .tree-list::before {
+        content: "";
+        position: absolute;
+        top: 36px;
+        bottom: 42px;
+        left: 20px;
+        border-left: 2px dashed #bfd1ca;
+      }
+
+      .tree-node {
+        min-height: 44px;
+        position: relative;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 9px;
+        align-items: center;
+        padding: 8px 10px;
+        box-shadow: none;
+      }
+
+      .tree-node.level-1 {
+        margin-left: 0;
+        border-color: #94bbc8;
+        background: var(--blue-soft);
+      }
+
+      .tree-node.level-2 {
+        margin-left: 34px;
+        background: #fff;
+      }
+
+      .tree-node.level-3 {
+        margin-left: 68px;
+        background: #fff;
+      }
+
+      .tree-node.level-4 {
+        margin-left: 102px;
+        background: #fffdf8;
+      }
+
+      .tree-node.selected {
+        border-color: #28736b;
+        background: #e2f2ee;
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .tree-node.dragging {
+        border-style: dashed;
+        border-color: #91631f;
+        background: #fff7e6;
+      }
+
+      .twisty {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #aebfba;
+        background: #fff;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .node-title {
+        min-width: 0;
+      }
+
+      .node-title strong {
+        display: block;
+        overflow: hidden;
+        color: #1d2b28;
+        font-size: 13px;
+        font-weight: 950;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .node-meta {
+        margin-top: 4px;
+        gap: 5px;
+      }
+
+      .bridge {
+        position: absolute;
+        left: 498px;
+        top: 448px;
+        width: 48px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #abc0ba;
+        background: #fff;
+        box-shadow: var(--soft-shadow);
+        color: var(--navy);
+        font-size: 22px;
+        font-weight: 950;
+      }
+
+      .bridge::before,
+      .bridge::after {
+        content: "";
+        position: absolute;
+        top: 25px;
+        width: 34px;
+        border-top: 2px solid #a8bdb7;
+      }
+
+      .bridge::before { right: 47px; }
+      .bridge::after { left: 47px; }
+
+      .inspector {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        overflow: hidden;
+        box-shadow: none;
+      }
+
+      .inspector-head {
+        padding: 13px 15px 10px;
+        border-bottom: 1px solid #d8e1dd;
+      }
+
+      .inspector-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .inspector-subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .chain {
+        margin: 10px 12px;
+        padding: 10px;
+        box-shadow: none;
+        background: #f7faf8;
+      }
+
+      .chain-title {
+        margin-bottom: 9px;
+        color: var(--navy);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .chain-flow {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr auto 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .chain-cell {
+        min-height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #c7d7d1;
+        background: #fff;
+        text-align: center;
+        color: #263531;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .chain-arrow {
+        color: #7c8d87;
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .detail-scroll {
+        min-height: 0;
+        padding: 0 12px 10px;
+        overflow: hidden;
+      }
+
+      .detail-card {
+        margin-bottom: 8px;
+        padding: 10px;
+        box-shadow: none;
+        background: #fff;
+      }
+
+      .detail-card h3 {
+        margin-bottom: 7px;
+        color: var(--navy);
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .inspector-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+      }
+
+      .inspector-metric {
+        min-height: 48px;
+        padding: 8px 7px;
+        border: 1px solid #d0ddd7;
+        background: #f8fbfa;
+      }
+
+      .inspector-metric strong {
+        display: block;
+        color: var(--navy);
+        font-size: 17px;
+        line-height: 18px;
+        font-weight: 950;
+      }
+
+      .inspector-metric span {
+        display: block;
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .fact {
+        display: grid;
+        grid-template-columns: 78px minmax(0, 1fr);
+        gap: 10px;
+        padding: 5px 0;
+        border-top: 1px solid #edf2ef;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .fact:first-of-type {
+        border-top: 0;
+      }
+
+      .fact span:first-child {
+        color: #73817d;
+        font-weight: 850;
+      }
+
+      .fact span:last-child {
+        color: #20312d;
+        font-weight: 850;
+      }
+
+      .action-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .action-row {
+        min-height: 34px;
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 9px;
+        align-items: center;
+        padding: 6px;
+        border: 1px solid #d3dfda;
+        background: #f8fbfa;
+      }
+
+      .action-icon {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #b9cbc4;
+        background: #fff;
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .action-copy strong {
+        display: block;
+        color: #22312d;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .action-copy span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P3</div>
+          <div>
+            <h1>P3 Design Lab · 功能树交互对象深化原型</h1>
+            <p class="subtitle">把功能树从静态示意分支升级为可展开、可追溯、可拖拽试排的阶段对象</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">DesignBaseline v2</span>
+          <span class="pill teal">功能树对象深化</span>
+          <button class="button">保存草稿</button>
+          <button class="button primary">生成投影候选</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">P3 软件设计系统</div>
+            <p class="side-note">左侧只保留主入口；功能树作为软设工作区内部形态对象，不再是单独页面。</p>
+          </div>
+          <nav class="nav-list">
+            <div class="nav-item">
+              <div class="nav-index">01</div>
+              <div>
+                <div class="nav-label">需规输入</div>
+                <div class="nav-desc">选择 P2 冻结包和关联软设</div>
+              </div>
+            </div>
+            <div class="nav-item active">
+              <div class="nav-index">02</div>
+              <div>
+                <div class="nav-label">软设工作区</div>
+                <div class="nav-desc">软设文档、功能树、架构、技术实现、P4 投影</div>
+              </div>
+            </div>
+            <div class="nav-item">
+              <div class="nav-index">03</div>
+              <div>
+                <div class="nav-label">当前 Turn</div>
+                <div class="nav-desc">自然语言调整与执行记录</div>
+              </div>
+            </div>
+            <div class="nav-item">
+              <div class="nav-index">04</div>
+              <div>
+                <div class="nav-label">检查评审</div>
+                <div class="nav-desc">设计完整性和追溯检查</div>
+              </div>
+            </div>
+            <div class="nav-item">
+              <div class="nav-index">05</div>
+              <div>
+                <div class="nav-label">运行日志</div>
+                <div class="nav-desc">转换器、投影和冻结审计</div>
+              </div>
+            </div>
+          </nav>
+          <div class="side-foot">
+            <div class="pill-row">
+              <span class="badge green">Dify 已返回软设</span>
+              <span class="badge amber">副信息进入 Inspector</span>
+            </div>
+          </div>
+        </aside>
+
+        <section class="main">
+          <div class="workspace-head">
+            <div>
+              <div class="workspace-title">软设文档 -> 功能树</div>
+              <p class="workspace-desc">当前窗口展示设计正文如何被拆解为功能对象；树节点可展开、搜索、选中并进入右侧 Inspector。</p>
+            </div>
+            <div class="top-actions">
+              <button class="button">上一窗口</button>
+              <button class="button primary">下一窗口</button>
+            </div>
+          </div>
+
+          <div class="workspace-body">
+            <section class="canvas">
+              <div class="track">
+                <div class="track-line"></div>
+                <div class="track-stage">需规文档</div>
+                <div class="track-stage active">软设文档</div>
+                <div class="track-stage active">功能树</div>
+                <div class="track-stage">分层架构</div>
+                <div class="track-stage">技术实现</div>
+                <div class="track-stage">展示形态</div>
+                <div class="track-stage">P4 投影</div>
+              </div>
+
+              <div class="view-label">
+                <span class="pill navy">Canvas 窗口：软设文档 -> 功能树</span>
+                <span class="pill">缩放 90%</span>
+                <span class="pill">平移 x=-128 y=32</span>
+              </div>
+              <div class="window-tabs">
+                <span class="chip">需规 -> 软设</span>
+                <span class="chip navy">软设 -> 功能树</span>
+                <span class="chip">功能树 -> 架构</span>
+              </div>
+
+              <article class="object doc">
+                <header class="object-title">
+                  <div class="title-copy">
+                    <strong>软设文档</strong>
+                    <span class="title-meta">A4 正文形态</span>
+                  </div>
+                  <span class="title-meta">可选块</span>
+                </header>
+                <div class="doc-body">
+                  <div class="paper">
+                    <div class="paper-head">
+                      <span>CodeFactoryV2 / P3</span>
+                      <span>Software Design Description</span>
+                    </div>
+                    <h2>空域协同规划软件设计说明</h2>
+                    <div class="paper-section-title">4. 总体架构</div>
+                    <div class="doc-row">
+                      <strong>4.1 架构原则</strong>
+                      <p>系统采用统一工作台入口，围绕规划任务、冲突识别、协同确认和审计追溯形成服务边界。</p>
+                    </div>
+                    <div class="doc-row active">
+                      <strong>4.2 模块划分</strong>
+                      <p>规划任务管理负责创建、编辑、发布和归档规划任务，并向冲突识别、协同确认模块提供任务上下文。</p>
+                    </div>
+                    <div class="doc-row">
+                      <strong>5.1 规划任务服务</strong>
+                      <p>规划任务服务需要暴露任务草稿保存、任务提交校核、任务版本记录和协同状态查询能力。</p>
+                    </div>
+                    <div class="doc-row">
+                      <strong>6.1 追溯关系</strong>
+                      <p>模块与需求条款 REQ-3.2、REQ-4.1 保持追溯；待确认项进入评审检查。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="resize"></div>
+              </article>
+
+              <div class="bridge">→</div>
+
+              <article class="object tree">
+                <header class="object-title">
+                  <div class="title-copy">
+                    <strong>功能树</strong>
+                    <span class="title-meta">Tree 交互对象</span>
+                  </div>
+                  <span class="title-meta">标题条拖拽对象</span>
+                </header>
+                <div class="tree-body">
+                  <div class="tree-toolbar">
+                    <div class="toolbar">
+                      <div class="search">搜索：规划 / REQ-3.2 / 接口</div>
+                      <button class="button">展开全部</button>
+                      <button class="button">收起全部</button>
+                      <button class="button">重置视图</button>
+                    </div>
+                  </div>
+                  <div class="tree-scroll">
+                    <div class="tree-list">
+                      <div class="tree-node level-1">
+                        <div class="twisty">▾</div>
+                        <div class="node-title">
+                          <strong>空域协同规划软件</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-2 selected">
+                        <div class="twisty">▾</div>
+                        <div class="node-title">
+                          <strong>规划任务管理</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-3">
+                        <div class="twisty">▾</div>
+                        <div class="node-title">
+                          <strong>任务创建与草稿保存</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-4">
+                        <div class="twisty">•</div>
+                        <div class="node-title">
+                          <strong>保存规划草案接口</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-4 dragging">
+                        <div class="twisty">↕</div>
+                        <div class="node-title">
+                          <strong>任务版本记录</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-3">
+                        <div class="twisty">▸</div>
+                        <div class="node-title">
+                          <strong>任务发布校核</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-2">
+                        <div class="twisty">▸</div>
+                        <div class="node-title">
+                          <strong>冲突识别与告警</strong>
+                        </div>
+                      </div>
+
+                      <div class="tree-node level-2">
+                        <div class="twisty">▸</div>
+                        <div class="node-title">
+                          <strong>协同确认</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="resize"></div>
+              </article>
+            </section>
+
+            <aside class="inspector">
+              <div class="inspector-head">
+                <div class="inspector-title">当前选中对象</div>
+                <p class="inspector-subtitle">功能节点 · 规划任务管理</p>
+              </div>
+              <div class="chain">
+                <div class="chain-title">追溯链</div>
+                <div class="chain-flow">
+                  <div class="chain-cell">REQ-3.2<br />规划任务</div>
+                  <div class="chain-arrow">→</div>
+                  <div class="chain-cell">4.2<br />模块划分</div>
+                  <div class="chain-arrow">→</div>
+                  <div class="chain-cell">功能树<br />规划任务管理</div>
+                </div>
+              </div>
+              <div class="detail-scroll">
+                <div class="detail-card">
+                  <h3>功能树概览</h3>
+                  <div class="inspector-metrics">
+                    <div class="inspector-metric"><strong>18</strong><span>功能节点</span></div>
+                    <div class="inspector-metric"><strong>14</strong><span>已追溯</span></div>
+                    <div class="inspector-metric"><strong>3</strong><span>待确认</span></div>
+                    <div class="inspector-metric"><strong>4</strong><span>最大层级</span></div>
+                  </div>
+                </div>
+
+                <div class="detail-card">
+                  <h3>节点详情</h3>
+                  <div class="fact"><span>节点类型</span><span>模块 / 功能域</span></div>
+                  <div class="fact"><span>节点状态</span><span>由当前设计基线派生</span></div>
+                  <div class="fact"><span>来源需规</span><span>REQ-3.2、REQ-4.1</span></div>
+                  <div class="fact"><span>软设引用</span><span>4.2 模块划分、5.1 规划任务服务</span></div>
+                  <div class="fact"><span>子节点</span><span>任务创建与草稿保存、任务发布校核</span></div>
+                </div>
+
+                <div class="detail-card">
+                  <h3>待应用调整</h3>
+                  <div class="fact"><span>拖拽节点</span><span>任务版本记录</span></div>
+                  <div class="fact"><span>目标位置</span><span>任务创建与草稿保存 / 子节点之后</span></div>
+                  <div class="fact"><span>处理策略</span><span>进入设计轮次，确认前不写入事实源</span></div>
+                </div>
+
+                <div class="detail-card">
+                  <h3>可执行动作</h3>
+                  <div class="action-list">
+                    <div class="action-row">
+                      <div class="action-icon">源</div>
+                      <div class="action-copy">
+                        <strong>查看来源需规</strong>
+                        <span>定位到 REQ-3.2 和 REQ-4.1。</span>
+                      </div>
+                    </div>
+                    <div class="action-row">
+                      <div class="action-icon">文</div>
+                      <div class="action-copy">
+                        <strong>查看软设章节</strong>
+                        <span>定位到 4.2 模块划分与 5.1 服务说明。</span>
+                      </div>
+                    </div>
+                    <div class="action-row">
+                      <div class="action-icon">树</div>
+                      <div class="action-copy">
+                        <strong>只看当前子树</strong>
+                        <span>过滤工作区树视图，只保留规划任务管理分支。</span>
+                      </div>
+                    </div>
+                    <div class="action-row">
+                      <div class="action-icon">轮</div>
+                      <div class="action-copy">
+                        <strong>应用为设计轮次</strong>
+                        <span>把拖拽试排生成可审计调整命令。</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

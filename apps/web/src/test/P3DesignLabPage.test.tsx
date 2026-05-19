@@ -252,6 +252,27 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
   expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
   expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
+  const functionTreeObject = within(morphPlatform).getByTestId("stage-object-functionTree");
+  expect(functionTreeObject).toHaveClass("is-function-tree-stage-object");
+  expect(within(functionTreeObject).getByText("规划任务管理")).toBeInTheDocument();
+  expect(within(functionTreeObject).queryByText("功能节点")).not.toBeInTheDocument();
+  expect(within(functionTreeObject).queryByText("已追溯")).not.toBeInTheDocument();
+  expect(within(functionTreeObject).queryByText("待确认")).not.toBeInTheDocument();
+  expect(within(functionTreeObject).queryByText("最大层级")).not.toBeInTheDocument();
+  expect(within(functionTreeObject).queryByText("由当前设计基线派生")).not.toBeInTheDocument();
+  fireEvent.click(within(functionTreeObject).getByText("规划任务管理"));
+  expect(within(inspector).getByText("对象：规划任务管理")).toBeInTheDocument();
+  expect(within(inspector).getByText("功能树概览")).toBeInTheDocument();
+  expect(within(inspector).getByText("功能节点")).toBeInTheDocument();
+  expect(within(inspector).getByText("已追溯")).toBeInTheDocument();
+  expect(within(inspector).getByText("待确认")).toBeInTheDocument();
+  expect(within(inspector).getByText("最大层级")).toBeInTheDocument();
+  expect(within(inspector).getByText("由当前设计基线派生")).toBeInTheDocument();
+  expect(within(inspector).getByText("查看来源需规")).toBeInTheDocument();
+  expect(within(inspector).getByText("查看软设章节")).toBeInTheDocument();
+  expect(within(inspector).getByText("只看当前子树")).toBeInTheDocument();
+  expect(within(inspector).getByText("只看未追溯")).toBeInTheDocument();
+  expect(within(inspector).getByText("只看待确认")).toBeInTheDocument();
   expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
   fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
   expect(within(morphPlatform).getByText("Canvas 窗口：需规文档 -> 软设文档")).toBeInTheDocument();
@@ -458,11 +479,17 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   expect(within(workspace).getByText("一般耗时约 200 秒，请保持本页打开。")).toBeInTheDocument();
   expect(within(workspace).getByText("已等待 00:00")).toBeInTheDocument();
   expect(within(workspace).getByTestId("p3-design-conversion-waiting-document")).toBeInTheDocument();
+  const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
+  expect(within(conversionControl).getByText("预计进度，Dify 返回后以实际结果为准")).toBeInTheDocument();
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-read_requirement")).toHaveClass("is-done");
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-extract_design_objects")).toHaveClass("is-current");
 
   await act(async () => {
     vi.advanceTimersByTime(65_000);
   });
   expect(within(workspace).getByText("已等待 01:05")).toBeInTheDocument();
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-extract_design_objects")).toHaveClass("is-done");
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-generate_design_draft")).toHaveClass("is-current");
 
   const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
   fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));

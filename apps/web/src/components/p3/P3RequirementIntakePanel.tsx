@@ -18,7 +18,7 @@ export function P3RequirementIntakePanel({
   return (
     <Card title="待受理需求规格" style={{ borderRadius: 18 }}>
       {specs.length === 0 ? (
-        <Empty description="当前没有可受理虚规" />
+        <Empty description="当前没有可受理需规" />
       ) : (
         <List
           dataSource={specs}

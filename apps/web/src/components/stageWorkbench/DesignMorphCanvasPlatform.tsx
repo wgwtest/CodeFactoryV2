@@ -8,6 +8,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { Button, Input, Tree } from "antd";
+import type { DataNode } from "antd/es/tree";
 import { A4DocumentSurface } from "./A4DocumentSurface";
 import type { StandardDocumentBlockViewModel, StandardDocumentSectionViewModel } from "./models";
 import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
@@ -33,6 +35,47 @@ export type DesignMorphStageViewModel = {
   sourceRefs: string[];
   constraintSummary: string;
   document?: DesignMorphDocumentViewModel;
+  functionTree?: FunctionTreeViewModel;
+};
+
+export type FunctionTreeOrigin = "converter" | "derived" | "empty";
+
+export type FunctionTreeNodeType =
+  | "root"
+  | "module"
+  | "capability"
+  | "function"
+  | "interface"
+  | "data"
+  | "state"
+  | "quality"
+  | "trace";
+
+export type FunctionTreeNodeViewModel = {
+  nodeId: string;
+  title: string;
+  nodeType: FunctionTreeNodeType;
+  status: string;
+  moduleId?: string;
+  sourceRefs: string[];
+  designRefs: string[];
+  architectureRefs: string[];
+  p4Refs: string[];
+  description?: string;
+  children: FunctionTreeNodeViewModel[];
+};
+
+export type FunctionTreeViewModel = {
+  treeId: string;
+  title: string;
+  origin: FunctionTreeOrigin;
+  summary: {
+    nodeCount: number;
+    tracedNodeCount: number;
+    pendingNodeCount: number;
+    maxDepth: number;
+  };
+  root: FunctionTreeNodeViewModel | null;
 };
 
 export type DesignMorphDocumentSectionViewModel = {
@@ -451,6 +494,11 @@ export function DesignMorphCanvasPlatform({
   ) {
     setSelectedStageId(item.id);
     emitMorphSelection(buildDocumentBlockSelection(item, block, section));
+  }
+
+  function selectFunctionTreeNode(item: MorphCanvasItem, node: FunctionTreeNodeViewModel) {
+    setSelectedStageId(item.id);
+    emitMorphSelection(buildFunctionTreeNodeSelection(item, node));
   }
 
   function handleTrackPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -1005,6 +1053,25 @@ export function DesignMorphCanvasPlatform({
                 selectedBlockId={selectedBlockId}
                 viewport={viewport}
               />
+            ) : item.functionTree ? (
+              <FunctionTreeStageObject
+                active={item.id === activeWindow?.fromStageId || item.id === activeWindow?.toStageId}
+                item={item}
+                key={item.id}
+                onDragEnd={() => {
+                  documentDragRef.current = null;
+                }}
+                onDragMove={(stageId, mode, clientX, clientY, pointerId) => {
+                  handleDocumentDragMove(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
+                  beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onSelectNode={selectFunctionTreeNode}
+                selected={item.id === selectedStageId}
+                selectedNodeId={selectedBlockId}
+                viewport={viewport}
+              />
             ) : null,
           )}
         </div>
@@ -1198,6 +1265,252 @@ function DocumentStageObject({
       />
     </section>
   );
+}
+
+function FunctionTreeStageObject({
+  active,
+  item,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onSelectNode,
+  selected,
+  selectedNodeId,
+  viewport,
+}: {
+  active: boolean;
+  item: MorphCanvasItem;
+  onDragEnd: () => void;
+  onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onSelectNode: (item: MorphCanvasItem, node: FunctionTreeNodeViewModel) => void;
+  selected: boolean;
+  selectedNodeId: string | null;
+  viewport: CanvasViewportState;
+}) {
+  const functionTree = item.functionTree;
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(() => getDefaultExpandedFunctionTreeKeys(functionTree));
+  if (!functionTree) {
+    return null;
+  }
+
+  const treeStructureSignature = useMemo(() => buildFunctionTreeStructureSignature(functionTree), [functionTree]);
+  const nodeById = useMemo(() => buildFunctionTreeNodeMap(functionTree.root), [functionTree.root]);
+  const filteredRoot = useMemo(
+    () => filterFunctionTreeNode(functionTree.root, searchKeyword.trim()),
+    [functionTree.root, searchKeyword],
+  );
+  const treeData = useMemo(() => filteredRoot ? [toFunctionTreeDataNode(filteredRoot)] : [], [filteredRoot]);
+  const allKeys = useMemo(() => collectFunctionTreeNodeIds(functionTree.root), [functionTree.root]);
+  const visibleKeys = useMemo(() => collectFunctionTreeNodeIds(filteredRoot), [filteredRoot]);
+
+  useEffect(() => {
+    setExpandedKeys(getDefaultExpandedFunctionTreeKeys(functionTree));
+  }, [treeStructureSignature]);
+
+  useEffect(() => {
+    if (!searchKeyword.trim()) {
+      return;
+    }
+    setExpandedKeys(visibleKeys);
+  }, [searchKeyword, visibleKeys]);
+
+  const objectStyle = {
+    transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
+    transformOrigin: "top left",
+    width: `${item.w}px`,
+    height: `${item.h}px`,
+    zIndex: selected ? 6 : active ? 5 : 4,
+  } as const;
+
+  return (
+    <section
+      className={[
+        "design-morph-object-frame",
+        "is-function-tree-stage-object",
+        selected ? "is-selected" : "",
+        active ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`stage-object-${item.id}`}
+      style={objectStyle}
+    >
+      <header
+        className="design-morph-object-titlebar"
+        data-testid="stage-object-compact-titlebar"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
+        <div className="design-morph-object-title-copy">
+          <span className="design-morph-object-title-row">
+            <strong>{item.title}</strong>
+            <span className="design-morph-object-title-meta">{item.subtitle}</span>
+          </span>
+        </div>
+      </header>
+      <div
+        className="design-morph-object-body"
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <div className="design-morph-function-tree-shell">
+          <div className="design-morph-function-tree-toolbar">
+            <Input
+              allowClear
+              aria-label="搜索功能节点"
+              placeholder="搜索功能节点"
+              size="small"
+              value={searchKeyword}
+              onChange={(event) => setSearchKeyword(event.target.value)}
+            />
+            <Button size="small" onClick={() => setExpandedKeys(allKeys)}>
+              展开全部
+            </Button>
+            <Button size="small" onClick={() => setExpandedKeys([])}>
+              收起全部
+            </Button>
+            <Button
+              size="small"
+              onClick={() => {
+                setSearchKeyword("");
+                setExpandedKeys(getDefaultExpandedFunctionTreeKeys(functionTree));
+              }}
+            >
+              重置视图
+            </Button>
+          </div>
+          <div className="design-morph-function-tree-body">
+            {treeData.length ? (
+              <Tree
+                blockNode
+                draggable
+                expandedKeys={expandedKeys}
+                selectedKeys={selectedNodeId ? [selectedNodeId] : []}
+                treeData={treeData}
+                onExpand={(keys) => setExpandedKeys(keys.map(String))}
+                onSelect={(keys) => {
+                  const nodeId = String(keys[0] ?? "");
+                  const node = nodeById.get(nodeId);
+                  if (node) {
+                    onSelectNode(item, node);
+                  }
+                }}
+              />
+            ) : (
+              <div className="design-morph-function-tree-empty">没有匹配的功能节点。</div>
+            )}
+          </div>
+        </div>
+      </div>
+      <button
+        aria-label={`${item.title} resize`}
+        className="design-morph-object-resize"
+        type="button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      />
+    </section>
+  );
+}
+
+function getDefaultExpandedFunctionTreeKeys(functionTree: FunctionTreeViewModel | undefined): string[] {
+  if (!functionTree?.root) {
+    return [];
+  }
+  const allKeys = collectFunctionTreeNodeIds(functionTree.root);
+  if (functionTree.summary.nodeCount <= 12) {
+    return allKeys;
+  }
+  return [functionTree.root.nodeId, ...functionTree.root.children.map((node) => node.nodeId)];
+}
+
+function collectFunctionTreeNodeIds(root: FunctionTreeNodeViewModel | null): string[] {
+  if (!root) {
+    return [];
+  }
+  return [root.nodeId, ...root.children.flatMap((child) => collectFunctionTreeNodeIds(child))];
+}
+
+function buildFunctionTreeNodeMap(root: FunctionTreeNodeViewModel | null): Map<string, FunctionTreeNodeViewModel> {
+  const nodeMap = new Map<string, FunctionTreeNodeViewModel>();
+  function visit(node: FunctionTreeNodeViewModel | null) {
+    if (!node) {
+      return;
+    }
+    nodeMap.set(node.nodeId, node);
+    node.children.forEach(visit);
+  }
+  visit(root);
+  return nodeMap;
+}
+
+function filterFunctionTreeNode(
+  node: FunctionTreeNodeViewModel | null,
+  keyword: string,
+): FunctionTreeNodeViewModel | null {
+  if (!node) {
+    return null;
+  }
+  if (!keyword) {
+    return node;
+  }
+  const normalizedKeyword = keyword.toLowerCase();
+  const matched =
+    node.title.toLowerCase().includes(normalizedKeyword) ||
+    node.nodeId.toLowerCase().includes(normalizedKeyword) ||
+    node.sourceRefs.some((sourceRef) => sourceRef.toLowerCase().includes(normalizedKeyword));
+  const children = node.children
+    .map((child) => filterFunctionTreeNode(child, keyword))
+    .filter((child): child is FunctionTreeNodeViewModel => Boolean(child));
+  if (!matched && children.length === 0) {
+    return null;
+  }
+  return { ...node, children };
+}
+
+function toFunctionTreeDataNode(node: FunctionTreeNodeViewModel): DataNode {
+  return {
+    key: node.nodeId,
+    title: <span className="design-morph-function-tree-node-title">{node.title}</span>,
+    children: node.children.map((child) => toFunctionTreeDataNode(child)),
+  };
+}
+
+function buildFunctionTreeStructureSignature(functionTree: FunctionTreeViewModel): string {
+  return `${functionTree.treeId}:${collectFunctionTreeNodeIds(functionTree.root).join("|")}`;
 }
 
 function buildCanvasLayoutState(stages: DesignMorphStageViewModel[]): Record<string, CanvasStageLayoutState> {
@@ -2004,6 +2317,80 @@ function buildDocumentBlockSelection(
       entityType: item.entityType,
     },
   };
+}
+
+function buildFunctionTreeNodeSelection(item: MorphCanvasItem, node: FunctionTreeNodeViewModel): DesignMorphSelection {
+  const functionTree = item.functionTree;
+  return {
+    objectId: node.nodeId,
+    stageId: item.id,
+    kind: "function_node",
+    title: node.title,
+    summary: node.description,
+    status: node.status,
+    sourceRefs: node.sourceRefs,
+    qualityRefs: [],
+    actions: [
+      {
+        actionId: "view_function_node_requirement",
+        label: "查看来源需规",
+        description: "定位或展示该功能节点承接的 P2 需规条款。",
+      },
+      {
+        actionId: "view_function_node_design_section",
+        label: "查看软设章节",
+        description: "定位或展示该功能节点对应的软件设计说明章节。",
+      },
+      {
+        actionId: "filter_function_subtree",
+        label: "只看当前子树",
+        description: "在 Inspector 中以当前节点为根过滤树对象。",
+      },
+      {
+        actionId: "filter_untraced_function_nodes",
+        label: "只看未追溯",
+        description: "筛选缺少来源或设计引用的功能节点。",
+      },
+      {
+        actionId: "filter_pending_function_nodes",
+        label: "只看待确认",
+        description: "筛选待确认或待应用调整的功能节点。",
+      },
+      {
+        actionId: "apply_function_tree_turn",
+        label: "应用为设计轮次",
+        description: "把当前功能树调整提交为可审计设计轮次。",
+      },
+    ],
+    payload: {
+      nodeId: node.nodeId,
+      nodeType: node.nodeType,
+      moduleId: node.moduleId,
+      designRefs: node.designRefs,
+      architectureRefs: node.architectureRefs,
+      p4Refs: node.p4Refs,
+      childCount: node.children.length,
+      origin: functionTree?.origin ?? "empty",
+      originLabel: getFunctionTreeOriginLabel(functionTree?.origin ?? "empty"),
+      summary: functionTree?.summary ?? {
+        nodeCount: 0,
+        tracedNodeCount: 0,
+        pendingNodeCount: 0,
+        maxDepth: 0,
+      },
+      pendingAdjustmentSummary: "拖拽调整需提交为设计轮次后才会写入设计基线。",
+    },
+  };
+}
+
+function getFunctionTreeOriginLabel(origin: FunctionTreeOrigin) {
+  if (origin === "converter") {
+    return "由转换器输出";
+  }
+  if (origin === "derived") {
+    return "由当前设计基线派生";
+  }
+  return "等待生成功能树";
 }
 
 export function buildDesignMorphStageRelationSelection(window: DesignMorphWindowViewModel): DesignMorphSelection {

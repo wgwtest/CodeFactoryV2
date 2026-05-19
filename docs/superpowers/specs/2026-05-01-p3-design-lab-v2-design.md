@@ -4,7 +4,7 @@
 
 **对应节点：**
 - `P3` 软件设计系统
-- `P3 v2` 虚规到软设核心能力原理验证
+- `P3 v2` 需规到软设核心能力原理验证
 - `P3 Design Lab`
 
 ## 1. 设计背景
@@ -119,7 +119,7 @@
 
 ### 5.2 `P3DesignSession`
 
-一次虚规到软设的设计会话。
+一次需规到软设的设计会话。
 
 最小字段：
 
@@ -209,7 +209,7 @@ GET /api/software-design-v2/sessions/{session_id}
 读取并恢复设计会话
 
 POST /api/software-design-v2/sessions/{session_id}/generate
-执行初始“虚规 -> 软设”生成
+执行初始“需规 -> 软设”生成
 
 POST /api/software-design-v2/sessions/{session_id}/turns
 提交自然语言配置或校正，返回 Design Turn 与 Design Patch
@@ -261,7 +261,7 @@ P3 v2 Design Baseline 冻结预览
 
 ## 9. 设计结论
 
-`P3 v2` 的第一步不是继续扩展审批流，而是建立 `P3 Design Lab`，把“虚规到软设”的核心转换能力独立验证清楚。
+`P3 v2` 的第一步不是继续扩展审批流，而是建立 `P3 Design Lab`，把“需规到软设”的核心转换能力独立验证清楚。
 
 首版采用：
 
@@ -269,6 +269,6 @@ P3 v2 Design Baseline 冻结预览
 - 独立服务：`software-design-v2`
 - 输入契约：只消费 `P2` 新版 authoring 冻结包
 - 兼容策略：不兼容旧 `/requirements/specs`
-- 页面布局：左上虚规、左下 CLI、右侧软设正文
+- 页面布局：左上需规、左下 CLI、右侧软设正文
 - 输出目标：软件设计说明、结构化设计基线、`P4` 工单投影同源生成
 

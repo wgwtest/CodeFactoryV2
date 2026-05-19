@@ -201,7 +201,7 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
-  test("renders requirement and software design as compact executable document objects", () => {
+  test("renders requirement, software design, and function tree as compact executable objects", () => {
     const canvasMock = mockCanvasEnvironment();
 
     render(
@@ -232,7 +232,19 @@ describe("DesignMorphCanvasPlatform", () => {
     expect(within(documentObject).getByTestId("document-stage-scroll")).toHaveClass("stage-document-scroll");
     expect(within(requirementObject).getByTestId("document-stage-paper")).toHaveTextContent("支持规划任务管理。");
     expect(within(documentObject).getByTestId("document-stage-paper")).toHaveTextContent("采用统一服务优先。");
-    expect(within(objectLayer).queryByTestId("stage-object-functionTree")).not.toBeInTheDocument();
+    const functionTreeObject = within(objectLayer).getByTestId("stage-object-functionTree");
+    expect(functionTreeObject).toHaveClass("is-function-tree-stage-object");
+    expect(within(functionTreeObject).getByTestId("stage-object-compact-titlebar")).toBeInTheDocument();
+    expect(within(functionTreeObject).getByPlaceholderText("搜索功能节点")).toBeInTheDocument();
+    expect(within(functionTreeObject).getByRole("button", { name: "展开全部" })).toBeInTheDocument();
+    expect(within(functionTreeObject).getByRole("button", { name: "收起全部" })).toBeInTheDocument();
+    expect(within(functionTreeObject).getByRole("button", { name: "重置视图" })).toBeInTheDocument();
+    expect(within(functionTreeObject).getByText("规划任务管理")).toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("功能节点")).not.toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("已追溯")).not.toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("待确认")).not.toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("最大层级")).not.toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("由当前设计基线派生")).not.toBeInTheDocument();
 
     canvasMock.restore();
   });
@@ -266,6 +278,71 @@ describe("DesignMorphCanvasPlatform", () => {
         sourceRefs: ["REQ-1"],
       }),
     );
+
+    canvasMock.restore();
+  });
+
+  test("reports a selected function node without exposing status metrics inside the tree body", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="docfunc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const functionTreeObject = within(platform).getByTestId("stage-object-functionTree");
+
+    fireEvent.click(within(functionTreeObject).getByText("规划任务管理"));
+
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "function-node-planning-task",
+        stageId: "functionTree",
+        kind: "function_node",
+        title: "规划任务管理",
+        status: "derived",
+        sourceRefs: ["REQ-1"],
+        payload: expect.objectContaining({
+          originLabel: "由当前设计基线派生",
+          summary: expect.objectContaining({
+            nodeCount: 3,
+            tracedNodeCount: 3,
+            pendingNodeCount: 0,
+            maxDepth: 2,
+          }),
+        }),
+      }),
+    );
+    expect(within(functionTreeObject).queryByText("功能节点")).not.toBeInTheDocument();
+    expect(within(functionTreeObject).queryByText("由当前设计基线派生")).not.toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
+  test("keeps user collapsed function tree nodes when the parent refreshes with the same tree structure", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(<CanvasRefreshHarness />);
+
+    let platform = screen.getByTestId("design-morph-canvas-platform");
+    let functionTreeObject = within(platform).getByTestId("stage-object-functionTree");
+    expect(within(functionTreeObject).getByText("总体架构")).toBeInTheDocument();
+
+    fireEvent.click(within(functionTreeObject).getByRole("button", { name: "收起全部" }));
+    expect(within(functionTreeObject).queryByText("总体架构")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟父级刷新" }));
+
+    platform = screen.getByTestId("design-morph-canvas-platform");
+    functionTreeObject = within(platform).getByTestId("stage-object-functionTree");
+    expect(within(functionTreeObject).queryByText("总体架构")).not.toBeInTheDocument();
 
     canvasMock.restore();
   });
@@ -543,7 +620,60 @@ function buildStages(revision: number): DesignMorphStageViewModel[] {
         { sectionId: "sdd-1", title: "总体架构", content: "采用统一服务优先。", status: "generated" },
       ],
     }),
-    buildStage("functionTree", "software_function_tree", "tree", "功能树", "从正文拆解功能项", `功能树 ${revision}`, ["规划任务管理"]),
+    {
+      ...buildStage("functionTree", "software_function_tree", "tree", "功能树", "从正文拆解功能项", `功能树 ${revision}`, ["规划任务管理"]),
+      functionTree: {
+        treeId: "function-tree-test",
+        title: "空域协同规划软件设计说明功能树",
+        origin: "derived",
+        summary: {
+          nodeCount: 3,
+          tracedNodeCount: 3,
+          pendingNodeCount: 0,
+          maxDepth: 2,
+        },
+        root: {
+          nodeId: "function-tree-root",
+          title: "空域协同规划软件设计说明功能树",
+          nodeType: "root",
+          status: "derived",
+          sourceRefs: ["REQ-1"],
+          designRefs: ["sdd-1"],
+          architectureRefs: [],
+          p4Refs: [],
+          description: "由当前设计基线派生的功能树。",
+          children: [
+            {
+              nodeId: "function-node-planning-task",
+              title: "规划任务管理",
+              nodeType: "module",
+              status: "derived",
+              moduleId: "planning-task",
+              sourceRefs: ["REQ-1"],
+              designRefs: ["sdd-1"],
+              architectureRefs: ["unified_service"],
+              p4Refs: ["wo-a1"],
+              description: "承接规划任务相关能力。",
+              children: [
+                {
+                  nodeId: "function-node-planning-task-sdd-1",
+                  title: "总体架构",
+                  nodeType: "function",
+                  status: "derived",
+                  moduleId: "planning-task",
+                  sourceRefs: ["REQ-1"],
+                  designRefs: ["sdd-1"],
+                  architectureRefs: [],
+                  p4Refs: [],
+                  description: "来自软设章节的功能项。",
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
     buildStage("layeredArchitecture", "software_layered_architecture", "architecture", "分层架构", "按层次放置设计对象", `架构 ${revision}`, ["展示层"]),
     buildStage("technicalImplementation", "technical_implementation", "table", "技术实现", "映射框架与真实模块", `技术 ${revision}`, ["unified_service"]),
     buildStage("presentationShape", "presentation_shape", "cards", "展示形态", "表达 UI 呈现方式", `展示 ${revision}`, ["Canvas 长卷"]),

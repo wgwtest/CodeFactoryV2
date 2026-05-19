@@ -10,6 +10,7 @@ import { buildP3DesignMorphModel } from "../pages/adapters/p3DesignMorphAdapter"
 describe("P3 design morph model", () => {
   test("builds the canonical software design morph chain from decoupled workbench projections", () => {
     const model = buildP3DesignMorphModel(buildWorkbench());
+    const functionTreeStage = model.stages.find((stage) => stage.id === "functionTree");
 
     expect(model.stages.map((stage) => stage.id)).toEqual([
       "requirement",
@@ -40,6 +41,39 @@ describe("P3 design morph model", () => {
     ]);
     expect(model.stages[0].sourceRefs).toContain("P2:frozen_requirement_specification");
     expect(model.stages[2].constraintSummary).toContain("2 个设计模块");
+    expect(functionTreeStage?.functionTree).toEqual(
+      expect.objectContaining({
+        treeId: "function-tree-p3dl-1",
+        title: "空域协同规划软件设计说明功能树",
+        origin: "derived",
+        summary: expect.objectContaining({
+          nodeCount: 3,
+          tracedNodeCount: 3,
+          pendingNodeCount: 0,
+          maxDepth: 2,
+        }),
+        root: expect.objectContaining({
+          nodeId: "function-tree-root",
+          title: "空域协同规划软件设计说明功能树",
+          children: expect.arrayContaining([
+            expect.objectContaining({
+              nodeId: "function-node-module-planning",
+              title: "规划任务管理",
+              nodeType: "module",
+              status: "derived",
+              sourceRefs: ["REQ-1"],
+              designRefs: ["sdd-1"],
+              children: [],
+            }),
+            expect.objectContaining({
+              nodeId: "function-node-module-collaboration",
+              title: "协同确认",
+              children: [],
+            }),
+          ]),
+        }),
+      }),
+    );
     expect(model.stages[6].constraintSummary).toContain("2 个投影节点");
     expect(model.windows.map((window) => `${window.fromStageId}->${window.toStageId}`)).toEqual([
       "requirement->document",
@@ -62,7 +96,67 @@ describe("P3 design morph model", () => {
     expect(resolveCanvasStageRenderer("architecture")).toBe(DESIGN_MORPH_STAGE_RENDERERS.architecture);
     expect(resolveCanvasStageRenderer("unknown-renderer")).toBe(DESIGN_MORPH_STAGE_RENDERERS.paper);
   });
+
+  test("does not turn software design document sections into fallback function tree nodes", () => {
+    const workbench = buildWorkbench();
+    workbench.product.sections = [
+      {
+        sectionId: "purpose",
+        title: "文档目的与设计口径",
+        status: "generated",
+        blocks: [
+          {
+            blockId: "purpose-body",
+            kind: "paragraph",
+            content: "说明本文档目的。",
+            sourceRefs: ["REQ-1"],
+            qualityRefs: [],
+          },
+        ],
+      },
+      {
+        sectionId: "runtime-flow",
+        title: "关键运行流程",
+        status: "generated",
+        blocks: [
+          {
+            blockId: "runtime-flow-body",
+            kind: "paragraph",
+            content: "说明运行流程。",
+            sourceRefs: ["REQ-1"],
+            qualityRefs: [],
+          },
+        ],
+      },
+    ];
+
+    const model = buildP3DesignMorphModel(workbench);
+    const functionTree = model.stages.find((stage) => stage.id === "functionTree")?.functionTree;
+    const titles = collectFunctionTreeTitles(functionTree?.root ?? null);
+
+    expect(titles).toContain("规划任务管理");
+    expect(titles).not.toContain("文档目的与设计口径");
+    expect(titles).not.toContain("关键运行流程");
+    expect(functionTree?.root?.children[0]).toEqual(
+      expect.objectContaining({
+        title: "规划任务管理",
+        designRefs: ["purpose", "runtime-flow"],
+        children: [],
+      }),
+    );
+  });
 });
+
+function collectFunctionTreeTitles(node: FunctionTreeNode | null): string[] {
+  if (!node) {
+    return [];
+  }
+  return [node.title, ...node.children.flatMap((child) => collectFunctionTreeTitles(child))];
+}
+
+type FunctionTreeNode = NonNullable<
+  NonNullable<ReturnType<typeof buildP3DesignMorphModel>["stages"][number]["functionTree"]>["root"]
+>;
 
 function buildWorkbench(): StageDocumentWorkbenchViewModel {
   return {

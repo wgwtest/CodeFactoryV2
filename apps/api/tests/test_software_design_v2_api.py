@@ -219,6 +219,7 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     assert converted_session["design_document"]["title"] == "空域协同规划软件设计说明 - 初版架构"
     assert converted_session["design_document"]["version_label"] == "v0.1"
     assert converted_session["design_baseline"]["architecture_mode"] == "unified_service"
+    assert converted_session["design_baseline"]["function_tree"]["root"]["children"][0]["title"] == "规划任务管理"
     assert converted_session["workorder_projection"] is None
     packages_after_conversion = client.get("/api/software-design-v2/input-packages")
     related_designs = packages_after_conversion.json()["items"][0]["related_designs"]
@@ -708,6 +709,124 @@ def test_software_design_v2_normalizes_real_dify_projection_shape_for_frontend(m
             "readiness": "candidate",
         }
     ]
+
+
+def test_software_design_v2_preserves_converter_function_tree_projection(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "purpose",
+                            "title": "1. 文档目的与设计口径",
+                            "content": "只作为软设章节，不进入功能树。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        }
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-FUNCTION-TREE",
+                    "status": "draft",
+                    "document_projection": {},
+                    "functional_tree_projection": {
+                        "tree_id": "ft-real",
+                        "title": "资源服务系统功能树",
+                        "root": {
+                            "node_id": "ft-root",
+                            "title": "资源服务系统",
+                            "node_type": "root",
+                            "children": [
+                                {
+                                    "node_id": "module-resource",
+                                    "title": "资源目录模块",
+                                    "node_type": "module",
+                                    "module_id": "module-resource",
+                                    "source_refs": ["REQ-FR-001"],
+                                    "design_refs": ["sdd-06"],
+                                    "children": [
+                                        {
+                                            "node_id": "capability-search",
+                                            "title": "资源检索能力",
+                                            "node_type": "capability",
+                                            "source_refs": ["REQ-FR-001"],
+                                            "design_refs": ["sdd-06-01"],
+                                            "children": [],
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    },
+                    "layered_architecture_projection": {"architecture_mode": "unified_service"},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[
+                    {
+                        "source_ref": "REQ-FR-001",
+                        "target_type": "function_tree_node",
+                        "target_ref": "capability-search",
+                        "target_title": "资源检索能力",
+                    }
+                ],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={"raw_workflow_trace": {"function_tree": True}},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "功能树保留测试软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    function_tree = converted.json()["design_baseline"]["function_tree"]
+    assert function_tree["tree_id"] == "ft-real"
+    assert function_tree["root"]["children"][0]["title"] == "资源目录模块"
+    assert function_tree["root"]["children"][0]["children"][0]["title"] == "资源检索能力"
+    assert function_tree["root"]["children"][0]["children"][0]["design_refs"] == ["sdd-06-01"]
 
 
 def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> None:
