@@ -242,11 +242,14 @@ function buildConversionViewModel(
   conversionRunning = false,
   conversionElapsedSeconds = 0,
 ): StageDocumentWorkbenchViewModel["conversion"] {
+  const elapsedSeconds = conversionRunning ? conversionElapsedSeconds : 0;
   if (!conversion) {
+    const steps = buildDefaultConversionSteps();
     return {
       status: conversionRunning ? "conversion_running" : conversionSessionPending ? "conversion_pending" : "empty",
       running: conversionRunning,
-      elapsedSeconds: conversionRunning ? conversionElapsedSeconds : 0,
+      elapsedSeconds,
+      progressNote: conversionRunning ? "预计进度，Dify 返回后以实际结果为准" : undefined,
       strategy: "standard_sdd_draft",
       strategyOptions: [
         {
@@ -265,32 +268,7 @@ function buildConversionViewModel(
           description: "优先组织下游工具包和工单分支。",
         },
       ],
-      steps: [
-        {
-          stepId: "read_requirement",
-          title: "读取需规冻结包",
-          description: "加载正文、结构化条款和冻结快照。",
-          status: "pending",
-        },
-        {
-          stepId: "extract_design_objects",
-          title: "抽取设计对象",
-          description: "抽取模块、接口、数据对象和质量属性候选。",
-          status: "pending",
-        },
-        {
-          stepId: "generate_design_draft",
-          title: "生成软设草稿",
-          description: "生成 A4 正文草稿和结构化设计事实初稿。",
-          status: "pending",
-        },
-        {
-          stepId: "map_traceability",
-          title: "建立追溯映射",
-          description: "建立需规条款到章节、模块和接口的追溯。",
-          status: "pending",
-        },
-      ],
+      steps: conversionRunning ? buildEstimatedConversionSteps(steps, elapsedSeconds) : steps,
       draftPreview: null,
       traceabilitySummary: null,
       processOutput: undefined,
@@ -298,18 +276,22 @@ function buildConversionViewModel(
     };
   }
 
+  const running = conversionRunning || conversion.status === "conversion_running";
+  const steps = conversion.steps.map((step) => ({
+    stepId: step.step_id,
+    title: step.title,
+    description: step.description,
+    status: step.status,
+  }));
+
   return {
     status: conversionRunning ? "conversion_running" : conversion.status,
-    running: conversionRunning || conversion.status === "conversion_running",
-    elapsedSeconds: conversionRunning ? conversionElapsedSeconds : 0,
+    running,
+    elapsedSeconds,
+    progressNote: running ? "预计进度，Dify 返回后以实际结果为准" : undefined,
     strategy: conversion.strategy,
     strategyOptions: conversion.strategy_options,
-    steps: conversion.steps.map((step) => ({
-      stepId: step.step_id,
-      title: step.title,
-      description: step.description,
-      status: step.status,
-    })),
+    steps: running ? buildEstimatedConversionSteps(steps, elapsedSeconds) : steps,
     draftPreview: conversion.draft_preview
       ? {
           title: conversion.draft_preview.title,
@@ -327,6 +309,47 @@ function buildConversionViewModel(
     processOutput: conversion.process_output,
     emptyDescription: "新建软件设计说明后显示基础转换过程。",
   };
+}
+
+function buildDefaultConversionSteps(): StageDocumentWorkbenchViewModel["conversion"]["steps"] {
+  return [
+    {
+      stepId: "read_requirement",
+      title: "读取需规冻结包",
+      description: "加载正文、结构化条款和冻结快照。",
+      status: "pending",
+    },
+    {
+      stepId: "extract_design_objects",
+      title: "抽取设计对象",
+      description: "抽取模块、接口、数据对象和质量属性候选。",
+      status: "pending",
+    },
+    {
+      stepId: "generate_design_draft",
+      title: "生成软设草稿",
+      description: "生成 A4 正文草稿和结构化设计事实初稿。",
+      status: "pending",
+    },
+    {
+      stepId: "map_traceability",
+      title: "建立追溯映射",
+      description: "建立需规条款到章节、模块和接口的追溯。",
+      status: "pending",
+    },
+  ];
+}
+
+function buildEstimatedConversionSteps(
+  steps: StageDocumentWorkbenchViewModel["conversion"]["steps"],
+  elapsedSeconds: number,
+): StageDocumentWorkbenchViewModel["conversion"]["steps"] {
+  const currentIndex = elapsedSeconds < 60 ? 1 : elapsedSeconds < 180 ? 2 : 3;
+
+  return steps.map((step, index) => ({
+    ...step,
+    status: index < currentIndex ? "done" : index === currentIndex ? "running" : "pending",
+  }));
 }
 
 function toDisplayString(value: unknown, fallback: string): string {

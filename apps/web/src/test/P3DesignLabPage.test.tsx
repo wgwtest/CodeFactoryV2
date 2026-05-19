@@ -458,11 +458,17 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   expect(within(workspace).getByText("一般耗时约 200 秒，请保持本页打开。")).toBeInTheDocument();
   expect(within(workspace).getByText("已等待 00:00")).toBeInTheDocument();
   expect(within(workspace).getByTestId("p3-design-conversion-waiting-document")).toBeInTheDocument();
+  const conversionControl = within(workspace).getByTestId("p3-design-lab-conversion-control");
+  expect(within(conversionControl).getByText("预计进度，Dify 返回后以实际结果为准")).toBeInTheDocument();
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-read_requirement")).toHaveClass("is-done");
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-extract_design_objects")).toHaveClass("is-current");
 
   await act(async () => {
     vi.advanceTimersByTime(65_000);
   });
   expect(within(workspace).getByText("已等待 01:05")).toBeInTheDocument();
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-extract_design_objects")).toHaveClass("is-done");
+  expect(within(conversionControl).getByTestId("p3-design-lab-conversion-step-generate_design_draft")).toHaveClass("is-current");
 
   const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
   fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));

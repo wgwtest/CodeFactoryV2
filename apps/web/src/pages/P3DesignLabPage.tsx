@@ -1025,7 +1025,11 @@ function StageRelationInspector({
               {workbench.conversion.running ? "正在生成软设" : "执行基础转换"}
             </Button>
           </div>
-          <ConversionTimeline activeStepId={activeStepId} steps={workbench.conversion.steps} />
+          <ConversionTimeline
+            activeStepId={activeStepId}
+            progressNote={workbench.conversion.progressNote}
+            steps={workbench.conversion.steps}
+          />
         </div>
       ) : (
         <div className="p3-design-morph-inspector-section">
@@ -1041,31 +1045,40 @@ function StageRelationInspector({
 
 function ConversionTimeline({
   activeStepId,
+  progressNote,
   steps,
 }: {
   activeStepId?: string;
+  progressNote?: string;
   steps: StageDocumentWorkbenchViewModel["conversion"]["steps"];
 }) {
   return (
-    <div className="p3-design-lab-conversion-timeline" aria-label="需规转软设转换进度">
-      {steps.map((step, index) => (
-        <div
-          className={[
-            "p3-design-lab-conversion-step",
-            step.status === "done" ? "is-done" : "",
-            step.status === "running" ? "is-running" : "",
-            step.stepId === activeStepId ? "is-current" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          data-testid={`p3-design-lab-conversion-step-${step.stepId}`}
-          key={step.stepId}
-        >
-          <span>{index + 1}</span>
-          <strong>{step.title}</strong>
-        </div>
-      ))}
-    </div>
+    <>
+      {progressNote ? (
+        <Text className="p3-design-lab-conversion-progress-note" type="secondary">
+          {progressNote}
+        </Text>
+      ) : null}
+      <div className="p3-design-lab-conversion-timeline" aria-label="需规转软设转换进度">
+        {steps.map((step, index) => (
+          <div
+            className={[
+              "p3-design-lab-conversion-step",
+              step.status === "done" ? "is-done" : "",
+              step.status === "running" ? "is-running" : "",
+              step.stepId === activeStepId ? "is-current" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            data-testid={`p3-design-lab-conversion-step-${step.stepId}`}
+            key={step.stepId}
+          >
+            <span>{index + 1}</span>
+            <strong>{step.title}</strong>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

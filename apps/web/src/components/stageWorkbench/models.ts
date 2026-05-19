@@ -175,6 +175,7 @@ export type StageConversionViewModel = {
   status: string;
   running: boolean;
   elapsedSeconds: number;
+  progressNote?: string;
   strategy: string;
   strategyOptions: Array<{
     value: string;

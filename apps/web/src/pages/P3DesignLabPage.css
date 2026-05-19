@@ -317,6 +317,14 @@
   font-weight: 950;
 }
 
+.p3-design-lab-conversion-progress-note {
+  display: block;
+  padding-top: 2px;
+  color: #6a5a31;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .p3-design-lab-conversion-timeline {
   display: grid;
   align-content: start;
