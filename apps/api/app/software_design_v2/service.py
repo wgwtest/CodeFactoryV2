@@ -250,6 +250,7 @@ class SoftwareDesignV2Service:
             "application_name": app_name,
             "architecture_mode": self._architecture_mode_from_converter_result(result),
             "modules": modules,
+            "function_tree": _function_tree_from_converter_result(result, modules=modules),
             "traceability": self._traceability_from_converter_result(result),
             "pending_confirmations": pending_confirmations,
             "design_package": design_package,
@@ -279,6 +280,12 @@ class SoftwareDesignV2Service:
                 _normalize_design_module(module, index)
                 for index, module in enumerate(modules)
                 if isinstance(module, dict)
+            ]
+        root_modules = _module_nodes_from_function_tree(functional_tree.get("root"))
+        if root_modules:
+            return [
+                _normalize_design_module(module, index)
+                for index, module in enumerate(root_modules)
             ]
         return [
             {
@@ -710,6 +717,60 @@ class SoftwareDesignV2Service:
                 {"module_id": "collaboration-confirm", "name": "协同确认", "source_refs": ["REQ-3.2"]},
                 {"module_id": "audit-trace", "name": "审计追溯", "source_refs": ["REQ-4.1"]},
             ],
+            "function_tree": {
+                "tree_id": f"functional-tree-{app_name}",
+                "title": f"{app_name}功能树",
+                "root": {
+                    "node_id": "function-tree-root",
+                    "title": f"{app_name}功能树",
+                    "node_type": "root",
+                    "status": "derived",
+                    "source_refs": ["REQ-3.2", "REQ-4.1"],
+                    "design_refs": [],
+                    "children": [
+                        {
+                            "node_id": "function-node-planning-task",
+                            "title": "规划任务管理",
+                            "node_type": "module",
+                            "module_id": "planning-task",
+                            "status": "derived",
+                            "source_refs": ["REQ-3.2"],
+                            "design_refs": ["modules"],
+                            "children": [],
+                        },
+                        {
+                            "node_id": "function-node-conflict-alert",
+                            "title": "冲突识别与告警",
+                            "node_type": "module",
+                            "module_id": "conflict-alert",
+                            "status": "derived",
+                            "source_refs": ["REQ-3.2", "REQ-4.1"],
+                            "design_refs": ["modules"],
+                            "children": [],
+                        },
+                        {
+                            "node_id": "function-node-collaboration-confirm",
+                            "title": "协同确认",
+                            "node_type": "module",
+                            "module_id": "collaboration-confirm",
+                            "status": "derived",
+                            "source_refs": ["REQ-3.2"],
+                            "design_refs": ["modules"],
+                            "children": [],
+                        },
+                        {
+                            "node_id": "function-node-audit-trace",
+                            "title": "审计追溯",
+                            "node_type": "module",
+                            "module_id": "audit-trace",
+                            "status": "derived",
+                            "source_refs": ["REQ-4.1"],
+                            "design_refs": ["modules"],
+                            "children": [],
+                        },
+                    ],
+                },
+            },
             "traceability": [
                 {"requirement_clause": "REQ-3.2", "design_section": "3. 模块划分"},
                 {"requirement_clause": "REQ-4.1", "design_section": "4. 状态机与接口约束"},
@@ -893,6 +954,109 @@ def _normalize_design_module(module: dict, index: int) -> dict:
     if isinstance(description, str) and description.strip():
         normalized["description"] = description
     return normalized
+
+
+def _function_tree_from_converter_result(result: DesignConverterRunResult, *, modules: list[dict]) -> dict:
+    design_package = dict(result.design_package or {})
+    functional_tree = dict(design_package.get("functional_tree_projection") or {})
+    root = functional_tree.get("root")
+    if isinstance(root, dict) and root:
+        return {
+            "tree_id": str(functional_tree.get("tree_id") or functional_tree.get("id") or "functional-tree"),
+            "title": str(functional_tree.get("title") or root.get("title") or "软件功能树"),
+            "root": _normalize_function_tree_node(root, fallback_id="function-tree-root"),
+        }
+    return _function_tree_from_modules(modules, title=str(functional_tree.get("title") or "软件功能树"))
+
+
+def _function_tree_from_modules(modules: list[dict], *, title: str) -> dict:
+    return {
+        "tree_id": "functional-tree-module-skeleton",
+        "title": title,
+        "root": {
+            "node_id": "function-tree-root",
+            "title": title,
+            "node_type": "root",
+            "status": "derived",
+            "source_refs": _unique_strings(
+                source_ref
+                for module in modules
+                for source_ref in list(module.get("source_refs") or [])
+            ),
+            "design_refs": [],
+            "children": [
+                {
+                    "node_id": f"function-node-{module.get('module_id')}",
+                    "title": str(module.get("name") or module.get("module_id") or f"模块 {index + 1}"),
+                    "node_type": "module",
+                    "module_id": str(module.get("module_id") or f"module-{index + 1}"),
+                    "status": "derived" if module.get("source_refs") else "pending_decomposition",
+                    "source_refs": list(module.get("source_refs") or []),
+                    "design_refs": list(module.get("design_refs") or []),
+                    "description": str(module.get("description") or "转换器尚未返回功能拆解，当前仅展示模块骨架。"),
+                    "children": [],
+                }
+                for index, module in enumerate(modules)
+            ],
+        },
+    }
+
+
+def _normalize_function_tree_node(node: dict, *, fallback_id: str) -> dict:
+    node_id = str(node.get("node_id") or node.get("id") or fallback_id)
+    title = str(node.get("title") or node.get("name") or node_id)
+    children = node.get("children")
+    return {
+        "node_id": node_id,
+        "title": title,
+        "node_type": str(node.get("node_type") or node.get("type") or "function"),
+        "status": str(node.get("status") or "derived"),
+        "module_id": str(node.get("module_id") or "") if node.get("module_id") else None,
+        "source_refs": list(node.get("source_refs") or []),
+        "design_refs": list(node.get("design_refs") or []),
+        "architecture_refs": list(node.get("architecture_refs") or []),
+        "p4_refs": list(node.get("p4_refs") or []),
+        "description": str(node.get("description") or "") if node.get("description") else None,
+        "children": [
+            _normalize_function_tree_node(child, fallback_id=f"{node_id}-{index + 1}")
+            for index, child in enumerate(children if isinstance(children, list) else [])
+            if isinstance(child, dict)
+        ],
+    }
+
+
+def _module_nodes_from_function_tree(root: object) -> list[dict]:
+    if not isinstance(root, dict):
+        return []
+    module_nodes: list[dict] = []
+    stack = list(root.get("children") or [])
+    while stack:
+        node = stack.pop(0)
+        if not isinstance(node, dict):
+            continue
+        node_type = str(node.get("node_type") or node.get("type") or "")
+        if node_type == "module":
+            module_nodes.append(
+                {
+                    "module_id": str(node.get("module_id") or node.get("node_id") or node.get("id") or f"module-{len(module_nodes) + 1}"),
+                    "name": str(node.get("title") or node.get("name") or "未命名模块"),
+                    "source_refs": list(node.get("source_refs") or []),
+                    "description": node.get("description"),
+                }
+            )
+        stack.extend(node.get("children") or [])
+    return module_nodes
+
+
+def _unique_strings(values) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
 
 
 def _normalize_workorder_projection(projection: dict, *, result: DesignConverterRunResult) -> dict:

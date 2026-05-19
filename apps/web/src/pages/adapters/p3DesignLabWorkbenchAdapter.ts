@@ -147,6 +147,7 @@ export function buildP3DesignLabWorkbenchViewModel({
               moduleId: module.module_id,
               name: module.name,
             })),
+            functionTree: normalizeBaselineFunctionTree(designBaseline.function_tree ?? designBaseline.functionTree),
           }
         : undefined,
       emptyDescription: "生成软件设计说明后显示目录和模块映射",
@@ -200,6 +201,21 @@ export function buildP3DesignLabWorkbenchViewModel({
       },
     ],
   };
+}
+
+function normalizeBaselineFunctionTree(value: unknown): NonNullable<StageDocumentWorkbenchViewModel["outline"]["baseline"]>["functionTree"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return {
+    treeId: toDisplayString(value.tree_id ?? value.treeId, ""),
+    title: toDisplayString(value.title, ""),
+    root: value.root,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildQualityGateViewModel(checkResult: RequirementAuthoringCheckResult | null): StageDocumentWorkbenchViewModel["quality"] {

@@ -213,20 +213,24 @@ function formatElapsedTime(totalSeconds: number): string {
 
 function buildFunctionTreeViewModel(workbench: StageDocumentWorkbenchViewModel): FunctionTreeViewModel {
   const title = `${workbench.product.title || workbench.inputFacts.title || "软件设计说明"}功能树`;
+  const converterTree = buildConverterFunctionTreeViewModel(workbench, title);
+  if (converterTree) {
+    return converterTree;
+  }
+
   const moduleNodes = (workbench.outline.baseline?.modules ?? []).map((module) => buildModuleFunctionTreeNode(module, workbench));
-  const fallbackNodes = moduleNodes.length ? moduleNodes : buildSectionFunctionTreeNodes(workbench);
-  const root: FunctionTreeNodeViewModel | null = fallbackNodes.length
+  const root: FunctionTreeNodeViewModel | null = moduleNodes.length
     ? {
         nodeId: "function-tree-root",
         title,
         nodeType: "root",
         status: "derived",
-        sourceRefs: uniqueStrings(fallbackNodes.flatMap((node) => node.sourceRefs)),
-        designRefs: uniqueStrings(fallbackNodes.flatMap((node) => node.designRefs)),
+        sourceRefs: uniqueStrings(moduleNodes.flatMap((node) => node.sourceRefs)),
+        designRefs: uniqueStrings(moduleNodes.flatMap((node) => node.designRefs)),
         architectureRefs: [],
         p4Refs: [],
-        description: "从当前软件设计说明、设计基线和追溯摘要派生的功能树。",
-        children: fallbackNodes,
+        description: "转换器尚未返回完整功能树，当前按设计基线模块生成骨架。",
+        children: moduleNodes,
       }
     : null;
 
@@ -246,6 +250,51 @@ function buildFunctionTreeViewModel(workbench: StageDocumentWorkbenchViewModel):
   };
 }
 
+function buildConverterFunctionTreeViewModel(
+  workbench: StageDocumentWorkbenchViewModel,
+  fallbackTitle: string,
+): FunctionTreeViewModel | null {
+  const functionTree = workbench.outline.baseline?.functionTree;
+  const root = normalizeConverterFunctionTreeNode(functionTree?.root, "function-tree-root");
+  if (!root) {
+    return null;
+  }
+  const title = functionTree?.title || fallbackTitle;
+  return {
+    treeId: functionTree?.treeId || `function-tree-${workbench.product.documentId}`,
+    title,
+    origin: "converter",
+    summary: summarizeFunctionTree(root),
+    root,
+  };
+}
+
+function normalizeConverterFunctionTreeNode(value: unknown, fallbackNodeId: string): FunctionTreeNodeViewModel | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const nodeId = toStringValue(value.node_id ?? value.nodeId ?? value.id) || fallbackNodeId;
+  const title = toStringValue(value.title ?? value.name) || nodeId;
+  const children = Array.isArray(value.children)
+    ? value.children
+        .map((child, index) => normalizeConverterFunctionTreeNode(child, `${nodeId}-${index + 1}`))
+        .filter((node): node is FunctionTreeNodeViewModel => Boolean(node))
+    : [];
+  return {
+    nodeId,
+    title,
+    nodeType: normalizeFunctionTreeNodeType(value.node_type ?? value.nodeType ?? value.type),
+    status: toStringValue(value.status) || "derived",
+    moduleId: toStringValue(value.module_id ?? value.moduleId) || undefined,
+    sourceRefs: toStringList(value.source_refs ?? value.sourceRefs),
+    designRefs: toStringList(value.design_refs ?? value.designRefs),
+    architectureRefs: toStringList(value.architecture_refs ?? value.architectureRefs),
+    p4Refs: toStringList(value.p4_refs ?? value.p4Refs),
+    description: toStringValue(value.description) || undefined,
+    children,
+  };
+}
+
 function buildModuleFunctionTreeNode(
   module: NonNullable<StageDocumentWorkbenchViewModel["outline"]["baseline"]>["modules"][number],
   workbench: StageDocumentWorkbenchViewModel,
@@ -253,22 +302,6 @@ function buildModuleFunctionTreeNode(
   const traceSourceRefs = findTraceSourceRefs(module.moduleId, workbench.product.traceLinks);
   const sourceRefs = traceSourceRefs.length ? traceSourceRefs : collectFallbackSourceRefs(workbench);
   const designRefs = collectDesignRefsForSourceRefs(sourceRefs, workbench);
-  const sectionChildren = designRefs.map((sectionId) => {
-    const section = findDocumentSection(sectionId, workbench.product.sections);
-    return {
-      nodeId: `function-node-${module.moduleId}-${sectionId}`,
-      title: section?.title ?? sectionId,
-      nodeType: "function" as const,
-      status: "derived",
-      moduleId: module.moduleId,
-      sourceRefs,
-      designRefs: [sectionId],
-      architectureRefs: [workbench.outline.baseline?.architectureMode ?? ""].filter(Boolean),
-      p4Refs: collectP4Refs(module.moduleId, workbench),
-      description: section ? `由软设章节“${section.title}”派生的功能项。` : "由当前设计基线派生的功能项。",
-      children: [],
-    };
-  });
 
   return {
     nodeId: `function-node-${module.moduleId}`,
@@ -280,24 +313,9 @@ function buildModuleFunctionTreeNode(
     designRefs,
     architectureRefs: [workbench.outline.baseline?.architectureMode ?? ""].filter(Boolean),
     p4Refs: collectP4Refs(module.moduleId, workbench),
-    description: `承接“${module.name}”相关能力，并与软设正文和需求条款保持追溯。`,
-    children: sectionChildren,
-  };
-}
-
-function buildSectionFunctionTreeNodes(workbench: StageDocumentWorkbenchViewModel): FunctionTreeNodeViewModel[] {
-  return workbench.product.sections.map((section) => ({
-    nodeId: `function-node-${section.sectionId}`,
-    title: section.title,
-    nodeType: "function",
-    status: section.blocks.some((block) => block.sourceRefs.length) ? "derived" : "untraced",
-    sourceRefs: uniqueStrings(section.blocks.flatMap((block) => block.sourceRefs)),
-    designRefs: [section.sectionId],
-    architectureRefs: [],
-    p4Refs: [],
-    description: `由软设章节“${section.title}”临时派生的功能节点。`,
+    description: `承接“${module.name}”相关能力；详细状态、追溯和软设章节引用在 Inspector 中查看。`,
     children: [],
-  }));
+  };
 }
 
 function summarizeFunctionTree(root: FunctionTreeNodeViewModel): FunctionTreeViewModel["summary"] {
@@ -345,22 +363,6 @@ function collectDesignRefsForSourceRefs(sourceRefs: string[], workbench: StageDo
   return uniqueStrings(matchedSectionIds.length ? matchedSectionIds : workbench.product.sections.map((section) => section.sectionId).slice(0, 1));
 }
 
-function findDocumentSection(
-  sectionId: string,
-  sections: StageDocumentWorkbenchViewModel["product"]["sections"],
-): StageDocumentWorkbenchViewModel["product"]["sections"][number] | undefined {
-  for (const section of sections) {
-    if (section.sectionId === sectionId) {
-      return section;
-    }
-    const child = findDocumentSection(sectionId, section.children ?? []);
-    if (child) {
-      return child;
-    }
-  }
-  return undefined;
-}
-
 function collectP4Refs(moduleId: string, workbench: StageDocumentWorkbenchViewModel): string[] {
   return workbench.projection.items
     .filter((item) => item.traceRefs.includes(moduleId))
@@ -369,6 +371,29 @@ function collectP4Refs(moduleId: string, workbench: StageDocumentWorkbenchViewMo
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizeFunctionTreeNodeType(value: unknown): FunctionTreeNodeViewModel["nodeType"] {
+  const nodeType = toStringValue(value);
+  if (["root", "module", "capability", "function", "interface", "data", "state", "quality", "trace"].includes(nodeType)) {
+    return nodeType as FunctionTreeNodeViewModel["nodeType"];
+  }
+  return "function";
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return uniqueStrings(value.map((item) => toStringValue(item)));
+}
+
+function toStringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function collectProjectionTitles(tree: StageDocumentWorkbenchViewModel["projection"]["tree"]): string[] {

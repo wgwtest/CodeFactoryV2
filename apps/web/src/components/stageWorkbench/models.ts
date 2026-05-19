@@ -246,6 +246,11 @@ export type DocumentOutlineViewModel = {
       moduleId: string;
       name: string;
     }>;
+    functionTree?: {
+      treeId?: string;
+      title?: string;
+      root?: unknown;
+    };
   };
   emptyDescription: string;
 };
