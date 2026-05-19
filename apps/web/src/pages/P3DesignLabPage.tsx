@@ -48,6 +48,7 @@ type P3DesignDraftMeta = {
   title: string;
   versionLabel: string;
 };
+type InspectorTabKey = "ability" | "common";
 
 export function P3DesignLabPage() {
   const [inputPackages, setInputPackages] = useState<P3DesignLabInputPackage[]>([]);
@@ -940,28 +941,69 @@ function SelectedMorphObjectInspector({
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
 }) {
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTabKey>("ability");
   const subtitle = selection ? `${getSelectionKindLabel(selection.kind)} · ${selection.status ?? "待处理"}` : activeWindowTitle;
+
+  useEffect(() => {
+    setActiveInspectorTab("ability");
+  }, [selection?.objectId, selection?.kind]);
 
   return (
     <>
       <CompactInspectorHead title="当前选中对象" subtitle={subtitle} />
-      {selection?.kind === "stage_relation" ? (
-        <StageRelationInspector
-          activeStepId={activeStepId}
-          hasSession={hasSession}
-          selection={selection}
-          strategy={strategy}
-          strategyOptions={strategyOptions}
-          workbench={workbench}
-          onRunConversion={onRunConversion}
-          onSetStrategy={onSetStrategy}
-        />
-      ) : selection ? (
-        <MorphObjectDetailInspector selection={selection} workbench={workbench} />
-      ) : (
-        <MorphWorkspaceSummaryInspector activeWindowTitle={activeWindowTitle} workbench={workbench} />
-      )}
+      <InspectorTabBar activeTab={activeInspectorTab} onTabChange={setActiveInspectorTab} />
+      <div className="p3-design-morph-tab-panel">
+        {activeInspectorTab === "common" ? (
+          <MorphCommonInfoInspector activeWindowTitle={activeWindowTitle} selection={selection} workbench={workbench} />
+        ) : selection?.kind === "stage_relation" ? (
+          <StageRelationInspector
+            activeStepId={activeStepId}
+            hasSession={hasSession}
+            selection={selection}
+            strategy={strategy}
+            strategyOptions={strategyOptions}
+            workbench={workbench}
+            onRunConversion={onRunConversion}
+            onSetStrategy={onSetStrategy}
+          />
+        ) : selection ? (
+          <MorphObjectDetailInspector selection={selection} workbench={workbench} />
+        ) : (
+          <MorphWorkspaceSummaryInspector activeWindowTitle={activeWindowTitle} workbench={workbench} />
+        )}
+      </div>
     </>
+  );
+}
+
+function InspectorTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: InspectorTabKey;
+  onTabChange: (tab: InspectorTabKey) => void;
+}) {
+  return (
+    <div className="p3-design-morph-inspector-tabs" role="tablist" aria-label="Inspector 内容">
+      <button
+        aria-selected={activeTab === "ability"}
+        className={activeTab === "ability" ? "is-active" : ""}
+        role="tab"
+        type="button"
+        onClick={() => onTabChange("ability")}
+      >
+        能力
+      </button>
+      <button
+        aria-selected={activeTab === "common"}
+        className={activeTab === "common" ? "is-active" : ""}
+        role="tab"
+        type="button"
+        onClick={() => onTabChange("common")}
+      >
+        共性信息
+      </button>
+    </div>
   );
 }
 
@@ -1000,6 +1042,17 @@ function StageRelationInspector({
 
       {isBasicConversion ? (
         <div className="p3-design-lab-conversion-control" data-testid="p3-design-lab-conversion-control">
+          <div className="p3-design-lab-conversion-control-head">
+            <Text strong>转换控制</Text>
+            <Tag color={workbench.conversion.running ? "processing" : "orange"}>
+              {workbench.conversion.running ? "执行中" : formatConversionStatus(workbench.conversion.status)}
+            </Tag>
+          </div>
+          <div className="p3-design-lab-conversion-meta">
+            <span>{toInspectorText(selection.payload?.inputSummary)}</span>
+            <span>转换为</span>
+            <span>{toInspectorText(selection.payload?.outputSummary)}</span>
+          </div>
           <div className="p3-design-lab-conversion-strategy-picker">
             <Text className="p3-design-lab-conversion-strategy-label" type="secondary">
               转换策略
@@ -1026,6 +1079,11 @@ function StageRelationInspector({
             </Button>
           </div>
           <ConversionTimeline activeStepId={activeStepId} steps={workbench.conversion.steps} />
+          <ConversionFeedbackCard workbench={workbench} />
+          <div className="p3-design-lab-conversion-secondary-actions">
+            <Button type="default">预览参数</Button>
+            <Button type="default">查看转换日志</Button>
+          </div>
         </div>
       ) : (
         <div className="p3-design-morph-inspector-section">
@@ -1034,8 +1092,57 @@ function StageRelationInspector({
         </div>
       )}
 
+      <div className="p3-design-morph-inspector-section">
+        <div className="p3-design-morph-compact-head">
+          <Text strong>转换反馈</Text>
+          <Text type="secondary">{workbench.conversion.running ? "实时" : workbench.conversion.status}</Text>
+        </div>
+        <div className="p3-design-lab-baseline-summary">
+          <Metric
+            label="功能对象"
+            value={`${workbench.conversion.traceabilitySummary?.targetCount ?? workbench.outline.baseline?.moduleCount ?? 0}`}
+          />
+          <Metric label="章节候选" value={`${workbench.product.sections.length}`} />
+          <Metric label="需确认项" value={`${workbench.conversion.traceabilitySummary?.pendingConfirmationCount ?? 0}`} />
+        </div>
+      </div>
+
       <MorphTraceAndStructureSummary workbench={workbench} />
     </>
+  );
+}
+
+function ConversionFeedbackCard({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
+  const featureCount = workbench.conversion.traceabilitySummary?.targetCount ?? workbench.outline.baseline?.moduleCount ?? 0;
+  const sectionCount = workbench.product.sections.length;
+  const pendingCount = workbench.conversion.traceabilitySummary?.pendingConfirmationCount ?? 0;
+  const progressPrefix = workbench.conversion.running
+    ? `正在${getCurrentConversionStepTitle(workbench) || "执行基础转换"}`
+    : workbench.conversion.status === "draft_ready"
+      ? "基础转换已完成"
+      : "等待执行基础转换";
+
+  return (
+    <div className="p3-design-lab-conversion-feedback-card">
+      <div className="p3-design-lab-conversion-feedback-line">
+        <span>当前进展</span>
+        <strong>
+          {progressPrefix}，已识别 {featureCount} 个功能对象、{sectionCount} 个章节候选、{pendingCount} 个需确认项。
+        </strong>
+      </div>
+      <div className="p3-design-lab-conversion-feedback-line">
+        <span>输出结果</span>
+        <strong>生成软设正文草稿后，自动切换到软设文档并高亮新增章节。</strong>
+      </div>
+    </div>
+  );
+}
+
+function getCurrentConversionStepTitle(workbench: StageDocumentWorkbenchViewModel) {
+  return (
+    workbench.conversion.steps.find((step) => step.status === "running")?.title ??
+    workbench.conversion.steps.find((step) => step.status !== "done")?.title ??
+    workbench.conversion.steps.at(-1)?.title
   );
 }
 
@@ -1117,6 +1224,175 @@ function MorphWorkspaceSummaryInspector({
   );
 }
 
+function MorphCommonInfoInspector({
+  activeWindowTitle,
+  selection,
+  workbench,
+}: {
+  activeWindowTitle: string;
+  selection: DesignMorphSelection | null;
+  workbench: StageDocumentWorkbenchViewModel;
+}) {
+  const commonInfo = buildMorphCommonInfo(selection, activeWindowTitle, workbench);
+  return (
+    <>
+      <div className="p3-design-morph-common-banner">
+        <div className="p3-design-morph-compact-head">
+          <Text strong>共性信息</Text>
+          <Tag color="blue">{commonInfo.kindLabel}</Tag>
+        </div>
+        <Text type="secondary">{commonInfo.note}</Text>
+      </div>
+      {commonInfo.groups.map((group) => (
+        <div className="p3-design-morph-common-group" key={group.title}>
+          <div className="p3-design-morph-common-group-head">
+            <Text strong>{group.title}</Text>
+            <Text type="secondary">{group.meta}</Text>
+          </div>
+          <div className="p3-design-morph-common-fields">
+            {group.fields.map((field) => (
+              <RelationFact key={`${group.title}-${field.label}`} label={field.label} value={field.value} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+type MorphCommonField = {
+  label: string;
+  value: string;
+};
+
+type MorphCommonGroup = {
+  title: string;
+  meta: string;
+  fields: MorphCommonField[];
+};
+
+function buildMorphCommonInfo(
+  selection: DesignMorphSelection | null,
+  activeWindowTitle: string,
+  workbench: StageDocumentWorkbenchViewModel,
+): {
+  kindLabel: string;
+  note: string;
+  groups: MorphCommonGroup[];
+} {
+  if (!selection) {
+    return {
+      kindLabel: "工作区",
+      note: "未选中具体对象时，共性信息页展示当前软设工作区的基础上下文。",
+      groups: [
+        commonGroup("标识", "基类字段：标识信息", [
+          ["名称", activeWindowTitle],
+          ["对象类型", "软设形态窗口"],
+          ["状态", workbench.product.status],
+          ["版本", workbench.product.versionLabel],
+        ]),
+        commonGroup("布局", "基类字段：布局变换", [
+          ["位置", "跟随当前 Canvas 视口"],
+          ["尺寸", "窗口自适应"],
+          ["缩放", "跟随 Canvas"],
+          ["锁定", "否"],
+        ]),
+        commonGroup("追溯", "基类字段：追溯关系", [
+          ["来源", workbench.inputFacts.title],
+          ["目标", workbench.product.title ?? "软件设计说明"],
+          ["下游", "功能树 / 分层架构 / P4 投影"],
+          ["映射状态", workbench.conversion.status],
+        ]),
+        commonGroup("生命周期", "基类字段：生命周期", [
+          ["创建时间", "-"],
+          ["更新时间", "-"],
+          ["最近操作", workbench.runtimeEvents[0]?.message ?? "等待操作"],
+          ["操作人", "系统"],
+        ]),
+      ],
+    };
+  }
+
+  const payload = selection.payload ?? {};
+  const kindLabel = getSelectionKindLabel(selection.kind);
+  const baseGroups = [
+    commonGroup("标识", "基类字段：标识信息", [
+      ["名称", selection.title],
+      ["对象类型", kindLabel],
+      ["状态", selection.status ?? "待处理"],
+      ["版本", selection.objectId],
+    ]),
+    commonGroup("布局", "基类字段：布局变换", buildLayoutFields(selection)),
+    commonGroup("追溯", "基类字段：追溯关系", [
+      ["来源", formatRefs(selection.sourceRefs)],
+      ["目标", toInspectorText(payload.toStageId ?? payload.sectionTitle ?? workbench.product.title ?? "软件设计说明")],
+      ["下游", formatRefs(selection.qualityRefs ?? []) || "跟随当前软件设计包"],
+      ["映射状态", selection.status ?? workbench.conversion.status],
+    ]),
+    commonGroup("生命周期", "基类字段：生命周期", [
+      ["创建时间", toInspectorText(payload.createdAt ?? "-")],
+      ["更新时间", toInspectorText(payload.updatedAt ?? "-")],
+      ["最近操作", selection.actions[0]?.label ?? workbench.runtimeEvents[0]?.message ?? "等待操作"],
+      ["操作人", "系统"],
+    ]),
+  ];
+
+  if (selection.kind === "stage_relation") {
+    baseGroups.push(
+      commonGroup("关系扩展", "分型扩展：连接关系", [
+        ["起点", toInspectorText(payload.fromStageId)],
+        ["终点", toInspectorText(payload.toStageId)],
+        ["关系类型", formatRelationType(toInspectorText(payload.relationType))],
+        ["转换策略", formatConversionStrategy(workbench.conversion.strategy)],
+        ["视觉宽度", "8 px"],
+        ["命中宽度", "24 px"],
+      ]),
+    );
+  }
+
+  return {
+    kindLabel,
+    note:
+      selection.kind === "stage_relation"
+        ? "关系对象同样继承共性字段，并通过关系扩展承载起点、终点、策略和视觉命中范围。"
+        : "当前对象继承 Inspector 共性字段；对象专属工作保留在能力页。",
+    groups: baseGroups,
+  };
+}
+
+function commonGroup(title: string, meta: string, fields: Array<[string, string]>): MorphCommonGroup {
+  return {
+    title,
+    meta,
+    fields: fields.map(([label, value]) => ({ label, value })),
+  };
+}
+
+function buildLayoutFields(selection: DesignMorphSelection): Array<[string, string]> {
+  if (selection.kind === "stage_relation") {
+    return [
+      ["位置", "由起点与终点动态计算"],
+      ["尺寸", "连接线自适应"],
+      ["缩放", "跟随 Canvas"],
+      ["锁定", "否"],
+    ];
+  }
+  if (selection.kind === "requirement_clause" || selection.kind === "design_block") {
+    return [
+      ["位置", toInspectorText(selection.payload?.sectionTitle ?? "文档正文块")],
+      ["尺寸", "正文块自适应"],
+      ["缩放", "跟随文档"],
+      ["锁定", "是"],
+    ];
+  }
+  return [
+    ["位置", "跟随 Canvas 节点布局"],
+    ["尺寸", "节点自适应"],
+    ["缩放", "跟随 Canvas"],
+    ["锁定", "否"],
+  ];
+}
+
 function SelectionActionList({ actions }: { actions: DesignMorphSelection["actions"] }) {
   if (!actions.length) {
     return <div className="p3-design-lab-empty-state">当前对象没有可执行动作。</div>;
@@ -1191,6 +1467,10 @@ function getSelectionKindLabel(kind: DesignMorphSelection["kind"]) {
 
 function toInspectorText(value: unknown) {
   return typeof value === "string" && value.trim() ? value : "-";
+}
+
+function formatRefs(refs: string[]) {
+  return refs.filter(Boolean).join(" / ");
 }
 
 function DocumentSectionObjectsPanel({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
@@ -1714,6 +1994,15 @@ function formatRelationType(value: string) {
     presentation_shape_to_p4_projection: "展示转投影",
   };
   return labels[value] ?? value.replace(/_/g, " ");
+}
+
+function formatConversionStrategy(value: string) {
+  const labels: Record<string, string> = {
+    standard_sdd_draft: "标准软设草稿生成",
+    component_first: "组件优先拆解",
+    p4_projection_first: "P4 投影优先",
+  };
+  return labels[value] ?? (value || "-");
 }
 
 function formatDateTime(value: string) {

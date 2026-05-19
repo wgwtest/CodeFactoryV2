@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P3 上下文 Inspector 原型 v14</title>
+    <style>
+      :root {
+        --bg: #edf2f0;
+        --ink: #14211f;
+        --muted: #60716d;
+        --line: #c7d5d0;
+        --panel: #fbfcfb;
+        --paper: #fffefa;
+        --navy: #143e52;
+        --teal: #28766f;
+        --green: #2b7448;
+        --amber: #9a631d;
+        --red: #994238;
+        --violet: #585c8b;
+        --soft-navy: #e6f0f4;
+        --soft-teal: #e4f3ef;
+        --soft-green: #e4f2e9;
+        --soft-amber: #f5e9d6;
+        --soft-red: #f5dedb;
+        --soft-violet: #ececfa;
+        --shadow: 0 14px 32px rgba(42, 55, 51, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-width: 1920px;
+        min-height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(20, 62, 82, 0.08) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(20, 62, 82, 0.06) 1px, transparent 1px),
+          var(--bg);
+        background-size: 28px 28px;
+        color: var(--ink);
+        font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      button,
+      select,
+      input {
+        font: inherit;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        padding: 24px 30px;
+      }
+
+      .topbar {
+        height: 74px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 18px;
+        padding: 0 22px 0 24px;
+        border: 1px solid rgba(161, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--navy);
+        background: #fff;
+        color: var(--navy);
+        font-size: 17px;
+        font-weight: 950;
+      }
+
+      h1 {
+        font-size: 25px;
+        line-height: 34px;
+        font-weight: 950;
+      }
+
+      .subtitle {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .top-actions,
+      .pill-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .pill,
+      .badge,
+      .button {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 12px;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .pill,
+      .badge {
+        padding: 5px 9px;
+      }
+
+      .button {
+        height: 36px;
+        padding: 0 14px;
+      }
+
+      .button.primary {
+        border-color: var(--navy);
+        background: var(--navy);
+        color: #fff;
+      }
+
+      .button.ghost {
+        color: var(--muted);
+        background: #f7faf9;
+      }
+
+      .navy { color: var(--navy); border-color: #a9c1cd; background: var(--soft-navy); }
+      .teal { color: var(--teal); border-color: #95c7c0; background: var(--soft-teal); }
+      .green { color: var(--green); border-color: #94c6a7; background: var(--soft-green); }
+      .amber { color: var(--amber); border-color: #dcb47a; background: var(--soft-amber); }
+      .red { color: var(--red); border-color: #d8b1aa; background: var(--soft-red); }
+      .violet { color: var(--violet); border-color: #bebce0; background: var(--soft-violet); }
+
+      .layout {
+        height: 934px;
+        display: grid;
+        grid-template-columns: 288px minmax(0, 1fr) 464px;
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .sidebar,
+      .workspace,
+      .inspector {
+        min-height: 0;
+        border: 1px solid rgba(162, 176, 171, 0.86);
+        background: rgba(251, 252, 251, 0.98);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+
+      .side-head {
+        padding: 18px 17px 15px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .side-title {
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .side-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tab-list {
+        padding: 13px;
+        display: grid;
+        align-content: start;
+        gap: 9px;
+      }
+
+      .tab-item {
+        min-height: 76px;
+        padding: 11px;
+        border: 1px solid #d3ded9;
+        background: #fff;
+      }
+
+      .tab-item.active {
+        border-color: var(--navy);
+        background: #eef5f7;
+        box-shadow: inset 4px 0 0 var(--navy);
+      }
+
+      .tab-name {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .tab-desc {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.38;
+      }
+
+      .side-foot {
+        padding: 14px;
+        border-top: 1px solid #d7e0dc;
+        background: #f4f7f6;
+        color: var(--amber);
+        font-size: 12px;
+        line-height: 1.52;
+        font-weight: 850;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-rows: 74px 104px minmax(0, 1fr) 52px;
+      }
+
+      .workspace-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 18px;
+        padding: 0 20px;
+        border-bottom: 1px solid #d7e0dc;
+      }
+
+      .workspace-title {
+        font-size: 20px;
+        font-weight: 950;
+      }
+
+      .workspace-note {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .track {
+        position: relative;
+        border-bottom: 1px solid #d7e0dc;
+        background:
+          linear-gradient(90deg, rgba(20, 62, 82, 0.05) 1px, transparent 1px),
+          #f4f8f7;
+        background-size: 44px 44px;
+      }
+
+      .track-line {
+        position: absolute;
+        left: 52px;
+        right: 52px;
+        top: 48px;
+        height: 2px;
+        background: #a7bab4;
+      }
+
+      .track-window {
+        position: absolute;
+        left: 164px;
+        top: 20px;
+        width: 284px;
+        height: 62px;
+        border: 3px solid var(--navy);
+        background: rgba(230, 240, 244, 0.52);
+      }
+
+      .track-node {
+        position: absolute;
+        top: 36px;
+        min-width: 84px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--teal);
+        background: var(--soft-teal);
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .track-node:nth-child(3) { left: 88px; background: var(--soft-teal); }
+      .track-node:nth-child(4) { left: 222px; border-color: var(--navy); color: var(--navy); background: var(--soft-navy); }
+      .track-node:nth-child(5) { left: 380px; border-color: var(--green); color: var(--green); background: var(--soft-green); }
+      .track-node:nth-child(6) { left: 548px; width: 146px; border-color: var(--amber); color: var(--amber); background: var(--soft-amber); }
+      .track-node:nth-child(7) { left: 746px; border-color: #2f77bd; color: #2f77bd; background: #eaf5ff; }
+      .track-node:nth-child(8) { left: 882px; border-color: var(--violet); color: var(--violet); background: var(--soft-violet); }
+      .track-node:nth-child(9) { left: 1016px; border-color: #c4546f; color: #8c2f45; background: #fff0f4; }
+
+      .canvas {
+        position: relative;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(20, 62, 82, 0.07) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(20, 62, 82, 0.05) 1px, transparent 1px),
+          #f9fbfa;
+        background-size: 56px 56px;
+      }
+
+      .object-card {
+        position: absolute;
+        width: 316px;
+        min-height: 380px;
+        border: 2px solid #c4d1e0;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 14px 28px rgba(21, 32, 47, 0.13);
+        cursor: pointer;
+      }
+
+      .object-card.selected {
+        border-color: #2f77bd;
+        box-shadow: 0 0 0 4px rgba(47, 119, 189, 0.12), 0 16px 34px rgba(47, 119, 189, 0.18);
+      }
+
+      .object-card.requirement {
+        left: 72px;
+        top: 86px;
+      }
+
+      .object-card.document {
+        left: 452px;
+        top: 86px;
+      }
+
+      .object-card.tree {
+        left: 850px;
+        top: 136px;
+        width: 258px;
+        min-height: 260px;
+      }
+
+      .object-title {
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 9px;
+        border-bottom: 1px solid #dde6ef;
+        background: linear-gradient(180deg, #f8fbff 0%, #edf3fa 100%);
+        color: #143e52;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .object-body {
+        height: 348px;
+        padding: 17px;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(36, 104, 216, 0.04) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(36, 104, 216, 0.035) 1px, transparent 1px),
+          #e8edf4;
+        background-size: 18px 18px;
+      }
+
+      .paper {
+        height: 100%;
+        padding: 24px 28px;
+        border: 1px solid #e1d4bf;
+        background: var(--paper);
+        box-shadow: 0 12px 28px rgba(21, 32, 47, 0.11);
+      }
+
+      .paper h3 {
+        margin: 0 0 14px;
+        text-align: center;
+        font-size: 15px;
+        font-family: Georgia, "Noto Serif CJK SC", "SimSun", serif;
+      }
+
+      .paper-block {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid #c7d5bd;
+        background: #fbfff8;
+        color: #364256;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .paper-block.focused-block {
+        outline: 3px solid rgba(47, 119, 189, 0.54);
+        background: #eef7ff;
+      }
+
+      .tree-body {
+        padding: 18px;
+      }
+
+      .tree-node {
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border: 1px solid #b9d0bc;
+        background: #f6fbf5;
+        color: #2f5d38;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .relation-arrow {
+        position: absolute;
+        left: 392px;
+        top: 263px;
+        width: 74px;
+        height: 30px;
+        cursor: pointer;
+        z-index: 5;
+      }
+
+      .relation-arrow::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 20px;
+        top: 11px;
+        height: 8px;
+        background: #a2621c;
+        border-radius: 99px;
+      }
+
+      .relation-arrow::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        top: 3px;
+        border-top: 12px solid transparent;
+        border-bottom: 12px solid transparent;
+        border-left: 22px solid #a2621c;
+      }
+
+      .relation-arrow.selected::before {
+        background: #c46b22;
+        box-shadow: 0 0 0 6px rgba(196, 107, 34, 0.15);
+      }
+
+      .relation-arrow.selected::after {
+        border-left-color: #c46b22;
+        filter: drop-shadow(0 0 6px rgba(196, 107, 34, 0.36));
+      }
+
+      .canvas-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-top: 1px solid #d7e0dc;
+        background: #f8faf9;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .inspector {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        background: #fbfcfb;
+      }
+
+      .inspector-head {
+        padding: 17px 18px 14px;
+        border-bottom: 1px solid #d7e0dc;
+        background: #f7faf9;
+      }
+
+      .inspector-kicker {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .inspector-title {
+        margin-top: 6px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .inspector-title strong {
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      .inspector-subtitle {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .inspector-scroll {
+        min-height: 0;
+        overflow: auto;
+        padding: 12px;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      details.property-group {
+        border: 1px solid #ccd9d4;
+        background: #fff;
+      }
+
+      details.property-group[open] {
+        box-shadow: 0 8px 18px rgba(42, 55, 51, 0.05);
+      }
+
+      details.property-group summary {
+        min-height: 34px;
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 7px;
+        padding: 0 10px;
+        border-bottom: 1px solid #e1e8e5;
+        color: #233633;
+        cursor: pointer;
+        list-style: none;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      details.property-group summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .twisty {
+        width: 14px;
+        height: 14px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #b8c8c3;
+        background: #f3f7f6;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      details[open] .twisty {
+        color: var(--navy);
+        border-color: #a9c1cd;
+        background: var(--soft-navy);
+      }
+
+      .group-count {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .field-grid {
+        display: grid;
+        gap: 1px;
+        padding: 9px;
+        background: #eef3f1;
+      }
+
+      .field-row {
+        min-height: 31px;
+        display: grid;
+        grid-template-columns: 118px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px;
+        background: #fff;
+      }
+
+      .field-row label {
+        color: #5d6d69;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .field-value {
+        min-width: 0;
+        color: #172a27;
+        font-size: 12px;
+        font-weight: 850;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .input-like,
+      .select-like {
+        height: 24px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        border: 1px solid #c5d2cd;
+        background: #f9fbfa;
+        color: #172a27;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .xy-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        display: inline-block;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .mini-tag {
+        min-height: 22px;
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 7px;
+        border: 1px solid #c7d5d0;
+        background: #f7faf9;
+        color: #465954;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .action-grid {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+      }
+
+      .action-row {
+        min-height: 36px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid #d4dfdb;
+        background: #fbfcfb;
+      }
+
+      .action-name {
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .action-desc {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .action-button {
+        height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--navy);
+        background: var(--navy);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .action-button.secondary {
+        border-color: #b7c5c0;
+        background: #fff;
+        color: #243331;
+      }
+
+      .focus-panel,
+      .section-panel {
+        border: 1px solid #ccd9d4;
+        background: #fff;
+      }
+
+      .focus-panel {
+        box-shadow: 0 12px 22px rgba(42, 55, 51, 0.07);
+      }
+
+      .focus-head,
+      .section-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px;
+        border-bottom: 1px solid #e1e8e5;
+        background: #f7faf9;
+      }
+
+      .focus-head strong,
+      .section-head strong {
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .focus-body,
+      .section-body {
+        padding: 12px;
+      }
+
+      .compact-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+
+      .compact-meta span {
+        min-height: 22px;
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 7px;
+        border: 1px solid #d4dfdb;
+        background: #f8faf9;
+        color: #4e625d;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .primary-action {
+        width: 100%;
+        height: 42px;
+        border: 1px solid #143e52;
+        background: #143e52;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 950;
+        cursor: pointer;
+      }
+
+      .toolbar-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .secondary-action {
+        height: 32px;
+        border: 1px solid #b7c5c0;
+        background: #fff;
+        color: #243331;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .strategy-row {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .strategy-row label {
+        color: #5d6d69;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .strategy-row select {
+        height: 34px;
+        min-width: 0;
+        border: 1px solid #bbc9c5;
+        background: #fff;
+        color: #172a27;
+        padding: 0 9px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .progress-steps {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        margin-top: 14px;
+        padding: 2px 0 0;
+      }
+
+      .progress-step {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 7px;
+        min-width: 0;
+      }
+
+      .progress-step::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        left: -50%;
+        width: 100%;
+        height: 3px;
+        background: #d7e1de;
+        z-index: 0;
+      }
+
+      .progress-step:first-child::before {
+        display: none;
+      }
+
+      .progress-step.done::before,
+      .progress-step.active::before {
+        background: #28766f;
+      }
+
+      .step-dot {
+        position: relative;
+        z-index: 1;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #c4d0cc;
+        border-radius: 50%;
+        background: #fff;
+        color: #5b6d68;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .progress-step.done .step-dot {
+        border-color: #28766f;
+        background: #28766f;
+        color: #fff;
+      }
+
+      .progress-step.active .step-dot {
+        border-color: #c46b22;
+        background: #fff6e9;
+        color: #9a631d;
+        box-shadow: 0 0 0 5px rgba(196, 107, 34, 0.14);
+      }
+
+      .step-label {
+        max-width: 78px;
+        color: #334844;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 1.25;
+      }
+
+      .feedback-card {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid #d8e4df;
+        background: #f8faf9;
+      }
+
+      .feedback-line {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 8px;
+        min-height: 24px;
+        align-items: start;
+        font-size: 12px;
+      }
+
+      .feedback-line + .feedback-line {
+        margin-top: 6px;
+      }
+
+      .feedback-line span:first-child {
+        color: #687874;
+        font-weight: 850;
+      }
+
+      .feedback-line span:last-child {
+        color: #172a27;
+        font-weight: 850;
+        line-height: 1.45;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .stat-item {
+        min-height: 58px;
+        padding: 9px;
+        border: 1px solid #d6e2de;
+        background: #fbfcfb;
+      }
+
+      .stat-value {
+        font-size: 18px;
+        font-weight: 950;
+        color: var(--navy);
+      }
+
+      .stat-label {
+        margin-top: 4px;
+        color: #667973;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .plain-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .plain-item {
+        padding: 9px 10px;
+        border: 1px solid #d6e2de;
+        background: #fbfcfb;
+        color: #263936;
+        font-size: 12px;
+        font-weight: 850;
+        line-height: 1.45;
+      }
+
+      .plain-item strong {
+        display: block;
+        margin-bottom: 3px;
+        color: #172a27;
+        font-size: 12px;
+      }
+
+      .low-priority {
+        opacity: 0.82;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">P3</div>
+          <div>
+            <h1>P3 Software Design Lab</h1>
+            <p class="subtitle">软设工作区上下文操作面板原型</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="pill navy">软设工作区</span>
+          <span class="pill green">上下文 Inspector</span>
+          <button class="button ghost">保存草稿</button>
+          <button class="button primary">生成投影候选</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="side-title">P3 Lab 导航</div>
+            <div class="side-note">软设工作区内选中不同对象后，右侧展示对应操作、状态和属性。</div>
+          </div>
+          <div class="tab-list">
+            <article class="tab-item">
+              <div class="tab-name">需规输入 <span class="badge navy">1 份</span></div>
+              <div class="tab-desc">需规列表与关联软设</div>
+            </article>
+            <article class="tab-item active">
+              <div class="tab-name">软设工作区 <span class="badge amber">Canvas</span></div>
+              <div class="tab-desc">形态链、对象选择、关系执行</div>
+            </article>
+            <article class="tab-item">
+              <div class="tab-name">当前 Turn <span class="badge">0 轮</span></div>
+              <div class="tab-desc">回合列表与自然语言 CLI</div>
+            </article>
+            <article class="tab-item">
+              <div class="tab-name">检查评审 <span class="badge">0 阻断</span></div>
+              <div class="tab-desc">门禁、证据与阻断项</div>
+            </article>
+            <article class="tab-item">
+              <div class="tab-name">运行日志 <span class="badge">2 条</span></div>
+              <div class="tab-desc">API、Provider、状态迁移</div>
+            </article>
+          </div>
+          <div class="side-foot">当前焦点：需规文档到软设文档的基础转换关系。</div>
+        </aside>
+
+        <section class="workspace">
+          <header class="workspace-head">
+            <div>
+              <div class="workspace-title">软设工作区 Canvas</div>
+              <div class="workspace-note">点击阶段节点、关系箭头或文档块后，右侧 Inspector 展示当前对象的操作与反馈。</div>
+            </div>
+            <div class="pill-row">
+              <span class="pill teal">选中对象联动</span>
+              <span class="pill amber" id="workspaceStatePill">转换待执行</span>
+            </div>
+          </header>
+
+          <div class="track">
+            <div class="track-line"></div>
+            <div class="track-window"></div>
+            <div class="track-node">需规文档</div>
+            <div class="track-node">软设文档</div>
+            <div class="track-node">功能树</div>
+            <div class="track-node">分层架构</div>
+            <div class="track-node">技术实现</div>
+            <div class="track-node">展示形态</div>
+            <div class="track-node">P4 投影</div>
+          </div>
+
+          <div class="canvas">
+            <article class="object-card requirement selected" id="requirementCard">
+              <div class="object-title"><span>需规文档</span><span>A4 正文形态</span></div>
+              <div class="object-body">
+                <div class="paper">
+                  <h3>空域协同规划软件需求规格说明</h3>
+                  <div class="paper-block" id="requirementBlock">3.1 规划任务管理：支持创建规划任务、设置空域范围、维护协同状态和生成处置记录。</div>
+                  <div class="paper-block">3.2 冲突识别：支持冲突区域查看、规则命中说明和人工确认。</div>
+                </div>
+              </div>
+            </article>
+
+            <div class="relation-arrow" id="relationArrow"></div>
+
+            <article class="object-card document" id="documentCard">
+              <div class="object-title"><span>软设文档</span><span>A4 正文形态</span></div>
+              <div class="object-body">
+                <div class="paper">
+                  <h3>软件设计说明</h3>
+                  <div class="paper-block">2. 总体架构：采用统一服务优先，保留后续拆分点。</div>
+                  <div class="paper-block">3. 模块设计：规划任务、冲突识别、协同确认、处置记录。</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="object-card tree" id="treeCard">
+              <div class="object-title"><span>功能树</span><span>结构化形态</span></div>
+              <div class="tree-body">
+                <div class="tree-node">协同规划</div>
+                <div class="tree-node">规划任务管理</div>
+                <div class="tree-node">冲突识别</div>
+                <div class="tree-node">处置记录输出</div>
+              </div>
+            </article>
+          </div>
+
+          <footer class="canvas-foot">
+            <span>当前窗口：需规文档 -> 软设文档</span>
+            <span>·</span>
+            <span>选中关系后可在右侧执行基础转换并查看反馈</span>
+          </footer>
+        </section>
+
+        <aside class="inspector">
+          <header class="inspector-head">
+            <div class="inspector-kicker">当前选中对象</div>
+            <div class="inspector-title">
+              <strong id="inspectorTitle">需规文档</strong>
+              <span class="badge navy" id="inspectorBadge">Stage</span>
+            </div>
+            <div class="inspector-subtitle" id="inspectorSubtitle">阶段节点对象 · A4 文档形态 · 可查看来源、状态和关联动作</div>
+          </header>
+
+          <div class="inspector-scroll" id="inspectorContent"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const inspectors = {
+        stage: {
+          title: "需规文档",
+          badge: "阶段节点",
+          subtitle: "A4 文档形态 · 可查看来源、状态和关联动作",
+          selected: "requirement",
+          workspaceState: "转换待执行",
+          render: renderStageInspector,
+        },
+        relation: {
+          title: "需规文档 -> 软设文档",
+          badge: "阶段关系",
+          subtitle: "基础转换关系 · 选择策略、执行转换、查看进展反馈",
+          workspaceState: "转换执行中",
+          selected: "relation",
+          render: renderRelationInspector,
+        },
+        block: {
+          title: "3.1 规划任务管理",
+          badge: "文档块",
+          subtitle: "需规条款 · 可查看承接状态、追溯关系和局部补丁动作",
+          selected: "block",
+          workspaceState: "条款已承接",
+          render: renderBlockInspector,
+        },
+      };
+
+      function group(title, id, rows) {
+        return { title, id, rows };
+      }
+
+      function field(label, value) {
+        return `<div class="field-row"><label>${label}</label><div class="field-value">${value}</div></div>`;
+      }
+
+      function xy(label, x, y) {
+        return `<div class="field-row"><label>${label}</label><div class="xy-grid"><span class="input-like">X ${x}</span><span class="input-like">Y ${y}</span></div></div>`;
+      }
+
+      function tags(label, values) {
+        return `<div class="field-row"><label>${label}</label><div class="tag-list">${values.map((value) => `<span class="mini-tag">${value}</span>`).join("")}</div></div>`;
+      }
+
+      function actions(items) {
+        return `<div class="action-grid">${items.map(([name, desc, intent]) => `
+          <div class="action-row">
+            <div>
+              <div class="action-name">${name}</div>
+              <div class="action-desc">${desc}</div>
+            </div>
+            <button class="action-button ${intent === "secondary" ? "secondary" : ""}">执行</button>
+          </div>
+        `).join("")}</div>`;
+      }
+
+      function progressSteps(activeIndex) {
+        const steps = ["读取规则冻结包", "抽取设计对象", "生成软设草稿", "建立追溯映射"];
+        return `<div class="progress-steps">${steps.map((label, index) => {
+          const state = index < activeIndex ? "done" : index === activeIndex ? "active" : "";
+          return `<div class="progress-step ${state}">
+            <span class="step-dot">${index + 1}</span>
+            <span class="step-label">${label}</span>
+          </div>`;
+        }).join("")}</div>`;
+      }
+
+      function renderStageInspector() {
+        return [
+          `<section class="focus-panel">
+            <div class="focus-head">
+              <strong>需规状态</strong>
+              <span class="badge green">已冻结，可设计</span>
+            </div>
+            <div class="focus-body">
+              <div class="compact-meta">
+                <span>创建人：P2 需求分析系统</span>
+                <span>冻结时间：2026-05-18 12:50</span>
+                <span>版本：v1</span>
+              </div>
+              <div class="stat-grid">
+                <div class="stat-item"><div class="stat-value">12</div><div class="stat-label">功能条款</div></div>
+                <div class="stat-item"><div class="stat-value">4</div><div class="stat-label">待映射对象</div></div>
+                <div class="stat-item"><div class="stat-value">0</div><div class="stat-label">阻断项</div></div>
+              </div>
+              <div class="toolbar-actions">
+                <button class="secondary-action">定位来源</button>
+                <button class="secondary-action">查看关联软设</button>
+              </div>
+            </div>
+          </section>`,
+          `<section class="section-panel">
+            <div class="section-head"><strong>下游承接</strong><span class="badge amber">待转换</span></div>
+            <div class="section-body">
+              <div class="plain-list">
+                <div class="plain-item"><strong>软设文档</strong>等待执行基础转换后生成正文草稿。</div>
+                <div class="plain-item"><strong>功能树</strong>将从软设正文抽取功能对象并建立层级。</div>
+              </div>
+            </div>
+          </section>`,
+          foldedGroup("对象属性", [
+            field("名称", "需规文档"),
+            field("对象类型", "需求规格说明"),
+            xy("位置", "80", "120"),
+            xy("尺寸", "500", "640"),
+          ]),
+        ].join("");
+      }
+
+      function renderRelationInspector() {
+        return [
+          `<section class="focus-panel">
+            <div class="focus-head">
+              <strong>转换控制</strong>
+              <span class="badge amber">执行中</span>
+            </div>
+            <div class="focus-body">
+              <div class="compact-meta">
+                <span>需规文档</span>
+                <span>转换为</span>
+                <span>软设文档</span>
+              </div>
+              <div class="strategy-row">
+                <label>策略</label>
+                <select>
+                  <option>标准软设草稿生成</option>
+                  <option>按功能域生成章节</option>
+                  <option>按技术层生成章节</option>
+                </select>
+              </div>
+              <button class="primary-action">执行基础转换</button>
+              ${progressSteps(1)}
+              <div class="feedback-card">
+                <div class="feedback-line"><span>当前进展</span><span>正在抽取设计对象，已识别 4 个功能域、2 个数据对象、3 条追溯关系。</span></div>
+                <div class="feedback-line"><span>输出结果</span><span>生成软设正文草稿后，自动切换到软设文档并高亮新增章节。</span></div>
+              </div>
+              <div class="toolbar-actions">
+                <button class="secondary-action">预览参数</button>
+                <button class="secondary-action">查看转换日志</button>
+              </div>
+            </div>
+          </section>`,
+          `<section class="section-panel">
+            <div class="section-head"><strong>转换反馈</strong><span class="badge teal">实时</span></div>
+            <div class="section-body">
+              <div class="stat-grid">
+                <div class="stat-item"><div class="stat-value">4</div><div class="stat-label">功能对象</div></div>
+                <div class="stat-item"><div class="stat-value">3</div><div class="stat-label">章节候选</div></div>
+                <div class="stat-item"><div class="stat-value">2</div><div class="stat-label">需确认项</div></div>
+              </div>
+            </div>
+          </section>`,
+          foldedGroup("关系属性", [
+            field("关系类型", "需规转软设"),
+            field("状态", "待执行"),
+            field("命中宽度", "24 px"),
+            field("视觉宽度", "8 px"),
+          ]),
+        ].join("");
+      }
+
+      function renderBlockInspector() {
+        return [
+          `<section class="focus-panel">
+            <div class="focus-head">
+              <strong>条款承接</strong>
+              <span class="badge green">已承接</span>
+            </div>
+            <div class="focus-body">
+              <div class="plain-list">
+                <div class="plain-item"><strong>原文摘要</strong>支持创建规划任务、设置空域范围、维护协同状态和生成处置记录。</div>
+                <div class="plain-item"><strong>软设承接</strong>已映射到软设 3.1 模块设计与功能树“规划任务管理”。</div>
+              </div>
+              <div class="toolbar-actions">
+                <button class="secondary-action">定位正文块</button>
+                <button class="secondary-action">生成补丁</button>
+              </div>
+            </div>
+          </section>`,
+          `<section class="section-panel">
+            <div class="section-head"><strong>质量反馈</strong><span class="badge amber">1 项待确认</span></div>
+            <div class="section-body">
+              <div class="plain-item"><strong>验收口径</strong>处置记录的字段约束尚未完全展开，建议补充数据字典映射。</div>
+            </div>
+          </section>`,
+          foldedGroup("对象属性", [
+            field("名称", "规划任务管理"),
+            field("对象类型", "需规条款"),
+            field("章节", "3.1"),
+            field("关联对象", "PlanningTaskService"),
+          ]),
+        ].join("");
+      }
+
+      function foldedGroup(title, rows) {
+        return `
+          <details class="property-group low-priority">
+            <summary>
+              <span class="twisty">▸</span>
+              <span>${title}</span>
+              <span class="group-count">${rows.length} 项</span>
+            </summary>
+            <div class="field-grid">${rows.join("")}</div>
+          </details>
+        `;
+      }
+
+      function renderInspector(mode) {
+        const data = inspectors[mode];
+        document.getElementById("inspectorTitle").textContent = data.title;
+        document.getElementById("inspectorBadge").textContent = data.badge;
+        document.getElementById("inspectorSubtitle").textContent = data.subtitle;
+        document.getElementById("workspaceStatePill").textContent = data.workspaceState;
+        document.getElementById("requirementCard").classList.toggle("selected", data.selected === "requirement" || data.selected === "block");
+        document.getElementById("documentCard").classList.toggle("selected", data.selected === "document");
+        document.getElementById("relationArrow").classList.toggle("selected", data.selected === "relation");
+        document.getElementById("requirementBlock").classList.toggle("focused-block", data.selected === "block");
+        document.getElementById("inspectorContent").innerHTML = data.render();
+      }
+
+      document.getElementById("requirementCard").addEventListener("click", () => renderInspector("stage"));
+      document.getElementById("documentCard").addEventListener("click", () => renderInspector("stage"));
+      document.getElementById("requirementBlock").addEventListener("click", (event) => {
+        event.stopPropagation();
+        renderInspector("block");
+      });
+      document.getElementById("relationArrow").addEventListener("click", () => renderInspector("relation"));
+
+      renderInspector("stage");
+    </script>
+  </body>
+</html>
