@@ -227,8 +227,27 @@ class RequirementToSddDifyWorkflowAdapter:
 
     @staticmethod
     def _validate_required_output(result: DesignConverterRunResult) -> None:
-        if not result.design_document.get("sections"):
+        sections = result.design_document.get("sections")
+        if not sections:
             raise ValueError("remote dify result_json missing design_document.sections")
+        if not isinstance(sections, list):
+            raise ValueError("remote dify result_json design_document.sections must be a list")
+        structured_section_count = 0
+        diagram_count = 0
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            children = section.get("children") or section.get("subsections")
+            blocks = section.get("blocks")
+            if isinstance(children, list) and children:
+                structured_section_count += 1
+            if isinstance(blocks, list) and blocks:
+                structured_section_count += 1
+                diagram_count += sum(1 for block in blocks if isinstance(block, dict) and block.get("kind") in {"diagram", "diagram_placeholder"})
+        if structured_section_count == 0:
+            raise ValueError("remote dify result_json design_document requires section children or structured blocks")
+        if diagram_count == 0:
+            raise ValueError("remote dify result_json design_document requires at least one structured diagram block")
         if not result.design_package:
             raise ValueError("remote dify result_json missing design_package")
         if not isinstance(result.traceability, list):

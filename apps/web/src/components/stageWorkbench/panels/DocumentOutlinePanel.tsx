@@ -24,7 +24,16 @@ export function DocumentOutlinePanel({ outline }: DocumentOutlinePanelProps) {
         {outline.sections.length ? (
           <ol className="stage-document-list">
             {outline.sections.map((section) => (
-              <li key={section.sectionId}>{section.title}</li>
+              <li key={section.sectionId}>
+                {section.title}
+                {section.children?.length ? (
+                  <ol>
+                    {section.children.map((child) => (
+                      <li key={child.sectionId}>{child.title}</li>
+                    ))}
+                  </ol>
+                ) : null}
+              </li>
             ))}
           </ol>
         ) : (

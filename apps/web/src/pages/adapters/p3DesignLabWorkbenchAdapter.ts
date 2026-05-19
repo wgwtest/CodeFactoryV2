@@ -1,10 +1,14 @@
 import type {
+  P3DesignLabDocumentBlock,
+  P3DesignLabDocumentSection,
   P3DesignLabInputPackage,
   P3DesignLabSession,
   RequirementAuthoringCheckResult,
 } from "../../lib/api";
 import type {
   StageDocumentWorkbenchViewModel,
+  StandardDocumentBlockKind,
+  StandardDocumentBlockViewModel,
   StandardDocumentSectionViewModel,
 } from "../../components/stageWorkbench/models";
 
@@ -126,30 +130,13 @@ export function buildP3DesignLabWorkbenchViewModel({
         emptyDescription: conversionRunning ? "正在调用 Dify 生成软件设计说明" : "尚未生成软件设计说明",
       },
       sections:
-        designDocument?.sections.map((section) => ({
-          sectionId: section.section_id,
-          title: section.title,
-          status: section.status ?? "generated",
-          blocks: [
-            {
-              blockId: `${section.section_id}-body`,
-              kind: "paragraph",
-              content: section.content,
-              anchorId: section.section_id,
-              sourceRefs: [],
-              qualityRefs: [],
-            },
-          ],
-        })) ?? [],
+        designDocument?.sections.map((section) => buildSoftwareDesignDocumentSection(section)) ?? [],
       annotations: [],
       traceLinks: designBaseline?.traceability ?? [],
     },
     outline: {
       sections:
-        designDocument?.sections.map((section) => ({
-          sectionId: section.section_id,
-          title: section.title,
-        })) ?? [],
+        designDocument?.sections.map((section) => buildDocumentOutlineSection(section)) ?? [],
       baseline: designBaseline
           ? {
             label: session?.version_label ?? designDocument?.version_label ?? "SoftwareDesignBaseline v2",
@@ -348,6 +335,87 @@ function toDisplayString(value: unknown, fallback: string): string {
 
 function toOptionalDisplayString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function buildSoftwareDesignDocumentSection(section: P3DesignLabDocumentSection): StandardDocumentSectionViewModel {
+  const blocks = Array.isArray(section.blocks) && section.blocks.length
+    ? section.blocks.map((block, index) => buildSoftwareDesignDocumentBlock(block, section, index))
+    : [
+        {
+          blockId: `${section.section_id}-body`,
+          kind: "paragraph" as const,
+          content: section.content,
+          anchorId: section.section_id,
+          sourceRefs: section.source_refs ?? [],
+          qualityRefs: [],
+        },
+      ];
+  return {
+    sectionId: section.section_id,
+    title: section.title,
+    status: section.status ?? "generated",
+    blocks,
+    children: collectDocumentChildSections(section).map((child) => buildSoftwareDesignDocumentSection(child)),
+  };
+}
+
+function buildSoftwareDesignDocumentBlock(
+  block: P3DesignLabDocumentBlock,
+  section: P3DesignLabDocumentSection,
+  index: number,
+): StandardDocumentBlockViewModel {
+  const kind = toStandardDocumentBlockKind(block.kind);
+  return {
+    blockId: toDisplayString(block.block_id ?? block.blockId, `${section.section_id}-block-${index + 1}`),
+    kind,
+    title: toOptionalDisplayString(block.title),
+    content: toDisplayString(block.content, ""),
+    diagramType: toOptionalDisplayString(block.diagram_type ?? block.diagramType),
+    columns: Array.isArray(block.columns) ? block.columns.map((column) => toDisplayString(column, "")) : undefined,
+    rows: Array.isArray(block.rows)
+      ? block.rows.map((row) => Array.isArray(row) ? row.map((cell) => toDisplayString(cell, "")) : [])
+      : undefined,
+    anchorId: toOptionalDisplayString(block.anchor_id ?? block.anchorId),
+    sourceRefs: Array.isArray(block.source_refs)
+      ? block.source_refs
+      : Array.isArray(block.sourceRefs)
+        ? block.sourceRefs
+        : section.source_refs ?? [],
+    qualityRefs: Array.isArray(block.quality_refs) ? block.quality_refs : Array.isArray(block.qualityRefs) ? block.qualityRefs : [],
+  };
+}
+
+function collectDocumentChildSections(section: P3DesignLabDocumentSection): P3DesignLabDocumentSection[] {
+  if (Array.isArray(section.children) && section.children.length) {
+    return section.children;
+  }
+  if (Array.isArray(section.subsections) && section.subsections.length) {
+    return section.subsections;
+  }
+  return [];
+}
+
+function buildDocumentOutlineSection(section: P3DesignLabDocumentSection): StageDocumentWorkbenchViewModel["outline"]["sections"][number] {
+  return {
+    sectionId: section.section_id,
+    title: section.title,
+    children: collectDocumentChildSections(section).map((child) => buildDocumentOutlineSection(child)),
+  };
+}
+
+function toStandardDocumentBlockKind(value: unknown): StandardDocumentBlockKind {
+  if (
+    value === "paragraph" ||
+    value === "clause" ||
+    value === "table" ||
+    value === "list" ||
+    value === "code" ||
+    value === "diagram" ||
+    value === "diagram_placeholder"
+  ) {
+    return value;
+  }
+  return "paragraph";
 }
 
 function buildProjectionTreeNode(

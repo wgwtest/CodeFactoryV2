@@ -482,6 +482,91 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   await waitFor(() => expect(within(workspace).queryByText("正在调用 Dify 生成软件设计说明")).not.toBeInTheDocument());
 });
 
+test("renders structured software design subsections, tables, and diagrams from converter output", async () => {
+  const inputPackage = buildInputPackage();
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_document: {
+      title: "空域协同规划软件设计说明",
+      version_label: "v0.1",
+      sections: [
+        {
+          section_id: "architecture",
+          title: "4. 总体架构",
+          content: "总体采用统一服务优先。",
+          status: "generated",
+          source_refs: ["REQ-3.2"],
+          children: [
+            {
+              section_id: "architecture-context",
+              title: "4.1 架构上下文",
+              content: "P2 冻结需规、P3 转换器和 Dify 工作流通过明确协议交接。",
+              status: "generated",
+              source_refs: ["REQ-3.2"],
+            },
+          ],
+          blocks: [
+            {
+              block_id: "architecture-summary",
+              kind: "paragraph",
+              content: "总体采用统一服务优先。",
+              source_refs: ["REQ-3.2"],
+            },
+            {
+              block_id: "architecture-table",
+              kind: "table",
+              title: "表 4-1 总体分层表",
+              columns: ["层次", "职责"],
+              rows: [
+                ["展示层", "承载软设文档和转换控制"],
+                ["转换层", "调用 Dify 并规范化输出"],
+              ],
+              source_refs: ["REQ-3.2"],
+            },
+            {
+              block_id: "architecture-diagram",
+              kind: "diagram",
+              title: "图 4-1 转换链路图",
+              diagram_type: "mermaid",
+              content: "flowchart LR\n  P2[P2 冻结需规] --> P3[P3 转换器]\n  P3 --> Dify[Dify 工作流]",
+              source_refs: ["REQ-3.2"],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
+
+  expect(await within(workspace).findByRole("heading", { name: "4.1 架构上下文" })).toBeInTheDocument();
+  expect(within(workspace).getByRole("table", { name: "表 4-1 总体分层表" })).toBeInTheDocument();
+  expect(within(workspace).getByText("转换层")).toBeInTheDocument();
+  expect(within(workspace).getByText("图 4-1 转换链路图")).toBeInTheDocument();
+  expect(within(workspace).getByText((content) => content.includes("flowchart LR"))).toBeInTheDocument();
+});
+
 function buildInputPackage() {
   return {
     input_package_id: "p2frozen-doc-1",

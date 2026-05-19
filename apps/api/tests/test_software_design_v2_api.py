@@ -403,6 +403,31 @@ def test_software_design_v2_conversion_runs_through_design_converter_adapter_loa
                             "content": "adapter loader sentinel",
                             "status": "generated",
                             "source_refs": ["REQ-3.2"],
+                            "children": [
+                                {
+                                    "section_id": "architecture-context",
+                                    "title": "4.1 架构上下文",
+                                    "content": "前端工作台、后端转换服务和 Dify 工作流通过明确边界协作。",
+                                    "status": "generated",
+                                    "source_refs": ["REQ-3.2"],
+                                }
+                            ],
+                            "blocks": [
+                                {
+                                    "block_id": "architecture-summary",
+                                    "kind": "paragraph",
+                                    "content": "adapter loader sentinel",
+                                    "source_refs": ["REQ-3.2"],
+                                },
+                                {
+                                    "block_id": "architecture-flow",
+                                    "kind": "diagram",
+                                    "title": "图 4-1 需规转软设转换链路",
+                                    "diagram_type": "mermaid",
+                                    "content": "flowchart LR\n  P2[P2 冻结需规] --> P3[P3 转换器]\n  P3 --> Dify[Dify 工作流]\n  Dify --> SDD[软设草稿]",
+                                    "source_refs": ["REQ-3.2"],
+                                },
+                            ],
                         }
                     ],
                 },
@@ -544,6 +569,8 @@ def test_software_design_v2_conversion_runs_through_design_converter_adapter_loa
     assert converted_session["conversion"]["converter"]["converter_type"] == "dify_workflow"
     assert converted_session["conversion"]["traceability_summary"]["mapped_clause_count"] == 1
     assert converted_session["design_document"]["sections"][0]["content"] == "adapter loader sentinel"
+    assert converted_session["design_document"]["sections"][0]["children"][0]["title"] == "4.1 架构上下文"
+    assert converted_session["design_document"]["sections"][0]["blocks"][1]["kind"] == "diagram"
     assert converted_session["design_baseline"]["baseline_id"] == "sdp-adapter-loader-sentinel"
     assert converted_session["design_baseline"]["pending_confirmations"] == ["adapter loader sentinel gap"]
     assert converted_session["workorder_projection"]["tree"]["title"] == "P4-WO-Adapter-Sentinel"

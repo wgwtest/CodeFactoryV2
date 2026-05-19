@@ -55,6 +55,49 @@ _REQUIRED_TABLES = [
 ]
 
 
+_REQUIRED_DIAGRAMS = [
+    {
+        "diagram_id": "D1",
+        "name": "总体架构图",
+        "section_id": "sdd-04",
+        "allowed_types": ["mermaid", "plantuml", "graph_json"],
+    },
+    {
+        "diagram_id": "D2",
+        "name": "后端模块/服务关系图",
+        "section_id": "sdd-06",
+        "allowed_types": ["mermaid", "plantuml", "graph_json"],
+    },
+    {
+        "diagram_id": "D3",
+        "name": "核心对象关系图",
+        "section_id": "sdd-07",
+        "allowed_types": ["mermaid", "plantuml", "graph_json"],
+    },
+    {
+        "diagram_id": "D4",
+        "name": "关键运行流程图",
+        "section_id": "sdd-09",
+        "allowed_types": ["mermaid", "plantuml", "graph_json"],
+    },
+]
+
+
+_DOCUMENT_STRUCTURE = {
+    "section_children_field": "children",
+    "block_field": "blocks",
+    "minimum_heading_depth": 2,
+    "required_block_kinds": ["paragraph", "table", "diagram"],
+    "allowed_block_kinds": ["paragraph", "clause", "table", "list", "code", "diagram", "diagram_placeholder"],
+    "table_shape": {"columns": "string[]", "rows": "string[][]"},
+    "diagram_shape": {
+        "kind": "diagram",
+        "diagram_type": "mermaid | plantuml | graph_json",
+        "content": "diagram source text or graph JSON string",
+    },
+}
+
+
 def build_sdd_81435_template_profile(*, design_title: str, version_label: str) -> dict:
     return {
         "template_id": "81435-sdd-quasi-template-v1",
@@ -76,12 +119,20 @@ def build_sdd_81435_template_profile(*, design_title: str, version_label: str) -
         },
         "minimum_total_chars": 12000,
         "section_coverage": {"level_1_required": 1.0, "level_2_required": 0.9},
+        "document_structure": deepcopy(_DOCUMENT_STRUCTURE),
         "required_sections": deepcopy(_REQUIRED_SECTIONS),
         "required_tables": deepcopy(_REQUIRED_TABLES),
+        "diagram_requirements": {
+            "minimum_diagram_count": len(_REQUIRED_DIAGRAMS),
+            "required_diagrams": deepcopy(_REQUIRED_DIAGRAMS),
+        },
         "generation_rules": [
             "生成正式软设草稿，不生成短摘要。",
             "必须承接 P2 冻结需求中的角色、功能、数据、接口、非功能和验收项。",
             "设计说明解释如何实现需求，不重新发明需求。",
+            "每个一级章节应使用 children 输出二级小节；核心章节不得只把二级标题写进 content。",
+            "正文应使用 blocks 输出段落、表格和图块；表格不得只作为普通段落。",
+            "图优先使用 Mermaid、PlantUML 或 graph_json 结构化表达，不要求生成图片文件。",
             "每个核心章节必须展开模块、对象、接口、流程、约束或追溯，不得只给概括性短句。",
             "Dify、模型服务和插件能力必须写清输入、输出、超时、失败处理和人工复核边界。",
             "信息不足时保留完整结构，写明缺口、暂定假设、待确认问题和实现影响。",
@@ -98,8 +149,17 @@ def build_sdd_81435_quality_rules() -> dict:
         "require_review_findings": True,
         "minimum_total_chars": 12000,
         "section_coverage": {"level_1_required": 1.0, "level_2_required": 0.9},
+        "document_structure": {
+            **deepcopy(_DOCUMENT_STRUCTURE),
+            "require_structured_blocks": True,
+            "require_section_children": True,
+        },
         "required_sections": deepcopy(_REQUIRED_SECTIONS),
         "required_tables": deepcopy(_REQUIRED_TABLES),
+        "diagram_requirements": {
+            "minimum_diagram_count": len(_REQUIRED_DIAGRAMS),
+            "required_diagrams": deepcopy(_REQUIRED_DIAGRAMS),
+        },
         "core_section_minimum_chars": {
             section["section_id"]: section["minimum_chars"]
             for section in _REQUIRED_SECTIONS
@@ -107,6 +167,9 @@ def build_sdd_81435_quality_rules() -> dict:
         },
         "validation_rules": [
             "15 个一级章节必须全部存在。",
+            "至少 90% 一级章节必须包含 children 二级小节。",
+            "核心章节必须使用 blocks 输出段落、表格和图块。",
+            "必须至少生成 D1-D4 四类结构化图块；图块可为 Mermaid、PlantUML 或 graph_json。",
             "核心章节必须达到最低中文字符数。",
             "必备表格 T1-T15 必须存在或给出等价结构。",
             "高优先级 P2 需求必须映射到 P3 章节、模块、API 或质量门。",

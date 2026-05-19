@@ -43,13 +43,16 @@ export type StageInputFactsViewModel = {
   emptyDescription: string;
 };
 
-export type StandardDocumentBlockKind = "paragraph" | "clause" | "table" | "list" | "code" | "diagram_placeholder";
+export type StandardDocumentBlockKind = "paragraph" | "clause" | "table" | "list" | "code" | "diagram" | "diagram_placeholder";
 
 export type StandardDocumentBlockViewModel = {
   blockId: string;
   kind: StandardDocumentBlockKind;
   title?: string;
   content: string;
+  diagramType?: string;
+  columns?: string[];
+  rows?: string[][];
   anchorId?: string;
   sourceRefs: string[];
   qualityRefs: string[];
@@ -60,6 +63,7 @@ export type StandardDocumentSectionViewModel = {
   title: string;
   status: string;
   blocks: StandardDocumentBlockViewModel[];
+  children?: StandardDocumentSectionViewModel[];
 };
 
 export type StandardDocumentViewModel = {
@@ -227,6 +231,10 @@ export type DocumentOutlineViewModel = {
   sections: Array<{
     sectionId: string;
     title: string;
+    children?: Array<{
+      sectionId: string;
+      title: string;
+    }>;
   }>;
   baseline?: {
     label: string;

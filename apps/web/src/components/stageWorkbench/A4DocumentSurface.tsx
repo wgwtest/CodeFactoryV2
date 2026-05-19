@@ -8,6 +8,7 @@ type A4DocumentSection = {
   title: string;
   content: string;
   status?: string;
+  children?: A4DocumentSection[];
 };
 
 type NormalizedA4DocumentSection = {
@@ -15,6 +16,7 @@ type NormalizedA4DocumentSection = {
   title: string;
   status?: string;
   blocks: StandardDocumentBlockViewModel[];
+  children?: NormalizedA4DocumentSection[];
 };
 
 type A4DocumentSurfaceProps = {
@@ -63,6 +65,7 @@ export function A4DocumentSurface({
       title: section.title,
       status: section.status,
       blocks: section.blocks,
+      children: section.children?.map((child) => normalizeStructuredSection(child)),
     })) ??
     sections.map((section) => ({
       ...section,
@@ -75,6 +78,7 @@ export function A4DocumentSurface({
           qualityRefs: [],
         },
       ],
+      children: section.children?.map((child) => normalizePlainSection(child)),
     }));
   const hasDocument = Boolean(title && normalizedSections.length);
   const isBusy = Boolean(busyState);
@@ -123,17 +127,13 @@ export function A4DocumentSurface({
             {subtitle ? <div className="a4-document-subtitle">{subtitle}</div> : null}
             <div className="a4-document-content" data-testid="a4-document-content">
               {normalizedSections.map((section) => (
-                <section key={section.section_id} className={`a4-document-section${section.status ? ` is-${section.status}` : ""}`}>
-                  <h3>{section.title}</h3>
-                  {section.blocks.map((block) => (
-                    <DocumentBlock
-                      block={block}
-                      key={block.blockId}
-                      selected={selectedBlockId === block.blockId}
-                      onSelect={() => onSelectBlock?.(block, section)}
-                    />
-                  ))}
-                </section>
+                <DocumentSection
+                  key={section.section_id}
+                  level={3}
+                  onSelectBlock={onSelectBlock}
+                  section={section}
+                  selectedBlockId={selectedBlockId}
+                />
               ))}
             </div>
             <footer className="a4-document-footer">
@@ -146,6 +146,73 @@ export function A4DocumentSurface({
         )}
       </div>
     </article>
+  );
+}
+
+function normalizeStructuredSection(section: StandardDocumentSectionViewModel): NormalizedA4DocumentSection {
+  return {
+    section_id: section.sectionId,
+    title: section.title,
+    status: section.status,
+    blocks: section.blocks,
+    children: section.children?.map((child) => normalizeStructuredSection(child)),
+  };
+}
+
+function normalizePlainSection(section: A4DocumentSection): NormalizedA4DocumentSection {
+  return {
+    ...section,
+    blocks: [
+      {
+        blockId: `${section.section_id}-body`,
+        kind: "paragraph",
+        content: section.content,
+        sourceRefs: [],
+        qualityRefs: [],
+      },
+    ],
+    children: section.children?.map((child) => normalizePlainSection(child)),
+  };
+}
+
+function DocumentSection({
+  section,
+  level,
+  selectedBlockId,
+  onSelectBlock,
+}: {
+  section: NormalizedA4DocumentSection;
+  level: 3 | 4 | 5 | 6;
+  selectedBlockId?: string;
+  onSelectBlock?: (block: StandardDocumentBlockViewModel, section: NormalizedA4DocumentSection) => void;
+}) {
+  const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
+  const childLevel = Math.min(level + 1, 6) as 3 | 4 | 5 | 6;
+  return (
+    <section className={`a4-document-section is-level-${level}${section.status ? ` is-${section.status}` : ""}`}>
+      <HeadingTag>{section.title}</HeadingTag>
+      {section.blocks.map((block) => (
+        <DocumentBlock
+          block={block}
+          key={block.blockId}
+          selected={selectedBlockId === block.blockId}
+          onSelect={() => onSelectBlock?.(block, section)}
+        />
+      ))}
+      {section.children?.length ? (
+        <div className="a4-document-subsections">
+          {section.children.map((child) => (
+            <DocumentSection
+              key={child.section_id}
+              level={childLevel}
+              onSelectBlock={onSelectBlock}
+              section={child}
+              selectedBlockId={selectedBlockId}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -187,6 +254,52 @@ function DocumentBlock({
       <pre className={`a4-document-block-code ${className}`} id={block.anchorId} {...selectionProps}>
         {block.content}
       </pre>
+    );
+  }
+
+  if (block.kind === "table") {
+    const columns = block.columns?.length ? block.columns : [];
+    const rows = block.rows?.length ? block.rows : block.content
+      .split("\n")
+      .map((row) => row.split("|").map((cell) => cell.trim()).filter(Boolean))
+      .filter((row) => row.length);
+    return (
+      <table
+        aria-label={block.title}
+        className={`a4-document-block-table ${className}`}
+        id={block.anchorId}
+        {...selectionProps}
+      >
+        {block.title ? <caption>{block.title}</caption> : null}
+        {columns.length ? (
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column} scope="col">{column}</th>
+              ))}
+            </tr>
+          </thead>
+        ) : null}
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={`${block.blockId}-row-${rowIndex + 1}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`${block.blockId}-row-${rowIndex + 1}-cell-${cellIndex + 1}`}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (block.kind === "diagram" || block.kind === "diagram_placeholder") {
+    return (
+      <figure className={`a4-document-block-diagram ${className}`} id={block.anchorId} {...selectionProps}>
+        {block.title ? <figcaption>{block.title}</figcaption> : null}
+        <pre>{block.content}</pre>
+        {block.diagramType ? <small>{block.diagramType}</small> : null}
+      </figure>
     );
   }
 

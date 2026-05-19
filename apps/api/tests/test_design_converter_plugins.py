@@ -120,6 +120,31 @@ def _result_payload() -> dict:
                     "content": "系统围绕资源目录、申请审批和交付治理组织。",
                     "status": "generated",
                     "source_refs": ["REQ-FR-001"],
+                    "children": [
+                        {
+                            "section_id": "architecture-context",
+                            "title": "4.1 架构上下文",
+                            "content": "资源消费、审批和交付治理通过统一应用服务编排。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        }
+                    ],
+                    "blocks": [
+                        {
+                            "block_id": "architecture-overview",
+                            "kind": "paragraph",
+                            "content": "系统围绕资源目录、申请审批和交付治理组织。",
+                            "source_refs": ["REQ-FR-001"],
+                        },
+                        {
+                            "block_id": "architecture-diagram",
+                            "kind": "diagram",
+                            "title": "图 4-1 总体架构图",
+                            "diagram_type": "mermaid",
+                            "content": "flowchart LR\n  Portal[资源门户] --> Service[申请审批服务]\n  Service --> Delivery[交付治理]",
+                            "source_refs": ["REQ-FR-001"],
+                        },
+                    ],
                 }
             ],
         },
@@ -269,8 +294,13 @@ def test_dify_design_converter_normalizes_remote_result(monkeypatch) -> None:
         assert len(target_profile["required_sections"]) == 15
         assert target_profile["required_sections"][5]["title"] == "后端软件设计"
         assert target_profile["required_sections"][5]["minimum_chars"] == 1500
+        assert target_profile["document_structure"]["section_children_field"] == "children"
+        assert target_profile["document_structure"]["block_field"] == "blocks"
+        assert target_profile["diagram_requirements"]["minimum_diagram_count"] == 4
         assert quality_rules["minimum_total_chars"] == 12000
         assert quality_rules["section_coverage"] == {"level_1_required": 1.0, "level_2_required": 0.9}
+        assert quality_rules["document_structure"]["require_structured_blocks"] is True
+        assert quality_rules["diagram_requirements"]["required_diagrams"][0]["diagram_id"] == "D1"
         assert [table["table_id"] for table in quality_rules["required_tables"]] == [
             "T1",
             "T2",
@@ -314,6 +344,8 @@ def test_dify_design_converter_normalizes_remote_result(monkeypatch) -> None:
     assert isinstance(result, DesignConverterRunResult)
     assert result.converter["converter_id"] == "requirement-to-sdd-dify-workflow"
     assert result.design_document["title"] == "SX-DataStore 软件设计说明"
+    assert result.design_document["sections"][0]["children"][0]["title"] == "4.1 架构上下文"
+    assert result.design_document["sections"][0]["blocks"][1]["kind"] == "diagram"
     assert result.design_package["package_id"] == "sdp-dify-test"
     assert result.traceability[0]["source_ref"] == "REQ-FR-001"
     assert result.gap_list[0]["severity"] == "warning"
@@ -374,6 +406,37 @@ def test_dify_design_converter_rejects_missing_result_json(monkeypatch) -> None:
     monkeypatch.setattr(adapter_module.httpx, "post", fake_post)
 
     with pytest.raises(ValueError, match="result_json"):
+        adapter.run(_converter_request())
+
+
+def test_dify_design_converter_rejects_flat_text_only_design_document(monkeypatch) -> None:
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        payload = _result_payload()
+        for section in payload["design_document"]["sections"]:
+            section.pop("children", None)
+            section.pop("blocks", None)
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-flat-document",
+                "data": {
+                    "id": "run-flat-document",
+                    "status": "succeeded",
+                    "outputs": {"result_json": json_module.dumps(payload, ensure_ascii=False)},
+                },
+            },
+        )
+
+    json_module = json
+    monkeypatch.setenv("DIFY_BASE_URL", "http://dify.local")
+    monkeypatch.setenv("DIFY_API_KEY", "test-dify-key")
+    registry = DesignConverterPluginRegistry()
+    adapter = load_design_converter_adapter(registry.require("requirement-to-sdd-dify-workflow"))
+    adapter_module = sys.modules["_codefactory_design_converter_requirement_to_sdd_dify_workflow.adapter"]
+    monkeypatch.setattr(adapter_module.httpx, "post", fake_post)
+
+    with pytest.raises(ValueError, match="structured blocks"):
         adapter.run(_converter_request())
 
 

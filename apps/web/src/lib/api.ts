@@ -2315,6 +2315,29 @@ export type P3DesignLabDocumentSection = {
   title: string;
   content: string;
   status?: string;
+  source_refs?: string[];
+  quality?: Record<string, unknown>;
+  blocks?: P3DesignLabDocumentBlock[];
+  children?: P3DesignLabDocumentSection[];
+  subsections?: P3DesignLabDocumentSection[];
+};
+
+export type P3DesignLabDocumentBlock = {
+  block_id?: string;
+  blockId?: string;
+  kind?: string;
+  title?: string;
+  content?: string;
+  diagram_type?: string;
+  diagramType?: string;
+  columns?: string[];
+  rows?: string[][];
+  source_refs?: string[];
+  sourceRefs?: string[];
+  quality_refs?: string[];
+  qualityRefs?: string[];
+  anchor_id?: string;
+  anchorId?: string;
 };
 
 export type P3DesignLabDesignDocument = {
