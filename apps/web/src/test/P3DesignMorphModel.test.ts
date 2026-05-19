@@ -10,6 +10,7 @@ import { buildP3DesignMorphModel } from "../pages/adapters/p3DesignMorphAdapter"
 describe("P3 design morph model", () => {
   test("builds the canonical software design morph chain from decoupled workbench projections", () => {
     const model = buildP3DesignMorphModel(buildWorkbench());
+    const functionTreeStage = model.stages.find((stage) => stage.id === "functionTree");
 
     expect(model.stages.map((stage) => stage.id)).toEqual([
       "requirement",
@@ -40,6 +41,44 @@ describe("P3 design morph model", () => {
     ]);
     expect(model.stages[0].sourceRefs).toContain("P2:frozen_requirement_specification");
     expect(model.stages[2].constraintSummary).toContain("2 个设计模块");
+    expect(functionTreeStage?.functionTree).toEqual(
+      expect.objectContaining({
+        treeId: "function-tree-p3dl-1",
+        title: "空域协同规划软件设计说明功能树",
+        origin: "derived",
+        summary: expect.objectContaining({
+          nodeCount: 5,
+          tracedNodeCount: 5,
+          pendingNodeCount: 0,
+          maxDepth: 3,
+        }),
+        root: expect.objectContaining({
+          nodeId: "function-tree-root",
+          title: "空域协同规划软件设计说明功能树",
+          children: expect.arrayContaining([
+            expect.objectContaining({
+              nodeId: "function-node-module-planning",
+              title: "规划任务管理",
+              nodeType: "module",
+              status: "derived",
+              sourceRefs: ["REQ-1"],
+              designRefs: ["sdd-1"],
+              children: expect.arrayContaining([
+                expect.objectContaining({
+                  nodeId: "function-node-module-planning-sdd-1",
+                  title: "总体架构",
+                  nodeType: "function",
+                }),
+              ]),
+            }),
+            expect.objectContaining({
+              nodeId: "function-node-module-collaboration",
+              title: "协同确认",
+            }),
+          ]),
+        }),
+      }),
+    );
     expect(model.stages[6].constraintSummary).toContain("2 个投影节点");
     expect(model.windows.map((window) => `${window.fromStageId}->${window.toStageId}`)).toEqual([
       "requirement->document",

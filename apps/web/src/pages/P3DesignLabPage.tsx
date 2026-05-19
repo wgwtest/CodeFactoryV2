@@ -1089,6 +1089,10 @@ function MorphObjectDetailInspector({
   selection: DesignMorphSelection;
   workbench: StageDocumentWorkbenchViewModel;
 }) {
+  if (selection.kind === "function_node") {
+    return <FunctionNodeDetailInspector selection={selection} workbench={workbench} />;
+  }
+
   return (
     <>
       <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
@@ -1109,6 +1113,101 @@ function MorphObjectDetailInspector({
       <MorphTraceAndStructureSummary workbench={workbench} />
     </>
   );
+}
+
+function FunctionNodeDetailInspector({
+  selection,
+  workbench,
+}: {
+  selection: DesignMorphSelection;
+  workbench: StageDocumentWorkbenchViewModel;
+}) {
+  const summary = isFunctionTreeSummary(selection.payload?.summary)
+    ? selection.payload.summary
+    : {
+        nodeCount: 0,
+        tracedNodeCount: 0,
+        pendingNodeCount: 0,
+        maxDepth: 0,
+      };
+  const originLabel = toInspectorText(selection.payload?.originLabel);
+  const designRefs = toStringList(selection.payload?.designRefs);
+  const architectureRefs = toStringList(selection.payload?.architectureRefs);
+  const p4Refs = toStringList(selection.payload?.p4Refs);
+  const moduleId = toInspectorText(selection.payload?.moduleId);
+  const pendingAdjustmentSummary = toInspectorText(selection.payload?.pendingAdjustmentSummary);
+
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
+        <Text strong>对象：{selection.title}</Text>
+        {selection.summary ? <Text type="secondary">{selection.summary}</Text> : null}
+        <Space wrap>
+          <Tag>树节点</Tag>
+          {selection.status ? <Tag color="blue">{selection.status}</Tag> : null}
+          {selection.sourceRefs.map((sourceRef) => (
+            <Tag key={sourceRef}>{sourceRef}</Tag>
+          ))}
+        </Space>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>功能树概览</Text>
+        <div className="p3-design-lab-baseline-summary">
+          <Metric label="功能节点" value={`${summary.nodeCount}`} />
+          <Metric label="已追溯" value={`${summary.tracedNodeCount}`} />
+          <Metric label="待确认" value={`${summary.pendingNodeCount}`} />
+          <Metric label="最大层级" value={`${summary.maxDepth}`} />
+        </div>
+        <Text type="secondary">{originLabel}</Text>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>节点详情</Text>
+        <div className="p3-design-morph-relation-facts">
+          <RelationFact label="节点类型" value={toInspectorText(selection.payload?.nodeType)} />
+          <RelationFact label="所属模块" value={moduleId} />
+          <RelationFact label="软设引用" value={designRefs.join("、") || "-"} />
+          <RelationFact label="架构引用" value={architectureRefs.join("、") || "-"} />
+          <RelationFact label="P4 引用" value={p4Refs.join("、") || "-"} />
+        </div>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>待应用调整</Text>
+        <Text type="secondary">{pendingAdjustmentSummary}</Text>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>局部动作</Text>
+        <SelectionActionList actions={selection.actions} />
+      </div>
+
+      <MorphTraceAndStructureSummary workbench={workbench} />
+    </>
+  );
+}
+
+function isFunctionTreeSummary(value: unknown): value is {
+  nodeCount: number;
+  tracedNodeCount: number;
+  pendingNodeCount: number;
+  maxDepth: number;
+} {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.nodeCount === "number" &&
+    typeof candidate.tracedNodeCount === "number" &&
+    typeof candidate.pendingNodeCount === "number" &&
+    typeof candidate.maxDepth === "number"
+  );
+}
+
+function toStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function MorphWorkspaceSummaryInspector({

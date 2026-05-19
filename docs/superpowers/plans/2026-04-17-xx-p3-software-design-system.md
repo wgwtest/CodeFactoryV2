@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 `P3` 落地面向软件级产物的订单驱动软件设计编制与模块工单下发能力，形成“`P2` 正式虚规 -> `P3` 需求规格说明接入与分析 -> `P3` 订单审批 -> 软设草案生成与校核 -> 评审冻结 -> 批次模块工单包 -> 人工推送 `P4`”的最小闭环。
+**Goal:** 为 `P3` 落地面向软件级产物的订单驱动软件设计编制与模块工单下发能力，形成“`P2` 正式需规 -> `P3` 需求规格说明接入与分析 -> `P3` 订单审批 -> 软设草案生成与校核 -> 评审冻结 -> 批次模块工单包 -> 人工推送 `P4`”的最小闭环。
 
 **Architecture:** 后端新增 `software_design` 文件型版本化子域，以 `P3Order / SoftwareDesignBaseline / ModuleWorkorderBatchPackage` 作为核心对象，并通过 `overview / orders / review-threads / workorder-batches` 暴露接口。前端新增独立路由 `/xx-p3`，页面采用和 `XX-P4` 相同的独立驾驶舱壳层，但工作流切换为“模板与规范 -> 需求规格说明接入与分析 -> 订单列表 -> 设计生成与校核 -> 评审协作 -> 模块工单包”。其中，`XX-P2-Sim` 作为 `P3` 上游联调入口，归属到“需求规格说明接入与分析”这条主线，而不是独立于 `P3` 外部的散点页面。
 

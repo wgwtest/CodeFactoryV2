@@ -20,7 +20,7 @@ export function P3OrderQueue({
   onGenerateDraft,
 }: P3OrderQueueProps) {
   return (
-    <Card title="虚规订单列表" style={{ borderRadius: 18 }}>
+    <Card title="需规订单列表" style={{ borderRadius: 18 }}>
       {orders.length === 0 ? (
         <Empty description="当前没有订单" />
       ) : (
