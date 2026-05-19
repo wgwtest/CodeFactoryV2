@@ -150,7 +150,10 @@ class SoftwareDesignV2Service:
         design_session["design_document"] = design_document
         design_session["design_baseline"] = design_baseline
         design_session["workorder_projection"] = workorder_projection
-        design_session["check_result"] = self._check_seed_from_converter_result(result)
+        design_session["check_result"] = self._check_seed_from_converter_result(
+            result,
+            design_baseline.get("function_tree_quality"),
+        )
         design_session["status"] = "draft_ready"
         design_session["conversion"] = self._build_conversion_state(
             "draft_ready",
@@ -240,17 +243,26 @@ class SoftwareDesignV2Service:
         design_package = dict(result.design_package or {})
         sections = list(result.design_document.get("sections") or [])
         modules = self._modules_from_converter_result(result)
+        function_tree = _function_tree_from_converter_result(result, modules=modules)
+        function_tree_quality = _evaluate_function_tree_quality(function_tree)
+        function_tree_quality_findings = list(function_tree_quality.get("findings") or [])
         pending_confirmations = [
             str(item.get("message") or item.get("gap_id") or item)
             for item in result.gap_list
             if str(item.get("severity") or "").lower() in {"blocking", "warning"}
         ]
+        pending_confirmations.extend(
+            str(finding.get("message") or finding.get("finding_id") or finding)
+            for finding in function_tree_quality_findings
+            if str(finding.get("severity") or "").lower() in {"blocking", "warning"}
+        )
         return {
             "baseline_id": design_package.get("package_id") or f"sdb2-{uuid4().hex[:10]}",
             "application_name": app_name,
             "architecture_mode": self._architecture_mode_from_converter_result(result),
             "modules": modules,
-            "function_tree": _function_tree_from_converter_result(result, modules=modules),
+            "function_tree": function_tree,
+            "function_tree_quality": function_tree_quality,
             "traceability": self._traceability_from_converter_result(result),
             "pending_confirmations": pending_confirmations,
             "design_package": design_package,
@@ -265,7 +277,7 @@ class SoftwareDesignV2Service:
                 if isinstance(section, dict)
             ],
             "gap_list": list(result.gap_list),
-            "review_findings": list(result.review_findings),
+            "review_findings": [*list(result.review_findings), *function_tree_quality_findings],
             "converter": dict(result.converter),
             "confidence": result.confidence,
         }
@@ -329,10 +341,19 @@ class SoftwareDesignV2Service:
         return None
 
     @staticmethod
-    def _check_seed_from_converter_result(result: DesignConverterRunResult) -> dict:
+    def _check_seed_from_converter_result(result: DesignConverterRunResult, function_tree_quality: dict | None = None) -> dict:
         quality_summary = dict(result.process_output.get("quality_summary") or {})
         blocking_count = int(quality_summary.get("blocking_count") or 0)
-        warning_count = int(quality_summary.get("warning_count") or len(result.gap_list))
+        function_tree_quality_findings = list((function_tree_quality or {}).get("findings") or [])
+        warning_finding_count = len(
+            [
+                finding
+                for finding in function_tree_quality_findings
+                if str(finding.get("severity") or "").lower() in {"warning", "blocking"}
+            ]
+        )
+        base_warning_count = int(quality_summary.get("warning_count") or len(result.gap_list))
+        warning_count = base_warning_count + warning_finding_count
         passed_count = int(quality_summary.get("passed_count") or 0)
         items = [
             {"severity": "passed", "message": "转换器已生成软件设计说明草稿。"},
@@ -344,6 +365,19 @@ class SoftwareDesignV2Service:
                 {
                     "severity": str(gap.get("severity") or "warning"),
                     "message": str(gap.get("message") or gap.get("gap_id") or gap),
+                }
+            )
+        for finding in function_tree_quality_findings:
+            items.append(
+                {
+                    "item_id": str(finding.get("finding_id") or "P3-FT-QUALITY"),
+                    "severity": str(finding.get("severity") or "warning"),
+                    "title": "功能树质量检查",
+                    "message": str(finding.get("message") or finding.get("finding_id") or finding),
+                    "description": str(finding.get("message") or finding.get("finding_id") or finding),
+                    "scope": "function_tree",
+                    "anchor_id": str(finding.get("anchor_id") or "function-tree-root"),
+                    "suggested_action": str(finding.get("suggested_action") or ""),
                 }
             )
         return {
@@ -1046,6 +1080,117 @@ def _module_nodes_from_function_tree(root: object) -> list[dict]:
             )
         stack.extend(node.get("children") or [])
     return module_nodes
+
+
+def _evaluate_function_tree_quality(function_tree: dict) -> dict:
+    root = function_tree.get("root")
+    module_nodes = _direct_function_tree_children_by_type(root, "module")
+    metrics = {
+        "module_count": len(module_nodes),
+        "capability_count": _count_function_tree_nodes_by_type(root, "capability"),
+        "function_count": _count_function_tree_nodes_by_type(root, "function"),
+        "single_chain_module_count": 0,
+        "mechanical_chain_module_count": 0,
+    }
+    if not module_nodes:
+        return {"status": "not_applicable", "metrics": metrics, "findings": []}
+
+    single_chain_modules = []
+    mechanical_chain_modules = []
+    for module in module_nodes:
+        if _is_single_chain_function_tree_module(module):
+            single_chain_modules.append(module)
+            if _is_mechanical_function_tree_chain(module):
+                mechanical_chain_modules.append(module)
+
+    metrics["single_chain_module_count"] = len(single_chain_modules)
+    metrics["mechanical_chain_module_count"] = len(mechanical_chain_modules)
+    mechanical_ratio = len(single_chain_modules) / len(module_nodes)
+    mechanical_chain_ratio = len(mechanical_chain_modules) / len(module_nodes)
+    if len(module_nodes) >= 2 and mechanical_ratio >= 0.8 and mechanical_chain_ratio >= 0.8:
+        return {
+            "status": "warning",
+            "metrics": metrics,
+            "findings": [
+                {
+                    "finding_id": "P3-FT-QUALITY-MECHANICAL-SHALLOW",
+                    "severity": "warning",
+                    "target": "功能树",
+                    "anchor_id": str(function_tree.get("tree_id") or root.get("node_id") or "function-tree-root"),
+                    "message": "功能树呈现机械占位结构：多数模块只有一个泛化能力，且能力下只有一个“处理XX业务”类功能。",
+                    "suggested_action": "要求转换器按需规条款和设计对象重新拆解模块、能力、功能、接口、数据、状态和质量约束节点。",
+                    "requires_human_decision": True,
+                }
+            ],
+        }
+
+    return {"status": "passed", "metrics": metrics, "findings": []}
+
+
+def _direct_function_tree_children_by_type(root: object, node_type: str) -> list[dict]:
+    if not isinstance(root, dict):
+        return []
+    return [
+        child
+        for child in root.get("children") or []
+        if isinstance(child, dict) and str(child.get("node_type") or child.get("type") or "") == node_type
+    ]
+
+
+def _count_function_tree_nodes_by_type(root: object, node_type: str) -> int:
+    return sum(
+        1
+        for node in _walk_function_tree_nodes(root)
+        if str(node.get("node_type") or node.get("type") or "") == node_type
+    )
+
+
+def _walk_function_tree_nodes(root: object):
+    if not isinstance(root, dict):
+        return
+    yield root
+    for child in root.get("children") or []:
+        yield from _walk_function_tree_nodes(child)
+
+
+def _is_single_chain_function_tree_module(module: dict) -> bool:
+    children = [child for child in module.get("children") or [] if isinstance(child, dict)]
+    if len(children) != 1:
+        return False
+    capability = children[0]
+    if str(capability.get("node_type") or capability.get("type") or "") != "capability":
+        return False
+    capability_children = [child for child in capability.get("children") or [] if isinstance(child, dict)]
+    return len(capability_children) == 1 and str(capability_children[0].get("node_type") or capability_children[0].get("type") or "") == "function"
+
+
+def _is_mechanical_function_tree_chain(module: dict) -> bool:
+    if not _is_single_chain_function_tree_module(module):
+        return False
+    capability = [child for child in module.get("children") or [] if isinstance(child, dict)][0]
+    function = [child for child in capability.get("children") or [] if isinstance(child, dict)][0]
+    module_title = _strip_function_tree_suffix(str(module.get("title") or ""))
+    capability_title = _strip_function_tree_suffix(str(capability.get("title") or ""))
+    function_title = str(function.get("title") or "").strip()
+    descriptions = " ".join(
+        str(node.get("description") or "")
+        for node in [module, capability, function]
+    )
+    return (
+        bool(module_title and capability_title == module_title)
+        or function_title.startswith("处理")
+        or function_title.endswith("业务")
+        or "待细化功能项" in descriptions
+        or "核心业务能力" in descriptions
+    )
+
+
+def _strip_function_tree_suffix(title: str) -> str:
+    normalized = title.strip()
+    for suffix in ["模块", "能力", "功能"]:
+        if normalized.endswith(suffix):
+            return normalized[: -len(suffix)]
+    return normalized
 
 
 def _unique_strings(values) -> list[str]:

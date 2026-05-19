@@ -799,6 +799,27 @@ API 设计
 
 如果无法拆解到功能项，只允许输出模块骨架，并在 `review_findings` 中说明“功能树仅有模块骨架，待功能拆解”；不得用软设章节列表伪造 `root.children`。
 
+功能树不得用机械单链结构充当真实拆解。以下形态视为低质量占位输出：
+
+```text
+某模块
+  -> 某模块能力
+    -> 处理某模块业务
+```
+
+判断口径：
+
+- 多数 `module` 节点下只有 1 个 `capability`，且该 `capability` 下只有 1 个 `function`。
+- `capability.title` 只是模块名加“能力”，没有表达真实能力分组。
+- `function.title` 使用“处理XX业务”“XX业务处理”“XX功能项”等泛化标题。
+- `description` 使用“承接XX模块下的核心业务能力”“从需求对象推导的待细化功能项”等占位说明。
+
+正确要求：
+
+- 当需规条款能支持拆解时，一个模块下应拆出多个有业务含义的能力、功能、接口、数据、状态或质量节点。
+- 功能节点标题应来自具体需求动作、业务对象、状态变化、接口行为或质量约束，例如“提交规划任务”“比对空域占用冲突”“记录协同确认意见”。
+- 如果输入信息不足，只允许输出模块骨架并写入 `review_findings`，不得生成“XX能力 -> 处理XX业务”的伪拆解。
+
 ### 12.3 `traceability`
 
 每项建议包含：
@@ -909,8 +930,9 @@ recommended_timeout_seconds:
 - `result_json.design_document.sections` 至少包含目标软设主要章节。
 - `result_json.design_package` 至少包含文档、功能树、架构、API、流程、质量门和 P4 候选投影。
 - `result_json.design_package.functional_tree_projection.root` 存在。
-- `functional_tree_projection.root` 至少包含一个 `module` 节点，建议包含 `capability` 或 `function` 节点。
+- `functional_tree_projection.root` 至少包含一个 `module` 节点；当需规存在可拆解功能时，必须包含真实 `capability`、`function`、`interface`、`data`、`state` 或 `quality` 子节点。
 - 功能树主体不得把软设章节标题当作节点标题。
+- 功能树主体不得出现“每个模块只有一个XX能力、每个能力只有一个处理XX业务”的机械占位结构；信息不足时应降级为模块骨架并写入 `review_findings`。
 - `result_json.traceability` 非空。
 - `result_json.gap_list` 和 `result_json.review_findings` 字段存在。
 - workflow 不宣称结果已冻结。
