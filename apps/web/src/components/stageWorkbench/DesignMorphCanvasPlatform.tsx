@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
@@ -174,6 +175,14 @@ type SelectableDocumentSection = {
   title: string;
   status?: string;
   blocks: StandardDocumentBlockViewModel[];
+};
+
+type DocumentOutlineEntry = {
+  sectionId: string;
+  title: string;
+  level: number;
+  firstBlock?: StandardDocumentBlockViewModel;
+  section: SelectableDocumentSection;
 };
 
 type TrackViewportFrameInput = {
@@ -1160,10 +1169,14 @@ function DocumentStageObject({
   selectedBlockId: string | null;
   viewport: CanvasViewportState;
 }) {
-  const document = item.document;
-  if (!document) {
+  const stageDocument = item.document;
+  const [outlineCollapsed, setOutlineCollapsed] = useState(false);
+  if (!stageDocument) {
     return null;
   }
+
+  const outlineEntries = buildDocumentOutlineEntries(stageDocument.structuredSections);
+  const showDocumentOutline = item.entityType === "software_design_document" && outlineEntries.length > 0;
 
   const objectStyle = {
     transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
@@ -1214,31 +1227,96 @@ function DocumentStageObject({
           </span>
         </div>
       </header>
-      <div className="design-morph-object-body">
+      <div
+        className="design-morph-object-body"
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <div
+          className={[
+            "design-morph-document-workspace",
+            showDocumentOutline ? "has-document-outline" : "",
+            showDocumentOutline && outlineCollapsed ? "is-outline-collapsed" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {showDocumentOutline ? (
+            <aside
+              aria-label="软设文档目录"
+              className="design-morph-document-outline"
+              data-testid="software-design-document-outline"
+            >
+              <div className="design-morph-document-outline-header">
+                {!outlineCollapsed ? <span>目录</span> : null}
+                <button
+                  aria-label={outlineCollapsed ? "展开软设目录" : "折叠软设目录"}
+                  className="design-morph-document-outline-toggle"
+                  type="button"
+                  onClick={() => setOutlineCollapsed((value) => !value)}
+                >
+                  {outlineCollapsed ? "目" : "‹"}
+                </button>
+              </div>
+              {!outlineCollapsed ? (
+                <ol className="design-morph-document-outline-list">
+                  {outlineEntries.map((entry, index) => (
+                    <li key={entry.sectionId}>
+                      <button
+                        aria-label={`${index + 1} ${entry.title}`}
+                        className="design-morph-document-outline-item"
+                        style={{ "--outline-indent": `${(entry.level - 1) * 10}px` } as CSSProperties}
+                        type="button"
+                        onClick={() => {
+                          const targetBlock = entry.firstBlock;
+                          if (targetBlock) {
+                            onSelectBlock(item, targetBlock, entry.section);
+                            requestAnimationFrame(() => {
+                              const targetElement = globalThis.document.getElementById(
+                                targetBlock.anchorId ?? targetBlock.blockId,
+                              );
+                              if (typeof targetElement?.scrollIntoView === "function") {
+                                targetElement.scrollIntoView({ block: "center", behavior: "smooth" });
+                              }
+                            });
+                          }
+                        }}
+                      >
+                        <span>{index + 1}</span>
+                        <strong>{entry.title}</strong>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </aside>
+          ) : null}
         <div className="stage-document-scroll design-morph-object-scroll" data-testid="document-stage-scroll">
           <div className="design-morph-object-paper" data-testid="document-stage-paper">
             <A4DocumentSurface
-              ariaLabel={document.ariaLabel}
-              busyState={document.busyState}
-              emptyDescription={document.emptyDescription}
-              footerLeft={document.footerLeft}
-              footerRight={document.footerRight}
-              headerLeft={document.headerLeft}
-              headerRight={document.headerRight}
+              ariaLabel={stageDocument.ariaLabel}
+              busyState={stageDocument.busyState}
+              emptyDescription={stageDocument.emptyDescription}
+              footerLeft={stageDocument.footerLeft}
+              footerRight={stageDocument.footerRight}
+              headerLeft={stageDocument.headerLeft}
+              headerRight={stageDocument.headerRight}
               onSelectBlock={(block, section) => onSelectBlock(item, block, section)}
-              sections={document.sections.map((section) => ({
+              sections={stageDocument.sections.map((section) => ({
                 section_id: section.sectionId,
                 title: section.title,
                 content: section.content,
                 status: section.status,
               }))}
-              structuredSections={document.structuredSections}
+              structuredSections={stageDocument.structuredSections}
               selectedBlockId={selectedBlockId ?? undefined}
               scrollMode="parent"
-              subtitle={document.subtitle}
-              title={document.title}
+              subtitle={stageDocument.subtitle}
+              title={stageDocument.title}
             />
           </div>
+        </div>
         </div>
       </div>
       <button
@@ -1462,6 +1540,35 @@ function collectFunctionTreeNodeIds(root: FunctionTreeNodeViewModel | null): str
     return [];
   }
   return [root.nodeId, ...root.children.flatMap((child) => collectFunctionTreeNodeIds(child))];
+}
+
+function buildDocumentOutlineEntries(
+  sections: StandardDocumentSectionViewModel[] | undefined,
+  level = 1,
+): DocumentOutlineEntry[] {
+  if (!sections?.length) {
+    return [];
+  }
+  return sections.flatMap((section) => {
+    const selectableSection = {
+      section_id: section.sectionId,
+      title: section.title,
+      status: section.status,
+      blocks: section.blocks,
+    };
+    const current: DocumentOutlineEntry = {
+      sectionId: section.sectionId,
+      title: section.title,
+      level,
+      firstBlock: findFirstDocumentBlock(section),
+      section: selectableSection,
+    };
+    return [current, ...buildDocumentOutlineEntries(section.children, level + 1)];
+  });
+}
+
+function findFirstDocumentBlock(section: StandardDocumentSectionViewModel): StandardDocumentBlockViewModel | undefined {
+  return section.blocks[0] ?? section.children?.map(findFirstDocumentBlock).find(Boolean);
 }
 
 function buildFunctionTreeNodeMap(root: FunctionTreeNodeViewModel | null): Map<string, FunctionTreeNodeViewModel> {

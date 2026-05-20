@@ -215,6 +215,10 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByRole("tab", { name: "能力" })).toHaveAttribute("aria-selected", "true");
   expect(within(inspector).getByRole("tab", { name: "共性信息" })).toHaveAttribute("aria-selected", "false");
   expect(within(inspector).getByText("转换反馈")).toBeInTheDocument();
+  expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
+  expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
+  expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
+  expect(within(inspector).queryByRole("tree", { name: "P4 工单投影树" })).not.toBeInTheDocument();
   expect(within(inspector).queryByText("基类字段：标识信息")).not.toBeInTheDocument();
   fireEvent.click(within(inspector).getByRole("tab", { name: "共性信息" }));
   expect(within(inspector).getByRole("tab", { name: "共性信息" })).toHaveAttribute("aria-selected", "true");
@@ -266,7 +270,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   await waitFor(() => expect(screen.getAllByText(newDesignTitle).length).toBeGreaterThanOrEqual(1));
   expect(within(workspace).getByTestId("design-morph-inspector")).toBeInTheDocument();
   expect(within(workspace).getByText("当前选中对象")).toBeInTheDocument();
-  expect(within(workspace).getByText("追溯链")).toBeInTheDocument();
+  expect(within(workspace).getByText("当前对象追溯")).toBeInTheDocument();
   expect(within(workspace).getByText("关系：软设文档 -> 功能树")).toBeInTheDocument();
   expect(within(workspace).getAllByText(new RegExp(newVersionLabel)).length).toBeGreaterThanOrEqual(1);
   const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
@@ -274,6 +278,9 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
   expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
   expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
+  expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
+  expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
+  expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
   const functionTreeObject = within(morphPlatform).getByTestId("stage-object-functionTree");
   expect(functionTreeObject).toHaveClass("is-function-tree-stage-object");
   expect(within(functionTreeObject).getByText("规划任务管理")).toBeInTheDocument();
@@ -295,6 +302,9 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("只看当前子树")).toBeInTheDocument();
   expect(within(inspector).getByText("只看未追溯")).toBeInTheDocument();
   expect(within(inspector).getByText("只看待确认")).toBeInTheDocument();
+  expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
+  expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
+  expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
   expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
   fireEvent.click(within(morphPlatform).getByRole("button", { name: "上一窗口" }));
   expect(within(morphPlatform).getByText("Canvas 窗口：需规文档 -> 软设文档")).toBeInTheDocument();
@@ -315,7 +325,8 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(morphPlatform).getByText("Canvas 窗口：展示形态 -> P4 投影")).toBeInTheDocument();
   expect(within(workspace).getAllByText("P4-WO-StageLab-Workbench").length).toBeGreaterThanOrEqual(1);
   expect(within(workspace).getAllByText("B. P3 适配工具包").length).toBeGreaterThanOrEqual(1);
-  expect(screen.getByText("投影树")).toBeInTheDocument();
+  expect(within(morphPlatform).getByText("P4 投影")).toBeInTheDocument();
+  expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
 
   fireEvent.click(within(navigation).getByRole("tab", { name: /需规输入/ }));
   const inputView = screen.getByTestId("p3-design-lab-input-view");

@@ -1111,7 +1111,7 @@ function StageRelationInspector({
         </div>
       </div>
 
-      <MorphTraceAndStructureSummary workbench={workbench} />
+      <SelectedObjectTraceSummary selection={selection} />
     </>
   );
 }
@@ -1217,7 +1217,7 @@ function MorphObjectDetailInspector({
         <Text strong>局部动作</Text>
         <SelectionActionList actions={selection.actions} />
       </div>
-      <MorphTraceAndStructureSummary workbench={workbench} />
+      <SelectedObjectTraceSummary selection={selection} />
     </>
   );
 }
@@ -1290,7 +1290,7 @@ function FunctionNodeDetailInspector({
         <SelectionActionList actions={selection.actions} />
       </div>
 
-      <MorphTraceAndStructureSummary workbench={workbench} />
+      <SelectedObjectTraceSummary selection={selection} />
     </>
   );
 }
@@ -1331,7 +1331,7 @@ function MorphWorkspaceSummaryInspector({
         <Text type="secondary">当前窗口：{activeWindowTitle}</Text>
         <Text type="secondary">版本：{workbench.product.versionLabel}</Text>
       </div>
-      <MorphTraceAndStructureSummary workbench={workbench} />
+      <WorkspaceTraceAndStructureSummary workbench={workbench} />
     </>
   );
 }
@@ -1522,7 +1522,20 @@ function SelectionActionList({ actions }: { actions: DesignMorphSelection["actio
   );
 }
 
-function MorphTraceAndStructureSummary({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
+function SelectedObjectTraceSummary({ selection }: { selection: DesignMorphSelection }) {
+  return (
+    <div className="p3-design-morph-inspector-section">
+      <Text strong>当前对象追溯</Text>
+      <div className="p3-design-morph-relation-facts">
+        <RelationFact label="来源" value={formatRefs(selection.sourceRefs) || "未绑定来源"} />
+        <RelationFact label="下游" value={formatRefs(selection.qualityRefs ?? []) || "跟随当前软设对象"} />
+        <RelationFact label="状态" value={selection.status ?? "待处理"} />
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceTraceAndStructureSummary({ workbench }: { workbench: StageDocumentWorkbenchViewModel }) {
   return (
     <>
       <div className="p3-design-morph-inspector-section">

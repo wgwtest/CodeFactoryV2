@@ -171,6 +171,128 @@
   background: #f5f9fd;
 }
 
+.design-morph-document-workspace {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.design-morph-document-workspace.has-document-outline {
+  grid-template-columns: 136px minmax(0, 1fr);
+}
+
+.design-morph-document-workspace.has-document-outline.is-outline-collapsed {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.design-morph-document-outline {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 28px minmax(0, 1fr);
+  border-right: 1px solid #d3dfdc;
+  background: linear-gradient(180deg, #fbfcfb 0%, #eef5f2 100%);
+}
+
+.design-morph-document-outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 6px 0 8px;
+  border-bottom: 1px solid #dce5e2;
+  color: #28423f;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.design-morph-document-outline-toggle {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #b8c9c5;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #2f6f72;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.design-morph-document-outline-list {
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow: auto;
+}
+
+.design-morph-document-outline-list li + li {
+  margin-top: 4px;
+}
+
+.design-morph-document-outline-item {
+  width: 100%;
+  min-height: 26px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px 4px calc(6px + var(--outline-indent, 0px));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #31465a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.design-morph-document-outline-item:hover,
+.design-morph-document-outline-item:focus-visible {
+  border-color: rgba(47, 119, 189, 0.3);
+  background: rgba(47, 119, 189, 0.08);
+  outline: 0;
+}
+
+.design-morph-document-outline-item span {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #2f6f72;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.design-morph-document-outline-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #203330;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-document-workspace.is-outline-collapsed .design-morph-document-outline {
+  grid-template-rows: 1fr;
+}
+
+.design-morph-document-workspace.is-outline-collapsed .design-morph-document-outline-header {
+  justify-content: center;
+  padding: 4px;
+  border-bottom: 0;
+  writing-mode: vertical-rl;
+}
+
 .design-morph-object-scroll {
   height: 100%;
   min-height: 0;
