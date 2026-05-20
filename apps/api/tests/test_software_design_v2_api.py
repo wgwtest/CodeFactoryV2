@@ -1217,8 +1217,12 @@ def test_software_design_v2_warns_when_modules_are_not_explained_as_vertical_sli
     assert session["design_baseline"]["module_designs"][0]["module_id"] == "planning-task"
     assert session["design_baseline"]["review_findings"][0]["finding_id"] == "P3-MODULE-DESIGN-UNDEREXPLAINED"
     assert "模块纵切片设计不足" in session["design_baseline"]["pending_confirmations"][0]
-    assert session["check_result"]["warning_count"] == 1
-    assert session["check_result"]["items"][-1]["scope"] == "module_design"
+    assert session["check_result"]["warning_count"] == 2
+    assert [
+        item["scope"]
+        for item in session["check_result"]["items"]
+        if item.get("scope") in {"module_design", "design_document"}
+    ] == ["module_design", "design_document"]
 
 
 def test_software_design_v2_accepts_complete_module_vertical_slices(monkeypatch) -> None:
@@ -1333,6 +1337,104 @@ def test_software_design_v2_accepts_complete_module_vertical_slices(monkeypatch)
         "校验任务范围",
     ]
     assert not [finding for finding in session["design_baseline"]["review_findings"] if finding["target"] == "模块设计"]
+
+
+def test_software_design_v2_warns_when_document_outline_uses_frontend_backend_as_primary_sections(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {"section_id": "sdd-01", "title": "1. 文档目的与设计口径", "content": "设计口径。"},
+                        {"section_id": "sdd-02", "title": "2. 系统定位", "content": "系统定位。"},
+                        {"section_id": "sdd-03", "title": "3. 业务目标与边界", "content": "业务边界。"},
+                        {"section_id": "sdd-04", "title": "4. 总体架构", "content": "总体架构。"},
+                        {"section_id": "sdd-05", "title": "5. 前端软件设计", "content": "前端工作台。"},
+                        {"section_id": "sdd-06", "title": "6. 后端软件设计", "content": "后端服务。"},
+                        {"section_id": "sdd-07", "title": "7. 核心对象模型", "content": "对象模型。"},
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-DOC-OUTLINE-HORIZONTAL",
+                    "status": "draft",
+                    "document_projection": {},
+                    "module_designs": [
+                        _complete_module_design("planning-task", "规划任务管理"),
+                        _complete_module_design("space-analysis", "空间分析"),
+                        _complete_module_design("collaboration-confirm", "协同确认"),
+                    ],
+                    "functional_tree_projection": {
+                        "modules": [
+                            {"module_id": "planning-task", "name": "规划任务管理", "source_refs": ["REQ-FR-001"]},
+                            {"module_id": "space-analysis", "name": "空间分析", "source_refs": ["REQ-FR-002"]},
+                            {"module_id": "collaboration-confirm", "name": "协同确认", "source_refs": ["REQ-FR-003"]},
+                        ]
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "横切目录质量检测软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    assert session["design_baseline"]["module_design_quality"]["status"] == "passed"
+    quality = session["design_baseline"]["document_outline_quality"]
+    assert quality["status"] == "warning"
+    assert quality["metrics"]["module_section_count"] == 0
+    assert quality["metrics"]["frontend_backend_section_count"] == 2
+    assert session["design_baseline"]["review_findings"][0]["finding_id"] == "P3-DOC-OUTLINE-HORIZONTAL-SPLIT"
+    assert "软设正文目录" in session["design_baseline"]["pending_confirmations"][0]
+    assert session["check_result"]["warning_count"] == 1
+    assert session["check_result"]["items"][-1]["scope"] == "design_document"
 
 
 def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> None:
