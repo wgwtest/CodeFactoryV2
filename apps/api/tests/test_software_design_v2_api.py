@@ -156,6 +156,34 @@ def _create_frozen_requirement_authoring_document(client: TestClient) -> dict:
     return frozen.json()
 
 
+def _complete_module_design(module_id: str, name: str) -> dict:
+    module_label = name.removesuffix("模块")
+    service_name = f"{module_id.title().replace('-', '')}Service"
+    data_name = f"{module_id.title().replace('-', '')}Record"
+    return {
+        "module_id": module_id,
+        "name": name,
+        "responsibility": f"负责{module_label}的业务对象管理、状态留痕和规则校验。",
+        "source_refs": ["REQ-FR-001"],
+        "owned_objects": [module_label, f"{module_label}状态"],
+        "capabilities": [
+            {
+                "name": f"{module_label}登记与校验",
+                "functions": [f"创建{module_label}", f"校验{module_label}范围"],
+                "interfaces": [f"POST /{module_id}"],
+                "states": ["draft", "submitted", "checked"],
+            }
+        ],
+        "frontend_interactions": [f"{name}表单", f"{name}校验提示"],
+        "backend_services": [service_name],
+        "data_objects": [data_name],
+        "interfaces": [f"POST /{module_id}"],
+        "state_transitions": ["draft -> submitted -> checked"],
+        "quality_constraints": ["关键状态变化必须审计留痕"],
+        "traceability": ["REQ-FR-001"],
+    }
+
+
 def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None:
     client = TestClient(create_app())
     frozen = _create_frozen_requirement_authoring_document(client)
@@ -827,6 +855,484 @@ def test_software_design_v2_preserves_converter_function_tree_projection(monkeyp
     assert function_tree["root"]["children"][0]["title"] == "资源目录模块"
     assert function_tree["root"]["children"][0]["children"][0]["title"] == "资源检索能力"
     assert function_tree["root"]["children"][0]["children"][0]["design_refs"] == ["sdd-06-01"]
+
+
+def test_software_design_v2_warns_on_mechanical_placeholder_function_tree(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            modules = ["规划任务管理模块", "空间分析模块", "协同确认模块"]
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "modules",
+                            "title": "6. 模块划分",
+                            "content": "转换器返回机械占位功能树。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        }
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-MECHANICAL-FUNCTION-TREE",
+                    "status": "draft",
+                    "document_projection": {},
+                    "module_designs": [
+                        _complete_module_design("module-1", "规划任务管理模块"),
+                        _complete_module_design("module-2", "空间分析模块"),
+                        _complete_module_design("module-3", "协同确认模块"),
+                    ],
+                    "functional_tree_projection": {
+                        "tree_id": "ft-mechanical",
+                        "title": "空域协同规划软件功能树",
+                        "root": {
+                            "node_id": "ft-root",
+                            "title": "空域协同规划软件",
+                            "node_type": "root",
+                            "children": [
+                                {
+                                    "node_id": f"module-{index}",
+                                    "title": module_title,
+                                    "node_type": "module",
+                                    "module_id": f"module-{index}",
+                                    "source_refs": ["REQ-FR-001"],
+                                    "children": [
+                                        {
+                                            "node_id": f"capability-{index}",
+                                            "title": f"{module_title.removesuffix('模块')}能力",
+                                            "node_type": "capability",
+                                            "source_refs": ["REQ-FR-001"],
+                                            "description": f"承接{module_title}下的核心业务能力。",
+                                            "children": [
+                                                {
+                                                    "node_id": f"function-{index}",
+                                                    "title": f"处理{module_title.removesuffix('模块')}业务",
+                                                    "node_type": "function",
+                                                    "source_refs": ["REQ-FR-001"],
+                                                    "description": "从需求对象推导的待细化功能项。",
+                                                    "children": [],
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                                for index, module_title in enumerate(modules, start=1)
+                            ],
+                        },
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[
+                    {
+                        "source_ref": "REQ-FR-001",
+                        "target_type": "module",
+                        "target_ref": "module-1",
+                        "target_title": "规划任务管理模块",
+                    }
+                ],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={"raw_workflow_trace": {"mechanical_function_tree": True}},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "机械占位功能树检测软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    quality = session["design_baseline"]["function_tree_quality"]
+    assert quality["status"] == "warning"
+    assert quality["metrics"]["module_count"] == 3
+    assert quality["metrics"]["single_chain_module_count"] == 3
+    assert quality["metrics"]["mechanical_chain_module_count"] == 3
+    assert quality["findings"][0]["finding_id"] == "P3-FT-QUALITY-MECHANICAL-SHALLOW"
+    assert session["design_baseline"]["review_findings"][0]["target"] == "功能树"
+    assert "机械占位结构" in session["design_baseline"]["pending_confirmations"][0]
+    assert session["check_result"]["warning_count"] == 1
+    assert session["check_result"]["items"][-1]["scope"] == "function_tree"
+
+
+def test_software_design_v2_adds_function_tree_quality_warning_to_converter_warnings(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [],
+                },
+                design_package={
+                    "package_id": "SDP-MECHANICAL-WITH-WARNING",
+                    "status": "draft",
+                    "document_projection": {},
+                    "module_designs": [
+                        _complete_module_design("module-1", "任务模块"),
+                        _complete_module_design("module-2", "空间模块"),
+                    ],
+                    "functional_tree_projection": {
+                        "root": {
+                            "node_id": "ft-root",
+                            "title": "功能树",
+                            "node_type": "root",
+                            "children": [
+                                {
+                                    "node_id": f"module-{index}",
+                                    "title": module_title,
+                                    "node_type": "module",
+                                    "children": [
+                                        {
+                                            "node_id": f"capability-{index}",
+                                            "title": f"{module_title}能力",
+                                            "node_type": "capability",
+                                            "children": [
+                                                {
+                                                    "node_id": f"function-{index}",
+                                                    "title": f"处理{module_title}业务",
+                                                    "node_type": "function",
+                                                    "children": [],
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                                for index, module_title in enumerate(["任务", "空间"], start=1)
+                            ],
+                        },
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[],
+                gap_list=[
+                    {
+                        "gap_id": "P3-GAP-EXISTING",
+                        "severity": "warning",
+                        "message": "已有转换器警告。",
+                    }
+                ],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 1, "passed_count": 3}},
+                raw_output={},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "功能树警告计数测试软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    assert session["check_result"]["warning_count"] == 2
+    assert [item["scope"] for item in session["check_result"]["items"] if item.get("scope") == "function_tree"] == ["function_tree"]
+
+
+def test_software_design_v2_warns_when_modules_are_not_explained_as_vertical_slices(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "frontend",
+                            "title": "7. 前端软件设计",
+                            "content": "前端采用 B/S 架构，提供任务管理和空间分析页面。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        },
+                        {
+                            "section_id": "backend",
+                            "title": "8. 后端软件设计",
+                            "content": "后端采用统一服务，提供任务、空间和协同服务。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        },
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-MODULE-SHALLOW",
+                    "status": "draft",
+                    "document_projection": {},
+                    "module_designs": [
+                        {
+                            "module_id": "planning-task",
+                            "name": "规划任务管理模块",
+                            "responsibility": "负责规划任务管理。",
+                            "source_refs": ["REQ-FR-001"],
+                        },
+                        {
+                            "module_id": "space-analysis",
+                            "name": "空间分析模块",
+                            "responsibility": "负责空间分析。",
+                            "source_refs": ["REQ-FR-002"],
+                        },
+                    ],
+                    "functional_tree_projection": {
+                        "modules": [
+                            {"module_id": "planning-task", "name": "规划任务管理模块", "source_refs": ["REQ-FR-001"]},
+                            {"module_id": "space-analysis", "name": "空间分析模块", "source_refs": ["REQ-FR-002"]},
+                        ]
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "模块纵切片质量检测软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    quality = session["design_baseline"]["module_design_quality"]
+    assert quality["status"] == "warning"
+    assert quality["metrics"]["module_design_count"] == 2
+    assert quality["metrics"]["underexplained_module_count"] == 2
+    assert quality["metrics"]["frontend_backend_section_count"] == 2
+    assert session["design_baseline"]["module_designs"][0]["module_id"] == "planning-task"
+    assert session["design_baseline"]["review_findings"][0]["finding_id"] == "P3-MODULE-DESIGN-UNDEREXPLAINED"
+    assert "模块纵切片设计不足" in session["design_baseline"]["pending_confirmations"][0]
+    assert session["check_result"]["warning_count"] == 1
+    assert session["check_result"]["items"][-1]["scope"] == "module_design"
+
+
+def test_software_design_v2_accepts_complete_module_vertical_slices(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    class FakeDesignConverterAdapter:
+        def run(self, request) -> DesignConverterRunResult:
+            return DesignConverterRunResult(
+                protocol_version=request.protocol_version,
+                converter={
+                    "converter_id": "requirement-to-sdd-dify-workflow",
+                    "converter_type": "dify_workflow",
+                    "observability_level": "limited",
+                },
+                design_document={
+                    "title": request.session["design_title"],
+                    "version_label": request.session["version_label"],
+                    "status": "draft",
+                    "sections": [
+                        {
+                            "section_id": "module-planning",
+                            "title": "6.1 规划任务管理模块",
+                            "content": "围绕规划任务对象说明职责、能力、页面、服务、数据、接口、状态和追溯。",
+                            "status": "generated",
+                            "source_refs": ["REQ-FR-001"],
+                        }
+                    ],
+                },
+                design_package={
+                    "package_id": "SDP-MODULE-COMPLETE",
+                    "status": "draft",
+                    "document_projection": {},
+                    "module_designs": [
+                        {
+                            "module_id": "planning-task",
+                            "name": "规划任务管理模块",
+                            "responsibility": "负责规划任务登记、校验、提交和状态留痕。",
+                            "source_refs": ["REQ-FR-001"],
+                            "owned_objects": ["规划任务", "任务附件", "任务状态"],
+                            "capabilities": [
+                                {
+                                    "name": "任务登记与校验",
+                                    "functions": ["创建规划任务", "校验规划时段", "校验任务范围"],
+                                    "interfaces": ["POST /planning-tasks"],
+                                    "states": ["draft", "submitted", "checked"],
+                                }
+                            ],
+                            "frontend_interactions": ["任务创建表单", "任务校验结果提示"],
+                            "backend_services": ["PlanningTaskService"],
+                            "data_objects": ["PlanningTask", "PlanningTaskAttachment"],
+                            "state_transitions": ["draft -> submitted -> checked"],
+                            "quality_constraints": ["任务状态变化必须审计留痕"],
+                            "traceability": ["REQ-FR-001"],
+                        }
+                    ],
+                    "functional_tree_projection": {
+                        "modules": [
+                            {"module_id": "planning-task", "name": "规划任务管理模块", "source_refs": ["REQ-FR-001"]}
+                        ]
+                    },
+                    "layered_architecture_projection": {},
+                    "technical_implementation_projection": {},
+                    "api_projection": {},
+                    "workflow_projection": {},
+                    "quality_gate_projection": {},
+                    "p4_workorder_projection": {},
+                },
+                traceability=[],
+                gap_list=[],
+                review_findings=[],
+                workorder_projection_candidate={},
+                process_output={"quality_summary": {"blocking_count": 0, "warning_count": 0, "passed_count": 3}},
+                raw_output={},
+                confidence="medium",
+                annotations=[],
+                risks=[],
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "load_design_converter_adapter",
+        lambda *_args, **_kwargs: FakeDesignConverterAdapter(),
+        raising=False,
+    )
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "完整模块纵切片软设",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+
+    assert converted.status_code == 200
+    session = converted.json()
+    quality = session["design_baseline"]["module_design_quality"]
+    assert quality["status"] == "passed"
+    assert quality["metrics"]["complete_module_count"] == 1
+    assert session["design_baseline"]["module_designs"][0]["capabilities"][0]["functions"] == [
+        "创建规划任务",
+        "校验规划时段",
+        "校验任务范围",
+    ]
+    assert not [finding for finding in session["design_baseline"]["review_findings"] if finding["target"] == "模块设计"]
 
 
 def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> None:

@@ -698,7 +698,56 @@ End / Output 节点必须输出：
 
 功能树是业务模块、能力、功能、接口、数据、状态和质量约束的设计对象树，不是软件设计说明目录。
 
-结构要求：
+功能树应优先由 `design_package.module_designs` 投影生成，不应直接从“前端软件设计”“后端软件设计”“API 设计”等横切章节标题生成。
+
+### 12.2.1 `design_package.module_designs`
+
+`module_designs` 是软设正文和功能树之间的结构化事实源。转换器必须先把每个业务功能模块拆成纵切片，再由纵切片生成软设正文、功能树、接口说明、状态说明和 P4 工单投影。
+
+模块主拆解口径必须是业务功能模块，不是前端/后端技术分层。前端、后端、数据、接口、状态和质量约束应作为每个功能模块内部的实现侧面出现；如需保留“前端软件设计”“后端软件设计”章节，只能作为横切技术说明，不得替代功能模块展开。
+
+模块设计结构要求：
+
+```json
+{
+  "module_id": "planning-task",
+  "name": "规划任务管理模块",
+  "responsibility": "负责规划任务登记、校验、提交和状态留痕。",
+  "source_refs": ["REQ-FR-001"],
+  "owned_objects": ["规划任务", "任务附件", "任务状态"],
+  "capabilities": [
+    {
+      "name": "任务登记与校验",
+      "functions": ["创建规划任务", "校验规划时段", "校验任务范围"],
+      "interfaces": ["POST /planning-tasks"],
+      "states": ["draft", "submitted", "checked"]
+    }
+  ],
+  "frontend_interactions": ["任务创建表单", "任务校验结果提示"],
+  "backend_services": ["PlanningTaskService"],
+  "data_objects": ["PlanningTask", "PlanningTaskAttachment"],
+  "interfaces": ["POST /planning-tasks"],
+  "state_transitions": ["draft -> submitted -> checked"],
+  "quality_constraints": ["任务状态变化必须审计留痕"],
+  "traceability": ["REQ-FR-001"]
+}
+```
+
+每个模块至少应讲清：
+
+- 职责边界：负责什么，不负责什么。
+- 来源需规：来自哪些需规条款。
+- 业务对象：模块拥有或主要处理哪些对象。
+- 能力与功能项：能力组下有哪些可验收功能。
+- 前端交互：页面入口、操作、提示、校验和可视化。
+- 后端服务：服务、规则、任务、事件或计算逻辑。
+- 数据对象：实体、字段组、读写关系或数据集。
+- 接口与状态：API、集成点、状态流转和异常分支。
+- 质量与追溯：权限、审计、性能、可靠性和条款映射。
+
+如果只列出模块名或只写“前端/后端采用某架构”，应写入 `review_findings`，不得宣称模块设计已完成。
+
+功能树结构要求：
 
 ```json
 {
@@ -799,6 +848,27 @@ API 设计
 
 如果无法拆解到功能项，只允许输出模块骨架，并在 `review_findings` 中说明“功能树仅有模块骨架，待功能拆解”；不得用软设章节列表伪造 `root.children`。
 
+功能树不得用机械单链结构充当真实拆解。以下形态视为低质量占位输出：
+
+```text
+某模块
+  -> 某模块能力
+    -> 处理某模块业务
+```
+
+判断口径：
+
+- 多数 `module` 节点下只有 1 个 `capability`，且该 `capability` 下只有 1 个 `function`。
+- `capability.title` 只是模块名加“能力”，没有表达真实能力分组。
+- `function.title` 使用“处理XX业务”“XX业务处理”“XX功能项”等泛化标题。
+- `description` 使用“承接XX模块下的核心业务能力”“从需求对象推导的待细化功能项”等占位说明。
+
+正确要求：
+
+- 当需规条款能支持拆解时，一个模块下应拆出多个有业务含义的能力、功能、接口、数据、状态或质量节点。
+- 功能节点标题应来自具体需求动作、业务对象、状态变化、接口行为或质量约束，例如“提交规划任务”“比对空域占用冲突”“记录协同确认意见”。
+- 如果输入信息不足，只允许输出模块骨架并写入 `review_findings`，不得生成“XX能力 -> 处理XX业务”的伪拆解。
+
 ### 12.3 `traceability`
 
 每项建议包含：
@@ -871,9 +941,10 @@ DOC/JB_DOC/03-项目实例与样例/P2-P3主链样例-SX-DataStore/02-软件设�
 3. 识别资源发现与申请、维护发布、审批交付、治理接管、页面配置发布流程。
 4. 生成前端设计、后端设计、对象模型、API 分组、关键流程和质量门章节。
 5. 输出需求到设计的追溯映射。
-6. 输出包含模块、能力或功能节点的 `functional_tree_projection.root`。
-7. 功能树节点标题不混入软设章节标题。
-8. 输出设计缺口和人工校核项。
+6. 输出 `design_package.module_designs`，并按业务功能模块纵切片讲清职责、对象、能力、功能项、前端交互、后端服务、数据、接口、状态、质量和追溯。
+7. 输出由 `module_designs` 投影得到的模块、能力或功能节点 `functional_tree_projection.root`。
+8. 功能树节点标题不混入软设章节标题。
+9. 输出设计缺口和人工校核项。
 
 ## 14. 交付给 CodeFactoryV2 的信息
 
@@ -908,9 +979,12 @@ recommended_timeout_seconds:
 - `result_json` 可被 JSON 解析。
 - `result_json.design_document.sections` 至少包含目标软设主要章节。
 - `result_json.design_package` 至少包含文档、功能树、架构、API、流程、质量门和 P4 候选投影。
+- `result_json.design_package.module_designs` 存在；当需规存在可拆解功能时，每个主要模块必须按纵切片讲清对象、能力、功能项、前端交互、后端服务、数据、接口、状态、质量和追溯。
 - `result_json.design_package.functional_tree_projection.root` 存在。
-- `functional_tree_projection.root` 至少包含一个 `module` 节点，建议包含 `capability` 或 `function` 节点。
+- `functional_tree_projection.root` 至少包含一个 `module` 节点；当需规存在可拆解功能时，必须包含真实 `capability`、`function`、`interface`、`data`、`state` 或 `quality` 子节点。
 - 功能树主体不得把软设章节标题当作节点标题。
+- 功能树主体不得出现“每个模块只有一个XX能力、每个能力只有一个处理XX业务”的机械占位结构；信息不足时应降级为模块骨架并写入 `review_findings`。
+- 软设正文不得以“前端软件设计/后端软件设计”横切章节替代功能模块展开；横切章节只能说明通用技术机制。
 - `result_json.traceability` 非空。
 - `result_json.gap_list` 和 `result_json.review_findings` 字段存在。
 - workflow 不宣称结果已冻结。
