@@ -296,13 +296,22 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("已追溯")).toBeInTheDocument();
   expect(within(inspector).getByText("待确认")).toBeInTheDocument();
   expect(within(inspector).getByText("最大层级")).toBeInTheDocument();
-  expect(within(inspector).getByText("由当前设计基线派生")).toBeInTheDocument();
+  expect(within(inspector).getByText("由转换器输出")).toBeInTheDocument();
   expect(within(inspector).getByText("查看来源需规")).toBeInTheDocument();
   expect(within(inspector).getByText("查看软设章节")).toBeInTheDocument();
   expect(within(inspector).getByText("只看当前子树")).toBeInTheDocument();
   expect(within(inspector).getByText("只看未追溯")).toBeInTheDocument();
   expect(within(inspector).getByText("只看待确认")).toBeInTheDocument();
   expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
+  expect(within(inspector).getByText("支撑设计信息")).toBeInTheDocument();
+  expect(within(inspector).getByText("接口")).toBeInTheDocument();
+  expect(within(inspector).getByText("POST /planning-tasks")).toBeInTheDocument();
+  expect(within(inspector).getByText("数据对象")).toBeInTheDocument();
+  expect(within(inspector).getByText("PlanningTask")).toBeInTheDocument();
+  expect(within(inspector).getAllByText("状态").length).toBeGreaterThanOrEqual(1);
+  expect(within(inspector).getByText("draft")).toBeInTheDocument();
+  expect(within(inspector).getByText("质量约束")).toBeInTheDocument();
+  expect(within(inspector).getByText("规划任务状态变化必须保留留痕记录")).toBeInTheDocument();
   expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
   expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
   expect(within(workspace).queryByTestId("p3-design-lab-conversion-control")).not.toBeInTheDocument();
@@ -692,6 +701,38 @@ function buildSession(
             baseline_id: "sdb2-1",
             architecture_mode: "unified_service",
             modules: [{ module_id: "planning-task", name: "规划任务管理" }],
+            function_tree: {
+              tree_id: "function-tree-p3dl-1",
+              title: "空域协同规划软件功能树",
+              root: {
+                node_id: "function-tree-root",
+                title: "空域协同规划软件",
+                node_type: "root",
+                children: [
+                  {
+                    node_id: "function-node-planning-task",
+                    title: "规划任务管理",
+                    node_type: "module",
+                    source_refs: ["REQ-3.2"],
+                    design_refs: ["goal"],
+                    children: [
+                      {
+                        node_id: "cap-planning-task",
+                        title: "规划任务管理能力",
+                        node_type: "capability",
+                        children: [
+                          { node_id: "fn-create-task", title: "创建规划任务", node_type: "function", source_refs: ["REQ-3.2"] },
+                          { node_id: "api-create-task", title: "POST /planning-tasks", node_type: "interface" },
+                          { node_id: "state-draft", title: "draft", node_type: "state" },
+                        ],
+                      },
+                      { node_id: "data-task", title: "PlanningTask", node_type: "data" },
+                      { node_id: "quality-task-trace", title: "规划任务状态变化必须保留留痕记录", node_type: "quality" },
+                    ],
+                  },
+                ],
+              },
+            },
           },
     workorder_projection:
       status === "created"

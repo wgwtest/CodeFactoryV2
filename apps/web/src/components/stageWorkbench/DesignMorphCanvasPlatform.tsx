@@ -64,6 +64,7 @@ export type FunctionTreeNodeViewModel = {
   p4Refs: string[];
   description?: string;
   children: FunctionTreeNodeViewModel[];
+  supportingNodes?: FunctionTreeNodeViewModel[];
 };
 
 export type FunctionTreeViewModel = {
@@ -2557,6 +2558,7 @@ function buildFunctionTreeNodeSelection(item: MorphCanvasItem, node: FunctionTre
       designRefs: node.designRefs,
       architectureRefs: node.architectureRefs,
       p4Refs: node.p4Refs,
+      supportingNodes: collectFunctionTreeSupportingNodesForSelection(node),
       childCount: node.children.length,
       origin: functionTree?.origin ?? "empty",
       originLabel: getFunctionTreeOriginLabel(functionTree?.origin ?? "empty"),
@@ -2569,6 +2571,13 @@ function buildFunctionTreeNodeSelection(item: MorphCanvasItem, node: FunctionTre
       pendingAdjustmentSummary: "拖拽调整需提交为设计轮次后才会写入设计基线。",
     },
   };
+}
+
+function collectFunctionTreeSupportingNodesForSelection(node: FunctionTreeNodeViewModel): FunctionTreeNodeViewModel[] {
+  return [
+    ...(node.supportingNodes ?? []),
+    ...node.children.flatMap((child) => collectFunctionTreeSupportingNodesForSelection(child)),
+  ];
 }
 
 function getFunctionTreeOriginLabel(origin: FunctionTreeOrigin) {

@@ -255,7 +255,7 @@ function buildConverterFunctionTreeViewModel(
   fallbackTitle: string,
 ): FunctionTreeViewModel | null {
   const functionTree = workbench.outline.baseline?.functionTree;
-  const root = normalizeConverterFunctionTreeNode(functionTree?.root, "function-tree-root");
+  const root = projectConverterFunctionTreeNode(functionTree?.root, "function-tree-root");
   if (!root) {
     return null;
   }
@@ -267,6 +267,15 @@ function buildConverterFunctionTreeViewModel(
     summary: summarizeFunctionTree(root),
     root,
   };
+}
+
+function projectConverterFunctionTreeNode(value: unknown, fallbackNodeId: string): FunctionTreeNodeViewModel | null {
+  const normalizedRoot = normalizeConverterFunctionTreeNode(value, fallbackNodeId);
+  if (!normalizedRoot) {
+    return null;
+  }
+  const projectedRoot = projectVisibleFunctionTreeNode(normalizedRoot);
+  return projectedRoot.visibleNode;
 }
 
 function normalizeConverterFunctionTreeNode(value: unknown, fallbackNodeId: string): FunctionTreeNodeViewModel | null {
@@ -292,6 +301,33 @@ function normalizeConverterFunctionTreeNode(value: unknown, fallbackNodeId: stri
     p4Refs: toStringList(value.p4_refs ?? value.p4Refs),
     description: toStringValue(value.description) || undefined,
     children,
+  };
+}
+
+function projectVisibleFunctionTreeNode(node: FunctionTreeNodeViewModel): {
+  visibleNode: FunctionTreeNodeViewModel | null;
+  supportingNodes: FunctionTreeNodeViewModel[];
+} {
+  const projectedChildren = node.children.map((child) => projectVisibleFunctionTreeNode(child));
+  const visibleChildren = projectedChildren
+    .map((projection) => projection.visibleNode)
+    .filter((child): child is FunctionTreeNodeViewModel => Boolean(child));
+  const childSupportingNodes = projectedChildren.flatMap((projection) => projection.supportingNodes);
+
+  if (!isPrimaryFunctionTreeNode(node.nodeType)) {
+    return {
+      visibleNode: null,
+      supportingNodes: [{ ...node, children: visibleChildren, supportingNodes: childSupportingNodes }],
+    };
+  }
+
+  return {
+    visibleNode: {
+      ...node,
+      children: visibleChildren,
+      supportingNodes: childSupportingNodes,
+    },
+    supportingNodes: [],
   };
 }
 
@@ -379,6 +415,10 @@ function normalizeFunctionTreeNodeType(value: unknown): FunctionTreeNodeViewMode
     return nodeType as FunctionTreeNodeViewModel["nodeType"];
   }
   return "function";
+}
+
+function isPrimaryFunctionTreeNode(nodeType: FunctionTreeNodeViewModel["nodeType"]): boolean {
+  return nodeType === "root" || nodeType === "module" || nodeType === "capability" || nodeType === "function";
 }
 
 function toStringList(value: unknown): string[] {
