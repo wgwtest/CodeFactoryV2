@@ -225,6 +225,7 @@ function DocumentBlock({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const blockDomId = block.anchorId ?? block.blockId;
   const selectionProps = {
     "data-selection-id": block.blockId,
     "data-testid": `a4-document-block-${block.blockId}`,
@@ -241,7 +242,7 @@ function DocumentBlock({
       .map((item) => item.trim())
       .filter(Boolean);
     return (
-      <ul className={`a4-document-block-list ${className}`} id={block.anchorId} {...selectionProps}>
+      <ul className={`a4-document-block-list ${className}`} id={blockDomId} {...selectionProps}>
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -251,7 +252,7 @@ function DocumentBlock({
 
   if (block.kind === "code") {
     return (
-      <pre className={`a4-document-block-code ${className}`} id={block.anchorId} {...selectionProps}>
+      <pre className={`a4-document-block-code ${className}`} id={blockDomId} {...selectionProps}>
         {block.content}
       </pre>
     );
@@ -267,7 +268,7 @@ function DocumentBlock({
       <table
         aria-label={block.title}
         className={`a4-document-block-table ${className}`}
-        id={block.anchorId}
+        id={blockDomId}
         {...selectionProps}
       >
         {block.title ? <caption>{block.title}</caption> : null}
@@ -295,7 +296,7 @@ function DocumentBlock({
 
   if (block.kind === "diagram" || block.kind === "diagram_placeholder") {
     return (
-      <figure className={`a4-document-block-diagram ${className}`} id={block.anchorId} {...selectionProps}>
+      <figure className={`a4-document-block-diagram ${className}`} id={blockDomId} {...selectionProps}>
         {block.title ? <figcaption>{block.title}</figcaption> : null}
         <pre>{block.content}</pre>
         {block.diagramType ? <small>{block.diagramType}</small> : null}
@@ -304,7 +305,7 @@ function DocumentBlock({
   }
 
   return (
-    <p className={`a4-document-block is-${block.kind} ${className}`} id={block.anchorId} {...selectionProps}>
+    <p className={`a4-document-block is-${block.kind} ${className}`} id={blockDomId} {...selectionProps}>
       {block.title ? <strong>{block.title}：</strong> : null}
       {block.content}
     </p>

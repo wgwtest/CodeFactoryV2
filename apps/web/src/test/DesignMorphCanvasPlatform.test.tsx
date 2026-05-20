@@ -282,6 +282,46 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("renders a collapsible outline inside the software design document object only", () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onSelectMorphObject = vi.fn();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={onSelectMorphObject}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const requirementObject = within(platform).getByTestId("stage-object-requirement");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+
+    expect(within(requirementObject).queryByTestId("software-design-document-outline")).not.toBeInTheDocument();
+    expect(within(documentObject).getByTestId("software-design-document-outline")).toBeInTheDocument();
+    expect(within(documentObject).getByRole("button", { name: "1 总体架构" })).toBeInTheDocument();
+
+    fireEvent.click(within(documentObject).getByRole("button", { name: "1 总体架构" }));
+    expect(onSelectMorphObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectId: "sdd-1-body",
+        stageId: "document",
+        kind: "design_block",
+        title: "总体架构",
+      }),
+    );
+
+    fireEvent.click(within(documentObject).getByRole("button", { name: "折叠软设目录" }));
+
+    expect(within(documentObject).queryByRole("button", { name: "1 总体架构" })).not.toBeInTheDocument();
+    expect(within(documentObject).getByRole("button", { name: "展开软设目录" })).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
   test("reports a selected function node without exposing status metrics inside the tree body", () => {
     const canvasMock = mockCanvasEnvironment();
     const onSelectMorphObject = vi.fn();
