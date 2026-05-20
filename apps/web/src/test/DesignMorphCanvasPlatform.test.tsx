@@ -322,6 +322,41 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("resizes the software design document outline through its drag handle", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+        onSelectMorphObject={vi.fn()}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const documentObject = within(platform).getByTestId("stage-object-document");
+    const workspace = within(documentObject).getByTestId("software-design-document-workspace");
+    const dragHandle = within(documentObject).getByRole("separator", { name: "调整软设目录宽度" });
+
+    expect(workspace).toHaveStyle({ gridTemplateColumns: "172px minmax(0, 1fr)" });
+
+    fireEvent.pointerDown(dragHandle, { clientX: 200, pointerId: 8 });
+    fireEvent.pointerMove(dragHandle, { clientX: 248, pointerId: 8 });
+    fireEvent.pointerUp(dragHandle, { pointerId: 8 });
+
+    expect(workspace).toHaveStyle({ gridTemplateColumns: "220px minmax(0, 1fr)" });
+
+    fireEvent.click(within(documentObject).getByRole("button", { name: "折叠软设目录" }));
+    expect(workspace).toHaveStyle({ gridTemplateColumns: "32px minmax(0, 1fr)" });
+
+    fireEvent.click(within(documentObject).getByRole("button", { name: "展开软设目录" }));
+    expect(workspace).toHaveStyle({ gridTemplateColumns: "220px minmax(0, 1fr)" });
+
+    canvasMock.restore();
+  });
+
   test("reports a selected function node without exposing status metrics inside the tree body", () => {
     const canvasMock = mockCanvasEnvironment();
     const onSelectMorphObject = vi.fn();

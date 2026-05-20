@@ -179,7 +179,7 @@
 }
 
 .design-morph-document-workspace.has-document-outline {
-  grid-template-columns: 136px minmax(0, 1fr);
+  grid-template-columns: 172px minmax(0, 1fr);
 }
 
 .design-morph-document-workspace.has-document-outline.is-outline-collapsed {
@@ -187,12 +187,50 @@
 }
 
 .design-morph-document-outline {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: 28px minmax(0, 1fr);
   border-right: 1px solid #d3dfdc;
   background: linear-gradient(180deg, #fbfcfb 0%, #eef5f2 100%);
+}
+
+.design-morph-document-outline-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  z-index: 3;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.design-morph-document-outline-resizer::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 4px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(47, 111, 114, 0.28);
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease,
+    width 140ms ease;
+}
+
+.design-morph-document-outline-resizer:hover::before,
+.design-morph-document-outline-resizer:focus-visible::before {
+  width: 3px;
+  background: rgba(47, 119, 189, 0.72);
+  box-shadow: 0 0 0 3px rgba(47, 119, 189, 0.12);
+}
+
+.design-morph-document-outline-resizer:focus-visible {
+  outline: 0;
 }
 
 .design-morph-document-outline-header {

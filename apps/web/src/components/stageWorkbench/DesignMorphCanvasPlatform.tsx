@@ -296,6 +296,12 @@ type DocumentDragState = {
   startLayout: Pick<MorphCanvasItem, "x" | "y" | "w" | "h">;
 };
 
+type DocumentOutlineResizeState = {
+  pointerId: number;
+  startClientX: number;
+  startWidth: number;
+};
+
 type DesignMorphCanvasPlatformProps = {
   stages: DesignMorphStageViewModel[];
   windows: DesignMorphWindowViewModel[];
@@ -329,6 +335,9 @@ const STAGE_RELATION_HIT_WIDTH = 24;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
 const SAVED_LAYOUT_STORAGE_KEY = "p3-design-morph-layouts";
+const DOCUMENT_OUTLINE_DEFAULT_WIDTH = 172;
+const DOCUMENT_OUTLINE_MIN_WIDTH = 120;
+const DOCUMENT_OUTLINE_MAX_WIDTH = 260;
 const TRACK_STAGE_STYLES: TrackStageStyle[] = [
   { fill: "#2E8C7D", stroke: "#17695D", marker: "#E9FFF9", text: "#174F47" },
   { fill: "#14536B", stroke: "#0B3B50", marker: "#E7F8FF", text: "#123E52" },
@@ -1171,12 +1180,19 @@ function DocumentStageObject({
 }) {
   const stageDocument = item.document;
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
+  const [outlineWidth, setOutlineWidth] = useState(DOCUMENT_OUTLINE_DEFAULT_WIDTH);
+  const outlineResizeRef = useRef<DocumentOutlineResizeState | null>(null);
   if (!stageDocument) {
     return null;
   }
 
   const outlineEntries = buildDocumentOutlineEntries(stageDocument.structuredSections);
   const showDocumentOutline = item.entityType === "software_design_document" && outlineEntries.length > 0;
+  const documentWorkspaceStyle = showDocumentOutline
+    ? ({
+        gridTemplateColumns: outlineCollapsed ? "32px minmax(0, 1fr)" : `${outlineWidth}px minmax(0, 1fr)`,
+      } satisfies CSSProperties)
+    : undefined;
 
   const objectStyle = {
     transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
@@ -1241,6 +1257,8 @@ function DocumentStageObject({
           ]
             .filter(Boolean)
             .join(" ")}
+          data-testid={showDocumentOutline ? "software-design-document-workspace" : undefined}
+          style={documentWorkspaceStyle}
         >
           {showDocumentOutline ? (
             <aside
@@ -1289,6 +1307,69 @@ function DocumentStageObject({
                     </li>
                   ))}
                 </ol>
+              ) : null}
+              {!outlineCollapsed ? (
+                <div
+                  aria-label="调整软设目录宽度"
+                  aria-orientation="vertical"
+                  aria-valuemax={DOCUMENT_OUTLINE_MAX_WIDTH}
+                  aria-valuemin={DOCUMENT_OUTLINE_MIN_WIDTH}
+                  aria-valuenow={outlineWidth}
+                  className="design-morph-document-outline-resizer"
+                  role="separator"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+                      return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const delta = event.key === "ArrowRight" ? 12 : -12;
+                    setOutlineWidth((value) =>
+                      clamp(value + delta, DOCUMENT_OUTLINE_MIN_WIDTH, DOCUMENT_OUTLINE_MAX_WIDTH),
+                    );
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    outlineResizeRef.current = {
+                      pointerId: event.pointerId,
+                      startClientX: event.clientX,
+                      startWidth: outlineWidth,
+                    };
+                    if (typeof event.currentTarget.setPointerCapture === "function") {
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = outlineResizeRef.current;
+                    if (!drag || drag.pointerId !== event.pointerId) {
+                      return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setOutlineWidth(
+                      clamp(
+                        drag.startWidth + event.clientX - drag.startClientX,
+                        DOCUMENT_OUTLINE_MIN_WIDTH,
+                        DOCUMENT_OUTLINE_MAX_WIDTH,
+                      ),
+                    );
+                  }}
+                  onPointerUp={(event) => {
+                    if (outlineResizeRef.current?.pointerId === event.pointerId) {
+                      outlineResizeRef.current = null;
+                    }
+                    if (typeof event.currentTarget.releasePointerCapture === "function") {
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(event) => {
+                    if (outlineResizeRef.current?.pointerId === event.pointerId) {
+                      outlineResizeRef.current = null;
+                    }
+                  }}
+                />
               ) : null}
             </aside>
           ) : null}
