@@ -74,6 +74,41 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
       },
     ],
   });
+  const scopedTurn = {
+    turn_id: "p3turn-scoped-1",
+    turn_type: "scoped_design_edit",
+    user_input: "这一段写得太散，拆成两段，并补充接口边界。",
+    normalized_intent: "scoped_design_edit",
+    assistant_message: "已生成局部补丁提案：建议将当前段落拆分为职责边界和接口约束两段。",
+    scope_anchor: {
+      anchor_type: "design_block",
+      section_id: "goal",
+      block_id: "goal-body",
+      design_revision_id: newVersionLabel,
+    },
+    patch_proposal: {
+      proposal_id: "patch-scoped-1",
+      base_revision_id: newVersionLabel,
+      target_anchor: { section_id: "goal", block_id: "goal-body" },
+      operations: [
+        {
+          op: "split_block",
+          target_block_id: "goal-body",
+          new_blocks: [
+            { title: "职责边界", content: "围绕当前段落重新组织职责边界。" },
+            { title: "接口约束", content: "补充接口边界、输入输出和检查约束。" },
+          ],
+        },
+      ],
+      quality_notes: ["补丁应用后需要重新运行设计完整性检查。"],
+      status: "proposed",
+    },
+  };
+  const scopedTurnSession = buildSession(inputPackage, "patch_ready", {
+    design_title: newDesignTitle,
+    version_label: newVersionLabel,
+    turns: [scopedTurn],
+  });
   const checkedSession = buildSession(inputPackage, "patch_ready", {
     design_title: newDesignTitle,
     version_label: newVersionLabel,
@@ -103,7 +138,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
     throw new Error(`unexpected get url: ${url}`);
   });
 
-  postMock.mockImplementation((url: string) => {
+  postMock.mockImplementation((url: string, payload?: { turn_type?: string }) => {
     if (url === "/software-design-v2/sessions") {
       return Promise.resolve({ data: createdSession });
     }
@@ -111,6 +146,9 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
       return Promise.resolve({ data: convertedSession });
     }
     if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      if (payload?.turn_type === "scoped_design_edit") {
+        return Promise.resolve({ data: { turn: scopedTurn, session: scopedTurnSession } });
+      }
       return Promise.resolve({ data: { turn: turnedSession.turns[0], session: turnedSession } });
     }
     if (url === "/software-design-v2/sessions/p3dl-1/save") {
@@ -278,6 +316,35 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
   expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
   expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
+  expect(within(inspector).getByText("局部 AI 沟通")).toBeInTheDocument();
+  fireEvent.change(within(inspector).getByLabelText("局部 AI 沟通输入"), {
+    target: { value: "这一段写得太散，拆成两段，并补充接口边界。" },
+  });
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/turns", {
+      turn_type: "scoped_design_edit",
+      interaction_mode: "propose_patch",
+      user_input: "这一段写得太散，拆成两段，并补充接口边界。",
+      expected_output: ["document_patch", "traceability_update", "quality_note"],
+      scope_anchor: {
+        anchor_type: "design_block",
+        document_id: "p3dl-1",
+        design_revision_id: newVersionLabel,
+        section_id: "goal",
+        block_id: "goal-body",
+        selection_snapshot: {
+          title: "1. 设计目标与范围",
+          excerpt: "覆盖协同规划核心能力。",
+        },
+        source_refs: ["REQ-3.2"],
+      },
+    }),
+  );
+  expect(await within(inspector).findByText("补丁提案")).toBeInTheDocument();
+  expect(within(inspector).getByText("职责边界")).toBeInTheDocument();
+  expect(within(inspector).getByText("接口约束")).toBeInTheDocument();
+  expect(within(inspector).getByText("补丁应用后需要重新运行设计完整性检查。")).toBeInTheDocument();
   expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
   expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
   expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();

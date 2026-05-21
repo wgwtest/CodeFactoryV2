@@ -272,6 +272,40 @@ def test_software_design_v2_consumes_only_p2_authoring_frozen_packages() -> None
     assert "状态机" in turn_payload["turn"]["assistant_message"]
     assert turn_payload["session"]["design_baseline"]["pending_confirmations"]
 
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "这一段写得太散，拆成两段，并补充接口边界。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+                "selection_snapshot": {
+                    "title": "1. 设计目标与范围",
+                    "excerpt": "覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                },
+            },
+            "expected_output": ["document_patch", "traceability_update", "quality_note"],
+        },
+    )
+    assert scoped_turn.status_code == 200
+    scoped_payload = scoped_turn.json()
+    assert scoped_payload["turn"]["turn_type"] == "scoped_design_edit"
+    assert scoped_payload["turn"]["scope_anchor"]["block_id"] == "goal-body"
+    assert scoped_payload["turn"]["context_receipt"]["session_summary_id"].startswith("ctxsum-")
+    assert scoped_payload["turn"]["provider_call_audit"]["provider"] == "local_scoped_patch"
+    assert scoped_payload["turn"]["patch_proposal"]["base_revision_id"] == "v0.1"
+    assert scoped_payload["turn"]["patch_proposal"]["target_anchor"]["section_id"] == "goal"
+    assert scoped_payload["turn"]["patch_proposal"]["operations"][0]["op"] == "split_block"
+    assert scoped_payload["turn"]["patch_proposal"]["operations"][1]["op"] == "update_trace_refs"
+    assert scoped_payload["turn"]["assistant_message"].startswith("已生成局部补丁提案")
+    assert scoped_payload["session"]["turns"][-1]["turn_id"] == scoped_payload["turn"]["turn_id"]
+    assert scoped_payload["session"]["context_summaries"]["global"]["summary"]
+    assert scoped_payload["session"]["context_summaries"]["scoped"]["design_block:goal:goal-body"]["summary"]
+
     saved = client.post(f"/api/software-design-v2/sessions/{session['session_id']}/save")
     assert saved.status_code == 200
     assert saved.json()["status"] == "draft_saved"

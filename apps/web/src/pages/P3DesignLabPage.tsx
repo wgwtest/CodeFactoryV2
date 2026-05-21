@@ -13,7 +13,13 @@ import type {
   StageInteractionViewModel,
 } from "../components/stageWorkbench/models";
 import { QualityCheckPanel } from "../components/stageWorkbench/panels/QualityCheckPanel";
-import type { P3DesignLabInputPackage, P3DesignLabSession } from "../lib/api";
+import type {
+  P3DesignLabInputPackage,
+  P3DesignLabSession,
+  P3DesignPatchProposal,
+  P3DesignTurn,
+  P3DesignTurnScopeAnchor,
+} from "../lib/api";
 import {
   appendSoftwareDesignV2Turn,
   createSoftwareDesignV2Session,
@@ -25,6 +31,7 @@ import {
   runSoftwareDesignV2Check,
   runSoftwareDesignV2Conversion,
   saveSoftwareDesignV2Draft,
+  type SoftwareDesignV2TurnPayload,
 } from "../lib/softwareDesignV2";
 import { usePollingResource } from "../lib/usePollingResource";
 import { buildP3DesignMorphModel } from "./adapters/p3DesignMorphAdapter";
@@ -220,6 +227,25 @@ export function P3DesignLabPage() {
     }
   }
 
+  async function handleSubmitScopedTurn(payload: SoftwareDesignV2TurnPayload) {
+    if (!designSession) {
+      return null;
+    }
+    try {
+      setSubmitting(true);
+      const response = await appendSoftwareDesignV2Turn(designSession.session_id, payload);
+      setDesignSession(response.data.session);
+      mergeSessionIntoInputPackages(response.data.session);
+      setError(null);
+      return response.data.turn;
+    } catch (turnError) {
+      setError(turnError instanceof Error ? turnError.message : "提交局部设计沟通失败");
+      return null;
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleRunConversion() {
     if (!designSession) {
       return;
@@ -343,6 +369,7 @@ export function P3DesignLabPage() {
     setCliInput,
     setSelectedPackageId,
     conversionStrategy,
+    designSession,
     activeMorphWindowId,
     onDeleteDesignSession: (sessionId) => void handleDeleteDesignSession(sessionId),
     onFreeze: () => void handleFreeze(),
@@ -360,6 +387,7 @@ export function P3DesignLabPage() {
     onRunConversion: () => void handleRunConversion(),
     onSetConversionStrategy: setConversionStrategy,
     onSetMorphWindowId: setActiveMorphWindowId,
+    onSubmitScopedTurn: handleSubmitScopedTurn,
     workbench,
   });
 
@@ -523,6 +551,7 @@ function renderWorkspace({
   setCliInput,
   setSelectedPackageId,
   conversionStrategy,
+  designSession,
   activeMorphWindowId,
   onDeleteDesignSession,
   onFreeze,
@@ -537,6 +566,7 @@ function renderWorkspace({
   onRunConversion,
   onSetConversionStrategy,
   onSetMorphWindowId,
+  onSubmitScopedTurn,
   workbench,
 }: {
   activeNavigationKey: P3DesignLabNavigationKey;
@@ -546,6 +576,7 @@ function renderWorkspace({
   setCliInput: (value: string) => void;
   setSelectedPackageId: (value: string) => void;
   conversionStrategy: P3DesignConversionStrategy;
+  designSession: P3DesignLabSession | null;
   activeMorphWindowId: string;
   onDeleteDesignSession: (sessionId: string) => void;
   onFreeze: () => void;
@@ -560,6 +591,7 @@ function renderWorkspace({
   onRunConversion: () => void;
   onSetConversionStrategy: (value: P3DesignConversionStrategy) => void;
   onSetMorphWindowId: (value: string) => void;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
   workbench: StageDocumentWorkbenchViewModel;
 }) {
   if (activeNavigationKey === "input") {
@@ -622,6 +654,7 @@ function renderWorkspace({
   return (
     <SoftwareDesignWorkspaceView
       activeWindowId={activeMorphWindowId}
+      session={designSession}
       strategy={conversionStrategy}
       workbench={workbench}
       onGenerateProjection={onGenerateProjection}
@@ -630,6 +663,7 @@ function renderWorkspace({
       onSaveDraft={onSaveDraft}
       onSetStrategy={onSetConversionStrategy}
       onSetWindowId={onSetMorphWindowId}
+      onSubmitScopedTurn={onSubmitScopedTurn}
     />
   );
 }
@@ -780,6 +814,7 @@ function InputPackageView({
 
 function SoftwareDesignWorkspaceView({
   activeWindowId,
+  session,
   strategy,
   workbench,
   onGenerateProjection,
@@ -788,8 +823,10 @@ function SoftwareDesignWorkspaceView({
   onSaveDraft,
   onSetStrategy,
   onSetWindowId,
+  onSubmitScopedTurn,
 }: {
   activeWindowId: string;
+  session: P3DesignLabSession | null;
   strategy: P3DesignConversionStrategy;
   workbench: StageDocumentWorkbenchViewModel;
   onGenerateProjection: () => void;
@@ -798,6 +835,7 @@ function SoftwareDesignWorkspaceView({
   onSaveDraft: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
   onSetWindowId: (value: string) => void;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
 }) {
   const [isWorkspaceFullscreen, setWorkspaceFullscreen] = useState(false);
   const morphModel = useMemo(() => buildP3DesignMorphModel(workbench), [workbench]);
@@ -889,11 +927,13 @@ function SoftwareDesignWorkspaceView({
             activeWindowTitle={activeWindow?.title ?? "需规文档 -> 软设文档"}
             hasSession={hasSession}
             selection={selectedMorphObject}
+            session={session}
             strategy={strategy}
             strategyOptions={strategyOptions}
             workbench={workbench}
             onRunConversion={onRunConversion}
             onSetStrategy={onSetStrategy}
+            onSubmitScopedTurn={onSubmitScopedTurn}
           />
         </aside>
       </div>
@@ -925,21 +965,25 @@ function SelectedMorphObjectInspector({
   activeWindowTitle,
   hasSession,
   selection,
+  session,
   strategy,
   strategyOptions,
   workbench,
   onRunConversion,
   onSetStrategy,
+  onSubmitScopedTurn,
 }: {
   activeStepId?: string;
   activeWindowTitle: string;
   hasSession: boolean;
   selection: DesignMorphSelection | null;
+  session: P3DesignLabSession | null;
   strategy: P3DesignConversionStrategy;
   strategyOptions: Array<{ label: string; value: string }>;
   workbench: StageDocumentWorkbenchViewModel;
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
 }) {
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTabKey>("ability");
   const subtitle = selection ? `${getSelectionKindLabel(selection.kind)} · ${selection.status ?? "待处理"}` : activeWindowTitle;
@@ -967,7 +1011,13 @@ function SelectedMorphObjectInspector({
             onSetStrategy={onSetStrategy}
           />
         ) : selection ? (
-          <MorphObjectDetailInspector selection={selection} workbench={workbench} />
+          <MorphObjectDetailInspector
+            hasSession={hasSession}
+            selection={selection}
+            session={session}
+            workbench={workbench}
+            onSubmitScopedTurn={onSubmitScopedTurn}
+          />
         ) : (
           <MorphWorkspaceSummaryInspector activeWindowTitle={activeWindowTitle} workbench={workbench} />
         )}
@@ -1190,11 +1240,17 @@ function ConversionTimeline({
 }
 
 function MorphObjectDetailInspector({
+  hasSession,
   selection,
+  session,
   workbench,
+  onSubmitScopedTurn,
 }: {
+  hasSession: boolean;
   selection: DesignMorphSelection;
+  session: P3DesignLabSession | null;
   workbench: StageDocumentWorkbenchViewModel;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
 }) {
   if (selection.kind === "function_node") {
     return <FunctionNodeDetailInspector selection={selection} workbench={workbench} />;
@@ -1217,8 +1273,125 @@ function MorphObjectDetailInspector({
         <Text strong>局部动作</Text>
         <SelectionActionList actions={selection.actions} />
       </div>
+      {selection.kind === "design_block" ? (
+        <ScopedDesignTurnPanel
+          hasSession={hasSession}
+          selection={selection}
+          session={session}
+          workbench={workbench}
+          onSubmitScopedTurn={onSubmitScopedTurn}
+        />
+      ) : null}
       <SelectedObjectTraceSummary selection={selection} />
     </>
+  );
+}
+
+function ScopedDesignTurnPanel({
+  hasSession,
+  selection,
+  session,
+  workbench,
+  onSubmitScopedTurn,
+}: {
+  hasSession: boolean;
+  selection: DesignMorphSelection;
+  session: P3DesignLabSession | null;
+  workbench: StageDocumentWorkbenchViewModel;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [latestLocalTurn, setLatestLocalTurn] = useState<P3DesignTurn | null>(null);
+  const scopeAnchor = useMemo(
+    () => buildDesignTurnScopeAnchor(selection, session, workbench),
+    [selection, session, workbench],
+  );
+  const latestSessionTurn = useMemo(() => findLatestScopedTurn(session?.turns ?? [], scopeAnchor), [scopeAnchor, session?.turns]);
+  const patchProposal = latestLocalTurn?.patch_proposal ?? latestSessionTurn?.patch_proposal ?? null;
+  const canSubmit = Boolean(hasSession && session && instruction.trim());
+
+  useEffect(() => {
+    setLatestLocalTurn(null);
+    setInstruction("");
+  }, [scopeAnchor.block_id, scopeAnchor.section_id, scopeAnchor.design_revision_id]);
+
+  async function handleSubmitScopedTurn() {
+    if (!canSubmit) {
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const turn = await onSubmitScopedTurn({
+        turn_type: "scoped_design_edit",
+        interaction_mode: "propose_patch",
+        user_input: instruction.trim(),
+        expected_output: ["document_patch", "traceability_update", "quality_note"],
+        scope_anchor: scopeAnchor,
+      });
+      if (turn) {
+        setLatestLocalTurn(turn);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="p3-design-morph-inspector-section p3-design-scoped-turn-panel">
+      <div className="p3-design-morph-compact-head">
+        <Text strong>局部 AI 沟通</Text>
+        <Text type="secondary">{scopeAnchor.selection_snapshot?.title ?? selection.title}</Text>
+      </div>
+      <Input.TextArea
+        aria-label="局部 AI 沟通输入"
+        autoSize={{ minRows: 3, maxRows: 5 }}
+        disabled={!hasSession || !session || submitting}
+        placeholder="说明你希望如何调整当前段落，例如拆分、补充接口边界或改写表达。"
+        value={instruction}
+        onChange={(event) => setInstruction(event.target.value)}
+      />
+      <Button
+        block
+        disabled={!canSubmit || submitting}
+        loading={submitting}
+        type="primary"
+        onClick={() => void handleSubmitScopedTurn()}
+      >
+        生成局部补丁提案
+      </Button>
+      {patchProposal ? <ScopedPatchProposalPreview proposal={patchProposal} /> : null}
+    </div>
+  );
+}
+
+function ScopedPatchProposalPreview({ proposal }: { proposal: P3DesignPatchProposal }) {
+  const splitBlocks = proposal.operations.flatMap((operation) => operation.new_blocks ?? []);
+  return (
+    <div className="p3-design-scoped-patch-preview">
+      <Text strong>补丁提案</Text>
+      {splitBlocks.length ? (
+        <div className="p3-design-scoped-patch-blocks">
+          {splitBlocks.map((block) => (
+            <article key={`${block.title}-${block.content}`}>
+              <Text strong>{block.title}</Text>
+              <Text type="secondary">{block.content}</Text>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Text type="secondary">已生成结构化补丁，等待预览差异。</Text>
+      )}
+      {proposal.quality_notes?.length ? (
+        <div className="p3-design-scoped-patch-notes">
+          {proposal.quality_notes.map((note) => (
+            <Text key={note} type="secondary">
+              {note}
+            </Text>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1313,8 +1486,109 @@ function isFunctionTreeSummary(value: unknown): value is {
   );
 }
 
+function buildDesignTurnScopeAnchor(
+  selection: DesignMorphSelection,
+  session: P3DesignLabSession | null,
+  workbench: StageDocumentWorkbenchViewModel,
+): P3DesignTurnScopeAnchor {
+  const sectionId = toOptionalScopeText(selection.payload?.sectionId);
+  const sourceRefs = collectScopeSourceRefs(selection, workbench);
+  return {
+    anchor_type: selection.kind,
+    document_id: session?.session_id,
+    design_revision_id: session?.version_label ?? workbench.product.versionLabel,
+    section_id: sectionId,
+    block_id: selection.objectId,
+    selection_snapshot: {
+      title: toOptionalScopeText(selection.payload?.sectionTitle) ?? selection.title,
+      excerpt: selection.summary ?? "",
+    },
+    source_refs: sourceRefs,
+  };
+}
+
+function collectScopeSourceRefs(selection: DesignMorphSelection, workbench: StageDocumentWorkbenchViewModel) {
+  if (selection.sourceRefs.length) {
+    return selection.sourceRefs;
+  }
+
+  const sectionId = toOptionalScopeText(selection.payload?.sectionId);
+  const sectionTitle = toOptionalScopeText(selection.payload?.sectionTitle) ?? selection.title;
+  const traceRefs = workbench.product.traceLinks.flatMap((traceLink) =>
+    traceLinkMatchesSelection(traceLink, sectionId, sectionTitle) ? extractTraceSourceRefs(traceLink) : [],
+  );
+  if (traceRefs.length) {
+    return uniqueStrings(traceRefs);
+  }
+
+  return workbench.inputFacts.sections.flatMap((section) => section.clauses.map((clause) => clause.clauseId)).slice(0, 3);
+}
+
+function traceLinkMatchesSelection(traceLink: Record<string, unknown>, sectionId: string | undefined, sectionTitle: string) {
+  const targets = [
+    traceLink.design_section,
+    traceLink.designSection,
+    traceLink.target_ref,
+    traceLink.targetRef,
+    traceLink.target_title,
+    traceLink.targetTitle,
+  ].flatMap((value) => (typeof value === "string" ? [value] : []));
+  return targets.some((target) => {
+    const normalizedTarget = target.toLowerCase();
+    return Boolean(
+      (sectionId && normalizedTarget.includes(sectionId.toLowerCase())) ||
+        normalizedTarget.includes(sectionTitle.toLowerCase()) ||
+        sectionTitle.toLowerCase().includes(normalizedTarget),
+    );
+  });
+}
+
+function extractTraceSourceRefs(traceLink: Record<string, unknown>) {
+  return [
+    traceLink.requirement_clause,
+    traceLink.requirementClause,
+    traceLink.source_ref,
+    traceLink.sourceRef,
+    traceLink.source_ref_id,
+    traceLink.sourceRefId,
+  ].flatMap((value) => (typeof value === "string" && value.trim() ? [value] : []));
+}
+
+function findLatestScopedTurn(turns: P3DesignTurn[], scopeAnchor: P3DesignTurnScopeAnchor): P3DesignTurn | null {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn.turn_type !== "scoped_design_edit" || !turn.patch_proposal) {
+      continue;
+    }
+    if (isSameScopeAnchor(turn.scope_anchor, scopeAnchor)) {
+      return turn;
+    }
+  }
+  return null;
+}
+
+function isSameScopeAnchor(left: P3DesignTurnScopeAnchor | undefined, right: P3DesignTurnScopeAnchor) {
+  if (!left) {
+    return false;
+  }
+  return (
+    left.anchor_type === right.anchor_type &&
+    left.section_id === right.section_id &&
+    left.block_id === right.block_id &&
+    left.design_revision_id === right.design_revision_id
+  );
+}
+
+function toOptionalScopeText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function toStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.filter((value) => value.trim()))];
 }
 
 function MorphWorkspaceSummaryInspector({

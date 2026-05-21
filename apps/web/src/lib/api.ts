@@ -2423,6 +2423,51 @@ export type P3DesignLabRuntimeEvent = {
   created_at: string;
 };
 
+export type P3DesignTurnScopeAnchor = {
+  anchor_type: string;
+  document_id?: string;
+  design_revision_id?: string;
+  section_id?: string;
+  block_id?: string;
+  object_id?: string;
+  text_range?: {
+    start_offset: number;
+    end_offset: number;
+  };
+  source_refs?: string[];
+  selection_snapshot?: {
+    title: string;
+    excerpt: string;
+  };
+};
+
+export type P3DesignPatchProposal = {
+  proposal_id: string;
+  base_revision_id: string;
+  target_anchor: Record<string, unknown>;
+  operations: Array<{
+    op: string;
+    target_block_id?: string;
+    new_blocks?: Array<{ title: string; content: string }>;
+    source_refs?: string[];
+  }>;
+  quality_notes?: string[];
+  status?: string;
+};
+
+export type P3DesignTurn = {
+  turn_id: string;
+  turn_type?: string;
+  interaction_mode?: string;
+  user_input?: string;
+  normalized_intent?: string;
+  assistant_message?: string;
+  scope_anchor?: P3DesignTurnScopeAnchor;
+  patch_proposal?: P3DesignPatchProposal;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
 export type P3DesignLabConversionStep = {
   step_id: string;
   title: string;
@@ -2459,7 +2504,7 @@ export type P3DesignLabSession = {
   design_document: P3DesignLabDesignDocument | null;
   design_baseline: P3DesignLabDesignBaseline | null;
   workorder_projection: P3DesignLabWorkorderProjection | null;
-  turns: Array<Record<string, unknown>>;
+  turns: P3DesignTurn[];
   check_result?: RequirementAuthoringCheckResult | null;
   frozen_package?: P3DesignLabFrozenPackage | null;
   runtime_events?: P3DesignLabRuntimeEvent[];

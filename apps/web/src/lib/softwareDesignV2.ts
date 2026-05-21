@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { P3DesignLabInputPackage, P3DesignLabSession } from "./api";
+import type { P3DesignLabInputPackage, P3DesignLabSession, P3DesignTurn, P3DesignTurnScopeAnchor } from "./api";
 
 export function getSoftwareDesignV2InputPackages() {
   return api.get<{ items: P3DesignLabInputPackage[] }>("/software-design-v2/input-packages");
@@ -22,8 +22,16 @@ export function getSoftwareDesignV2Session(sessionId: string) {
   return api.get<P3DesignLabSession>(`/software-design-v2/sessions/${sessionId}`);
 }
 
-export function appendSoftwareDesignV2Turn(sessionId: string, payload: { user_input: string }) {
-  return api.post<{ turn: Record<string, unknown>; session: P3DesignLabSession }>(
+export type SoftwareDesignV2TurnPayload = {
+  user_input: string;
+  turn_type?: string;
+  interaction_mode?: string;
+  scope_anchor?: P3DesignTurnScopeAnchor;
+  expected_output?: string[];
+};
+
+export function appendSoftwareDesignV2Turn(sessionId: string, payload: SoftwareDesignV2TurnPayload) {
+  return api.post<{ turn: P3DesignTurn; session: P3DesignLabSession }>(
     `/software-design-v2/sessions/${sessionId}/turns`,
     payload,
   );

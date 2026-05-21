@@ -427,9 +427,13 @@ class SoftwareDesignV2Service:
         self._require_converted_draft(design_session)
 
         user_input = payload.user_input.strip()
+        if payload.turn_type == "scoped_design_edit":
+            return self._append_scoped_design_turn(design_session, payload, user_input)
+
         normalized_intent = "add_state_machine" if "状态" in user_input else "refine_design"
         turn = {
             "turn_id": f"p3turn-{uuid4().hex[:10]}",
+            "turn_type": payload.turn_type,
             "user_input": user_input,
             "normalized_intent": normalized_intent,
             "source_clause_refs": ["REQ-3.2", "REQ-4.1"],
@@ -468,6 +472,158 @@ class SoftwareDesignV2Service:
         ]
         self._refresh_related_designs(design_session)
         return {"turn": turn, "session": design_session}
+
+    def _append_scoped_design_turn(self, design_session: dict, payload: P3DesignTurnWrite, user_input: str) -> dict:
+        if not user_input:
+            raise ValueError("P3 scoped design turn user_input cannot be empty")
+        scope_anchor = dict(payload.scope_anchor or {})
+        if not scope_anchor:
+            raise ValueError("P3 scoped design turn requires scope_anchor")
+        anchor_type = str(scope_anchor.get("anchor_type") or "").strip()
+        if anchor_type not in {
+            "design_section",
+            "design_block",
+            "text_range",
+            "function_node",
+            "architecture_node",
+            "technical_mapping",
+            "presentation_shape",
+            "p4_projection_node",
+            "stage_relation",
+        }:
+            raise ValueError("unsupported P3 scoped design turn anchor_type")
+
+        turn_id = f"p3turn-{uuid4().hex[:10]}"
+        patch_proposal = self._build_scoped_patch_proposal(design_session, scope_anchor, user_input)
+        context_receipt = self._build_scoped_context_receipt(design_session, scope_anchor)
+        provider_call_audit = self._build_scoped_provider_call_audit(turn_id, payload.interaction_mode)
+        turn = {
+            "turn_id": turn_id,
+            "turn_type": "scoped_design_edit",
+            "interaction_mode": payload.interaction_mode,
+            "user_input": user_input,
+            "normalized_intent": "scoped_design_edit",
+            "scope_anchor": scope_anchor,
+            "expected_output": list(payload.expected_output),
+            "assistant_message": "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。",
+            "patch_proposal": patch_proposal,
+            "context_receipt": context_receipt,
+            "provider_call_audit": provider_call_audit,
+            "created_at": self._now(),
+        }
+        design_session["turns"] = [*design_session["turns"], turn]
+        design_session["context_summaries"] = self._update_context_summaries(design_session, scope_anchor, user_input)
+        design_session["status"] = "patch_ready"
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("scoped_turn", f"追加局部设计沟通：{anchor_type}"),
+        ]
+        self._refresh_related_designs(design_session)
+        return {"turn": turn, "session": design_session}
+
+    def _build_scoped_patch_proposal(self, design_session: dict, scope_anchor: dict, user_input: str) -> dict:
+        target_block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "selected-block")
+        section_id = str(scope_anchor.get("section_id") or "selected-section")
+        design_revision_id = str(
+            scope_anchor.get("design_revision_id")
+            or design_session.get("version_label")
+            or design_session.get("updated_at")
+            or "current"
+        )
+        title = str((scope_anchor.get("selection_snapshot") or {}).get("title") or "当前段落")
+        return {
+            "proposal_id": f"patch-{uuid4().hex[:10]}",
+            "base_revision_id": design_revision_id,
+            "target_anchor": {
+                "anchor_type": scope_anchor.get("anchor_type"),
+                "section_id": section_id,
+                "block_id": target_block_id,
+            },
+            "operations": [
+                {
+                    "op": "split_block",
+                    "target_block_id": target_block_id,
+                    "new_blocks": [
+                        {
+                            "title": "职责边界",
+                            "content": f"围绕“{title}”重新组织职责边界，保留原段落核心含义并去除混杂表达。",
+                        },
+                        {
+                            "title": "接口约束",
+                            "content": f"根据用户意图补充接口边界、输入输出、状态约束和验收关注点：{user_input}",
+                        },
+                    ],
+                },
+                {
+                    "op": "update_trace_refs",
+                    "target_block_id": target_block_id,
+                    "source_refs": list(scope_anchor.get("source_refs") or ["REQ-3.2"]),
+                },
+            ],
+            "quality_notes": ["补丁应用后需要重新运行设计完整性检查。"],
+            "status": "proposed",
+        }
+
+    def _build_scoped_context_receipt(self, design_session: dict, scope_anchor: dict) -> dict:
+        anchor_key = self._build_scope_anchor_key(scope_anchor)
+        return {
+            "context_receipt_id": f"ctx-{uuid4().hex[:10]}",
+            "session_summary_id": f"ctxsum-{design_session['session_id']}",
+            "scoped_summary_id": f"scopesum-{anchor_key}",
+            "included_context": [
+                "input_package_summary",
+                "design_document_anchor",
+                "design_baseline_related_facts",
+                "global_session_summary",
+                "scoped_object_summary",
+            ],
+        }
+
+    @staticmethod
+    def _build_scoped_provider_call_audit(turn_id: str, interaction_mode: str) -> dict:
+        return {
+            "provider": "local_scoped_patch",
+            "workflow_id": "p3-scoped-design-edit",
+            "conversation_id": None,
+            "run_id": f"local-{turn_id}",
+            "interaction_mode": interaction_mode,
+            "observability_level": "full",
+        }
+
+    def _update_context_summaries(self, design_session: dict, scope_anchor: dict, user_input: str) -> dict:
+        current = dict(design_session.get("context_summaries") or {})
+        scoped = dict(current.get("scoped") or {})
+        anchor_key = self._build_scope_anchor_key(scope_anchor)
+        now = self._now()
+        scoped[anchor_key] = {
+            "summary_id": f"scopesum-{anchor_key}",
+            "anchor_key": anchor_key,
+            "summary": f"围绕 {scope_anchor.get('anchor_type')} 的最近沟通：{user_input}",
+            "accepted_decisions": [],
+            "rejected_options": [],
+            "pending_questions": ["等待用户确认是否应用补丁提案。"],
+            "updated_at": now,
+        }
+        return {
+            "global": {
+                "summary_id": f"ctxsum-{design_session['session_id']}",
+                "session_id": design_session["session_id"],
+                "revision_id": design_session.get("version_label") or design_session.get("updated_at") or "current",
+                "summary": "当前软设会话包含需规输入、软设正文、设计基线、投影状态和局部沟通 Turn。",
+                "key_decisions": ["段落级沟通进入主 SoftwareDesignSession，不创建段落私有权威会话。"],
+                "open_questions": ["补丁提案需要用户确认后才能应用。"],
+                "updated_at": now,
+            },
+            "scoped": scoped,
+        }
+
+    @staticmethod
+    def _build_scope_anchor_key(scope_anchor: dict) -> str:
+        anchor_type = str(scope_anchor.get("anchor_type") or "object")
+        section_id = str(scope_anchor.get("section_id") or "-")
+        block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "-")
+        return f"{anchor_type}:{section_id}:{block_id}"
 
     def run_check(self, session_id: str) -> dict | None:
         design_session = self.get_session(session_id)
