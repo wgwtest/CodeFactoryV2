@@ -1243,6 +1243,7 @@ function FunctionNodeDetailInspector({
   const p4Refs = toStringList(selection.payload?.p4Refs);
   const moduleId = toInspectorText(selection.payload?.moduleId);
   const pendingAdjustmentSummary = toInspectorText(selection.payload?.pendingAdjustmentSummary);
+  const supportingGroups = buildFunctionTreeSupportingGroups(selection.payload?.supportingNodes);
 
   return (
     <>
@@ -1285,6 +1286,24 @@ function FunctionNodeDetailInspector({
         <Text type="secondary">{pendingAdjustmentSummary}</Text>
       </div>
 
+      {supportingGroups.length ? (
+        <div className="p3-design-morph-inspector-section">
+          <Text strong>支撑设计信息</Text>
+          <div className="p3-design-morph-supporting-groups">
+            {supportingGroups.map((group) => (
+              <div className="p3-design-morph-supporting-group" key={group.type}>
+                <span>{group.label}</span>
+                <Space wrap size={[4, 4]}>
+                  {group.nodes.map((node) => (
+                    <Tag key={node.nodeId}>{node.title}</Tag>
+                  ))}
+                </Space>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="p3-design-morph-inspector-section">
         <Text strong>局部动作</Text>
         <SelectionActionList actions={selection.actions} />
@@ -1315,6 +1334,53 @@ function isFunctionTreeSummary(value: unknown): value is {
 
 function toStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+type FunctionTreeSupportingNode = {
+  nodeId: string;
+  title: string;
+  nodeType: string;
+  children?: FunctionTreeSupportingNode[];
+};
+
+function buildFunctionTreeSupportingGroups(value: unknown): Array<{
+  type: string;
+  label: string;
+  nodes: FunctionTreeSupportingNode[];
+}> {
+  const nodes = collectFunctionTreeSupportingNodes(value);
+  const orderedGroups = [
+    { type: "interface", label: "接口" },
+    { type: "data", label: "数据对象" },
+    { type: "state", label: "状态" },
+    { type: "quality", label: "质量约束" },
+  ];
+  return orderedGroups
+    .map((group) => ({
+      ...group,
+      nodes: nodes.filter((node) => node.nodeType === group.type),
+    }))
+    .filter((group) => group.nodes.length > 0);
+}
+
+function collectFunctionTreeSupportingNodes(value: unknown): FunctionTreeSupportingNode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!isFunctionTreeSupportingNode(item)) {
+      return [];
+    }
+    return [item, ...collectFunctionTreeSupportingNodes(item.children)];
+  });
+}
+
+function isFunctionTreeSupportingNode(value: unknown): value is FunctionTreeSupportingNode {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.nodeId === "string" && typeof candidate.title === "string" && typeof candidate.nodeType === "string";
 }
 
 function MorphWorkspaceSummaryInspector({

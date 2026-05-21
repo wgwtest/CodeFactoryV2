@@ -245,9 +245,15 @@ class SoftwareDesignV2Service:
         module_designs = _module_designs_from_converter_result(result)
         explicit_modules = _explicit_module_nodes_from_converter_result(result)
         module_design_quality = _evaluate_module_design_quality(module_designs, sections=sections, modules=explicit_modules)
+        document_outline_quality = _evaluate_document_outline_quality(sections, module_designs=module_designs)
         function_tree_quality_findings = list(function_tree_quality.get("findings") or [])
         module_design_quality_findings = list(module_design_quality.get("findings") or [])
-        quality_findings = [*function_tree_quality_findings, *module_design_quality_findings]
+        document_outline_quality_findings = list(document_outline_quality.get("findings") or [])
+        quality_findings = [
+            *function_tree_quality_findings,
+            *module_design_quality_findings,
+            *document_outline_quality_findings,
+        ]
         pending_confirmations = [
             str(item.get("message") or item.get("gap_id") or item)
             for item in result.gap_list
@@ -265,6 +271,7 @@ class SoftwareDesignV2Service:
             "modules": modules,
             "module_designs": module_designs,
             "module_design_quality": module_design_quality,
+            "document_outline_quality": document_outline_quality,
             "function_tree": function_tree,
             "function_tree_quality": function_tree_quality,
             "traceability": self._traceability_from_converter_result(result),
@@ -351,6 +358,7 @@ class SoftwareDesignV2Service:
         quality_findings = [
             *list(((design_baseline or {}).get("function_tree_quality") or {}).get("findings") or []),
             *list(((design_baseline or {}).get("module_design_quality") or {}).get("findings") or []),
+            *list(((design_baseline or {}).get("document_outline_quality") or {}).get("findings") or []),
         ]
         warning_finding_count = len(
             [
@@ -376,12 +384,17 @@ class SoftwareDesignV2Service:
             )
         for finding in quality_findings:
             target = str(finding.get("target") or "")
-            scope = "module_design" if target == "模块设计" else "function_tree"
+            if target == "模块设计":
+                scope = "module_design"
+            elif target == "软设正文目录":
+                scope = "design_document"
+            else:
+                scope = "function_tree"
             items.append(
                 {
                     "item_id": str(finding.get("finding_id") or "P3-FT-QUALITY"),
                     "severity": str(finding.get("severity") or "warning"),
-                    "title": "模块纵切片设计检查" if scope == "module_design" else "功能树质量检查",
+                    "title": _quality_check_title(scope),
                     "message": str(finding.get("message") or finding.get("finding_id") or finding),
                     "description": str(finding.get("message") or finding.get("finding_id") or finding),
                     "scope": scope,
@@ -1245,6 +1258,66 @@ def _evaluate_module_design_quality(module_designs: list[dict], *, sections: lis
     return {"status": "passed", "metrics": metrics, "findings": []}
 
 
+def _evaluate_document_outline_quality(sections: list, *, module_designs: list[dict]) -> dict:
+    section_titles = [
+        str(section.get("title") or "").strip()
+        for section in sections
+        if isinstance(section, dict) and str(section.get("title") or "").strip()
+    ]
+    frontend_backend_section_count = len([title for title in section_titles if _is_frontend_backend_section_title(title)])
+    module_section_count = len(
+        [
+            title
+            for title in section_titles
+            if any(_section_title_matches_module_design(title, module_design) for module_design in module_designs)
+        ]
+    )
+    metrics = {
+        "section_count": len(section_titles),
+        "module_design_count": len(module_designs),
+        "module_section_count": module_section_count,
+        "frontend_backend_section_count": frontend_backend_section_count,
+    }
+
+    if not section_titles or not module_designs:
+        return {"status": "not_applicable", "metrics": metrics, "findings": []}
+
+    if frontend_backend_section_count >= 2 and module_section_count == 0:
+        return {
+            "status": "warning",
+            "metrics": metrics,
+            "findings": [
+                {
+                    "finding_id": "P3-DOC-OUTLINE-HORIZONTAL-SPLIT",
+                    "severity": "warning",
+                    "target": "软设正文目录",
+                    "anchor_id": "software-design-document-outline",
+                    "message": "软设正文目录仍以“总体架构/前端软件设计/后端软件设计”等横切章节为主体，没有把业务功能模块作为正文一级展开。",
+                    "suggested_action": "要求转换器重组 design_document.sections：以业务功能模块为一级主体章节，前端交互、后端服务、数据、接口、状态和质量约束作为模块内二级内容；横切技术说明只能作为附录或辅助章节。",
+                    "requires_human_decision": True,
+                }
+            ],
+        }
+
+    return {"status": "passed", "metrics": metrics, "findings": []}
+
+
+def _section_title_matches_module_design(title: str, module_design: dict) -> bool:
+    normalized_title = _strip_document_section_number(title)
+    module_name = str(module_design.get("name") or "").strip()
+    module_id = str(module_design.get("module_id") or "").strip()
+    if module_name and (module_name in normalized_title or normalized_title in {module_name, f"{module_name}模块"}):
+        return True
+    return bool(module_id and module_id in normalized_title)
+
+
+def _strip_document_section_number(title: str) -> str:
+    normalized = title.strip()
+    while normalized and (normalized[0].isdigit() or normalized[0] in {".", "．", "、", " ", "\t"}):
+        normalized = normalized[1:].strip()
+    return normalized
+
+
 def _module_design_quality_warning(metrics: dict, finding_id: str, message: str) -> dict:
     return {
         "status": "warning",
@@ -1304,6 +1377,14 @@ def _module_design_nested_list_has_items(module_design: dict, key: str) -> bool:
 def _is_frontend_backend_section_title(title: str) -> bool:
     normalized = title.strip()
     return any(marker in normalized for marker in ["前端软件设计", "后端软件设计", "前端设计", "后端设计"])
+
+
+def _quality_check_title(scope: str) -> str:
+    if scope == "module_design":
+        return "模块纵切片设计检查"
+    if scope == "design_document":
+        return "软设正文目录检查"
+    return "功能树质量检查"
 
 
 def _direct_function_tree_children_by_type(root: object, node_type: str) -> list[dict]:

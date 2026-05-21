@@ -145,6 +145,82 @@ describe("P3 design morph model", () => {
       }),
     );
   });
+
+  test("projects converter function tree as business hierarchy while preserving support nodes for inspector", () => {
+    const workbench = buildWorkbench();
+    workbench.outline.baseline!.functionTree = {
+      treeId: "function-tree-converter",
+      title: "空域协同规划软件功能树",
+      root: {
+        node_id: "ft-root",
+        title: "空域协同规划软件",
+        node_type: "root",
+        children: [
+          {
+            node_id: "module-planning",
+            title: "规划任务管理模块",
+            node_type: "module",
+            source_refs: ["REQ-3.2"],
+            design_refs: ["sdd-module-planning"],
+            children: [
+              {
+                node_id: "cap-planning-task",
+                title: "规划任务管理能力",
+                node_type: "capability",
+                children: [
+                  { node_id: "fn-create-task", title: "创建规划任务", node_type: "function", source_refs: ["REQ-3.2"] },
+                  { node_id: "fn-maintain-scope", title: "维护任务范围", node_type: "function", source_refs: ["REQ-3.2"] },
+                  { node_id: "fn-track-state", title: "跟踪任务状态", node_type: "function", source_refs: ["REQ-3.2"] },
+                  { node_id: "api-create-task", title: "POST /planning-tasks", node_type: "interface" },
+                  { node_id: "api-get-task", title: "GET /planning-tasks/{id}", node_type: "interface" },
+                  { node_id: "state-draft", title: "draft", node_type: "state" },
+                  { node_id: "state-submitted", title: "submitted", node_type: "state" },
+                ],
+              },
+              { node_id: "data-task", title: "PlanningTask", node_type: "data" },
+              { node_id: "data-scope", title: "TaskScope", node_type: "data" },
+              { node_id: "quality-task-trace", title: "规划任务状态变化必须保留留痕记录", node_type: "quality" },
+            ],
+          },
+        ],
+      },
+    };
+
+    const model = buildP3DesignMorphModel(workbench);
+    const functionTree = model.stages.find((stage) => stage.id === "functionTree")?.functionTree;
+    const root = functionTree?.root ?? null;
+    const visibleTitles = collectFunctionTreeTitles(root);
+    const moduleNode = root?.children[0] ?? null;
+    const capabilityNode = moduleNode?.children[0] ?? null;
+
+    expect(functionTree).toEqual(
+      expect.objectContaining({
+        origin: "converter",
+        summary: expect.objectContaining({
+          nodeCount: 6,
+          maxDepth: 4,
+        }),
+      }),
+    );
+    expect(visibleTitles).toEqual([
+      "空域协同规划软件",
+      "规划任务管理模块",
+      "规划任务管理能力",
+      "创建规划任务",
+      "维护任务范围",
+      "跟踪任务状态",
+    ]);
+    expect(visibleTitles).not.toContain("POST /planning-tasks");
+    expect(visibleTitles).not.toContain("PlanningTask");
+    expect(visibleTitles).not.toContain("draft");
+    expect(visibleTitles).not.toContain("规划任务状态变化必须保留留痕记录");
+    expect(collectSupportingNodeTitles(capabilityNode)).toEqual(
+      expect.arrayContaining(["POST /planning-tasks", "GET /planning-tasks/{id}", "draft", "submitted"]),
+    );
+    expect(collectSupportingNodeTitles(moduleNode)).toEqual(
+      expect.arrayContaining(["PlanningTask", "TaskScope", "规划任务状态变化必须保留留痕记录"]),
+    );
+  });
 });
 
 function collectFunctionTreeTitles(node: FunctionTreeNode | null): string[] {
@@ -154,9 +230,29 @@ function collectFunctionTreeTitles(node: FunctionTreeNode | null): string[] {
   return [node.title, ...node.children.flatMap((child) => collectFunctionTreeTitles(child))];
 }
 
+function collectSupportingNodeTitles(node: FunctionTreeNode | null): string[] {
+  if (!node) {
+    return [];
+  }
+  const supportingNodes = ((node as FunctionTreeNode & { supportingNodes?: SupportFunctionTreeNode[] }).supportingNodes ?? []);
+  return supportingNodes.flatMap((supportNode) => [
+    supportNode.title,
+    ...collectNestedSupportingNodeTitles(supportNode.children ?? []),
+  ]);
+}
+
+function collectNestedSupportingNodeTitles(nodes: SupportFunctionTreeNode[]): string[] {
+  return nodes.flatMap((node) => [node.title, ...collectNestedSupportingNodeTitles(node.children ?? [])]);
+}
+
 type FunctionTreeNode = NonNullable<
   NonNullable<ReturnType<typeof buildP3DesignMorphModel>["stages"][number]["functionTree"]>["root"]
 >;
+
+type SupportFunctionTreeNode = {
+  title: string;
+  children?: SupportFunctionTreeNode[];
+};
 
 function buildWorkbench(): StageDocumentWorkbenchViewModel {
   return {
