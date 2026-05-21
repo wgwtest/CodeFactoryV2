@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
+import httpx
 from sqlalchemy import select
 
 from app.db.models.requirements import RequirementAuthoringDocument
@@ -17,6 +21,14 @@ from app.software_design_v2.sdd_template_profile import (
     build_sdd_81435_quality_rules,
     build_sdd_81435_template_profile,
 )
+
+
+def _env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
 
 
 class SoftwareDesignV2Service:
@@ -507,18 +519,45 @@ class SoftwareDesignV2Service:
             raise ValueError("unsupported P3 scoped design turn anchor_type")
 
         turn_id = f"p3turn-{uuid4().hex[:10]}"
-        patch_proposal = self._build_scoped_patch_proposal(design_session, scope_anchor, user_input)
-        context_receipt = self._build_scoped_context_receipt(design_session, scope_anchor)
-        provider_call_audit = self._build_scoped_provider_call_audit(turn_id, payload.interaction_mode)
+        remote_result = self._call_scoped_dify_workflow(
+            turn_id=turn_id,
+            design_session=design_session,
+            payload=payload,
+            scope_anchor=scope_anchor,
+            user_input=user_input,
+        )
+        patch_proposal = (
+            self._normalize_scoped_patch_proposal(remote_result.get("patch_proposal"), design_session, scope_anchor, user_input)
+            if remote_result
+            else self._build_scoped_patch_proposal(design_session, scope_anchor, user_input)
+        )
+        context_receipt = self._normalize_scoped_context_receipt(
+            remote_result.get("context_receipt") if remote_result else None,
+            design_session,
+            scope_anchor,
+        )
+        provider_call_audit = self._normalize_scoped_provider_call_audit(
+            remote_result.get("provider_call_audit") if remote_result else None,
+            turn_id,
+            payload.interaction_mode,
+            remote_result.get("workflow_trace") if remote_result else None,
+        )
+        assistant_message = (
+            str(remote_result.get("assistant_message") or "").strip()
+            if remote_result
+            else "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。"
+        )
+        if not assistant_message:
+            assistant_message = "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。"
         turn = {
             "turn_id": turn_id,
             "turn_type": "scoped_design_edit",
             "interaction_mode": payload.interaction_mode,
             "user_input": user_input,
-            "normalized_intent": "scoped_design_edit",
+            "normalized_intent": str((remote_result or {}).get("normalized_intent") or "scoped_design_edit"),
             "scope_anchor": scope_anchor,
             "expected_output": list(payload.expected_output),
-            "assistant_message": "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。",
+            "assistant_message": assistant_message,
             "patch_proposal": patch_proposal,
             "context_receipt": context_receipt,
             "provider_call_audit": provider_call_audit,
@@ -534,6 +573,202 @@ class SoftwareDesignV2Service:
         ]
         self._refresh_related_designs(design_session)
         return {"turn": turn, "session": design_session}
+
+    def _call_scoped_dify_workflow(
+        self,
+        *,
+        turn_id: str,
+        design_session: dict,
+        payload: P3DesignTurnWrite,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict | None:
+        api_key = _env("CODEFACTORY_P3_SCOPED_DIFY_API_KEY")
+        if not api_key:
+            return None
+
+        base_url = self._normalize_dify_base_url(_env("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL") or "http://localhost/v1")
+        workflow_id = _env("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID")
+        timeout_seconds = float(_env("CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS") or "180")
+        response_mode = _env("CODEFACTORY_P3_SCOPED_DIFY_RESPONSE_MODE") or "blocking"
+        url = self._dify_workflow_run_url(base_url=base_url, workflow_id=workflow_id)
+        request_payload = {
+            "inputs": self._build_scoped_dify_inputs(design_session, payload, scope_anchor, user_input),
+            "response_mode": response_mode,
+            "user": f"codefactory-p3-scoped-{design_session['session_id']}",
+        }
+        try:
+            response = httpx.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_payload,
+                timeout=timeout_seconds,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            remote_payload = response.json()
+        except httpx.HTTPError as exc:
+            raise ValueError(f"remote scoped dify workflow request failed: {exc}") from exc
+        except ValueError as exc:
+            raise ValueError("remote scoped dify workflow returned non-JSON response") from exc
+
+        data = dict(remote_payload.get("data") or {})
+        workflow_status = str(data.get("status") or "").strip()
+        workflow_error = str(data.get("error") or "").strip()
+        workflow_run_id = str(remote_payload.get("workflow_run_id") or data.get("id") or "").strip()
+        if workflow_status == "failed" or workflow_error:
+            detail = workflow_error or "workflow status failed"
+            raise ValueError(f"remote scoped dify workflow failed ({workflow_run_id}): {detail}")
+
+        outputs = dict(data.get("outputs") or {})
+        result_json = outputs.get("result_json")
+        if not isinstance(result_json, str) or not result_json.strip():
+            raise ValueError("remote scoped dify workflow did not return data.outputs.result_json")
+        try:
+            parsed = json.loads(result_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("remote scoped dify result_json is not valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("remote scoped dify result_json is not a JSON object")
+
+        return {
+            **dict(parsed),
+            "workflow_trace": {
+                "provider": "dify_scoped_patch",
+                "workflow_id": workflow_id,
+                "workflow_run_id": workflow_run_id,
+                "status": workflow_status,
+                "response_mode": response_mode,
+                "turn_id": turn_id,
+            },
+        }
+
+    def _build_scoped_dify_inputs(
+        self,
+        design_session: dict,
+        payload: P3DesignTurnWrite,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict:
+        design_context = {
+            "input_package": self._compact_context_dict(design_session.get("input_package") or {}),
+            "design_document": self._compact_context_dict(design_session.get("design_document") or {}),
+            "design_baseline": self._compact_context_dict(design_session.get("design_baseline") or {}),
+            "workorder_projection": self._compact_context_dict(design_session.get("workorder_projection") or {}),
+            "context_summaries": self._compact_context_dict(design_session.get("context_summaries") or {}),
+        }
+        return {
+            "session_id": str(design_session.get("session_id") or ""),
+            "design_title": str(design_session.get("design_title") or ""),
+            "version_label": str(design_session.get("version_label") or ""),
+            "user_input": user_input,
+            "interaction_mode": str(payload.interaction_mode or "propose_patch"),
+            "scope_anchor_json": json.dumps(scope_anchor, ensure_ascii=False),
+            "expected_output_json": json.dumps(list(payload.expected_output), ensure_ascii=False),
+            "design_context_json": json.dumps(design_context, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def _compact_context_dict(value: dict) -> dict:
+        text_limit = 6000
+        compacted = json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        serialized = json.dumps(compacted, ensure_ascii=False)
+        if len(serialized) <= text_limit:
+            return compacted
+        return {
+            "truncated": True,
+            "summary": serialized[:text_limit],
+            "original_char_count": len(serialized),
+        }
+
+    @staticmethod
+    def _normalize_dify_base_url(base_url: str) -> str:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v1"):
+            return normalized
+        return f"{normalized}/v1"
+
+    @staticmethod
+    def _dify_workflow_run_url(*, base_url: str, workflow_id: str) -> str:
+        if workflow_id:
+            return f"{base_url}/workflows/{workflow_id}/run"
+        return f"{base_url}/workflows/run"
+
+    def _normalize_scoped_patch_proposal(
+        self,
+        value: Any,
+        design_session: dict,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict:
+        if not isinstance(value, dict):
+            raise ValueError("remote scoped dify result_json missing patch_proposal")
+        patch_proposal = dict(value)
+        target_block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "selected-block")
+        section_id = str(scope_anchor.get("section_id") or "selected-section")
+        patch_proposal.setdefault("proposal_id", f"patch-{uuid4().hex[:10]}")
+        patch_proposal.setdefault(
+            "base_revision_id",
+            str(scope_anchor.get("design_revision_id") or design_session.get("version_label") or "current"),
+        )
+        patch_proposal.setdefault(
+            "target_anchor",
+            {
+                "anchor_type": scope_anchor.get("anchor_type"),
+                "section_id": section_id,
+                "block_id": target_block_id,
+            },
+        )
+        patch_proposal.setdefault("quality_notes", [])
+        patch_proposal.setdefault("status", "proposed")
+        operations = patch_proposal.get("operations")
+        if not isinstance(operations, list) or not operations:
+            raise ValueError("remote scoped dify patch_proposal requires operations")
+        return patch_proposal
+
+    def _normalize_scoped_context_receipt(self, value: Any, design_session: dict, scope_anchor: dict) -> dict:
+        context_receipt = self._build_scoped_context_receipt(design_session, scope_anchor)
+        if isinstance(value, dict):
+            remote_receipt = dict(value)
+            included_context = remote_receipt.get("included_context")
+            if isinstance(included_context, list):
+                context_receipt["included_context"] = included_context
+            for key in ("context_receipt_id", "session_summary_id", "scoped_summary_id"):
+                if isinstance(remote_receipt.get(key), str) and remote_receipt[key].strip():
+                    context_receipt[key] = remote_receipt[key]
+        return context_receipt
+
+    def _normalize_scoped_provider_call_audit(
+        self,
+        value: Any,
+        turn_id: str,
+        interaction_mode: str,
+        workflow_trace: Any,
+    ) -> dict:
+        if not isinstance(workflow_trace, dict):
+            return self._build_scoped_provider_call_audit(turn_id, interaction_mode)
+        audit = {
+            "provider": "dify_scoped_patch",
+            "workflow_id": str(workflow_trace.get("workflow_id") or ""),
+            "conversation_id": None,
+            "run_id": str(workflow_trace.get("workflow_run_id") or ""),
+            "interaction_mode": interaction_mode,
+            "observability_level": "full",
+        }
+        if isinstance(value, dict):
+            for key, remote_value in value.items():
+                if key not in {"provider", "workflow_id", "run_id"}:
+                    audit[key] = remote_value
+            if value.get("provider"):
+                audit["provider"] = str(value["provider"])
+            if value.get("workflow_id"):
+                audit["workflow_id"] = str(value["workflow_id"])
+            if value.get("run_id"):
+                audit["run_id"] = str(value["run_id"])
+        return audit
 
     def _build_scoped_patch_proposal(self, design_session: dict, scope_anchor: dict, user_input: str) -> dict:
         target_block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "selected-block")

@@ -1,4 +1,7 @@
+import json
+
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 
 from app.main import create_app
@@ -8,6 +11,15 @@ from app.design_converters.models import DesignConverterRunResult
 @pytest.fixture(autouse=True)
 def fake_design_converter_loader(monkeypatch):
     from app.software_design_v2 import service as service_module
+
+    for env_name in (
+        "CODEFACTORY_P3_SCOPED_DIFY_BASE_URL",
+        "CODEFACTORY_P3_SCOPED_DIFY_API_KEY",
+        "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID",
+        "CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS",
+        "CODEFACTORY_P3_SCOPED_DIFY_RESPONSE_MODE",
+    ):
+        monkeypatch.delenv(env_name, raising=False)
 
     class FakeDesignConverterAdapter:
         def __init__(self, converter_id: str) -> None:
@@ -639,6 +651,184 @@ def test_software_design_v2_conversion_runs_through_design_converter_adapter_loa
     assert converted_session["workorder_projection"]["tree"]["title"] == "P4-WO-Adapter-Sentinel"
     assert converted_session["check_result"]["warning_count"] == 1
     assert converted_session["runtime_events"][-1]["event_type"] == "conversion"
+
+
+def test_software_design_v2_scoped_turn_uses_scoped_dify_workflow(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    captured_calls: list[dict] = []
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        captured_calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout,
+                "trust_env": trust_env,
+            }
+        )
+        inputs = json["inputs"]
+        scope_anchor = json_module.loads(inputs["scope_anchor_json"])
+        assert inputs["session_id"].startswith("p3dl-")
+        assert inputs["design_title"] == "空域协同规划软件设计说明 - 局部修正"
+        assert inputs["version_label"] == "v0.1"
+        assert inputs["user_input"] == "这一段写得太散，拆成职责边界和接口约束两段。"
+        assert scope_anchor["block_id"] == "goal-body"
+        assert "design_document" in inputs["design_context_json"]
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-scoped-p3-001",
+                "data": {
+                    "id": "run-scoped-p3-001",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "normalized_intent": "scoped_design_edit",
+                                "assistant_message": "已生成局部补丁提案：建议拆分职责边界和接口约束。",
+                                "patch_proposal": {
+                                    "proposal_id": "patch-remote-001",
+                                    "base_revision_id": "v0.1",
+                                    "target_anchor": {
+                                        "anchor_type": "design_block",
+                                        "section_id": "goal",
+                                        "block_id": "goal-body",
+                                    },
+                                    "operations": [
+                                        {
+                                            "op": "split_block",
+                                            "target_block_id": "goal-body",
+                                            "new_blocks": [
+                                                {"title": "职责边界", "content": "围绕规划任务管理能力重写职责边界。"},
+                                                {"title": "接口约束", "content": "补充输入输出、状态约束和追溯要求。"},
+                                            ],
+                                        }
+                                    ],
+                                    "quality_notes": ["应用后需复核追溯链。"],
+                                    "status": "proposed",
+                                },
+                                "context_receipt": {
+                                    "included_context": ["input_package_summary", "design_document_anchor"],
+                                },
+                                "provider_call_audit": {
+                                    "provider": "dify_scoped_patch",
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    json_module = json
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "scoped-api-key")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "f2413e20-7cfc-4188-ae7f-7c23eaa353ff")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS", "180")
+    monkeypatch.setattr(service_module.httpx, "post", fake_post, raising=False)
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    created = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 局部修正",
+            "version_label": "v0.1",
+            "generation_policy": {},
+        },
+    )
+    assert created.status_code == 200
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+    assert converted.status_code == 200
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{created.json()['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "这一段写得太散，拆成职责边界和接口约束两段。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+                "selection_snapshot": {
+                    "title": "1. 设计目标与范围",
+                    "excerpt": "覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                },
+            },
+            "expected_output": ["document_patch", "traceability_update", "quality_note"],
+        },
+    )
+
+    assert scoped_turn.status_code == 200
+    payload = scoped_turn.json()
+    assert captured_calls[0]["url"] == "http://localhost/v1/workflows/f2413e20-7cfc-4188-ae7f-7c23eaa353ff/run"
+    assert captured_calls[0]["headers"]["Authorization"] == "Bearer scoped-api-key"
+    assert captured_calls[0]["timeout"] == 180.0
+    assert captured_calls[0]["trust_env"] is False
+    assert payload["turn"]["turn_type"] == "scoped_design_edit"
+    assert payload["turn"]["normalized_intent"] == "scoped_design_edit"
+    assert payload["turn"]["assistant_message"] == "已生成局部补丁提案：建议拆分职责边界和接口约束。"
+    assert payload["turn"]["patch_proposal"]["proposal_id"] == "patch-remote-001"
+    assert payload["turn"]["patch_proposal"]["operations"][0]["op"] == "split_block"
+    assert payload["turn"]["context_receipt"]["context_receipt_id"].startswith("ctx-")
+    assert payload["turn"]["provider_call_audit"]["provider"] == "dify_scoped_patch"
+    assert payload["turn"]["provider_call_audit"]["workflow_id"] == "f2413e20-7cfc-4188-ae7f-7c23eaa353ff"
+    assert payload["turn"]["provider_call_audit"]["run_id"] == "run-scoped-p3-001"
+    assert payload["session"]["turns"][-1]["turn_id"] == payload["turn"]["turn_id"]
+    assert payload["session"]["status"] == "patch_ready"
+
+
+def test_software_design_v2_scoped_turn_rejects_missing_dify_result_json(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={"workflow_run_id": "run-scoped-bad", "data": {"id": "run-scoped-bad", "status": "succeeded", "outputs": {}}},
+        )
+
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "scoped-api-key")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "f2413e20-7cfc-4188-ae7f-7c23eaa353ff")
+    monkeypatch.setattr(service_module.httpx, "post", fake_post, raising=False)
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "补充接口约束。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+            },
+        },
+    )
+
+    assert scoped_turn.status_code == 400
+    assert "result_json" in scoped_turn.json()["detail"]
+    failed_session = client.get(f"/api/software-design-v2/sessions/{session['session_id']}").json()
+    assert failed_session["status"] == "draft_ready"
+    assert failed_session["turns"] == []
 
 
 def test_software_design_v2_normalizes_real_dify_projection_shape_for_frontend(monkeypatch) -> None:

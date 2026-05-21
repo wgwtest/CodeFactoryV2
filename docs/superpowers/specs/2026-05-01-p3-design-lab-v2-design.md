@@ -272,3 +272,112 @@ P3 v2 Design Baseline 冻结预览
 - 页面布局：左上需规、左下 CLI、右侧软设正文
 - 输出目标：软件设计说明、结构化设计基线、`P4` 工单投影同源生成
 
+## 10. 局部沟通与补丁提案补充设计
+
+本节是对 `P3 Design Lab v2` 的补充约定，解决“初版软设生成完成后，针对局部段落继续沟通并形成补丁提案”的场景。
+
+### 10.1 设计目的
+
+局部沟通工作流的目标不是重新启动整份软设转换，而是在已有软件设计说明草稿基础上，针对选中章节、段落或功能对象进行补充修正、重写建议和映射补齐。
+
+它必须满足以下原则：
+
+- 只处理局部修正，不替代初版需规转软设流程。
+- 输出补丁提案和解释信息，不直接把正文写成最终态。
+- 与 Dify 工作流解耦，CodeFactory 只负责调用约定和结果归一化，不负责编辑 Dify 内部实现。
+- 保持和现有 `P3DesignTurn` / `P3DesignPatch` 结构兼容。
+
+### 10.2 工作流边界
+
+局部修正入口继续复用同一个会话 API：
+
+```text
+POST /api/software-design-v2/sessions/{session_id}/turns
+```
+
+当 `turn_type = scoped_design_edit` 时，后端优先进入“局部沟通与补丁提案”分支。
+
+初版转换路径保持不变：
+
+- `POST /api/software-design-v2/sessions/{session_id}/conversion`
+- 仍然负责从 `P2` 冻结包生成初版软设、设计基线和工单投影。
+
+普通回合路径也保持不变：
+
+- `turn_type = design_turn`
+- 继续使用现有的轻量本地补充逻辑，作为非局部修正的常规设计回合。
+
+### 10.3 Dify 接入协议
+
+局部沟通工作流对应独立的 Dify 执行单元，建议使用以下环境变量：
+
+```bash
+CODEFACTORY_P3_SCOPED_DIFY_BASE_URL=http://localhost/v1
+CODEFACTORY_P3_SCOPED_DIFY_API_KEY=<Dify Console 中复制的 App API Key>
+CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=f2413e20-7cfc-4188-ae7f-7c23eaa353ff
+CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS=180
+```
+
+约定：
+
+- `BASE_URL` 只表示 Dify API 根地址，不把工作流运行逻辑写死在 CodeFactory。
+- `API_KEY` 必须是 Dify Console 的 App API Key，不使用内部 `api_key_id`。
+- `WORKFLOW_ID` 只用于固定某个发布版本；如果没有配置，允许走默认发布工作流路径。
+- `TIMEOUT_SECONDS` 默认建议 `180`，局部修正通常不需要比初版生成更长的等待。
+- 远端输出变量统一读取 `result_json`。
+
+### 10.4 输入与输出
+
+局部沟通工作流的输入应至少包含：
+
+- 当前 `session_id`
+- 当前软设标题和版本标识
+- 当前 `scope_anchor`
+- 用户本轮输入
+- 当前设计正文摘要
+- 当前设计基线摘要
+- 相关章节或对象上下文
+- `expected_output`
+
+输出在 CodeFactory 侧归一化为现有 turn 结构，至少保留：
+
+- `turn_id`
+- `turn_type`
+- `normalized_intent`
+- `assistant_message`
+- `scope_anchor`
+- `patch_proposal`
+- `context_receipt`
+- `provider_call_audit`
+- `created_at`
+
+其中：
+
+- `patch_proposal` 表示局部修正建议，不直接等于最终正文。
+- `context_receipt` 记录本轮调用时带入了哪些上下文。
+- `provider_call_audit` 记录本轮由哪个 provider / workflow 生成，便于排障。
+
+### 10.5 运行策略
+
+推荐策略是“优先 Dify，缺省回退本地”：
+
+1. 当局部 Dify 配置完整且工作流可用时，后端调用 Dify 生成补丁提案。
+2. 当局部 Dify 配置缺失时，保留现有本地补丁提案逻辑，保证页面可运行。
+3. 当远端返回缺少 `result_json`、JSON 非法、或 workflow 执行失败时，后端返回明确错误，不悄悄改成另一条初版转换路径。
+
+这样可以保证：
+
+- 初版软设生成和局部修正完全解耦。
+- 局部修正不会反向污染初版转换器协议。
+- CodeFactory 的接口形状对前端保持稳定。
+
+### 10.6 验收口径
+
+本补充设计完成后，至少要满足：
+
+1. `scoped_design_edit` 可以独立触发局部补丁提案。
+2. 新增 Dify 工作流只影响局部修正，不影响初版转换。
+3. `result_json` 是局部工作流的唯一远端输出读取点。
+4. `patch_proposal` 继续以结构化对象形式返回。
+5. 会话页不需要知道 Dify 的内部编排细节。
+6. 未配置局部 Dify 时，页面仍可用本地逻辑回退。
