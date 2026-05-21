@@ -148,6 +148,14 @@ export function buildP3DesignLabWorkbenchViewModel({
               name: module.name,
             })),
             functionTree: normalizeBaselineFunctionTree(designBaseline.function_tree ?? designBaseline.functionTree),
+            layeredArchitecture: normalizeLayeredArchitecture(
+              designBaseline.layered_architecture ??
+                designBaseline.layeredArchitecture ??
+                getNestedRecord(designBaseline.design_package, "layered_architecture") ??
+                getNestedRecord(designBaseline.design_package, "layeredArchitecture") ??
+                getNestedRecord(designBaseline.designPackage, "layered_architecture") ??
+                getNestedRecord(designBaseline.designPackage, "layeredArchitecture"),
+            ),
           }
         : undefined,
       emptyDescription: "生成软件设计说明后显示目录和模块映射",
@@ -212,6 +220,75 @@ function normalizeBaselineFunctionTree(value: unknown): NonNullable<StageDocumen
     title: toDisplayString(value.title, ""),
     root: value.root,
   };
+}
+
+function normalizeLayeredArchitecture(
+  value: unknown,
+): NonNullable<NonNullable<StageDocumentWorkbenchViewModel["outline"]["baseline"]>["layeredArchitecture"]> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const layers = toRecordList(value.layers).map((layer, index) => ({
+    layerId: toDisplayString(layer.layer_id ?? layer.layerId, `layer-${index + 1}`),
+    name: toDisplayString(layer.name, `架构层 ${index + 1}`),
+    responsibility: toOptionalDisplayString(layer.responsibility),
+    inputs: toDisplayStringList(layer.inputs),
+    outputs: toDisplayStringList(layer.outputs),
+    components: toRecordList(layer.components).map((component, componentIndex) => ({
+      componentId: toDisplayString(component.component_id ?? component.componentId, `component-${index + 1}-${componentIndex + 1}`),
+      name: toDisplayString(component.name, `层内构件 ${componentIndex + 1}`),
+      componentType: toOptionalDisplayString(component.component_type ?? component.componentType),
+      moduleRefs: toDisplayStringList(component.module_refs ?? component.moduleRefs),
+      functionRefs: toDisplayStringList(component.function_refs ?? component.functionRefs),
+    })),
+  }));
+  const moduleLayerMappings = toRecordList(value.module_layer_mappings ?? value.moduleLayerMappings).map((mapping, index) => ({
+    mappingId: toDisplayString(mapping.mapping_id ?? mapping.mappingId, `mapping-${index + 1}`),
+    moduleId: toDisplayString(mapping.module_id ?? mapping.moduleId, ""),
+    moduleName: toDisplayString(mapping.module_name ?? mapping.moduleName, "未命名模块"),
+    layerId: toDisplayString(mapping.layer_id ?? mapping.layerId, ""),
+    layerName: toDisplayString(mapping.layer_name ?? mapping.layerName, "未命名层"),
+    responsibility: toOptionalDisplayString(mapping.responsibility),
+    componentRefs: toDisplayStringList(mapping.component_refs ?? mapping.componentRefs),
+    functionRefs: toDisplayStringList(mapping.function_refs ?? mapping.functionRefs),
+    sourceRefs: toDisplayStringList(mapping.source_refs ?? mapping.sourceRefs),
+  }));
+  const diagrams = toRecordList(value.diagrams).map((diagram, index) => ({
+    diagramId: toDisplayString(diagram.diagram_id ?? diagram.diagramId, `diagram-${index + 1}`),
+    title: toDisplayString(diagram.title, `架构图 ${index + 1}`),
+    diagramType: toOptionalDisplayString(diagram.diagram_type ?? diagram.diagramType),
+    content: toOptionalDisplayString(diagram.content),
+  }));
+  if (!layers.length && !moduleLayerMappings.length && !diagrams.length) {
+    return undefined;
+  }
+  return {
+    architectureId: toDisplayString(value.architecture_id ?? value.architectureId, "layered-architecture"),
+    title: toDisplayString(value.title, "分层架构设计"),
+    pattern: toOptionalDisplayString(value.pattern),
+    description: toOptionalDisplayString(value.description),
+    sourceRefs: toDisplayStringList(value.source_refs ?? value.sourceRefs),
+    designRefs: toDisplayStringList(value.design_refs ?? value.designRefs),
+    layers,
+    moduleLayerMappings,
+    diagrams,
+  };
+}
+
+function getNestedRecord(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const nested = value[key];
+  return isRecord(nested) ? nested : undefined;
+}
+
+function toRecordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function toDisplayStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => toDisplayString(item, "")).filter(Boolean) : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -221,6 +221,62 @@ describe("P3 design morph model", () => {
       expect.arrayContaining(["PlanningTask", "TaskScope", "规划任务状态变化必须保留留痕记录"]),
     );
   });
+
+  test("uses structured layered architecture output for the architecture stage", () => {
+    const workbench = buildWorkbench();
+    workbench.outline.baseline!.layeredArchitecture = {
+      architectureId: "layered-architecture",
+      title: "分层架构设计",
+      pattern: "business-module-oriented-layered-architecture",
+      description: "按业务模块纵切片组织功能，按分层架构承载交互、编排、领域服务、数据与集成。",
+      sourceRefs: ["REQ-3.2"],
+      designRefs: ["sdd-03"],
+      layers: [
+        {
+          layerId: "presentation",
+          name: "展示交互层",
+          responsibility: "承载用户操作入口、状态展示和交互反馈。",
+          inputs: ["用户操作"],
+          outputs: ["业务请求"],
+          components: [{ componentId: "cmp-planning-task-workbench", name: "规划任务工作台", moduleRefs: ["module-planning"], functionRefs: ["fn-create-task"] }],
+        },
+        {
+          layerId: "domain-service",
+          name: "领域服务层",
+          responsibility: "承载规划任务创建、范围维护和状态流转规则。",
+          inputs: ["业务命令"],
+          outputs: ["领域结果"],
+          components: [{ componentId: "svc-planning-task-domain", name: "规划任务领域服务", moduleRefs: ["module-planning"], functionRefs: ["fn-create-task"] }],
+        },
+      ],
+      moduleLayerMappings: [
+        {
+          mappingId: "map-planning-task-domain",
+          moduleId: "module-planning",
+          moduleName: "规划任务管理",
+          layerId: "domain-service",
+          layerName: "领域服务层",
+          responsibility: "承载规划任务核心规则。",
+          componentRefs: ["svc-planning-task-domain"],
+          functionRefs: ["fn-create-task"],
+          sourceRefs: ["REQ-3.2"],
+        },
+      ],
+      diagrams: [{ diagramId: "D1", title: "分层架构与模块映射图", diagramType: "mermaid", content: "flowchart TB" }],
+    };
+
+    const model = buildP3DesignMorphModel(workbench);
+    const architectureStage = model.stages.find((stage) => stage.id === "layeredArchitecture");
+
+    expect(architectureStage).toEqual(
+      expect.objectContaining({
+        summary: "分层架构设计：business-module-oriented-layered-architecture",
+        items: ["展示交互层", "领域服务层", "规划任务管理 -> 领域服务层"],
+        sourceRefs: ["REQ-3.2", "sdd-03"],
+        constraintSummary: "2 个架构层；1 条模块-层映射；1 张架构图",
+      }),
+    );
+  });
 });
 
 function collectFunctionTreeTitles(node: FunctionTreeNode | null): string[] {

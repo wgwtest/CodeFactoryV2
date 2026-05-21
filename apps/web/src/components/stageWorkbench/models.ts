@@ -251,8 +251,57 @@ export type DocumentOutlineViewModel = {
       title?: string;
       root?: unknown;
     };
+    layeredArchitecture?: StageLayeredArchitectureViewModel;
   };
   emptyDescription: string;
+};
+
+export type StageLayeredArchitectureComponentViewModel = {
+  componentId: string;
+  name: string;
+  componentType?: string;
+  moduleRefs: string[];
+  functionRefs: string[];
+};
+
+export type StageLayeredArchitectureLayerViewModel = {
+  layerId: string;
+  name: string;
+  responsibility?: string;
+  inputs: string[];
+  outputs: string[];
+  components: StageLayeredArchitectureComponentViewModel[];
+};
+
+export type StageLayeredArchitectureMappingViewModel = {
+  mappingId: string;
+  moduleId: string;
+  moduleName: string;
+  layerId: string;
+  layerName: string;
+  responsibility?: string;
+  componentRefs: string[];
+  functionRefs: string[];
+  sourceRefs: string[];
+};
+
+export type StageLayeredArchitectureDiagramViewModel = {
+  diagramId: string;
+  title: string;
+  diagramType?: string;
+  content?: string;
+};
+
+export type StageLayeredArchitectureViewModel = {
+  architectureId: string;
+  title: string;
+  pattern?: string;
+  description?: string;
+  sourceRefs: string[];
+  designRefs: string[];
+  layers: StageLayeredArchitectureLayerViewModel[];
+  moduleLayerMappings: StageLayeredArchitectureMappingViewModel[];
+  diagrams: StageLayeredArchitectureDiagramViewModel[];
 };
 
 export type StageDocumentWorkbenchViewModel = {
