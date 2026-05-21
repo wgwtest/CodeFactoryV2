@@ -2377,6 +2377,73 @@ export type P3DesignLabFunctionTree = {
   root?: P3DesignLabFunctionTreeNode | null;
 };
 
+export type P3DesignLabLayeredArchitectureComponent = {
+  component_id?: string;
+  componentId?: string;
+  name?: string;
+  component_type?: string;
+  componentType?: string;
+  module_refs?: string[];
+  moduleRefs?: string[];
+  function_refs?: string[];
+  functionRefs?: string[];
+};
+
+export type P3DesignLabLayeredArchitectureLayer = {
+  layer_id?: string;
+  layerId?: string;
+  name?: string;
+  responsibility?: string;
+  inputs?: string[];
+  outputs?: string[];
+  components?: P3DesignLabLayeredArchitectureComponent[];
+};
+
+export type P3DesignLabLayeredArchitectureMapping = {
+  mapping_id?: string;
+  mappingId?: string;
+  module_id?: string;
+  moduleId?: string;
+  module_name?: string;
+  moduleName?: string;
+  layer_id?: string;
+  layerId?: string;
+  layer_name?: string;
+  layerName?: string;
+  responsibility?: string;
+  component_refs?: string[];
+  componentRefs?: string[];
+  function_refs?: string[];
+  functionRefs?: string[];
+  source_refs?: string[];
+  sourceRefs?: string[];
+};
+
+export type P3DesignLabLayeredArchitectureDiagram = {
+  diagram_id?: string;
+  diagramId?: string;
+  title?: string;
+  diagram_type?: string;
+  diagramType?: string;
+  content?: string;
+};
+
+export type P3DesignLabLayeredArchitecture = {
+  architecture_id?: string;
+  architectureId?: string;
+  title?: string;
+  pattern?: string;
+  description?: string;
+  source_refs?: string[];
+  sourceRefs?: string[];
+  design_refs?: string[];
+  designRefs?: string[];
+  layers?: P3DesignLabLayeredArchitectureLayer[];
+  module_layer_mappings?: P3DesignLabLayeredArchitectureMapping[];
+  moduleLayerMappings?: P3DesignLabLayeredArchitectureMapping[];
+  diagrams?: P3DesignLabLayeredArchitectureDiagram[];
+};
+
 export type P3DesignLabDesignBaseline = {
   baseline_id: string;
   application_name?: string;
@@ -2384,6 +2451,10 @@ export type P3DesignLabDesignBaseline = {
   modules: Array<{ module_id: string; name: string; source_refs?: string[] }>;
   function_tree?: P3DesignLabFunctionTree;
   functionTree?: P3DesignLabFunctionTree;
+  layered_architecture?: P3DesignLabLayeredArchitecture;
+  layeredArchitecture?: P3DesignLabLayeredArchitecture;
+  design_package?: Record<string, unknown>;
+  designPackage?: Record<string, unknown>;
   traceability?: Array<Record<string, string>>;
   pending_confirmations?: string[];
 };

@@ -78,10 +78,27 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     layoutKind: "architecture",
     title: "分层架构",
     subtitle: "按层次放置设计对象",
-    summary: (workbench) => `当前架构模式：${workbench.outline.baseline?.architectureMode ?? "待生成"}`,
-    items: () => ["展示层", "功能层", "服务层", "数据层"],
-    sourceRefs: (workbench) => [workbench.outline.baseline?.label ?? "SoftwareDesignBaseline.architecture"],
-    constraintSummary: (workbench) => `架构模式 ${workbench.outline.baseline?.architectureMode ?? "待生成"}；允许跨层承载`,
+    summary: (workbench) => {
+      const architecture = workbench.outline.baseline?.layeredArchitecture;
+      if (architecture) {
+        return `${architecture.title}：${architecture.pattern || workbench.outline.baseline?.architectureMode || "结构化分层"}`;
+      }
+      return `当前架构模式：${workbench.outline.baseline?.architectureMode ?? "待生成"}`;
+    },
+    items: (workbench) => collectLayeredArchitectureItems(workbench),
+    sourceRefs: (workbench) => {
+      const architecture = workbench.outline.baseline?.layeredArchitecture;
+      return architecture
+        ? uniqueStrings([...architecture.sourceRefs, ...architecture.designRefs])
+        : [workbench.outline.baseline?.label ?? "SoftwareDesignBaseline.architecture"];
+    },
+    constraintSummary: (workbench) => {
+      const architecture = workbench.outline.baseline?.layeredArchitecture;
+      if (architecture) {
+        return `${architecture.layers.length} 个架构层；${architecture.moduleLayerMappings.length} 条模块-层映射；${architecture.diagrams.length} 张架构图`;
+      }
+      return `架构模式 ${workbench.outline.baseline?.architectureMode ?? "待生成"}；允许跨层承载`;
+    },
   },
   {
     id: "technicalImplementation",
@@ -248,6 +265,17 @@ function buildFunctionTreeViewModel(workbench: StageDocumentWorkbenchViewModel):
         },
     root,
   };
+}
+
+function collectLayeredArchitectureItems(workbench: StageDocumentWorkbenchViewModel): string[] {
+  const architecture = workbench.outline.baseline?.layeredArchitecture;
+  if (!architecture) {
+    return ["展示层", "功能层", "服务层", "数据层"];
+  }
+  return uniqueStrings([
+    ...architecture.layers.map((layer) => layer.name),
+    ...architecture.moduleLayerMappings.map((mapping) => `${mapping.moduleName} -> ${mapping.layerName}`),
+  ]).slice(0, 8);
 }
 
 function buildConverterFunctionTreeViewModel(
