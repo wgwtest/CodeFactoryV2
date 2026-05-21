@@ -785,6 +785,49 @@
   gap: 8px;
 }
 
+.p3-design-scoped-turn-panel {
+  gap: 9px;
+}
+
+.p3-design-scoped-turn-panel .ant-input {
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.p3-design-scoped-patch-preview {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d5e3dd;
+  background: #f7fbf9;
+}
+
+.p3-design-scoped-patch-blocks,
+.p3-design-scoped-patch-notes {
+  display: grid;
+  gap: 6px;
+}
+
+.p3-design-scoped-patch-blocks article {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #dce8e3;
+  background: #ffffff;
+}
+
+.p3-design-scoped-patch-blocks article .ant-typography {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.p3-design-scoped-patch-blocks article .ant-typography-secondary,
+.p3-design-scoped-patch-notes .ant-typography-secondary {
+  color: #566862 !important;
+}
+
 .p3-design-lab-structured-view,
 .p3-design-lab-projection-tree-view,
 .p3-design-lab-turn-view {

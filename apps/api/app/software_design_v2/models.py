@@ -16,6 +16,10 @@ class P3DesignTurnWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_input: str
+    turn_type: str = "design_turn"
+    interaction_mode: str = "propose_patch"
+    scope_anchor: dict | None = None
+    expected_output: list[str] = Field(default_factory=list)
 
 
 class P3DesignConversionRun(BaseModel):
