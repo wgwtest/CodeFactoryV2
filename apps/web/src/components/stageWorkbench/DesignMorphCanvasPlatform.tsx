@@ -150,6 +150,13 @@ export type DesignMorphSelection = {
   payload?: Record<string, unknown>;
 };
 
+export type DesignMorphFocusRequest = {
+  requestId: number;
+  stageId: string;
+  objectId: string;
+  sectionId?: string;
+};
+
 type CanvasViewportState = {
   x: number;
   y: number;
@@ -309,6 +316,7 @@ type DesignMorphCanvasPlatformProps = {
   activeWindowId: string;
   onActiveWindowChange: (windowId: string) => void;
   selectedMorphObjectId?: string | null;
+  focusRequest?: DesignMorphFocusRequest | null;
   onSelectMorphObject?: (selection: DesignMorphSelection) => void;
 };
 
@@ -365,6 +373,7 @@ export function DesignMorphCanvasPlatform({
   activeWindowId,
   onActiveWindowChange,
   selectedMorphObjectId,
+  focusRequest,
   onSelectMorphObject,
 }: DesignMorphCanvasPlatformProps) {
   const trackCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -375,6 +384,7 @@ export function DesignMorphCanvasPlatform({
   const documentDragRef = useRef<DocumentDragState | null>(null);
   const itemsRef = useRef<MorphCanvasItem[]>([]);
   const lastAutoCenteredWindowKeyRef = useRef<string | null>(null);
+  const lastProcessedFocusRequestIdRef = useRef<number | null>(null);
   const suppressedAutoCenterWindowKeyRef = useRef<string | null>(null);
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
   const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
@@ -437,6 +447,37 @@ export function DesignMorphCanvasPlatform({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!focusRequest) {
+      return;
+    }
+    if (lastProcessedFocusRequestIdRef.current === focusRequest.requestId) {
+      return;
+    }
+    const item = items.find((candidate) => candidate.id === focusRequest.stageId);
+    if (!item?.document) {
+      return;
+    }
+    const located = findDocumentBlockInStructuredSections(item.document.structuredSections, focusRequest.objectId, focusRequest.sectionId);
+    if (!located) {
+      return;
+    }
+    const nextWindow = windows.find((window) => window.fromStageId === item.id || window.toStageId === item.id);
+    if (nextWindow) {
+      onActiveWindowChange(nextWindow.id);
+    }
+    setSelectedStageId(item.id);
+    centerItem(item.id, activePairIndex === 3 ? 0.72 : 0.9);
+    emitMorphSelection(buildDocumentBlockSelection(item, located.block, located.section));
+    lastProcessedFocusRequestIdRef.current = focusRequest.requestId;
+    requestAnimationFrame(() => {
+      const targetElement = globalThis.document.getElementById(located.block.anchorId ?? located.block.blockId);
+      if (typeof targetElement?.scrollIntoView === "function") {
+        targetElement.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    });
+  }, [activePairIndex, centerItem, focusRequest, items, onActiveWindowChange, windows]);
 
   useEffect(() => {
     const targetStageId = activeWindow?.toStageId ?? items[1]?.id ?? items[0]?.id;
@@ -1647,6 +1688,32 @@ function buildDocumentOutlineEntries(
     };
     return [current, ...buildDocumentOutlineEntries(section.children, level + 1)];
   });
+}
+
+function findDocumentBlockInStructuredSections(
+  sections: StandardDocumentSectionViewModel[] | undefined,
+  blockId: string,
+  sectionId?: string,
+): { block: StandardDocumentBlockViewModel; section: SelectableDocumentSection } | null {
+  const allMatches: Array<{ block: StandardDocumentBlockViewModel; section: SelectableDocumentSection }> = [];
+  function visit(section: StandardDocumentSectionViewModel) {
+    const selectableSection: SelectableDocumentSection = {
+      section_id: section.sectionId,
+      title: section.title,
+      status: section.status,
+      blocks: section.blocks,
+    };
+    const block = section.blocks.find((candidate) => candidate.blockId === blockId || candidate.anchorId === blockId);
+    if (block) {
+      allMatches.push({ block, section: selectableSection });
+    }
+    section.children?.forEach(visit);
+  }
+  sections?.forEach(visit);
+  if (!allMatches.length) {
+    return null;
+  }
+  return allMatches.find((match) => match.section.section_id === sectionId) ?? allMatches[0] ?? null;
 }
 
 function findFirstDocumentBlock(section: StandardDocumentSectionViewModel): StandardDocumentBlockViewModel | undefined {

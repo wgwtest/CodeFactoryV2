@@ -3,7 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.session import get_session
-from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
+from app.software_design_v2.models import (
+    P3DesignConversionRun,
+    P3DesignPatchProposalApply,
+    P3DesignSessionCreate,
+    P3DesignTurnWrite,
+)
 from app.software_design_v2.service import SoftwareDesignV2Service
 
 router = APIRouter(prefix="/software-design-v2", tags=["software-design-v2"])
@@ -75,6 +80,22 @@ def append_design_turn(
 ):
     try:
         result = service.append_turn(session_id, payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="P3 design session not found")
+    return result
+
+
+@router.post("/sessions/{session_id}/patch-proposals/{proposal_id}/apply")
+def apply_patch_proposal(
+    session_id: str,
+    proposal_id: str,
+    payload: P3DesignPatchProposalApply,
+    service: SoftwareDesignV2Service = Depends(get_software_design_v2_service),
+):
+    try:
+        result = service.apply_patch_proposal(session_id, proposal_id, payload)
     except ValueError as exc:
         raise _bad_request(exc) from exc
     if result is None:

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
+import httpx
 from sqlalchemy import select
 
 from app.db.models.requirements import RequirementAuthoringDocument
@@ -12,15 +16,40 @@ from app.requirement_spec_work_items.service import RequirementSpecWorkItemServi
 from app.design_converters.adapters.base import load_design_converter_adapter
 from app.design_converters.models import DesignConverterRunRequest, DesignConverterRunResult
 from app.design_converters.plugin_registry import get_design_converter_plugin_registry
-from app.software_design_v2.models import P3DesignConversionRun, P3DesignSessionCreate, P3DesignTurnWrite
+from app.software_design_v2.models import (
+    P3DesignConversionRun,
+    P3DesignPatchProposalApply,
+    P3DesignSessionCreate,
+    P3DesignTurnWrite,
+)
 from app.software_design_v2.sdd_template_profile import (
     build_sdd_81435_quality_rules,
     build_sdd_81435_template_profile,
 )
 
 
+def _env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 class SoftwareDesignV2Service:
     _sessions: dict[str, dict] = {}
+    _supported_patch_ops = {
+        "rewrite_block",
+        "split_block",
+        "insert_block_after",
+        "delete_block",
+        "merge_blocks",
+        "replace_section_blocks",
+        "rewrite_section",
+        "add_subsection",
+        "update_trace_refs",
+        "add_quality_note",
+    }
     _conversion_strategy_options: list[dict[str, str]] = [
         {
             "value": "standard_sdd_draft",
@@ -507,18 +536,45 @@ class SoftwareDesignV2Service:
             raise ValueError("unsupported P3 scoped design turn anchor_type")
 
         turn_id = f"p3turn-{uuid4().hex[:10]}"
-        patch_proposal = self._build_scoped_patch_proposal(design_session, scope_anchor, user_input)
-        context_receipt = self._build_scoped_context_receipt(design_session, scope_anchor)
-        provider_call_audit = self._build_scoped_provider_call_audit(turn_id, payload.interaction_mode)
+        remote_result = self._call_scoped_dify_workflow(
+            turn_id=turn_id,
+            design_session=design_session,
+            payload=payload,
+            scope_anchor=scope_anchor,
+            user_input=user_input,
+        )
+        patch_proposal = (
+            self._normalize_scoped_patch_proposal(remote_result.get("patch_proposal"), design_session, scope_anchor, user_input)
+            if remote_result
+            else self._build_scoped_patch_proposal(design_session, scope_anchor, user_input)
+        )
+        context_receipt = self._normalize_scoped_context_receipt(
+            remote_result.get("context_receipt") if remote_result else None,
+            design_session,
+            scope_anchor,
+        )
+        provider_call_audit = self._normalize_scoped_provider_call_audit(
+            remote_result.get("provider_call_audit") if remote_result else None,
+            turn_id,
+            payload.interaction_mode,
+            remote_result.get("workflow_trace") if remote_result else None,
+        )
+        assistant_message = (
+            str(remote_result.get("assistant_message") or "").strip()
+            if remote_result
+            else "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。"
+        )
+        if not assistant_message:
+            assistant_message = "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。"
         turn = {
             "turn_id": turn_id,
             "turn_type": "scoped_design_edit",
             "interaction_mode": payload.interaction_mode,
             "user_input": user_input,
-            "normalized_intent": "scoped_design_edit",
+            "normalized_intent": str((remote_result or {}).get("normalized_intent") or "scoped_design_edit"),
             "scope_anchor": scope_anchor,
             "expected_output": list(payload.expected_output),
-            "assistant_message": "已生成局部补丁提案：建议将当前对象拆分、重写或补充约束，等待人工确认后应用。",
+            "assistant_message": assistant_message,
             "patch_proposal": patch_proposal,
             "context_receipt": context_receipt,
             "provider_call_audit": provider_call_audit,
@@ -535,6 +591,920 @@ class SoftwareDesignV2Service:
         self._refresh_related_designs(design_session)
         return {"turn": turn, "session": design_session}
 
+    def apply_patch_proposal(
+        self,
+        session_id: str,
+        proposal_id: str,
+        payload: P3DesignPatchProposalApply,
+    ) -> dict | None:
+        design_session = self.get_session(session_id)
+        if design_session is None:
+            return None
+        self._require_converted_draft(design_session)
+        if payload.apply_scope != "document_only":
+            raise ValueError("unsupported patch apply_scope")
+        patch_turn = self._find_patch_proposal_turn(design_session, proposal_id, payload.turn_id)
+        proposal = patch_turn["patch_proposal"]
+        if proposal.get("status") == "applied":
+            application = self._build_patch_application_record(
+                design_session,
+                proposal,
+                payload,
+                updated_targets=[],
+                status="applied",
+                idempotent=True,
+            )
+            return {
+                "application_id": application["application_id"],
+                "status": "applied",
+                "application": application,
+                "updated_targets": [],
+                "warnings": ["补丁提案已应用，本次未重复写入正文。"],
+                "updated_session": design_session,
+            }
+        operations = proposal.get("operations")
+        if not isinstance(operations, list) or not operations:
+            proposal["proposal_type"] = "advice_only"
+            proposal["applicability"] = self._build_patch_applicability(operations if isinstance(operations, list) else [], "operations_empty")
+            raise ValueError("operations_empty")
+        unsupported_ops = [
+            str(operation.get("op") or "")
+            for operation in operations
+            if not isinstance(operation, dict) or str(operation.get("op") or "") not in self._supported_patch_ops
+        ]
+        if unsupported_ops:
+            proposal["applicability"] = {
+                "can_apply": False,
+                "reason": "unsupported_operations",
+                "supported_ops": sorted(self._supported_patch_ops),
+                "unsupported_ops": unsupported_ops,
+            }
+            raise ValueError("unsupported_operations")
+        base_revision_id = str(payload.base_revision_id or "").strip()
+        proposal_revision_id = str(proposal.get("base_revision_id") or "").strip()
+        current_revision_id = self._current_design_revision_id(design_session)
+        if base_revision_id and base_revision_id != proposal_revision_id:
+            proposal["status"] = "conflicted"
+            proposal["applicability"] = self._build_patch_applicability(operations, "revision_conflict")
+            raise ValueError("revision_conflict")
+        if proposal_revision_id and proposal_revision_id != current_revision_id:
+            proposal["status"] = "conflicted"
+            proposal["applicability"] = self._build_patch_applicability(operations, "revision_conflict")
+            raise ValueError("revision_conflict")
+
+        document = design_session.get("design_document") or {}
+        updated_targets = self._apply_document_patch_operations(document, proposal, operations)
+        if not updated_targets:
+            proposal["applicability"] = self._build_patch_applicability(operations, "missing_target_object")
+            raise ValueError("missing_target_object")
+
+        result_revision_id = self._next_design_revision_id(design_session)
+        document["revision_id"] = result_revision_id
+        document["version_label"] = result_revision_id
+        design_session["version_label"] = result_revision_id
+        proposal["status"] = "applied"
+        proposal["applicability"] = self._build_patch_applicability(operations, "ready")
+        proposal["applied_at"] = self._now()
+        application = self._build_patch_application_record(
+            design_session,
+            proposal,
+            payload,
+            updated_targets=updated_targets,
+            status="applied",
+            result_revision_id=result_revision_id,
+        )
+        application_turn = {
+            "turn_id": f"p3turn-{uuid4().hex[:10]}",
+            "turn_type": "patch_application",
+            "normalized_intent": "apply_patch_proposal",
+            "assistant_message": f"已应用补丁提案 {proposal_id} 到软件设计说明正文。",
+            "patch_application": application,
+            "created_at": self._now(),
+        }
+        self._merge_patch_application_into_baseline(design_session, updated_targets, application)
+        design_session["turns"] = [*design_session["turns"], application_turn]
+        design_session["status"] = "patched"
+        design_session["updated_at"] = self._now()
+        design_session["runtime_events"] = [
+            *design_session["runtime_events"],
+            self._build_runtime_event("patch_application", f"应用局部补丁提案：{proposal_id}"),
+        ]
+        self._refresh_related_designs(design_session)
+        return {
+            "application_id": application["application_id"],
+            "status": "applied",
+            "application": application,
+            "updated_targets": updated_targets,
+            "warnings": application["warnings"],
+            "updated_session": design_session,
+        }
+
+    def _find_patch_proposal_turn(self, design_session: dict, proposal_id: str, turn_id: str | None) -> dict:
+        for turn in reversed(list(design_session.get("turns") or [])):
+            if turn_id and turn.get("turn_id") != turn_id:
+                continue
+            proposal = turn.get("patch_proposal")
+            if isinstance(proposal, dict) and proposal.get("proposal_id") == proposal_id:
+                return turn
+        raise ValueError("patch proposal not found")
+
+    def _apply_document_patch_operations(self, document: dict, proposal: dict, operations: list[dict]) -> list[dict]:
+        sections = document.get("sections")
+        if not isinstance(sections, list):
+            raise ValueError("missing_target_object")
+        updated_targets: list[dict] = []
+        for operation in operations:
+            op = str(operation.get("op") or "")
+            if op == "rewrite_block":
+                updated_targets.extend(self._apply_rewrite_block(sections, proposal, operation))
+            elif op == "split_block":
+                updated_targets.extend(self._apply_split_block(sections, proposal, operation))
+            elif op == "insert_block_after":
+                updated_targets.extend(self._apply_insert_block_after(sections, proposal, operation))
+            elif op == "replace_section_blocks":
+                updated_targets.extend(self._apply_replace_section_blocks(sections, proposal, operation))
+            elif op == "rewrite_section":
+                updated_targets.extend(self._apply_rewrite_section(sections, proposal, operation))
+            elif op == "add_subsection":
+                updated_targets.extend(self._apply_add_subsection(sections, proposal, operation))
+            elif op == "update_trace_refs":
+                updated_targets.extend(self._apply_update_trace_refs(sections, proposal, operation))
+            elif op == "add_quality_note":
+                updated_targets.extend(self._apply_add_quality_note(sections, proposal, operation))
+        return updated_targets
+
+    def _apply_rewrite_block(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        target = self._find_target_block(sections, proposal, operation)
+        section, block, block_index = target
+        content = str(operation.get("content") or operation.get("new_content") or "").strip()
+        if not content:
+            raise ValueError("missing_target_object")
+        block["content"] = content
+        if operation.get("title"):
+            block["title"] = str(operation["title"])
+        if operation.get("source_refs"):
+            block["source_refs"] = [str(ref) for ref in operation.get("source_refs") or []]
+        self._sync_section_content_from_blocks(section)
+        return [self._updated_block_target(section, block, block_index, "rewrite_block")]
+
+    def _apply_split_block(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        target = self._find_target_block(sections, proposal, operation)
+        section, block, block_index = target
+        new_blocks = operation.get("new_blocks")
+        if not isinstance(new_blocks, list) or not new_blocks:
+            raise ValueError("missing_target_object")
+        source_refs = [str(ref) for ref in operation.get("source_refs") or block.get("source_refs") or section.get("source_refs") or []]
+        replacement_blocks = [
+            {
+                "block_id": f"{block.get('block_id') or self._target_block_id(proposal, operation)}-split-{index + 1}",
+                "kind": "paragraph",
+                "title": str(item.get("title") or f"补丁段落 {index + 1}"),
+                "content": str(item.get("content") or "").strip(),
+                "source_refs": [str(ref) for ref in item.get("source_refs") or source_refs],
+                "patched_from": block.get("block_id") or self._target_block_id(proposal, operation),
+            }
+            for index, item in enumerate(new_blocks)
+            if isinstance(item, dict) and str(item.get("content") or "").strip()
+        ]
+        if not replacement_blocks:
+            raise ValueError("missing_target_object")
+        blocks = self._ensure_section_blocks(section)
+        blocks[block_index : block_index + 1] = replacement_blocks
+        self._sync_section_content_from_blocks(section)
+        return [
+            self._updated_block_target(section, replacement, block_index + index, "split_block")
+            for index, replacement in enumerate(replacement_blocks)
+        ]
+
+    def _apply_insert_block_after(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        target = self._find_target_block(sections, proposal, operation)
+        section, block, block_index = target
+        new_block = operation.get("new_block") if isinstance(operation.get("new_block"), dict) else operation
+        content = str(new_block.get("content") or "").strip()
+        if not content:
+            raise ValueError("missing_target_object")
+        inserted = {
+            "block_id": str(new_block.get("block_id") or f"{block.get('block_id') or self._target_block_id(proposal, operation)}-inserted"),
+            "kind": str(new_block.get("kind") or "paragraph"),
+            "title": str(new_block.get("title") or "补充段落"),
+            "content": content,
+            "source_refs": [str(ref) for ref in new_block.get("source_refs") or block.get("source_refs") or section.get("source_refs") or []],
+            "patched_after": block.get("block_id") or self._target_block_id(proposal, operation),
+        }
+        blocks = self._ensure_section_blocks(section)
+        blocks.insert(block_index + 1, inserted)
+        self._sync_section_content_from_blocks(section)
+        return [self._updated_block_target(section, inserted, block_index + 1, "insert_block_after")]
+
+    def _apply_replace_section_blocks(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        section = self._find_target_section(sections, proposal, operation)
+        raw_blocks = operation.get("blocks") or operation.get("new_blocks")
+        if not isinstance(raw_blocks, list) or not raw_blocks:
+            raise ValueError("missing_target_object")
+        source_refs = [str(ref) for ref in operation.get("source_refs") or section.get("source_refs") or []]
+        replacement_blocks: list[dict] = []
+        for index, item in enumerate(raw_blocks, start=1):
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or item.get("text") or "").strip()
+            if not content:
+                continue
+            replacement_blocks.append(
+                {
+                    "block_id": str(item.get("block_id") or f"{section.get('section_id')}-block-{index}"),
+                    "kind": str(item.get("kind") or "paragraph"),
+                    "title": str(item.get("title") or f"补丁段落 {index}"),
+                    "content": content,
+                    "source_refs": [str(ref) for ref in item.get("source_refs") or source_refs],
+                    "patched_section": str(section.get("section_id") or ""),
+                }
+            )
+        if not replacement_blocks:
+            raise ValueError("missing_target_object")
+        section["blocks"] = replacement_blocks
+        section["status"] = "patched"
+        self._sync_section_content_from_blocks(section)
+        return [
+            {
+                "target_type": "design_section",
+                "section_id": str(section.get("section_id") or ""),
+                "operation": "replace_section_blocks",
+                "updated_block_ids": [block["block_id"] for block in replacement_blocks],
+            }
+        ]
+
+    def _apply_rewrite_section(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        section = self._find_target_section(sections, proposal, operation)
+        content = str(operation.get("content") or operation.get("new_content") or "").strip()
+        if not content:
+            raise ValueError("missing_target_object")
+        if operation.get("title"):
+            section["title"] = str(operation["title"])
+        section["content"] = content
+        section["status"] = "patched"
+        section["blocks"] = [
+            {
+                "block_id": str(operation.get("block_id") or f"{section.get('section_id')}-body"),
+                "kind": "paragraph",
+                "title": str(operation.get("block_title") or section.get("title") or "补丁段落"),
+                "content": content,
+                "source_refs": [str(ref) for ref in operation.get("source_refs") or section.get("source_refs") or []],
+                "patched_section": str(section.get("section_id") or ""),
+            }
+        ]
+        return [
+            {
+                "target_type": "design_section",
+                "section_id": str(section.get("section_id") or ""),
+                "operation": "rewrite_section",
+                "updated_block_ids": [section["blocks"][0]["block_id"]],
+            }
+        ]
+
+    def _apply_add_subsection(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        section = self._find_target_section(sections, proposal, operation)
+        title = str(operation.get("title") or operation.get("section_title") or "补充小节").strip()
+        content = str(operation.get("content") or "").strip()
+        if not content:
+            raise ValueError("missing_target_object")
+        children = section.setdefault("children", [])
+        if not isinstance(children, list):
+            section["children"] = []
+            children = section["children"]
+        subsection = {
+            "section_id": str(operation.get("section_id") or f"{section.get('section_id')}-patch-{len(children) + 1}"),
+            "title": title,
+            "content": content,
+            "status": "patched",
+            "source_refs": [str(ref) for ref in operation.get("source_refs") or section.get("source_refs") or []],
+        }
+        children.append(subsection)
+        return [
+            {
+                "target_type": "design_section",
+                "section_id": str(subsection["section_id"]),
+                "parent_section_id": str(section.get("section_id") or ""),
+                "operation": "add_subsection",
+            }
+        ]
+
+    def _apply_update_trace_refs(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        target = self._find_target_block(sections, proposal, operation)
+        section, block, block_index = target
+        source_refs = [str(ref) for ref in operation.get("source_refs") or [] if str(ref).strip()]
+        if not source_refs:
+            return []
+        block["source_refs"] = source_refs
+        section["source_refs"] = sorted({*list(section.get("source_refs") or []), *source_refs})
+        return [self._updated_block_target(section, block, block_index, "update_trace_refs")]
+
+    def _apply_add_quality_note(self, sections: list, proposal: dict, operation: dict) -> list[dict]:
+        section = self._find_target_section(sections, proposal, operation)
+        note = str(operation.get("note") or operation.get("content") or "").strip()
+        if not note:
+            return []
+        quality = section.setdefault("quality", {})
+        notes = quality.setdefault("notes", [])
+        if isinstance(notes, list):
+            notes.append(note)
+        return [
+            {
+                "target_type": "quality_note",
+                "section_id": str(section.get("section_id") or ""),
+                "operation": "add_quality_note",
+            }
+        ]
+
+    def _find_target_block(self, sections: list, proposal: dict, operation: dict) -> tuple[dict, dict, int]:
+        target_section_id = self._target_section_id(proposal, operation)
+        target_block_id = self._target_block_id(proposal, operation)
+        section = self._find_target_section(sections, proposal, operation)
+        blocks = self._ensure_section_blocks(section)
+        for index, block in enumerate(blocks):
+            if str(block.get("block_id") or block.get("blockId") or "") == target_block_id:
+                return section, block, index
+        if target_block_id in {"", "selected-block", f"{target_section_id}-body"} and blocks:
+            return section, blocks[0], 0
+        raise ValueError("missing_target_object")
+
+    def _find_target_section(self, sections: list, proposal: dict, operation: dict) -> dict:
+        target_section_id = self._target_section_id(proposal, operation)
+        for section in self._walk_sections(sections):
+            if str(section.get("section_id") or section.get("sectionId") or "") == target_section_id:
+                return section
+        raise ValueError("missing_target_object")
+
+    def _ensure_section_blocks(self, section: dict) -> list[dict]:
+        blocks = section.get("blocks")
+        if isinstance(blocks, list) and blocks:
+            return blocks
+        block_id = f"{section.get('section_id')}-body"
+        blocks = [
+            {
+                "block_id": block_id,
+                "kind": "paragraph",
+                "content": str(section.get("content") or ""),
+                "source_refs": list(section.get("source_refs") or []),
+            }
+        ]
+        section["blocks"] = blocks
+        return blocks
+
+    def _sync_section_content_from_blocks(self, section: dict) -> None:
+        blocks = self._ensure_section_blocks(section)
+        section["content"] = "\n".join(str(block.get("content") or "") for block in blocks if str(block.get("content") or "").strip())
+
+    def _walk_sections(self, sections: list) -> list[dict]:
+        walked: list[dict] = []
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            walked.append(section)
+            for child_key in ("children", "subsections"):
+                children = section.get(child_key)
+                if isinstance(children, list):
+                    walked.extend(self._walk_sections(children))
+        return walked
+
+    @staticmethod
+    def _target_section_id(proposal: dict, operation: dict) -> str:
+        target_anchor = proposal.get("target_anchor") if isinstance(proposal.get("target_anchor"), dict) else {}
+        return str(operation.get("section_id") or target_anchor.get("section_id") or "selected-section")
+
+    @staticmethod
+    def _target_block_id(proposal: dict, operation: dict) -> str:
+        target_anchor = proposal.get("target_anchor") if isinstance(proposal.get("target_anchor"), dict) else {}
+        return str(operation.get("target_block_id") or operation.get("block_id") or target_anchor.get("block_id") or "selected-block")
+
+    @staticmethod
+    def _updated_block_target(section: dict, block: dict, index: int, operation: str) -> dict:
+        return {
+            "target_type": "design_block",
+            "section_id": str(section.get("section_id") or ""),
+            "block_id": str(block.get("block_id") or block.get("blockId") or ""),
+            "operation": operation,
+            "index": index,
+        }
+
+    def _merge_patch_application_into_baseline(self, design_session: dict, updated_targets: list[dict], application: dict) -> None:
+        baseline = design_session.get("design_baseline")
+        if not isinstance(baseline, dict):
+            return
+        applications = baseline.setdefault("patch_applications", [])
+        if isinstance(applications, list):
+            applications.append(
+                {
+                    "application_id": application["application_id"],
+                    "proposal_id": application["proposal_id"],
+                    "updated_targets": updated_targets,
+                    "result_revision_id": application["result_revision_id"],
+                }
+            )
+        baseline["pending_confirmations"] = [
+            *list(baseline.get("pending_confirmations") or []),
+            "局部补丁已应用，需重新运行设计完整性检查。",
+        ]
+
+    def _current_design_revision_id(self, design_session: dict) -> str:
+        document = design_session.get("design_document") or {}
+        return str(document.get("revision_id") or document.get("version_label") or design_session.get("version_label") or "current")
+
+    @staticmethod
+    def _next_design_revision_id(design_session: dict) -> str:
+        current = str((design_session.get("design_document") or {}).get("revision_id") or design_session.get("version_label") or "rev-0")
+        if "-patch-" in current:
+            prefix, _, suffix = current.rpartition("-patch-")
+            try:
+                return f"{prefix}-patch-{int(suffix) + 1}"
+            except ValueError:
+                pass
+        return f"{current}-patch-1"
+
+    def _build_patch_application_record(
+        self,
+        design_session: dict,
+        proposal: dict,
+        payload: P3DesignPatchProposalApply,
+        *,
+        updated_targets: list[dict],
+        status: str,
+        result_revision_id: str | None = None,
+        idempotent: bool = False,
+    ) -> dict:
+        return {
+            "application_id": f"patch-app-{uuid4().hex[:10]}",
+            "proposal_id": str(proposal.get("proposal_id") or ""),
+            "turn_id": payload.turn_id,
+            "status": status,
+            "idempotent": idempotent,
+            "applied_by": "current_user",
+            "applied_at": self._now(),
+            "base_revision_id": str(proposal.get("base_revision_id") or payload.base_revision_id),
+            "result_revision_id": result_revision_id or self._current_design_revision_id(design_session),
+            "updated_targets": updated_targets,
+            "warnings": ["补丁应用后需要重新运行设计完整性检查。"],
+            "user_note": payload.user_note,
+        }
+
+    def _build_patch_applicability(self, operations: list, reason: str) -> dict:
+        unsupported_ops = [
+            str(operation.get("op") or "")
+            for operation in operations
+            if isinstance(operation, dict) and str(operation.get("op") or "") not in self._supported_patch_ops
+        ]
+        return {
+            "can_apply": reason == "ready" and bool(operations) and not unsupported_ops,
+            "reason": reason,
+            "supported_ops": sorted(self._supported_patch_ops),
+            "unsupported_ops": unsupported_ops,
+        }
+
+    def _normalize_patch_applicability(self, value: Any, operations: list) -> dict:
+        fallback = self._build_patch_applicability(operations, "ready" if operations else "operations_empty")
+        if isinstance(value, dict):
+            reason = str(value.get("reason") or "").strip()
+            normalized = {
+                "can_apply": bool(value.get("can_apply")) and fallback["can_apply"],
+                "reason": reason or fallback["reason"],
+                "supported_ops": [str(item) for item in value.get("supported_ops") or sorted(self._supported_patch_ops)],
+                "unsupported_ops": [str(item) for item in value.get("unsupported_ops") or fallback["unsupported_ops"]],
+            }
+            if not operations:
+                normalized["can_apply"] = False
+                normalized["reason"] = "operations_empty"
+            elif fallback["unsupported_ops"]:
+                normalized["can_apply"] = False
+                normalized["reason"] = "unsupported_operations"
+                normalized["unsupported_ops"] = fallback["unsupported_ops"]
+            return normalized
+        return fallback
+
+    def _infer_patch_proposal_type(self, operations: list) -> str:
+        if not operations:
+            return "advice_only"
+        op_names = {str(operation.get("op") or "") for operation in operations if isinstance(operation, dict)}
+        unsupported_ops = sorted(op_name for op_name in op_names if op_name not in self._supported_patch_ops)
+        if unsupported_ops:
+            return "needs_manual_merge"
+        if op_names.intersection({"replace_section_blocks", "rewrite_section"}):
+            return "section_replacement_candidate"
+        if "replace_document_draft" in op_names:
+            return "document_replacement_candidate"
+        return "executable_patch"
+
+    def _build_patch_protocol_diagnostics(self, operations: list) -> dict:
+        applicability = self._build_patch_applicability(operations, "ready" if operations else "operations_empty")
+        if not operations:
+            protocol_status = "operations_empty"
+        elif applicability["unsupported_ops"]:
+            protocol_status = "unsupported_operations"
+        else:
+            protocol_status = "ok"
+        return {
+            "protocol_status": protocol_status,
+            "operation_count": len(operations),
+            "unsupported_ops": applicability["unsupported_ops"],
+        }
+
+    def _call_scoped_dify_workflow(
+        self,
+        *,
+        turn_id: str,
+        design_session: dict,
+        payload: P3DesignTurnWrite,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict | None:
+        api_key = _env("CODEFACTORY_P3_SCOPED_DIFY_API_KEY")
+        if not api_key:
+            return None
+
+        base_url = self._normalize_dify_base_url(_env("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL") or "http://localhost/v1")
+        workflow_id = _env("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID")
+        timeout_seconds = float(_env("CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS") or "180")
+        response_mode = _env("CODEFACTORY_P3_SCOPED_DIFY_RESPONSE_MODE") or "blocking"
+        url = self._dify_workflow_run_url(base_url=base_url, workflow_id=workflow_id)
+        request_payload = {
+            "inputs": self._build_scoped_dify_inputs(design_session, payload, scope_anchor, user_input),
+            "response_mode": response_mode,
+            "user": f"codefactory-p3-scoped-{design_session['session_id']}",
+        }
+        try:
+            response = httpx.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_payload,
+                timeout=timeout_seconds,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            remote_payload = response.json()
+        except httpx.HTTPStatusError as exc:
+            response_text = exc.response.text.strip()
+            detail = f"{exc}"
+            if response_text:
+                detail = f"{detail}; response_body={response_text[:1200]}"
+            raise ValueError(f"remote scoped dify workflow request failed: {detail}") from exc
+        except httpx.HTTPError as exc:
+            raise ValueError(f"remote scoped dify workflow request failed: {exc}") from exc
+        except ValueError as exc:
+            raise ValueError("remote scoped dify workflow returned non-JSON response") from exc
+
+        data = dict(remote_payload.get("data") or {})
+        workflow_status = str(data.get("status") or "").strip()
+        workflow_error = str(data.get("error") or "").strip()
+        workflow_run_id = str(remote_payload.get("workflow_run_id") or data.get("id") or "").strip()
+        if workflow_status == "failed" or workflow_error:
+            detail = workflow_error or "workflow status failed"
+            raise ValueError(f"remote scoped dify workflow failed ({workflow_run_id}): {detail}")
+
+        outputs = dict(data.get("outputs") or {})
+        result_json = outputs.get("result_json")
+        if not isinstance(result_json, str) or not result_json.strip():
+            raise ValueError("remote scoped dify workflow did not return data.outputs.result_json")
+        try:
+            parsed = json.loads(result_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("remote scoped dify result_json is not valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("remote scoped dify result_json is not a JSON object")
+
+        return {
+            **dict(parsed),
+            "workflow_trace": {
+                "provider": "dify_scoped_patch",
+                "workflow_id": workflow_id,
+                "workflow_run_id": workflow_run_id,
+                "status": workflow_status,
+                "response_mode": response_mode,
+                "turn_id": turn_id,
+            },
+        }
+
+    def _build_scoped_dify_inputs(
+        self,
+        design_session: dict,
+        payload: P3DesignTurnWrite,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict:
+        edit_task = self._build_long_document_edit_task(design_session, payload, scope_anchor, user_input)
+        design_context = {
+            "input_package": self._compact_context_dict(design_session.get("input_package") or {}),
+            "design_document": self._compact_context_dict(design_session.get("design_document") or {}),
+            "design_baseline": self._compact_context_dict(design_session.get("design_baseline") or {}),
+            "workorder_projection": self._compact_context_dict(design_session.get("workorder_projection") or {}),
+            "context_summaries": self._compact_context_dict(design_session.get("context_summaries") or {}),
+        }
+        design_context_json = json.dumps(design_context, ensure_ascii=False)
+        return {
+            "session_id": str(design_session.get("session_id") or ""),
+            "design_title": str(design_session.get("design_title") or ""),
+            "version_label": str(design_session.get("version_label") or ""),
+            "user_input": user_input,
+            "interaction_mode": str(payload.interaction_mode or "propose_patch"),
+            "scope_anchor_json": json.dumps(scope_anchor, ensure_ascii=False),
+            "expected_output_json": json.dumps(list(payload.expected_output), ensure_ascii=False),
+            "design_context_json": design_context_json,
+            "scoped_context_json": design_context_json,
+            "long_document_edit_task_json": json.dumps(edit_task, ensure_ascii=False),
+        }
+
+    def _build_long_document_edit_task(
+        self,
+        design_session: dict,
+        payload: P3DesignTurnWrite,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict:
+        document = design_session.get("design_document") or {}
+        sections = document.get("sections") if isinstance(document.get("sections"), list) else []
+        target_section = self._find_section_snapshot(sections, str(scope_anchor.get("section_id") or ""))
+        target_block = self._find_block_snapshot(target_section, str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or ""))
+        previous_block, next_block = self._neighbor_block_snapshots(target_section, target_block)
+        return {
+            "task_id": f"edit-task-{uuid4().hex[:10]}",
+            "document_ref": {
+                "document_id": str(scope_anchor.get("document_id") or design_session.get("session_id") or ""),
+                "document_type": "software_design",
+                "owner_stage": "P3",
+                "revision_id": self._current_design_revision_id(design_session),
+                "title": str(document.get("title") or design_session.get("design_title") or ""),
+            },
+            "user_instruction": user_input,
+            "edit_intent": str(payload.interaction_mode or "propose_patch"),
+            "scope_anchor": scope_anchor,
+            "target_snapshot": {
+                "target_section": target_section,
+                "target_block": target_block,
+                "previous_block": previous_block,
+                "next_block": next_block,
+                "selection_snapshot": scope_anchor.get("selection_snapshot") or {},
+            },
+            "context_bundle": {
+                "input_package_summary": self._build_input_package_summary(design_session.get("input_package") or {}),
+                "design_baseline_summary": self._build_design_baseline_summary(design_session.get("design_baseline") or {}),
+                "function_tree_summary": self._build_function_tree_summary(design_session.get("design_baseline") or {}),
+                "layered_architecture_summary": self._build_layered_architecture_summary(design_session.get("design_baseline") or {}),
+                "context_summaries": self._compact_context_dict(design_session.get("context_summaries") or {}),
+            },
+            "allowed_operations": [
+                "rewrite_block",
+                "split_block",
+                "insert_block_after",
+                "delete_block",
+                "merge_blocks",
+                "replace_section_blocks",
+                "rewrite_section",
+                "update_trace_refs",
+                "add_quality_note",
+            ],
+            "forbidden_operations": ["replace_document_draft"],
+            "output_schema_ref": "LongDocumentPatchProposal.v1",
+        }
+
+    def _find_section_snapshot(self, sections: list, section_id: str) -> dict:
+        for section in self._walk_sections(sections):
+            if str(section.get("section_id") or section.get("sectionId") or "") == section_id:
+                return self._section_snapshot(section)
+        if sections and isinstance(sections[0], dict):
+            return self._section_snapshot(sections[0])
+        return {"section_id": section_id, "title": "", "content": "", "blocks": []}
+
+    def _section_snapshot(self, section: dict) -> dict:
+        blocks = self._ensure_section_blocks(section)
+        return {
+            "section_id": str(section.get("section_id") or section.get("sectionId") or ""),
+            "title": str(section.get("title") or ""),
+            "content": str(section.get("content") or ""),
+            "source_refs": [str(ref) for ref in section.get("source_refs") or []],
+            "blocks": [self._block_snapshot(block) for block in blocks],
+        }
+
+    @staticmethod
+    def _block_snapshot(block: dict) -> dict:
+        return {
+            "block_id": str(block.get("block_id") or block.get("blockId") or ""),
+            "kind": str(block.get("kind") or block.get("block_type") or "paragraph"),
+            "title": str(block.get("title") or ""),
+            "content": str(block.get("content") or block.get("text") or ""),
+            "source_refs": [str(ref) for ref in block.get("source_refs") or []],
+        }
+
+    def _find_block_snapshot(self, section_snapshot: dict, block_id: str) -> dict:
+        blocks = [block for block in section_snapshot.get("blocks") or [] if isinstance(block, dict)]
+        for block in blocks:
+            if str(block.get("block_id") or "") == block_id:
+                return dict(block)
+        if blocks:
+            return dict(blocks[0])
+        return {
+            "block_id": block_id or f"{section_snapshot.get('section_id')}-body",
+            "kind": "paragraph",
+            "title": str(section_snapshot.get("title") or ""),
+            "content": str(section_snapshot.get("content") or ""),
+            "source_refs": [str(ref) for ref in section_snapshot.get("source_refs") or []],
+        }
+
+    @staticmethod
+    def _neighbor_block_snapshots(section_snapshot: dict, target_block: dict) -> tuple[dict | None, dict | None]:
+        blocks = [block for block in section_snapshot.get("blocks") or [] if isinstance(block, dict)]
+        target_id = str(target_block.get("block_id") or "")
+        for index, block in enumerate(blocks):
+            if str(block.get("block_id") or "") == target_id:
+                previous_block = dict(blocks[index - 1]) if index > 0 else None
+                next_block = dict(blocks[index + 1]) if index + 1 < len(blocks) else None
+                return previous_block, next_block
+        return None, None
+
+    @staticmethod
+    def _build_input_package_summary(input_package: dict) -> dict:
+        standard_document = input_package.get("standard_document") or {}
+        structured_spec = input_package.get("structured_spec") or {}
+        return {
+            "input_package_id": str(input_package.get("input_package_id") or ""),
+            "source_title": str(input_package.get("source_title") or standard_document.get("title") or ""),
+            "structured_spec_keys": sorted(str(key) for key in structured_spec.keys()) if isinstance(structured_spec, dict) else [],
+            "annotations_count": len(input_package.get("annotations") or []),
+        }
+
+    @staticmethod
+    def _build_design_baseline_summary(design_baseline: dict) -> dict:
+        return {
+            "baseline_id": str(design_baseline.get("baseline_id") or ""),
+            "architecture_mode": str(design_baseline.get("architecture_mode") or ""),
+            "module_count": len(design_baseline.get("modules") or []),
+            "modules": [
+                {
+                    "module_id": str(module.get("module_id") or ""),
+                    "name": str(module.get("name") or ""),
+                    "source_refs": [str(ref) for ref in module.get("source_refs") or []],
+                }
+                for module in (design_baseline.get("modules") or [])[:8]
+                if isinstance(module, dict)
+            ],
+            "pending_confirmations": [str(item) for item in (design_baseline.get("pending_confirmations") or [])[:8]],
+        }
+
+    @staticmethod
+    def _build_function_tree_summary(design_baseline: dict) -> dict:
+        function_tree = design_baseline.get("function_tree") if isinstance(design_baseline, dict) else {}
+        root = function_tree.get("root") if isinstance(function_tree, dict) else {}
+        return {
+            "tree_id": str(function_tree.get("tree_id") or "") if isinstance(function_tree, dict) else "",
+            "root_title": str(root.get("title") or "") if isinstance(root, dict) else "",
+            "top_nodes": [
+                {"node_id": str(node.get("node_id") or ""), "title": str(node.get("title") or "")}
+                for node in (root.get("children") or [])[:8]
+                if isinstance(node, dict)
+            ]
+            if isinstance(root, dict)
+            else [],
+        }
+
+    @staticmethod
+    def _build_layered_architecture_summary(design_baseline: dict) -> dict:
+        architecture = design_baseline.get("layered_architecture") or design_baseline.get("layered_architecture_projection") or {}
+        if not isinstance(architecture, dict):
+            return {}
+        layers = []
+        for layer in (architecture.get("layers") or [])[:8]:
+            if isinstance(layer, dict):
+                layers.append(str(layer.get("title") or layer.get("name") or layer.get("layer_id") or ""))
+            else:
+                layers.append(str(layer))
+        return {
+            "title": str(architecture.get("title") or architecture.get("name") or ""),
+            "layers": [layer for layer in layers if layer],
+        }
+
+    @staticmethod
+    def _compact_context_dict(value: dict) -> dict:
+        text_limit = 6000
+        compacted = json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        serialized = json.dumps(compacted, ensure_ascii=False)
+        if len(serialized) <= text_limit:
+            return compacted
+        return {
+            "truncated": True,
+            "summary": serialized[:text_limit],
+            "original_char_count": len(serialized),
+        }
+
+    @staticmethod
+    def _normalize_dify_base_url(base_url: str) -> str:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v1"):
+            return normalized
+        return f"{normalized}/v1"
+
+    @staticmethod
+    def _dify_workflow_run_url(*, base_url: str, workflow_id: str) -> str:
+        if workflow_id:
+            return f"{base_url}/workflows/{workflow_id}/run"
+        return f"{base_url}/workflows/run"
+
+    def _normalize_scoped_patch_proposal(
+        self,
+        value: Any,
+        design_session: dict,
+        scope_anchor: dict,
+        user_input: str,
+    ) -> dict:
+        if not isinstance(value, dict):
+            raise ValueError("remote scoped dify result_json missing patch_proposal")
+        patch_proposal = dict(value)
+        target_block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "selected-block")
+        section_id = str(scope_anchor.get("section_id") or "selected-section")
+        patch_proposal.setdefault("proposal_id", f"patch-{uuid4().hex[:10]}")
+        patch_proposal.setdefault(
+            "base_revision_id",
+            str(scope_anchor.get("design_revision_id") or design_session.get("version_label") or "current"),
+        )
+        patch_proposal.setdefault(
+            "target_anchor",
+            {
+                "anchor_type": scope_anchor.get("anchor_type"),
+                "section_id": section_id,
+                "block_id": target_block_id,
+            },
+        )
+        patch_proposal.setdefault("quality_notes", [])
+        patch_proposal.setdefault("status", "proposed")
+        operations = patch_proposal.get("operations")
+        if not isinstance(operations, list):
+            raise ValueError("remote scoped dify patch_proposal requires operations")
+        patch_proposal["quality_notes"] = self._normalize_scoped_quality_notes(patch_proposal.get("quality_notes"))
+        patch_proposal["proposal_type"] = self._infer_patch_proposal_type(operations)
+        patch_proposal["applicability"] = self._normalize_patch_applicability(
+            patch_proposal.get("applicability"),
+            operations,
+        )
+        patch_proposal["diagnostics"] = self._build_patch_protocol_diagnostics(operations)
+        return patch_proposal
+
+    @staticmethod
+    def _normalize_scoped_quality_notes(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        notes: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                note = item.strip()
+            elif isinstance(item, dict):
+                severity = str(item.get("severity") or "").strip()
+                message = str(item.get("message") or item.get("note") or "").strip()
+                note = f"{severity}：{message}" if severity and message else message
+            else:
+                note = str(item).strip()
+            if note:
+                notes.append(note)
+        return notes
+
+    def _normalize_scoped_context_receipt(self, value: Any, design_session: dict, scope_anchor: dict) -> dict:
+        context_receipt = self._build_scoped_context_receipt(design_session, scope_anchor)
+        if isinstance(value, dict):
+            remote_receipt = dict(value)
+            included_context = remote_receipt.get("included_context")
+            if isinstance(included_context, list):
+                context_receipt["included_context"] = included_context
+            for key in ("context_receipt_id", "session_summary_id", "scoped_summary_id"):
+                if isinstance(remote_receipt.get(key), str) and remote_receipt[key].strip():
+                    context_receipt[key] = remote_receipt[key]
+        return context_receipt
+
+    def _normalize_scoped_provider_call_audit(
+        self,
+        value: Any,
+        turn_id: str,
+        interaction_mode: str,
+        workflow_trace: Any,
+    ) -> dict:
+        if not isinstance(workflow_trace, dict):
+            return self._build_scoped_provider_call_audit(turn_id, interaction_mode)
+        audit = {
+            "provider": "dify_scoped_patch",
+            "workflow_id": str(workflow_trace.get("workflow_id") or ""),
+            "conversation_id": None,
+            "run_id": str(workflow_trace.get("workflow_run_id") or ""),
+            "interaction_mode": interaction_mode,
+            "observability_level": "full",
+        }
+        if isinstance(value, dict):
+            for key, remote_value in value.items():
+                if key not in {"provider", "workflow_id", "run_id"}:
+                    audit[key] = remote_value
+            if value.get("provider"):
+                audit["provider"] = str(value["provider"])
+            if value.get("workflow_id"):
+                audit["workflow_id"] = str(value["workflow_id"])
+            if value.get("run_id"):
+                audit["run_id"] = str(value["run_id"])
+        return audit
+
     def _build_scoped_patch_proposal(self, design_session: dict, scope_anchor: dict, user_input: str) -> dict:
         target_block_id = str(scope_anchor.get("block_id") or scope_anchor.get("object_id") or "selected-block")
         section_id = str(scope_anchor.get("section_id") or "selected-section")
@@ -545,36 +1515,39 @@ class SoftwareDesignV2Service:
             or "current"
         )
         title = str((scope_anchor.get("selection_snapshot") or {}).get("title") or "当前段落")
+        operations = [
+            {
+                "op": "split_block",
+                "target_block_id": target_block_id,
+                "new_blocks": [
+                    {
+                        "title": "职责边界",
+                        "content": f"围绕“{title}”重新组织职责边界，保留原段落核心含义并去除混杂表达。",
+                    },
+                    {
+                        "title": "接口约束",
+                        "content": f"根据用户意图补充接口边界、输入输出、状态约束和验收关注点：{user_input}",
+                    },
+                ],
+            },
+            {
+                "op": "update_trace_refs",
+                "target_block_id": target_block_id,
+                "source_refs": list(scope_anchor.get("source_refs") or ["REQ-3.2"]),
+            },
+        ]
         return {
             "proposal_id": f"patch-{uuid4().hex[:10]}",
             "base_revision_id": design_revision_id,
+            "proposal_type": self._infer_patch_proposal_type(operations),
             "target_anchor": {
                 "anchor_type": scope_anchor.get("anchor_type"),
                 "section_id": section_id,
                 "block_id": target_block_id,
             },
-            "operations": [
-                {
-                    "op": "split_block",
-                    "target_block_id": target_block_id,
-                    "new_blocks": [
-                        {
-                            "title": "职责边界",
-                            "content": f"围绕“{title}”重新组织职责边界，保留原段落核心含义并去除混杂表达。",
-                        },
-                        {
-                            "title": "接口约束",
-                            "content": f"根据用户意图补充接口边界、输入输出、状态约束和验收关注点：{user_input}",
-                        },
-                    ],
-                },
-                {
-                    "op": "update_trace_refs",
-                    "target_block_id": target_block_id,
-                    "source_refs": list(scope_anchor.get("source_refs") or ["REQ-3.2"]),
-                },
-            ],
+            "operations": operations,
             "quality_notes": ["补丁应用后需要重新运行设计完整性检查。"],
+            "applicability": self._build_patch_applicability(operations, "ready"),
             "status": "proposed",
         }
 

@@ -4,6 +4,8 @@ import { Alert, Button, Empty, Input, Modal, Select, Space, Spin, Tag, Typograph
 import {
   buildDesignMorphStageRelationSelection,
   DesignMorphCanvasPlatform,
+  type DesignMorphFocusRequest,
+  type DesignMorphSelectionAction,
   type DesignMorphSelection,
 } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
 import { StageLabShell, type StageLabNavigationItem } from "../components/stageWorkbench/StageLabShell";
@@ -15,12 +17,16 @@ import type {
 import { QualityCheckPanel } from "../components/stageWorkbench/panels/QualityCheckPanel";
 import type {
   P3DesignLabInputPackage,
+  P3DesignPatchApplyResult,
   P3DesignLabSession,
+  P3DesignPatchBlockPreview,
+  P3DesignPatchOperation,
   P3DesignPatchProposal,
   P3DesignTurn,
   P3DesignTurnScopeAnchor,
 } from "../lib/api";
 import {
+  applySoftwareDesignV2PatchProposal,
   appendSoftwareDesignV2Turn,
   createSoftwareDesignV2Session,
   deleteSoftwareDesignV2Session,
@@ -56,6 +62,59 @@ type P3DesignDraftMeta = {
   versionLabel: string;
 };
 type InspectorTabKey = "ability" | "common";
+type P3WorkspaceJobStatus = "running" | "succeeded" | "failed";
+type P3WorkspaceJobType = "generate_document" | "propose_patch" | "apply_patch";
+type P3WorkspaceJob = {
+  jobId: string;
+  jobType: P3WorkspaceJobType;
+  status: P3WorkspaceJobStatus;
+  scopeAnchor?: P3DesignTurnScopeAnchor;
+  scopeTitle: string;
+  startedAtMs: number;
+  estimatedSeconds: number;
+  message?: string;
+  resultTargets?: Array<Record<string, unknown>>;
+  resultTurn?: P3DesignTurn;
+  errorMessage?: string;
+};
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const detail = getApiErrorDetail(error);
+  if (detail) {
+    return detail;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getApiErrorDetail(error: unknown) {
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return "";
+  }
+  const response = (error as { response?: { data?: unknown } }).response;
+  const data = response?.data;
+  if (!data || typeof data !== "object" || !("detail" in data)) {
+    return "";
+  }
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (item && typeof item === "object" && "msg" in item && typeof (item as { msg?: unknown }).msg === "string") {
+          return (item as { msg: string }).msg;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("；");
+  }
+  return "";
+}
 
 export function P3DesignLabPage() {
   const [inputPackages, setInputPackages] = useState<P3DesignLabInputPackage[]>([]);
@@ -71,6 +130,7 @@ export function P3DesignLabPage() {
   const [conversionInFlightSessionId, setConversionInFlightSessionId] = useState<string | null>(null);
   const [conversionStartedAtMs, setConversionStartedAtMs] = useState<number | null>(null);
   const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
+  const [completedConversionLocateRequestId, setCompletedConversionLocateRequestId] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const loadInputPackages = useCallback(async () => {
@@ -239,8 +299,37 @@ export function P3DesignLabPage() {
       setError(null);
       return response.data.turn;
     } catch (turnError) {
-      setError(turnError instanceof Error ? turnError.message : "提交局部设计沟通失败");
+      const message = getApiErrorMessage(turnError, "提交局部设计沟通失败");
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleApplyScopedPatch(
+    proposal: P3DesignPatchProposal,
+    options: { turnId?: string; userNote?: string } = {},
+  ): Promise<P3DesignPatchApplyResult | null> {
+    if (!designSession) {
       return null;
+    }
+    try {
+      setSubmitting(true);
+      const response = await applySoftwareDesignV2PatchProposal(designSession.session_id, proposal.proposal_id, {
+        turn_id: options.turnId,
+        base_revision_id: proposal.base_revision_id,
+        apply_scope: "document_only",
+        ...(options.userNote ? { user_note: options.userNote } : {}),
+      });
+      setDesignSession(response.data.updated_session);
+      mergeSessionIntoInputPackages(response.data.updated_session);
+      setError(null);
+      return response.data;
+    } catch (applyError) {
+      const message = getApiErrorMessage(applyError, "应用局部补丁失败");
+      setError(message);
+      throw new Error(message);
     } finally {
       setSubmitting(false);
     }
@@ -264,6 +353,7 @@ export function P3DesignLabPage() {
       setConversionStrategy(toConversionStrategy(response.data.conversion?.strategy));
       mergeSessionIntoInputPackages(response.data);
       setActiveMorphWindowId("docfunc");
+      setCompletedConversionLocateRequestId((current) => current + 1);
       setError(null);
     } catch (conversionError) {
       setError(conversionError instanceof Error ? conversionError.message : "执行需规转软设基础转换失败");
@@ -387,7 +477,9 @@ export function P3DesignLabPage() {
     onRunConversion: () => void handleRunConversion(),
     onSetConversionStrategy: setConversionStrategy,
     onSetMorphWindowId: setActiveMorphWindowId,
+    onApplyScopedPatch: handleApplyScopedPatch,
     onSubmitScopedTurn: handleSubmitScopedTurn,
+    completedConversionLocateRequestId,
     workbench,
   });
 
@@ -566,7 +658,9 @@ function renderWorkspace({
   onRunConversion,
   onSetConversionStrategy,
   onSetMorphWindowId,
+  onApplyScopedPatch,
   onSubmitScopedTurn,
+  completedConversionLocateRequestId,
   workbench,
 }: {
   activeNavigationKey: P3DesignLabNavigationKey;
@@ -591,7 +685,12 @@ function renderWorkspace({
   onRunConversion: () => void;
   onSetConversionStrategy: (value: P3DesignConversionStrategy) => void;
   onSetMorphWindowId: (value: string) => void;
+  onApplyScopedPatch: (
+    proposal: P3DesignPatchProposal,
+    options?: { turnId?: string; userNote?: string },
+  ) => Promise<P3DesignPatchApplyResult | null>;
   onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  completedConversionLocateRequestId: number;
   workbench: StageDocumentWorkbenchViewModel;
 }) {
   if (activeNavigationKey === "input") {
@@ -663,7 +762,9 @@ function renderWorkspace({
       onSaveDraft={onSaveDraft}
       onSetStrategy={onSetConversionStrategy}
       onSetWindowId={onSetMorphWindowId}
+      onApplyScopedPatch={onApplyScopedPatch}
       onSubmitScopedTurn={onSubmitScopedTurn}
+      completedConversionLocateRequestId={completedConversionLocateRequestId}
     />
   );
 }
@@ -823,7 +924,9 @@ function SoftwareDesignWorkspaceView({
   onSaveDraft,
   onSetStrategy,
   onSetWindowId,
+  onApplyScopedPatch,
   onSubmitScopedTurn,
+  completedConversionLocateRequestId,
 }: {
   activeWindowId: string;
   session: P3DesignLabSession | null;
@@ -835,9 +938,17 @@ function SoftwareDesignWorkspaceView({
   onSaveDraft: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
   onSetWindowId: (value: string) => void;
+  onApplyScopedPatch: (
+    proposal: P3DesignPatchProposal,
+    options?: { turnId?: string; userNote?: string },
+  ) => Promise<P3DesignPatchApplyResult | null>;
   onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  completedConversionLocateRequestId: number;
 }) {
   const [isWorkspaceFullscreen, setWorkspaceFullscreen] = useState(false);
+  const [activeWorkspaceJob, setActiveWorkspaceJob] = useState<P3WorkspaceJob | null>(null);
+  const [workspaceJobElapsedSeconds, setWorkspaceJobElapsedSeconds] = useState(0);
+  const [focusRequest, setFocusRequest] = useState<DesignMorphFocusRequest | null>(null);
   const morphModel = useMemo(() => buildP3DesignMorphModel(workbench), [workbench]);
   const activeWindow = useMemo(
     () => morphModel.windows.find((window) => window.id === activeWindowId) ?? morphModel.windows[0],
@@ -850,8 +961,18 @@ function SoftwareDesignWorkspaceView({
   const hasSession = workbench.product.documentId !== "p3-design-lab-draft";
   const hasDraft = workbench.product.status !== "empty";
   const conversionRunning = workbench.conversion.running;
+  const workspaceBusy = conversionRunning || activeWorkspaceJob?.status === "running";
   const strategyOptions = workbench.conversion.strategyOptions.map((item) => ({ label: item.label, value: item.value }));
   const fullscreenButtonLabel = isWorkspaceFullscreen ? "缩回工作区" : "网页全屏";
+
+  const displayedWorkspaceJob = useMemo(
+    () => buildDisplayedWorkspaceJob(activeWorkspaceJob, workbench, completedConversionLocateRequestId),
+    [activeWorkspaceJob, completedConversionLocateRequestId, workbench],
+  );
+  const displayedWorkspaceJobElapsedSeconds =
+    displayedWorkspaceJob?.jobType === "generate_document" && displayedWorkspaceJob.status === "running"
+      ? workbench.conversion.elapsedSeconds
+      : workspaceJobElapsedSeconds;
 
   useEffect(() => {
     if (!isWorkspaceFullscreen) {
@@ -882,6 +1003,89 @@ function SoftwareDesignWorkspaceView({
     }
   }, [activeWindow, selectedMorphObject]);
 
+  useEffect(() => {
+    if (activeWorkspaceJob?.status !== "running") {
+      setWorkspaceJobElapsedSeconds(0);
+      return undefined;
+    }
+    const updateElapsed = () => {
+      setWorkspaceJobElapsedSeconds(Math.max(0, Math.floor((Date.now() - activeWorkspaceJob.startedAtMs) / 1000)));
+    };
+    updateElapsed();
+    const timerId = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timerId);
+  }, [activeWorkspaceJob?.jobId, activeWorkspaceJob?.startedAtMs, activeWorkspaceJob?.status]);
+
+  function handleScopedJobStart(input: {
+    jobType: Extract<P3WorkspaceJobType, "propose_patch" | "apply_patch">;
+    scopeAnchor: P3DesignTurnScopeAnchor;
+    scopeTitle: string;
+    message?: string;
+  }) {
+    const jobId = `${input.jobType}-${Date.now()}`;
+    setActiveWorkspaceJob({
+      jobId,
+      jobType: input.jobType,
+      status: "running",
+      scopeAnchor: input.scopeAnchor,
+      scopeTitle: input.scopeTitle,
+      startedAtMs: Date.now(),
+      estimatedSeconds: input.jobType === "apply_patch" ? 60 : 180,
+      message: input.message,
+    });
+    setWorkspaceJobElapsedSeconds(0);
+    return jobId;
+  }
+
+  function handleScopedJobSuccess(
+    jobId: string,
+    update: { message?: string; resultTargets?: Array<Record<string, unknown>>; resultTurn?: P3DesignTurn } = {},
+  ) {
+    setActiveWorkspaceJob((current) =>
+      current?.jobId === jobId
+        ? {
+            ...current,
+            status: "succeeded",
+            message: update.message ?? "当前工作已完成",
+            resultTargets: update.resultTargets ?? current.resultTargets,
+            resultTurn: update.resultTurn ?? current.resultTurn,
+          }
+        : current,
+    );
+  }
+
+  function handleScopedJobFailure(jobId: string, errorMessage: string) {
+    setActiveWorkspaceJob((current) =>
+      current?.jobId === jobId
+        ? {
+            ...current,
+            status: "failed",
+            message: "当前工作执行失败",
+            errorMessage,
+          }
+        : current,
+    );
+  }
+
+  function handleLocateWorkspaceJob(job: P3WorkspaceJob) {
+    const anchor = resolveWorkspaceJobLocateAnchor(job);
+    if (!anchor?.block_id) {
+      if (job.jobType === "generate_document") {
+        const nextWindow = morphModel.windows.find((window) => window.toStageId === "document" || window.fromStageId === "document");
+        if (nextWindow) {
+          handleMorphWindowChange(nextWindow.id);
+        }
+      }
+      return;
+    }
+    setFocusRequest({
+      requestId: Date.now(),
+      stageId: anchor.anchor_type === "requirement_clause" ? "requirement" : "document",
+      objectId: anchor.block_id,
+      sectionId: anchor.section_id,
+    });
+  }
+
   function handleMorphWindowChange(windowId: string) {
     onSetWindowId(windowId);
     const nextWindow = morphModel.windows.find((window) => window.id === windowId);
@@ -894,10 +1098,17 @@ function SoftwareDesignWorkspaceView({
     <WorkspacePanel
       actions={
         <>
-          <Button aria-label="保存草稿" disabled={!hasDraft || conversionRunning} onClick={onSaveDraft}>
+          {displayedWorkspaceJob ? (
+            <P3WorkspaceJobStatusBar
+              elapsedSeconds={displayedWorkspaceJobElapsedSeconds}
+              job={displayedWorkspaceJob}
+              onLocate={handleLocateWorkspaceJob}
+            />
+          ) : null}
+          <Button aria-label="保存草稿" disabled={!hasDraft || workspaceBusy} onClick={onSaveDraft}>
             保存草稿
           </Button>
-          <Button aria-label="生成投影候选" disabled={!hasDraft || conversionRunning} onClick={onGenerateProjection}>
+          <Button aria-label="生成投影候选" disabled={!hasDraft || workspaceBusy} onClick={onGenerateProjection}>
             生成投影候选
           </Button>
           <Button aria-label={fullscreenButtonLabel} onClick={() => setWorkspaceFullscreen((current) => !current)}>
@@ -914,6 +1125,7 @@ function SoftwareDesignWorkspaceView({
         <section className="p3-design-morph-main">
           <DesignMorphCanvasPlatform
             activeWindowId={activeWindow?.id ?? "reqdoc"}
+            focusRequest={focusRequest}
             selectedMorphObjectId={selectedMorphObject?.objectId}
             stages={morphModel.stages}
             windows={morphModel.windows}
@@ -933,7 +1145,13 @@ function SoftwareDesignWorkspaceView({
             workbench={workbench}
             onRunConversion={onRunConversion}
             onSetStrategy={onSetStrategy}
+            onApplyScopedPatch={onApplyScopedPatch}
             onSubmitScopedTurn={onSubmitScopedTurn}
+            workspaceBusy={workspaceBusy}
+            workspaceJob={activeWorkspaceJob}
+            onScopedJobFailure={handleScopedJobFailure}
+            onScopedJobStart={handleScopedJobStart}
+            onScopedJobSuccess={handleScopedJobSuccess}
           />
         </aside>
       </div>
@@ -960,6 +1178,141 @@ function getActiveConversionStepId(
   return undefined;
 }
 
+function buildDisplayedWorkspaceJob(
+  activeWorkspaceJob: P3WorkspaceJob | null,
+  workbench: StageDocumentWorkbenchViewModel,
+  completedConversionLocateRequestId: number,
+): P3WorkspaceJob | null {
+  if (activeWorkspaceJob) {
+    return activeWorkspaceJob;
+  }
+  if (workbench.conversion.running) {
+    return {
+      jobId: "generate-document-running",
+      jobType: "generate_document",
+      status: "running",
+      scopeTitle: "软件设计说明初稿",
+      startedAtMs: Date.now() - workbench.conversion.elapsedSeconds * 1000,
+      estimatedSeconds: 200,
+      message: "正在生成软设",
+    };
+  }
+  if (completedConversionLocateRequestId > 0 && workbench.product.sections.length) {
+    const firstSection = workbench.product.sections[0];
+    const firstBlock = findFirstWorkspaceSectionBlock(firstSection);
+    return {
+      jobId: `generate-document-completed-${completedConversionLocateRequestId}`,
+      jobType: "generate_document",
+      status: "succeeded",
+      scopeAnchor: firstBlock
+        ? {
+            anchor_type: "design_block",
+            section_id: firstSection.sectionId,
+            block_id: firstBlock.blockId,
+            design_revision_id: workbench.product.versionLabel,
+            selection_snapshot: { title: firstSection.title, excerpt: firstBlock.content },
+          }
+        : undefined,
+      scopeTitle: "软件设计说明初稿",
+      startedAtMs: Date.now(),
+      estimatedSeconds: 200,
+      message: "当前工作已完成",
+    };
+  }
+  return null;
+}
+
+function findFirstWorkspaceSectionBlock(
+  section: StageDocumentWorkbenchViewModel["product"]["sections"][number],
+): StageDocumentWorkbenchViewModel["product"]["sections"][number]["blocks"][number] | undefined {
+  return section.blocks[0] ?? section.children?.map(findFirstWorkspaceSectionBlock).find(Boolean);
+}
+
+function resolveWorkspaceJobLocateAnchor(job: P3WorkspaceJob): P3DesignTurnScopeAnchor | undefined {
+  const target = job.resultTargets?.find((item) => targetRecordType(item) === "design_block");
+  const targetBlockId = target ? targetString(target.block_id ?? target.blockId ?? target.target_block_id ?? target.targetBlockId) : undefined;
+  if (targetBlockId) {
+    return {
+      anchor_type: "design_block",
+      section_id: targetString(target?.section_id ?? target?.sectionId),
+      block_id: targetBlockId,
+      design_revision_id: job.scopeAnchor?.design_revision_id,
+      selection_snapshot: job.scopeAnchor?.selection_snapshot,
+    };
+  }
+  return job.scopeAnchor;
+}
+
+function targetRecordType(target: Record<string, unknown>) {
+  return targetString(target.target_type ?? target.targetType ?? target.anchor_type ?? target.anchorType);
+}
+
+function targetString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function P3WorkspaceJobStatusBar({
+  elapsedSeconds,
+  job,
+  onLocate,
+}: {
+  elapsedSeconds: number;
+  job: P3WorkspaceJob;
+  onLocate: (job: P3WorkspaceJob) => void;
+}) {
+  const title = job.status === "running" ? getWorkspaceJobRunningTitle(job.jobType) : job.message || "当前工作已完成";
+  const canLocate = job.jobType === "generate_document" || Boolean(resolveWorkspaceJobLocateAnchor(job)?.block_id);
+  return (
+    <div
+      className={[
+        "p3-design-workspace-job-status",
+        job.status === "running" ? "is-running" : "",
+        job.status === "succeeded" ? "is-succeeded" : "",
+        job.status === "failed" ? "is-failed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid="p3-design-workspace-job-status"
+    >
+      {job.status === "running" ? <Spin size="small" /> : <span className="p3-design-workspace-job-dot" aria-hidden="true" />}
+      <Text strong className="p3-design-workspace-job-title">
+        {title}
+      </Text>
+      {canLocate ? (
+        <Button className="p3-design-workspace-job-locate" size="small" type="link" onClick={() => onLocate(job)}>
+          定位当前工作
+        </Button>
+      ) : null}
+      <div className="p3-design-workspace-job-popover" role="tooltip">
+        <span className="p3-design-workspace-job-copy">
+          <Text type="secondary">{job.scopeTitle}</Text>
+          {job.status === "running" ? (
+            <Text type="secondary">{`已等待 ${formatElapsedSeconds(elapsedSeconds)} / 通常约 ${job.estimatedSeconds} 秒`}</Text>
+          ) : null}
+          {job.status === "failed" && job.errorMessage ? <Text type="secondary">{job.errorMessage}</Text> : null}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function getWorkspaceJobRunningTitle(jobType: P3WorkspaceJobType) {
+  if (jobType === "generate_document") {
+    return "正在生成软设";
+  }
+  if (jobType === "apply_patch") {
+    return "正在应用片段修改";
+  }
+  return "正在片段修改";
+}
+
+function formatElapsedSeconds(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function SelectedMorphObjectInspector({
   activeStepId,
   activeWindowTitle,
@@ -971,7 +1324,13 @@ function SelectedMorphObjectInspector({
   workbench,
   onRunConversion,
   onSetStrategy,
+  onApplyScopedPatch,
   onSubmitScopedTurn,
+  workspaceBusy,
+  workspaceJob,
+  onScopedJobFailure,
+  onScopedJobStart,
+  onScopedJobSuccess,
 }: {
   activeStepId?: string;
   activeWindowTitle: string;
@@ -983,7 +1342,24 @@ function SelectedMorphObjectInspector({
   workbench: StageDocumentWorkbenchViewModel;
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
+  onApplyScopedPatch: (
+    proposal: P3DesignPatchProposal,
+    options?: { turnId?: string; userNote?: string },
+  ) => Promise<P3DesignPatchApplyResult | null>;
   onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  workspaceBusy: boolean;
+  workspaceJob: P3WorkspaceJob | null;
+  onScopedJobFailure: (jobId: string, errorMessage: string) => void;
+  onScopedJobStart: (input: {
+    jobType: Extract<P3WorkspaceJobType, "propose_patch" | "apply_patch">;
+    scopeAnchor: P3DesignTurnScopeAnchor;
+    scopeTitle: string;
+    message?: string;
+  }) => string;
+  onScopedJobSuccess: (
+    jobId: string,
+    update?: { message?: string; resultTargets?: Array<Record<string, unknown>>; resultTurn?: P3DesignTurn },
+  ) => void;
 }) {
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTabKey>("ability");
   const subtitle = selection ? `${getSelectionKindLabel(selection.kind)} · ${selection.status ?? "待处理"}` : activeWindowTitle;
@@ -1009,6 +1385,7 @@ function SelectedMorphObjectInspector({
             workbench={workbench}
             onRunConversion={onRunConversion}
             onSetStrategy={onSetStrategy}
+            workspaceBusy={workspaceBusy}
           />
         ) : selection ? (
           <MorphObjectDetailInspector
@@ -1016,7 +1393,12 @@ function SelectedMorphObjectInspector({
             selection={selection}
             session={session}
             workbench={workbench}
+            onApplyScopedPatch={onApplyScopedPatch}
             onSubmitScopedTurn={onSubmitScopedTurn}
+            workspaceJob={workspaceJob}
+            onScopedJobFailure={onScopedJobFailure}
+            onScopedJobStart={onScopedJobStart}
+            onScopedJobSuccess={onScopedJobSuccess}
           />
         ) : (
           <MorphWorkspaceSummaryInspector activeWindowTitle={activeWindowTitle} workbench={workbench} />
@@ -1066,6 +1448,7 @@ function StageRelationInspector({
   workbench,
   onRunConversion,
   onSetStrategy,
+  workspaceBusy,
 }: {
   activeStepId?: string;
   hasSession: boolean;
@@ -1075,6 +1458,7 @@ function StageRelationInspector({
   workbench: StageDocumentWorkbenchViewModel;
   onRunConversion: () => void;
   onSetStrategy: (value: P3DesignConversionStrategy) => void;
+  workspaceBusy: boolean;
 }) {
   const relationType = typeof selection.payload?.relationType === "string" ? selection.payload.relationType : "";
   const isBasicConversion = selection.objectId === "reqdoc";
@@ -1110,7 +1494,7 @@ function StageRelationInspector({
             <Select
               aria-label="转换策略"
               className="p3-design-lab-conversion-strategy"
-              disabled={!hasSession || workbench.conversion.running}
+              disabled={!hasSession || workspaceBusy}
               options={strategyOptions}
               value={strategy}
               onChange={(value) => onSetStrategy(toConversionStrategy(value))}
@@ -1120,7 +1504,7 @@ function StageRelationInspector({
             <Button
               block
               aria-label={workbench.conversion.running ? "正在生成软设" : "执行基础转换"}
-              disabled={!hasSession || workbench.conversion.running}
+              disabled={!hasSession || workspaceBusy}
               loading={workbench.conversion.running}
               type="primary"
               onClick={onRunConversion}
@@ -1244,16 +1628,54 @@ function MorphObjectDetailInspector({
   selection,
   session,
   workbench,
+  onApplyScopedPatch,
   onSubmitScopedTurn,
+  workspaceJob,
+  onScopedJobFailure,
+  onScopedJobStart,
+  onScopedJobSuccess,
 }: {
   hasSession: boolean;
   selection: DesignMorphSelection;
   session: P3DesignLabSession | null;
   workbench: StageDocumentWorkbenchViewModel;
+  onApplyScopedPatch: (
+    proposal: P3DesignPatchProposal,
+    options?: { turnId?: string; userNote?: string },
+  ) => Promise<P3DesignPatchApplyResult | null>;
   onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  workspaceJob: P3WorkspaceJob | null;
+  onScopedJobFailure: (jobId: string, errorMessage: string) => void;
+  onScopedJobStart: (input: {
+    jobType: Extract<P3WorkspaceJobType, "propose_patch" | "apply_patch">;
+    scopeAnchor: P3DesignTurnScopeAnchor;
+    scopeTitle: string;
+    message?: string;
+  }) => string;
+  onScopedJobSuccess: (
+    jobId: string,
+    update?: { message?: string; resultTargets?: Array<Record<string, unknown>>; resultTurn?: P3DesignTurn },
+  ) => void;
 }) {
   if (selection.kind === "function_node") {
     return <FunctionNodeDetailInspector selection={selection} workbench={workbench} />;
+  }
+
+  if (selection.kind === "design_block") {
+    return (
+      <DesignBlockDetailInspector
+        hasSession={hasSession}
+        selection={selection}
+        session={session}
+        workbench={workbench}
+        onApplyScopedPatch={onApplyScopedPatch}
+        onSubmitScopedTurn={onSubmitScopedTurn}
+        workspaceJob={workspaceJob}
+        onScopedJobFailure={onScopedJobFailure}
+        onScopedJobStart={onScopedJobStart}
+        onScopedJobSuccess={onScopedJobSuccess}
+      />
+    );
   }
 
   return (
@@ -1273,114 +1695,416 @@ function MorphObjectDetailInspector({
         <Text strong>局部动作</Text>
         <SelectionActionList actions={selection.actions} />
       </div>
-      {selection.kind === "design_block" ? (
-        <ScopedDesignTurnPanel
-          hasSession={hasSession}
-          selection={selection}
-          session={session}
-          workbench={workbench}
-          onSubmitScopedTurn={onSubmitScopedTurn}
-        />
-      ) : null}
+      <SelectedObjectTraceSummary selection={selection} />
+    </>
+  );
+}
+
+function DesignBlockDetailInspector({
+  hasSession,
+  selection,
+  session,
+  workbench,
+  onApplyScopedPatch,
+  onSubmitScopedTurn,
+  workspaceJob,
+  onScopedJobFailure,
+  onScopedJobStart,
+  onScopedJobSuccess,
+}: {
+  hasSession: boolean;
+  selection: DesignMorphSelection;
+  session: P3DesignLabSession | null;
+  workbench: StageDocumentWorkbenchViewModel;
+  onApplyScopedPatch: (
+    proposal: P3DesignPatchProposal,
+    options?: { turnId?: string; userNote?: string },
+  ) => Promise<P3DesignPatchApplyResult | null>;
+  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  workspaceJob: P3WorkspaceJob | null;
+  onScopedJobFailure: (jobId: string, errorMessage: string) => void;
+  onScopedJobStart: (input: {
+    jobType: Extract<P3WorkspaceJobType, "propose_patch" | "apply_patch">;
+    scopeAnchor: P3DesignTurnScopeAnchor;
+    scopeTitle: string;
+    message?: string;
+  }) => string;
+  onScopedJobSuccess: (
+    jobId: string,
+    update?: { message?: string; resultTargets?: Array<Record<string, unknown>>; resultTurn?: P3DesignTurn },
+  ) => void;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [localSubmitting, setLocalSubmitting] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  const [latestLocalTurn, setLatestLocalTurn] = useState<P3DesignTurn | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [applyResult, setApplyResult] = useState<P3DesignPatchApplyResult | null>(null);
+  const scopeAnchor = useMemo(
+    () => buildDesignTurnScopeAnchor(selection, session, workbench),
+    [selection, session, workbench],
+  );
+  const latestSessionTurn = useMemo(() => findLatestScopedTurn(session?.turns ?? [], scopeAnchor), [scopeAnchor, session?.turns]);
+  const latestWorkspaceTurn =
+    workspaceJob?.status === "succeeded" && workspaceJob.resultTurn && isSameScopeAnchor(workspaceJob.resultTurn.scope_anchor, scopeAnchor)
+      ? workspaceJob.resultTurn
+      : null;
+  const patchProposal =
+    latestLocalTurn?.patch_proposal ?? latestWorkspaceTurn?.patch_proposal ?? latestSessionTurn?.patch_proposal ?? null;
+  const runningWorkspaceJob = workspaceJob?.status === "running" ? workspaceJob : null;
+  const currentScopeJobRunning = Boolean(
+    runningWorkspaceJob &&
+      (runningWorkspaceJob.jobType === "propose_patch" || runningWorkspaceJob.jobType === "apply_patch") &&
+      isSameScopeAnchor(runningWorkspaceJob.scopeAnchor, scopeAnchor),
+  );
+  const workspaceJobRunning = Boolean(runningWorkspaceJob);
+  const blockedByWorkspaceJob = Boolean(runningWorkspaceJob && !currentScopeJobRunning);
+  const submitting = localSubmitting || (currentScopeJobRunning && runningWorkspaceJob?.jobType === "propose_patch");
+  const applyingInWorkspace = applying || (currentScopeJobRunning && runningWorkspaceJob?.jobType === "apply_patch");
+  const scopedControlsDisabled = workspaceJobRunning || localSubmitting || applying;
+
+  useEffect(() => {
+    setLatestLocalTurn(null);
+    setInstruction("");
+    setStatusMessage(null);
+    setLocalError(null);
+    setActiveActionId(null);
+    setApplyResult(null);
+  }, [scopeAnchor.block_id, scopeAnchor.section_id, scopeAnchor.design_revision_id]);
+
+  async function submitScopedInstruction(nextInstruction?: string, actionId?: string) {
+    if (scopedControlsDisabled) {
+      return;
+    }
+    if (!hasSession || !session) {
+      setStatusMessage(null);
+      setLocalError("当前没有有效软设会话，请从需规输入中进入编辑或重新生成软设。");
+      return;
+    }
+    const normalizedInstruction = (nextInstruction ?? instruction).trim();
+    if (!normalizedInstruction) {
+      setStatusMessage(null);
+      setLocalError("请先填写局部调整要求。");
+      return;
+    }
+    const jobId = onScopedJobStart({
+      jobType: "propose_patch",
+      scopeAnchor,
+      scopeTitle: scopeAnchor.selection_snapshot?.title ?? selection.title,
+      message: "正在生成局部补丁提案",
+    });
+    try {
+      setLocalSubmitting(true);
+      setActiveActionId(actionId ?? null);
+      setInstruction(normalizedInstruction);
+      setStatusMessage("正在生成局部补丁提案");
+      setLocalError(null);
+      const turn = await onSubmitScopedTurn({
+        turn_type: "scoped_design_edit",
+        interaction_mode: "propose_patch",
+        user_input: normalizedInstruction,
+        expected_output: ["document_patch", "traceability_update", "quality_note"],
+        scope_anchor: scopeAnchor,
+      });
+      if (turn) {
+        setLatestLocalTurn(turn);
+        setStatusMessage(turn.assistant_message || "已生成局部补丁提案，等待人工确认。");
+        onScopedJobSuccess(jobId, {
+          message: "当前工作已完成",
+          resultTargets: buildScopedTurnResultTargets(turn, scopeAnchor),
+          resultTurn: turn,
+        });
+      } else {
+        setStatusMessage(null);
+        setLocalError("局部补丁提案没有返回内容，请检查后端或 Dify 工作流输出。");
+        onScopedJobFailure(jobId, "局部补丁提案没有返回内容");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "局部补丁提案生成失败";
+      setStatusMessage(null);
+      setLocalError(message);
+      onScopedJobFailure(jobId, message);
+    } finally {
+      setLocalSubmitting(false);
+      setActiveActionId(null);
+    }
+  }
+
+  function handleExecuteScopedAction(action: DesignMorphSelectionAction) {
+    const actionInstruction = buildScopedActionInstruction(action, selection);
+    setInstruction(actionInstruction);
+  }
+
+  async function handleApplyPatchProposal() {
+    if (!patchProposal || scopedControlsDisabled) {
+      return;
+    }
+    const jobId = onScopedJobStart({
+      jobType: "apply_patch",
+      scopeAnchor,
+      scopeTitle: scopeAnchor.selection_snapshot?.title ?? selection.title,
+      message: "正在应用片段修改",
+    });
+    try {
+      setApplying(true);
+      setStatusMessage(null);
+      setLocalError(null);
+      const result = await onApplyScopedPatch(patchProposal, {
+        turnId: latestLocalTurn?.turn_id ?? latestSessionTurn?.turn_id,
+      });
+      if (result) {
+        setApplyResult(result);
+        setLatestLocalTurn(null);
+        setStatusMessage("补丁已应用到文档");
+        onScopedJobSuccess(jobId, {
+          message: "当前工作已完成",
+          resultTargets: result.updated_targets,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "应用局部补丁失败";
+      setLocalError(message);
+      onScopedJobFailure(jobId, message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
+        <Text strong>对象：{selection.title}</Text>
+        {selection.summary ? <Text type="secondary">{selection.summary}</Text> : null}
+        <Space wrap>
+          <Tag>{getSelectionKindLabel(selection.kind)}</Tag>
+          {selection.status ? <Tag color="blue">{selection.status}</Tag> : null}
+          {selection.sourceRefs.map((sourceRef) => (
+            <Tag key={sourceRef}>{sourceRef}</Tag>
+          ))}
+        </Space>
+      </div>
+      <ScopedDesignTurnPanel
+        actions={selection.actions}
+        activeActionId={activeActionId}
+        applyResult={applyResult}
+        applying={applyingInWorkspace}
+        blockedByWorkspaceJob={blockedByWorkspaceJob}
+        currentScopeJobRunning={currentScopeJobRunning}
+        hasSession={hasSession}
+        instruction={instruction}
+        localError={localError}
+        patchProposal={patchProposal}
+        scopeTitle={scopeAnchor.selection_snapshot?.title ?? selection.title}
+        session={session}
+        statusMessage={statusMessage}
+        submitting={submitting}
+        workspaceJobRunning={workspaceJobRunning}
+        onApplyPatch={() => void handleApplyPatchProposal()}
+        onExecuteSuggestion={handleExecuteScopedAction}
+        onInstructionChange={setInstruction}
+        onSubmit={() => void submitScopedInstruction()}
+      />
       <SelectedObjectTraceSummary selection={selection} />
     </>
   );
 }
 
 function ScopedDesignTurnPanel({
+  actions,
+  activeActionId,
+  applyResult,
+  applying,
+  blockedByWorkspaceJob,
+  currentScopeJobRunning,
   hasSession,
-  selection,
+  instruction,
+  localError,
+  patchProposal,
+  scopeTitle,
   session,
-  workbench,
-  onSubmitScopedTurn,
+  statusMessage,
+  submitting,
+  workspaceJobRunning,
+  onApplyPatch,
+  onExecuteSuggestion,
+  onInstructionChange,
+  onSubmit,
 }: {
+  actions: DesignMorphSelection["actions"];
+  activeActionId?: string | null;
+  applyResult: P3DesignPatchApplyResult | null;
+  applying: boolean;
+  blockedByWorkspaceJob: boolean;
+  currentScopeJobRunning: boolean;
   hasSession: boolean;
-  selection: DesignMorphSelection;
+  instruction: string;
+  localError: string | null;
+  patchProposal: P3DesignPatchProposal | null;
+  scopeTitle: string;
   session: P3DesignLabSession | null;
-  workbench: StageDocumentWorkbenchViewModel;
-  onSubmitScopedTurn: (payload: SoftwareDesignV2TurnPayload) => Promise<P3DesignTurn | null>;
+  statusMessage: string | null;
+  submitting: boolean;
+  workspaceJobRunning: boolean;
+  onApplyPatch: () => void;
+  onExecuteSuggestion: (action: DesignMorphSelectionAction) => void;
+  onInstructionChange: (value: string) => void;
+  onSubmit: () => void;
 }) {
-  const [instruction, setInstruction] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [latestLocalTurn, setLatestLocalTurn] = useState<P3DesignTurn | null>(null);
-  const scopeAnchor = useMemo(
-    () => buildDesignTurnScopeAnchor(selection, session, workbench),
-    [selection, session, workbench],
-  );
-  const latestSessionTurn = useMemo(() => findLatestScopedTurn(session?.turns ?? [], scopeAnchor), [scopeAnchor, session?.turns]);
-  const patchProposal = latestLocalTurn?.patch_proposal ?? latestSessionTurn?.patch_proposal ?? null;
-  const canSubmit = Boolean(hasSession && session && instruction.trim());
-
-  useEffect(() => {
-    setLatestLocalTurn(null);
-    setInstruction("");
-  }, [scopeAnchor.block_id, scopeAnchor.section_id, scopeAnchor.design_revision_id]);
-
-  async function handleSubmitScopedTurn() {
-    if (!canSubmit) {
-      return;
-    }
-    try {
-      setSubmitting(true);
-      const turn = await onSubmitScopedTurn({
-        turn_type: "scoped_design_edit",
-        interaction_mode: "propose_patch",
-        user_input: instruction.trim(),
-        expected_output: ["document_patch", "traceability_update", "quality_note"],
-        scope_anchor: scopeAnchor,
-      });
-      if (turn) {
-        setLatestLocalTurn(turn);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
+  const hasPatchProposal = Boolean(patchProposal);
+  const controlsDisabled = !hasSession || !session || workspaceJobRunning || submitting || applying;
   return (
     <div className="p3-design-morph-inspector-section p3-design-scoped-turn-panel">
       <div className="p3-design-morph-compact-head">
-        <Text strong>局部 AI 沟通</Text>
-        <Text type="secondary">{scopeAnchor.selection_snapshot?.title ?? selection.title}</Text>
+        <Text strong>局部提案工作区</Text>
+        <Text type="secondary">{scopeTitle}</Text>
       </div>
+      {patchProposal ? (
+        <ScopedPatchProposalPreview
+          applyResult={applyResult}
+          applying={applying}
+          proposal={patchProposal}
+          onApplyPatch={onApplyPatch}
+        />
+      ) : null}
+      <ScopedSuggestionChips
+        actions={actions}
+        activeActionId={activeActionId}
+        disabled={controlsDisabled}
+        onExecuteSuggestion={onExecuteSuggestion}
+      />
       <Input.TextArea
         aria-label="局部 AI 沟通输入"
         autoSize={{ minRows: 3, maxRows: 5 }}
-        disabled={!hasSession || !session || submitting}
+        disabled={controlsDisabled}
         placeholder="说明你希望如何调整当前段落，例如拆分、补充接口边界或改写表达。"
         value={instruction}
-        onChange={(event) => setInstruction(event.target.value)}
+        onChange={(event) => onInstructionChange(event.target.value)}
       />
       <Button
+        aria-label="生成局部补丁提案"
         block
-        disabled={!canSubmit || submitting}
+        disabled={controlsDisabled}
         loading={submitting}
         type="primary"
-        onClick={() => void handleSubmitScopedTurn()}
+        onClick={onSubmit}
       >
-        生成局部补丁提案
+        {hasPatchProposal ? "重新生成局部补丁提案" : "生成局部补丁提案"}
       </Button>
-      {patchProposal ? <ScopedPatchProposalPreview proposal={patchProposal} /> : null}
+      {!hasSession || !session ? (
+        <Alert
+          showIcon
+          className="p3-design-scoped-turn-alert"
+          description="请先从需规输入中进入已有软设，或新建并完成基础转换。"
+          message="当前没有有效软设会话"
+          type="warning"
+        />
+      ) : null}
+      {submitting ? (
+        <div className="p3-design-scoped-turn-status" role="status">
+          <Spin size="small" />
+          <span>
+            <Text strong>正在生成局部补丁提案</Text>
+            {currentScopeJobRunning ? <Text type="secondary">正在处理本段</Text> : null}
+            <Text type="secondary">远端工作流通常约 180 秒，本地回退会更快。</Text>
+          </span>
+        </div>
+      ) : null}
+      {blockedByWorkspaceJob ? (
+        <Alert
+          showIcon
+          className="p3-design-scoped-turn-alert"
+          message="已有异步工作正在执行"
+          description="请先等待当前工作完成，或使用顶部当前工作状态定位正在处理的段落。"
+          type="warning"
+        />
+      ) : null}
+      {!submitting && localError ? (
+        <Alert
+          showIcon
+          className="p3-design-scoped-turn-alert"
+          description={localError}
+          message="局部补丁提案生成失败"
+          type="error"
+        />
+      ) : null}
+      {!submitting && !localError && statusMessage ? (
+        <Alert showIcon className="p3-design-scoped-turn-alert" message={statusMessage} type="success" />
+      ) : null}
     </div>
   );
 }
 
-function ScopedPatchProposalPreview({ proposal }: { proposal: P3DesignPatchProposal }) {
-  const splitBlocks = proposal.operations.flatMap((operation) => operation.new_blocks ?? []);
+function ScopedSuggestionChips({
+  actions,
+  activeActionId,
+  disabled,
+  onExecuteSuggestion,
+}: {
+  actions: DesignMorphSelection["actions"];
+  activeActionId?: string | null;
+  disabled: boolean;
+  onExecuteSuggestion: (action: DesignMorphSelectionAction) => void;
+}) {
+  if (!actions.length) {
+    return null;
+  }
+  return (
+    <div className="p3-design-scoped-suggestions" aria-label="局部提案输入建议">
+      {actions.map((action) => (
+        <Button
+          aria-label={`填入${action.label}`}
+          disabled={disabled || Boolean(action.disabled)}
+          key={action.actionId}
+          loading={activeActionId === action.actionId}
+          size="small"
+          type="default"
+          onClick={() => onExecuteSuggestion(action)}
+        >
+          {action.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function ScopedPatchProposalPreview({
+  applyResult,
+  applying,
+  proposal,
+  onApplyPatch,
+}: {
+  applyResult: P3DesignPatchApplyResult | null;
+  applying: boolean;
+  proposal: P3DesignPatchProposal;
+  onApplyPatch: () => void;
+}) {
+  const proposalKind = resolvePatchProposalKind(proposal);
+  const previewBlocks = collectPatchPreviewBlocks(proposal.operations);
+  const canApply = isPatchProposalApplicable(proposal);
+  const isApplied = proposal.status === "applied" || applyResult?.status === "applied";
+  const applyLabel = proposalKind.applyLabel;
+  const emptyReason = getPatchProposalEmptyReason(proposal);
   return (
     <div className="p3-design-scoped-patch-preview">
-      <Text strong>补丁提案</Text>
-      {splitBlocks.length ? (
+      <div className="p3-design-morph-compact-head">
+        <Text strong>{proposalKind.title}</Text>
+        <Tag color={isApplied ? "green" : canApply ? proposalKind.tagColor : "default"}>
+          {isApplied ? "已应用" : canApply ? proposalKind.readyTag : proposalKind.blockedTag}
+        </Tag>
+      </div>
+      {previewBlocks.length ? (
         <div className="p3-design-scoped-patch-blocks">
-          {splitBlocks.map((block) => (
-            <article key={`${block.title}-${block.content}`}>
-              <Text strong>{block.title}</Text>
-              <Text type="secondary">{block.content}</Text>
+          {previewBlocks.map((block, index) => (
+            <article key={`${block.block_id ?? block.title ?? "patch-block"}-${index}`}>
+              <Text strong>{block.title || `补丁段落 ${index + 1}`}</Text>
+              <Text type="secondary">{block.content || block.text}</Text>
             </article>
           ))}
         </div>
       ) : (
-        <Text type="secondary">已生成结构化补丁，等待预览差异。</Text>
+        <Text type="secondary">{emptyReason}</Text>
       )}
       {proposal.quality_notes?.length ? (
         <div className="p3-design-scoped-patch-notes">
@@ -1391,7 +2115,181 @@ function ScopedPatchProposalPreview({ proposal }: { proposal: P3DesignPatchPropo
           ))}
         </div>
       ) : null}
+      {canApply && !isApplied ? (
+        <Button block aria-label={applyLabel} disabled={applying} loading={applying} type="primary" onClick={onApplyPatch}>
+          {applyLabel}
+        </Button>
+      ) : null}
+      {!canApply && !isApplied ? (
+        <Alert
+          showIcon
+          className="p3-design-scoped-turn-alert"
+          message={proposalKind.blockedMessage}
+          description={buildPatchBlockedDescription(proposal, proposalKind.blockedDescription)}
+          type="warning"
+        />
+      ) : null}
+      {isApplied ? (
+        <Alert
+          showIcon
+          className="p3-design-scoped-turn-alert"
+          message="补丁已应用到文档"
+          description={applyResult ? `结果版本：${applyResult.application.result_revision_id}` : undefined}
+          type="success"
+        />
+      ) : null}
     </div>
+  );
+}
+
+function resolvePatchProposalKind(proposal: P3DesignPatchProposal) {
+  const proposalType = proposal.proposal_type || inferPatchProposalType(proposal.operations);
+  if (proposalType === "needs_manual_merge") {
+    return {
+      title: "非协议补丁",
+      readyTag: "待处理",
+      blockedTag: "不可应用",
+      tagColor: "orange",
+      applyLabel: "应用到文档",
+      blockedMessage: "非协议补丁不可应用",
+      blockedDescription: "当前结果包含 CodeFactory 不支持的 operations，不能写入正文。",
+    };
+  }
+  if (proposalType === "advice_only") {
+    return {
+      title: "修改建议",
+      readyTag: "待应用",
+      blockedTag: "未形成可应用补丁",
+      tagColor: "blue",
+      applyLabel: "应用到文档",
+      blockedMessage: "修改建议，未形成可应用补丁",
+      blockedDescription: "当前结果缺少可执行 operations，不能写入正文。",
+    };
+  }
+  if (proposalType === "section_replacement_candidate") {
+    return {
+      title: "整节替换候选",
+      readyTag: "待确认",
+      blockedTag: "不可应用",
+      tagColor: "gold",
+      applyLabel: "确认替换本节",
+      blockedMessage: "整节替换候选不可应用",
+      blockedDescription: "当前候选缺少可执行的整节替换 operations，不能写入正文。",
+    };
+  }
+  if (proposalType === "document_replacement_candidate") {
+    return {
+      title: "整文替换候选",
+      readyTag: "待确认",
+      blockedTag: "不可应用",
+      tagColor: "red",
+      applyLabel: "确认替换整篇草稿",
+      blockedMessage: "整文替换候选不可应用",
+      blockedDescription: "当前前端尚未开放整文替换写入，请生成块级或整节补丁。",
+    };
+  }
+  return {
+    title: "补丁提案",
+    readyTag: "待应用",
+    blockedTag: "不可应用",
+    tagColor: "blue",
+    applyLabel: "应用到文档",
+    blockedMessage: "补丁提案不可应用",
+    blockedDescription: "当前结果缺少可执行 operations，不能写入正文。",
+  };
+}
+
+function buildPatchBlockedDescription(proposal: P3DesignPatchProposal, fallback: string) {
+  const unsupportedOps = proposal.applicability?.unsupported_ops?.length
+    ? proposal.applicability.unsupported_ops
+    : (proposal.diagnostics?.unsupported_ops ?? []);
+  if (unsupportedOps.length) {
+    return `不支持的操作：${unsupportedOps.join("、")}`;
+  }
+  return fallback;
+}
+
+function inferPatchProposalType(operations: P3DesignPatchOperation[]) {
+  if (!operations.length) {
+    return "advice_only";
+  }
+  const supportedOps = new Set([
+    "rewrite_block",
+    "split_block",
+    "insert_block_after",
+    "delete_block",
+    "merge_blocks",
+    "replace_section_blocks",
+    "rewrite_section",
+    "add_subsection",
+    "update_trace_refs",
+    "add_quality_note",
+  ]);
+  if (operations.some((operation) => !supportedOps.has(operation.op))) {
+    return "needs_manual_merge";
+  }
+  if (operations.some((operation) => ["replace_section_blocks", "rewrite_section"].includes(operation.op))) {
+    return "section_replacement_candidate";
+  }
+  if (operations.some((operation) => operation.op === "replace_document_draft")) {
+    return "document_replacement_candidate";
+  }
+  return "executable_patch";
+}
+
+function collectPatchPreviewBlocks(operations: P3DesignPatchOperation[]): P3DesignPatchBlockPreview[] {
+  return operations.flatMap((operation) => {
+    if (operation.blocks?.length) {
+      return operation.blocks;
+    }
+    if (operation.new_blocks?.length) {
+      return operation.new_blocks;
+    }
+    if (operation.new_block) {
+      return [operation.new_block];
+    }
+    if ((operation.op === "rewrite_block" || operation.op === "rewrite_section") && (operation.content || operation.new_content)) {
+      return [
+        {
+          block_id: operation.block_id || operation.target_block_id || operation.section_id,
+          title: operation.title || "改写内容",
+          content: operation.content || operation.new_content,
+          source_refs: operation.source_refs,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
+function getPatchProposalEmptyReason(proposal: P3DesignPatchProposal) {
+  const proposalType = proposal.proposal_type || inferPatchProposalType(proposal.operations);
+  if (proposalType === "advice_only") {
+    return "当前结果是修改建议，未形成可直接写入正文的补丁操作。";
+  }
+  return "已生成结构化补丁，等待预览差异。";
+}
+
+function isPatchProposalApplicable(proposal: P3DesignPatchProposal) {
+  if (proposal.status === "applied") {
+    return false;
+  }
+  if (proposal.applicability && proposal.applicability.can_apply === false) {
+    return false;
+  }
+  return proposal.operations.some((operation) =>
+    [
+      "rewrite_block",
+      "split_block",
+      "insert_block_after",
+      "delete_block",
+      "merge_blocks",
+      "replace_section_blocks",
+      "rewrite_section",
+      "add_subsection",
+      "update_trace_refs",
+      "add_quality_note",
+    ].includes(operation.op),
   );
 }
 
@@ -1596,6 +2494,26 @@ function isSameScopeAnchor(left: P3DesignTurnScopeAnchor | undefined, right: P3D
     left.block_id === right.block_id &&
     left.design_revision_id === right.design_revision_id
   );
+}
+
+function buildScopedTurnResultTargets(turn: P3DesignTurn, fallbackAnchor: P3DesignTurnScopeAnchor): Array<Record<string, unknown>> {
+  const proposalTarget = turn.patch_proposal?.target_anchor;
+  if (proposalTarget && typeof proposalTarget === "object") {
+    const targetRecord = proposalTarget as Record<string, unknown>;
+    const blockId = targetString(targetRecord.block_id ?? targetRecord.blockId ?? targetRecord.target_block_id ?? targetRecord.targetBlockId);
+    if (blockId) {
+      return [
+        {
+          target_type: "design_block",
+          section_id: targetString(targetRecord.section_id ?? targetRecord.sectionId) ?? fallbackAnchor.section_id,
+          block_id: blockId,
+        },
+      ];
+    }
+  }
+  return fallbackAnchor.block_id
+    ? [{ target_type: "design_block", section_id: fallbackAnchor.section_id, block_id: fallbackAnchor.block_id }]
+    : [];
 }
 
 function toOptionalScopeText(value: unknown) {
@@ -1845,7 +2763,17 @@ function buildLayoutFields(selection: DesignMorphSelection): Array<[string, stri
   ];
 }
 
-function SelectionActionList({ actions }: { actions: DesignMorphSelection["actions"] }) {
+function SelectionActionList({
+  actions,
+  activeActionId,
+  disabled = false,
+  onExecuteAction,
+}: {
+  actions: DesignMorphSelection["actions"];
+  activeActionId?: string | null;
+  disabled?: boolean;
+  onExecuteAction?: (action: DesignMorphSelectionAction) => void;
+}) {
   if (!actions.length) {
     return <div className="p3-design-lab-empty-state">当前对象没有可执行动作。</div>;
   }
@@ -1853,9 +2781,13 @@ function SelectionActionList({ actions }: { actions: DesignMorphSelection["actio
     <div className="p3-design-lab-command-list">
       {actions.map((action) => (
         <CommandRow
+          actionAriaLabel={`执行${action.label}`}
           description={action.description ?? action.commandHint ?? "作用于当前选中对象。"}
+          disabled={disabled || Boolean(action.disabled)}
           key={action.actionId}
+          loading={activeActionId === action.actionId}
           title={action.label}
+          onExecute={onExecuteAction ? () => onExecuteAction(action) : undefined}
         />
       ))}
     </div>
@@ -2014,14 +2946,49 @@ function SelectedDesignSectionInteractionPanel({ workbench }: { workbench: Stage
   );
 }
 
-function CommandRow({ title, description }: { title: string; description: string }) {
+function buildScopedActionInstruction(action: DesignMorphSelectionAction, selection: DesignMorphSelection) {
+  if (action.commandHint?.trim()) {
+    return action.commandHint.trim();
+  }
+  if (action.actionId === "append_subsection") {
+    return `在“${selection.title}”所属章节下补充一个局部小节，说明设计边界、接口关系和需要同步的追溯依据。`;
+  }
+  if (action.actionId === "apply_document_patch") {
+    return `围绕“${selection.title}”生成可人工确认的文档补丁提案，说明正文更新、结构化事实同步和追溯更新建议。`;
+  }
+  return `${action.label}：${action.description ?? "请基于当前选中对象生成局部补丁提案。"}`;
+}
+
+function CommandRow({
+  actionAriaLabel,
+  description,
+  disabled = false,
+  loading = false,
+  title,
+  onExecute,
+}: {
+  actionAriaLabel?: string;
+  description: string;
+  disabled?: boolean;
+  loading?: boolean;
+  title: string;
+  onExecute?: () => void;
+}) {
   return (
     <article className="p3-design-lab-command-row">
       <span>
         <Text strong>{title}</Text>
         <Text type="secondary">{description}</Text>
       </span>
-      <Button size="small">执行</Button>
+      <Button
+        aria-label={actionAriaLabel}
+        disabled={disabled}
+        loading={loading}
+        size="small"
+        onClick={onExecute}
+      >
+        执行
+      </Button>
     </article>
   );
 }
