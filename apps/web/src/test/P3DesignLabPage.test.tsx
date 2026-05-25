@@ -790,6 +790,131 @@ test("shows scoped patch waiting and local failure feedback inside the inspector
   expect(input).toBeEnabled();
 });
 
+test("keeps scoped patch job visible and locked when switching away from the design block", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+  });
+  let resolveScopedTurn: (value: unknown) => void = () => {};
+  const scopedTurnPromise = new Promise((resolve) => {
+    resolveScopedTurn = resolve;
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return scopedTurnPromise;
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  fireEvent.change(within(inspector).getByLabelText("局部 AI 沟通输入"), {
+    target: { value: "扩写接口边界和异常处理。" },
+  });
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+
+  const jobStatus = await within(workspace).findByTestId("p3-design-workspace-job-status");
+  expect(jobStatus).toHaveTextContent("正在片段修改");
+  expect(jobStatus).toHaveClass("p3-design-workspace-job-status");
+  expect(within(jobStatus).getByText("1. 设计目标与范围")).toBeInTheDocument();
+  expect(within(jobStatus).getByRole("button", { name: "定位当前工作" })).toBeInTheDocument();
+  await act(async () => {
+    vi.advanceTimersByTime(42_000);
+  });
+  expect(within(jobStatus).getByText("已等待 00:42 / 通常约 180 秒")).toBeInTheDocument();
+
+  const requirementDocumentObject = within(morphPlatform).getByTestId("stage-object-requirement");
+  fireEvent.click(within(requirementDocumentObject).getByText("系统应支持创建规划任务、识别冲突、协同确认、形成处置记录。"));
+  expect(within(inspector).getByText("对象：核心业务流程")).toBeInTheDocument();
+  expect(within(workspace).getByTestId("p3-design-workspace-job-status")).toHaveTextContent("正在片段修改");
+
+  fireEvent.click(within(jobStatus).getByRole("button", { name: "定位当前工作" }));
+  expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
+  expect(within(inspector).getByRole("button", { name: "生成局部补丁提案" })).toBeDisabled();
+  expect(within(inspector).getByText("正在处理本段")).toBeInTheDocument();
+  expect(postMock.mock.calls.filter(([url]) => url === "/software-design-v2/sessions/p3dl-1/turns")).toHaveLength(1);
+
+  await act(async () => {
+    resolveScopedTurn({
+      data: {
+        turn: {
+          turn_id: "p3turn-scoped-running-1",
+          turn_type: "scoped_design_edit",
+          user_input: "扩写接口边界和异常处理。",
+          normalized_intent: "scoped_design_edit",
+          assistant_message: "已生成局部补丁提案：建议扩写当前段落。",
+          scope_anchor: {
+            anchor_type: "design_block",
+            section_id: "goal",
+            block_id: "goal-body",
+            design_revision_id: "v0.1",
+          },
+          patch_proposal: {
+            proposal_id: "patch-scoped-running-1",
+            base_revision_id: "v0.1",
+            target_anchor: { section_id: "goal", block_id: "goal-body" },
+            operations: [],
+            proposal_type: "advice_only",
+            applicability: {
+              can_apply: false,
+              reason: "operations_empty",
+            },
+            quality_notes: ["需要人工确认扩写内容。"],
+            status: "proposed",
+          },
+        },
+        session: buildSession(inputPackage, "patch_ready", {
+          design_title: "空域协同规划软件设计说明",
+          version_label: "v0.1",
+        }),
+      },
+    });
+  });
+
+  expect(await within(workspace).findByText("当前工作已完成")).toBeInTheDocument();
+  fireEvent.click(within(jobStatus).getByRole("button", { name: "定位当前工作" }));
+  expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
+  expect(await within(inspector).findByText("修改建议")).toBeInTheDocument();
+});
+
 test("executes design block quick actions through the scoped patch workflow", async () => {
   const inputPackage: P3DesignLabTestInputPackage = {
     ...buildInputPackage(),
