@@ -2512,18 +2512,77 @@ export type P3DesignTurnScopeAnchor = {
   };
 };
 
+export type P3DesignPatchProposalType =
+  | "advice_only"
+  | "executable_patch"
+  | "section_replacement_candidate"
+  | "document_replacement_candidate"
+  | "needs_manual_merge"
+  | string;
+
+export type P3DesignPatchBlockPreview = {
+  block_id?: string;
+  title?: string;
+  content?: string;
+  text?: string;
+  kind?: string;
+  source_refs?: string[];
+};
+
+export type P3DesignPatchOperation = {
+  op: string;
+  target_block_id?: string;
+  block_id?: string;
+  section_id?: string;
+  title?: string;
+  content?: string;
+  new_content?: string;
+  blocks?: P3DesignPatchBlockPreview[];
+  new_blocks?: P3DesignPatchBlockPreview[];
+  new_block?: P3DesignPatchBlockPreview;
+  source_refs?: string[];
+};
+
 export type P3DesignPatchProposal = {
   proposal_id: string;
   base_revision_id: string;
   target_anchor: Record<string, unknown>;
-  operations: Array<{
-    op: string;
-    target_block_id?: string;
-    new_blocks?: Array<{ title: string; content: string }>;
-    source_refs?: string[];
-  }>;
+  operations: P3DesignPatchOperation[];
+  proposal_type?: P3DesignPatchProposalType;
+  preview?: Record<string, unknown>;
+  diagnostics?: {
+    protocol_status?: string;
+    operation_count?: number;
+    unsupported_ops?: string[];
+  };
   quality_notes?: string[];
   status?: string;
+  applicability?: {
+    can_apply?: boolean;
+    reason?: string;
+    supported_ops?: string[];
+    unsupported_ops?: string[];
+  };
+};
+
+export type P3DesignPatchApplication = {
+  application_id: string;
+  proposal_id: string;
+  turn_id?: string | null;
+  status: string;
+  base_revision_id: string;
+  result_revision_id: string;
+  updated_targets: Array<Record<string, unknown>>;
+  warnings?: string[];
+};
+
+export type P3DesignPatchApplyResult = {
+  application_id: string;
+  status: string;
+  application: P3DesignPatchApplication;
+  updated_targets: Array<Record<string, unknown>>;
+  warnings?: string[];
+  updated_session: P3DesignLabSession;
 };
 
 export type P3DesignTurn = {

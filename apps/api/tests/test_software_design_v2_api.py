@@ -6,6 +6,7 @@ import pytest
 
 from app.main import create_app
 from app.design_converters.models import DesignConverterRunResult
+from app.software_design_v2.service import SoftwareDesignV2Service
 
 
 @pytest.fixture(autouse=True)
@@ -362,6 +363,249 @@ def test_software_design_v2_lists_available_design_converters() -> None:
     assert items[0]["capabilities"]["design_document"] is True
 
 
+def test_software_design_v2_applies_scoped_patch_proposal_to_design_document() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "这一段写得太散，拆成两段，并补充接口边界。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+                "source_refs": ["REQ-3.2"],
+                "selection_snapshot": {
+                    "title": "1. 设计目标与范围",
+                    "excerpt": "覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                },
+            },
+            "expected_output": ["document_patch", "traceability_update", "quality_note"],
+        },
+    )
+    assert scoped_turn.status_code == 200
+    turn = scoped_turn.json()["turn"]
+    proposal_id = turn["patch_proposal"]["proposal_id"]
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/patch-proposals/{proposal_id}/apply",
+        json={
+            "turn_id": turn["turn_id"],
+            "base_revision_id": "v0.1",
+            "apply_scope": "document_only",
+            "user_note": "确认应用到 1. 设计目标与范围",
+        },
+    )
+
+    assert applied.status_code == 200
+    payload = applied.json()
+    assert payload["status"] == "applied"
+    assert payload["application"]["proposal_id"] == proposal_id
+    assert payload["application"]["base_revision_id"] == "v0.1"
+    assert payload["application"]["result_revision_id"] != "v0.1"
+    assert payload["updated_targets"][0]["target_type"] == "design_block"
+    assert payload["updated_targets"][0]["section_id"] == "goal"
+    assert payload["updated_session"]["status"] == "patched"
+    assert payload["updated_session"]["turns"][-1]["turn_type"] == "patch_application"
+    assert payload["updated_session"]["turns"][-2]["patch_proposal"]["status"] == "applied"
+    updated_section = payload["updated_session"]["design_document"]["sections"][0]
+    assert updated_section["section_id"] == "goal"
+    assert [block["title"] for block in updated_section["blocks"]] == ["职责边界", "接口约束"]
+    assert "职责边界" in updated_section["content"]
+    assert updated_section["blocks"][1]["source_refs"] == ["REQ-3.2"]
+    assert payload["updated_session"]["runtime_events"][-1]["event_type"] == "patch_application"
+
+
+def test_software_design_v2_rejects_empty_scoped_patch_operations() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    design_session = SoftwareDesignV2Service._sessions[session_id]
+    empty_turn = {
+        "turn_id": "p3turn-empty-ops",
+        "turn_type": "scoped_design_edit",
+        "scope_anchor": {"anchor_type": "design_block", "section_id": "goal", "block_id": "goal-body", "design_revision_id": "v0.1"},
+        "patch_proposal": {
+            "proposal_id": "patch-empty-ops",
+            "base_revision_id": "v0.1",
+            "target_anchor": {"anchor_type": "design_block", "section_id": "goal", "block_id": "goal-body"},
+            "operations": [],
+            "quality_notes": ["只有说明，没有可执行操作。"],
+            "status": "proposed",
+        },
+    }
+    design_session["turns"] = [*design_session["turns"], empty_turn]
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/patch-empty-ops/apply",
+        json={"turn_id": "p3turn-empty-ops", "base_revision_id": "v0.1", "apply_scope": "document_only"},
+    )
+
+    assert applied.status_code == 400
+    assert "operations_empty" in applied.json()["detail"]
+    unchanged = client.get(f"/api/software-design-v2/sessions/{session_id}").json()
+    assert unchanged["design_document"]["sections"][0].get("blocks") is None
+    assert unchanged["turns"][-1]["patch_proposal"]["status"] == "proposed"
+    assert unchanged["turns"][-1]["patch_proposal"]["applicability"]["can_apply"] is False
+    assert unchanged["turns"][-1]["patch_proposal"]["proposal_type"] == "advice_only"
+
+
+def test_software_design_v2_applies_section_replacement_patch_proposal() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    design_session = SoftwareDesignV2Service._sessions[session_id]
+    section_turn = {
+        "turn_id": "p3turn-section-replace",
+        "turn_type": "scoped_design_edit",
+        "scope_anchor": {"anchor_type": "design_section", "section_id": "architecture", "design_revision_id": "v0.1"},
+        "patch_proposal": {
+            "proposal_id": "patch-section-replace",
+            "base_revision_id": "v0.1",
+            "proposal_type": "section_replacement_candidate",
+            "target_anchor": {"anchor_type": "design_section", "section_id": "architecture"},
+            "operations": [
+                {
+                    "op": "replace_section_blocks",
+                    "section_id": "architecture",
+                    "blocks": [
+                        {
+                            "block_id": "architecture-layering",
+                            "kind": "paragraph",
+                            "title": "总体分层",
+                            "content": "系统分为展示交互层、应用编排层、领域服务层、数据支撑层和外部集成层。",
+                            "source_refs": ["REQ-3.2"],
+                        },
+                        {
+                            "block_id": "architecture-boundary",
+                            "kind": "paragraph",
+                            "title": "层间边界",
+                            "content": "展示交互层只承载用户动作和状态展示，领域规则沉入领域服务层。",
+                            "source_refs": ["REQ-3.2"],
+                        },
+                    ],
+                }
+            ],
+            "quality_notes": ["替换本节后需要重新检查分层架构图。"],
+            "status": "proposed",
+            "applicability": {"can_apply": True, "reason": "ready"},
+        },
+    }
+    design_session["turns"] = [*design_session["turns"], section_turn]
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/patch-section-replace/apply",
+        json={
+            "turn_id": "p3turn-section-replace",
+            "base_revision_id": "v0.1",
+            "apply_scope": "document_only",
+            "user_note": "确认替换总体架构章节",
+        },
+    )
+
+    assert applied.status_code == 200
+    payload = applied.json()
+    updated_architecture = payload["updated_session"]["design_document"]["sections"][1]
+    assert payload["updated_targets"][0]["operation"] == "replace_section_blocks"
+    assert payload["updated_targets"][0]["target_type"] == "design_section"
+    assert updated_architecture["section_id"] == "architecture"
+    assert [block["title"] for block in updated_architecture["blocks"]] == ["总体分层", "层间边界"]
+    assert "展示交互层、应用编排层、领域服务层" in updated_architecture["content"]
+    assert payload["updated_session"]["turns"][-2]["patch_proposal"]["proposal_type"] == "section_replacement_candidate"
+
+
+def test_software_design_v2_patch_application_blocks_revision_conflict() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "拆分当前段落。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+            },
+        },
+    )
+    assert scoped_turn.status_code == 200
+    turn = scoped_turn.json()["turn"]
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/{turn['patch_proposal']['proposal_id']}/apply",
+        json={"turn_id": turn["turn_id"], "base_revision_id": "rev-stale", "apply_scope": "document_only"},
+    )
+
+    assert applied.status_code == 400
+    assert "revision_conflict" in applied.json()["detail"]
+    unchanged = client.get(f"/api/software-design-v2/sessions/{session_id}").json()
+    assert unchanged["design_document"]["version_label"] == "v0.1"
+    assert unchanged["turns"][-1]["patch_proposal"]["status"] == "conflicted"
+
+
+def test_software_design_v2_patch_application_is_idempotent_for_applied_proposal() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "这一段拆成职责边界和接口约束。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+            },
+        },
+    )
+    assert scoped_turn.status_code == 200
+    turn = scoped_turn.json()["turn"]
+    proposal_id = turn["patch_proposal"]["proposal_id"]
+    first = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/{proposal_id}/apply",
+        json={"turn_id": turn["turn_id"], "base_revision_id": "v0.1", "apply_scope": "document_only"},
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/{proposal_id}/apply",
+        json={"turn_id": turn["turn_id"], "base_revision_id": "v0.1", "apply_scope": "document_only"},
+    )
+
+    assert second.status_code == 200
+    payload = second.json()
+    assert payload["status"] == "applied"
+    assert payload["updated_targets"] == []
+    assert payload["application"]["idempotent"] is True
+    session_after = client.get(f"/api/software-design-v2/sessions/{session_id}").json()
+    assert len(session_after["design_document"]["sections"][0]["blocks"]) == 2
+
+
 def test_software_design_v2_input_packages_bootstraps_default_published_requirement_when_empty() -> None:
     client = TestClient(create_app())
 
@@ -676,6 +920,25 @@ def test_software_design_v2_scoped_turn_uses_scoped_dify_workflow(monkeypatch) -
         assert inputs["user_input"] == "这一段写得太散，拆成职责边界和接口约束两段。"
         assert scope_anchor["block_id"] == "goal-body"
         assert "design_document" in inputs["design_context_json"]
+        assert inputs["scoped_context_json"] == inputs["design_context_json"]
+        edit_task = json_module.loads(inputs["long_document_edit_task_json"])
+        assert edit_task["document_ref"]["document_type"] == "software_design"
+        assert edit_task["document_ref"]["revision_id"] == "v0.1"
+        assert edit_task["target_snapshot"]["target_block"]["block_id"] == "goal-body"
+        assert edit_task["target_snapshot"]["target_section"]["section_id"] == "goal"
+        assert edit_task["target_snapshot"]["target_section"]["content"]
+        assert edit_task["allowed_operations"] == [
+            "rewrite_block",
+            "split_block",
+            "insert_block_after",
+            "delete_block",
+            "merge_blocks",
+            "replace_section_blocks",
+            "rewrite_section",
+            "update_trace_refs",
+            "add_quality_note",
+        ]
+        assert "design_baseline_summary" in edit_task["context_bundle"]
         return httpx.Response(
             200,
             request=httpx.Request("POST", url),
@@ -789,6 +1052,217 @@ def test_software_design_v2_scoped_turn_uses_scoped_dify_workflow(monkeypatch) -
     assert payload["session"]["status"] == "patch_ready"
 
 
+def test_software_design_v2_scoped_turn_accepts_string_layer_summaries(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    captured_edit_tasks: list[dict] = []
+    json_module = json
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        edit_task = json_module.loads(json["inputs"]["long_document_edit_task_json"])
+        captured_edit_tasks.append(edit_task)
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-scoped-p3-layers",
+                "data": {
+                    "id": "run-scoped-p3-layers",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "已生成修改建议。",
+                                "patch_proposal": {
+                                    "proposal_id": "patch-layer-summary",
+                                    "base_revision_id": "v0.1",
+                                    "target_anchor": {"section_id": "goal", "block_id": "goal-body"},
+                                    "operations": [],
+                                    "quality_notes": ["分层摘要已纳入上下文。"],
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setattr(service_module.httpx, "post", fake_post)
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "app-test-scoped")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "workflow-scoped-p3")
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+    SoftwareDesignV2Service._sessions[session_id]["design_baseline"]["layered_architecture_projection"] = {
+        "title": "分层架构",
+        "layers": ["展示交互层", {"name": "应用编排层"}, "领域服务层"],
+    }
+
+    response = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "interaction_mode": "propose_patch",
+            "user_input": "补充本节分层职责。",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "document_id": session_id,
+                "design_revision_id": "v0.1",
+                "section_id": "goal",
+                "block_id": "goal-body",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_edit_tasks[0]["context_bundle"]["layered_architecture_summary"]["layers"] == [
+        "展示交互层",
+        "应用编排层",
+        "领域服务层",
+    ]
+
+
+def test_software_design_v2_scoped_turn_downgrades_empty_operations_from_dify(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    json_module = json
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-scoped-p3-empty-ops",
+                "data": {
+                    "id": "run-scoped-p3-empty-ops",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "已生成结构化补丁。",
+                                "patch_proposal": {
+                                    "proposal_id": "patch-empty-from-dify",
+                                    "base_revision_id": "v0.1",
+                                    "proposal_type": "executable_patch",
+                                    "target_anchor": {"section_id": "goal", "block_id": "goal-body"},
+                                    "operations": [],
+                                    "applicability": {"can_apply": True, "reason": "ready"},
+                                    "quality_notes": ["扩写后的段落已生成，但未形成 operations。"],
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setattr(service_module.httpx, "post", fake_post)
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "app-test-scoped")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "workflow-scoped-p3")
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    response = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "interaction_mode": "propose_patch",
+            "user_input": "扩写当前段落，补充模块边界。",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "design_revision_id": "v0.1",
+                "section_id": "goal",
+                "block_id": "goal-body",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    patch_proposal = response.json()["turn"]["patch_proposal"]
+    assert patch_proposal["proposal_type"] == "advice_only"
+    assert patch_proposal["applicability"]["can_apply"] is False
+    assert patch_proposal["applicability"]["reason"] == "operations_empty"
+    assert patch_proposal["diagnostics"]["protocol_status"] == "operations_empty"
+
+
+def test_software_design_v2_scoped_turn_marks_unsupported_operations_from_dify(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    json_module = json
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-scoped-p3-unsupported-op",
+                "data": {
+                    "id": "run-scoped-p3-unsupported-op",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "已生成旧格式补丁。",
+                                "patch_proposal": {
+                                    "proposal_id": "patch-legacy-op",
+                                    "base_revision_id": "v0.1",
+                                    "target_anchor": {"section_id": "goal", "block_id": "goal-body"},
+                                    "operations": [{"op": "replace_paragraph", "content": "旧格式补丁正文。"}],
+                                    "applicability": {"can_apply": True, "reason": "ready"},
+                                    "quality_notes": ["Dify 返回了旧格式操作。"],
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setattr(service_module.httpx, "post", fake_post)
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "app-test-scoped")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "workflow-scoped-p3")
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    response = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "interaction_mode": "propose_patch",
+            "user_input": "替换当前段落。",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "design_revision_id": "v0.1",
+                "section_id": "goal",
+                "block_id": "goal-body",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    patch_proposal = response.json()["turn"]["patch_proposal"]
+    assert patch_proposal["proposal_type"] == "needs_manual_merge"
+    assert patch_proposal["applicability"]["can_apply"] is False
+    assert patch_proposal["applicability"]["reason"] == "unsupported_operations"
+    assert patch_proposal["applicability"]["unsupported_ops"] == ["replace_paragraph"]
+    assert patch_proposal["diagnostics"]["protocol_status"] == "unsupported_operations"
+
+
 def test_software_design_v2_scoped_turn_rejects_missing_dify_result_json(monkeypatch) -> None:
     from app.software_design_v2 import service as service_module
 
@@ -828,6 +1302,48 @@ def test_software_design_v2_scoped_turn_rejects_missing_dify_result_json(monkeyp
     assert "result_json" in scoped_turn.json()["detail"]
     failed_session = client.get(f"/api/software-design-v2/sessions/{session['session_id']}").json()
     assert failed_session["status"] == "draft_ready"
+
+
+def test_software_design_v2_scoped_turn_reports_dify_error_body(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        return httpx.Response(
+            400,
+            request=httpx.Request("POST", url),
+            json={"code": "invalid_param", "message": "scoped_context_json is required in input form", "status": 400},
+        )
+
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "scoped-api-key")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "f2413e20-7cfc-4188-ae7f-7c23eaa353ff")
+    monkeypatch.setattr(service_module.httpx, "post", fake_post, raising=False)
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "补充接口约束。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+            },
+        },
+    )
+
+    assert scoped_turn.status_code == 400
+    detail = scoped_turn.json()["detail"]
+    assert "remote scoped dify workflow request failed" in detail
+    assert "scoped_context_json is required in input form" in detail
+    failed_session = client.get(f"/api/software-design-v2/sessions/{session['session_id']}").json()
     assert failed_session["turns"] == []
 
 

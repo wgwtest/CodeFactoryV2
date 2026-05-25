@@ -109,6 +109,69 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
     version_label: newVersionLabel,
     turns: [scopedTurn],
   });
+  const appliedScopedSession = buildSession(inputPackage, "patched", {
+    design_title: newDesignTitle,
+    version_label: "v0.1-patch-1",
+    design_document: {
+      title: newDesignTitle,
+      version_label: "v0.1-patch-1",
+      sections: [
+        {
+          section_id: "goal",
+          title: "1. 设计目标与范围",
+          content: "围绕当前段落重新组织职责边界。\n补充接口边界、输入输出和检查约束。",
+          status: "generated",
+          source_refs: ["REQ-3.2"],
+          blocks: [
+            {
+              block_id: "goal-body-split-1",
+              kind: "paragraph",
+              title: "职责边界",
+              content: "围绕当前段落重新组织职责边界。",
+              source_refs: ["REQ-3.2"],
+            },
+            {
+              block_id: "goal-body-split-2",
+              kind: "paragraph",
+              title: "接口约束",
+              content: "补充接口边界、输入输出和检查约束。",
+              source_refs: ["REQ-3.2"],
+            },
+          ],
+        },
+        {
+          section_id: "architecture",
+          title: "2. 总体架构",
+          content: "采用统一服务架构。",
+          status: "generated",
+          source_refs: ["REQ-3.2"],
+        },
+      ],
+    },
+    turns: [
+      {
+        ...scopedTurn,
+        patch_proposal: {
+          ...scopedTurn.patch_proposal,
+          status: "applied",
+        },
+      },
+      {
+        turn_id: "p3turn-apply-1",
+        turn_type: "patch_application",
+        normalized_intent: "apply_patch_proposal",
+        assistant_message: "已应用补丁提案 patch-scoped-1 到软件设计说明正文。",
+        patch_application: {
+          application_id: "patch-app-1",
+          proposal_id: "patch-scoped-1",
+          base_revision_id: "v0.1",
+          result_revision_id: "v0.1-patch-1",
+          updated_targets: [{ target_type: "design_block", section_id: "goal", block_id: "goal-body-split-1" }],
+          warnings: ["补丁应用后需要重新运行设计完整性检查。"],
+        },
+      },
+    ],
+  });
   const checkedSession = buildSession(inputPackage, "patch_ready", {
     design_title: newDesignTitle,
     version_label: newVersionLabel,
@@ -150,6 +213,25 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
         return Promise.resolve({ data: { turn: scopedTurn, session: scopedTurnSession } });
       }
       return Promise.resolve({ data: { turn: turnedSession.turns[0], session: turnedSession } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1/patch-proposals/patch-scoped-1/apply") {
+      return Promise.resolve({
+        data: {
+          application_id: "patch-app-1",
+          status: "applied",
+          application: {
+            application_id: "patch-app-1",
+            proposal_id: "patch-scoped-1",
+            base_revision_id: "v0.1",
+            result_revision_id: "v0.1-patch-1",
+            updated_targets: [{ target_type: "design_block", section_id: "goal", block_id: "goal-body-split-1" }],
+            warnings: ["补丁应用后需要重新运行设计完整性检查。"],
+          },
+          updated_targets: [{ target_type: "design_block", section_id: "goal", block_id: "goal-body-split-1" }],
+          warnings: ["补丁应用后需要重新运行设计完整性检查。"],
+          updated_session: appliedScopedSession,
+        },
+      });
     }
     if (url === "/software-design-v2/sessions/p3dl-1/save") {
       return Promise.resolve({ data: savedSession });
@@ -316,7 +398,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("对象：1. 设计目标与范围")).toBeInTheDocument();
   expect(within(inspector).getByText("覆盖协同规划核心能力。")).toBeInTheDocument();
   expect(within(inspector).getByText("扩写本段")).toBeInTheDocument();
-  expect(within(inspector).getByText("局部 AI 沟通")).toBeInTheDocument();
+  expect(within(inspector).getByText("局部提案工作区")).toBeInTheDocument();
   fireEvent.change(within(inspector).getByLabelText("局部 AI 沟通输入"), {
     target: { value: "这一段写得太散，拆成两段，并补充接口边界。" },
   });
@@ -345,6 +427,19 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(within(inspector).getByText("职责边界")).toBeInTheDocument();
   expect(within(inspector).getByText("接口约束")).toBeInTheDocument();
   expect(within(inspector).getByText("补丁应用后需要重新运行设计完整性检查。")).toBeInTheDocument();
+  expect(within(inspector).getByRole("button", { name: "应用到文档" })).toBeInTheDocument();
+  fireEvent.click(within(inspector).getByRole("button", { name: "应用到文档" }));
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/patch-proposals/patch-scoped-1/apply", {
+      turn_id: "p3turn-scoped-1",
+      base_revision_id: "v0.1",
+      apply_scope: "document_only",
+    }),
+  );
+  expect(await within(inspector).findByText("补丁已应用到文档")).toBeInTheDocument();
+  expect(within(inspector).queryByRole("button", { name: "应用到文档" })).not.toBeInTheDocument();
+  expect(within(designDocumentObject).getByText("围绕当前段落重新组织职责边界。")).toBeInTheDocument();
+  expect(within(designDocumentObject).getByText("补充接口边界、输入输出和检查约束。")).toBeInTheDocument();
   expect(within(inspector).getByText("当前对象追溯")).toBeInTheDocument();
   expect(within(inspector).queryByText("结构化摘要")).not.toBeInTheDocument();
   expect(within(inspector).queryByText("投影树")).not.toBeInTheDocument();
@@ -618,6 +713,416 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   await waitFor(() => expect(within(workspace).queryByText("正在调用 Dify 生成软件设计说明")).not.toBeInTheDocument());
 });
 
+test("shows scoped patch waiting and local failure feedback inside the inspector", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+  });
+  let rejectScopedTurn: (reason?: unknown) => void = () => {};
+  const scopedTurnPromise = new Promise<never>((_, reject) => {
+    rejectScopedTurn = reject;
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return scopedTurnPromise;
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  const input = within(inspector).getByLabelText("局部 AI 沟通输入");
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+  expect(await within(inspector).findByText("请先填写局部调整要求。")).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "扩写接口边界和异常处理。" } });
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+
+  expect(await within(inspector).findByText("正在生成局部补丁提案")).toBeInTheDocument();
+  expect(within(inspector).getByText("远端工作流通常约 180 秒，本地回退会更快。")).toBeInTheDocument();
+  expect(input).toBeDisabled();
+  expect(within(inspector).getByRole("button", { name: "生成局部补丁提案" })).toBeDisabled();
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+  expect(postMock.mock.calls.filter(([url]) => url === "/software-design-v2/sessions/p3dl-1/turns")).toHaveLength(1);
+
+  await act(async () => {
+    rejectScopedTurn(new Error("remote scoped dify workflow request failed: scoped_context_json is required in input form"));
+  });
+
+  expect(await within(inspector).findByText("局部补丁提案生成失败")).toBeInTheDocument();
+  expect(within(inspector).getByText(/scoped_context_json is required in input form/)).toBeInTheDocument();
+  expect(input).toBeEnabled();
+});
+
+test("executes design block quick actions through the scoped patch workflow", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+  });
+  let resolveScopedTurn: (value: unknown) => void = () => {};
+  const scopedTurnPromise = new Promise((resolve) => {
+    resolveScopedTurn = resolve;
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return scopedTurnPromise;
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  const scopedInput = within(inspector).getByLabelText("局部 AI 沟通输入");
+  fireEvent.click(within(inspector).getByRole("button", { name: "填入扩写本段" }));
+  expect(scopedInput).toHaveValue("扩写当前段落，补充模块边界和设计理由。");
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+
+  expect(await within(inspector).findByText("正在生成局部补丁提案")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(postMock).toHaveBeenCalledWith(
+      "/software-design-v2/sessions/p3dl-1/turns",
+      expect.objectContaining({
+        turn_type: "scoped_design_edit",
+        interaction_mode: "propose_patch",
+        user_input: "扩写当前段落，补充模块边界和设计理由。",
+      }),
+    ),
+  );
+  expect(within(inspector).getByRole("button", { name: "填入扩写本段" })).toBeDisabled();
+
+  await act(async () => {
+    resolveScopedTurn({
+      data: {
+        turn: {
+          turn_id: "p3turn-scoped-action-1",
+          turn_type: "scoped_design_edit",
+          user_input: "扩写当前段落，补充模块边界和设计理由。",
+          normalized_intent: "scoped_design_edit",
+          assistant_message: "已生成局部补丁提案：建议扩写当前段落。",
+          scope_anchor: {
+            anchor_type: "design_block",
+            section_id: "goal",
+            block_id: "goal-body",
+            design_revision_id: "v0.1",
+          },
+          patch_proposal: {
+            proposal_id: "patch-scoped-action-1",
+            base_revision_id: "v0.1",
+            target_anchor: { section_id: "goal", block_id: "goal-body" },
+            operations: [],
+            proposal_type: "advice_only",
+            applicability: {
+              can_apply: false,
+              reason: "operations_empty",
+            },
+            quality_notes: ["需要人工确认扩写内容。"],
+            status: "proposed",
+          },
+        },
+        session: buildSession(inputPackage, "patch_ready", {
+          design_title: "空域协同规划软件设计说明",
+          version_label: "v0.1",
+        }),
+      },
+    });
+  });
+
+  expect(await within(inspector).findByText("修改建议")).toBeInTheDocument();
+  expect(within(inspector).getByText("未形成可应用补丁")).toBeInTheDocument();
+  expect(within(inspector).getByText("当前结果缺少可执行 operations，不能写入正文。")).toBeInTheDocument();
+  expect(within(inspector).getByText("需要人工确认扩写内容。")).toBeInTheDocument();
+  expect(within(inspector).queryByText("不可自动应用")).not.toBeInTheDocument();
+  expect(within(inspector).queryByRole("button", { name: "应用到文档" })).not.toBeInTheDocument();
+});
+
+test("shows section replacement candidates with explicit confirmation before applying", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+  });
+  const replacementTurn = {
+    turn_id: "p3turn-section-1",
+    turn_type: "scoped_design_edit",
+    user_input: "把本节改成分层架构可映射的结构。",
+    normalized_intent: "scoped_design_edit",
+    assistant_message: "已生成整节替换候选。",
+    scope_anchor: {
+      anchor_type: "design_block",
+      section_id: "goal",
+      block_id: "goal-body",
+      design_revision_id: "v0.1",
+    },
+    patch_proposal: {
+      proposal_id: "patch-section-1",
+      base_revision_id: "v0.1",
+      proposal_type: "section_replacement_candidate",
+      target_anchor: { section_id: "goal", block_id: "goal-body" },
+      operations: [
+        {
+          op: "replace_section_blocks",
+          section_id: "goal",
+          blocks: [
+            {
+              block_id: "goal-layer-boundary",
+              title: "分层职责边界",
+              content: "明确展示层、应用层和数据层在规划任务管理中的职责。",
+              kind: "paragraph",
+              source_refs: ["REQ-3.2"],
+            },
+            {
+              block_id: "goal-trace-map",
+              title: "追溯映射入口",
+              content: "将需规条款映射到模块、能力和接口约束。",
+              kind: "paragraph",
+              source_refs: ["REQ-3.2"],
+            },
+          ],
+        },
+      ],
+      applicability: {
+        can_apply: true,
+        reason: "ready",
+      },
+      quality_notes: ["替换本节后需要检查功能树映射。"],
+      status: "proposed",
+    },
+  };
+  const scopedSession = buildSession(inputPackage, "patch_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    turns: [replacementTurn],
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return Promise.resolve({ data: { turn: replacementTurn, session: scopedSession } });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  fireEvent.change(within(inspector).getByLabelText("局部 AI 沟通输入"), {
+    target: { value: "把本节改成分层架构可映射的结构。" },
+  });
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+
+  expect(await within(inspector).findByText("整节替换候选")).toBeInTheDocument();
+  expect(within(inspector).getByText("待确认")).toBeInTheDocument();
+  expect(within(inspector).getByText("分层职责边界")).toBeInTheDocument();
+  expect(within(inspector).getByText("明确展示层、应用层和数据层在规划任务管理中的职责。")).toBeInTheDocument();
+  expect(within(inspector).getByRole("button", { name: "确认替换本节" })).toBeInTheDocument();
+  expect(within(inspector).queryByRole("button", { name: "应用到文档" })).not.toBeInTheDocument();
+});
+
+test("shows unsupported scoped patch operations as non-protocol patch diagnostics", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+  });
+  const legacyTurn = {
+    turn_id: "p3turn-legacy-op",
+    turn_type: "scoped_design_edit",
+    user_input: "替换当前段落。",
+    normalized_intent: "scoped_design_edit",
+    assistant_message: "已生成旧格式补丁。",
+    scope_anchor: {
+      anchor_type: "design_block",
+      section_id: "goal",
+      block_id: "goal-body",
+      design_revision_id: "v0.1",
+    },
+    patch_proposal: {
+      proposal_id: "patch-legacy-op",
+      base_revision_id: "v0.1",
+      proposal_type: "needs_manual_merge",
+      target_anchor: { section_id: "goal", block_id: "goal-body" },
+      operations: [{ op: "replace_paragraph", content: "旧格式补丁正文。" }],
+      applicability: {
+        can_apply: false,
+        reason: "unsupported_operations",
+        unsupported_ops: ["replace_paragraph"],
+      },
+      diagnostics: {
+        protocol_status: "unsupported_operations",
+        operation_count: 1,
+        unsupported_ops: ["replace_paragraph"],
+      },
+      quality_notes: ["Dify 返回了旧格式操作。"],
+      status: "proposed",
+    },
+  };
+  const scopedSession = buildSession(inputPackage, "patch_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    turns: [legacyTurn],
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions/p3dl-1/turns") {
+      return Promise.resolve({ data: { turn: legacyTurn, session: scopedSession } });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  const designDocumentObject = within(morphPlatform).getByTestId("stage-object-document");
+  fireEvent.click(within(designDocumentObject).getByText("覆盖协同规划核心能力。"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  fireEvent.change(within(inspector).getByLabelText("局部 AI 沟通输入"), {
+    target: { value: "替换当前段落。" },
+  });
+  fireEvent.click(within(inspector).getByRole("button", { name: "生成局部补丁提案" }));
+
+  expect(await within(inspector).findByText("非协议补丁")).toBeInTheDocument();
+  expect(within(inspector).getByText("不支持的操作：replace_paragraph")).toBeInTheDocument();
+  expect(within(inspector).getByText("Dify 返回了旧格式操作。")).toBeInTheDocument();
+  expect(within(inspector).queryByRole("button", { name: "应用到文档" })).not.toBeInTheDocument();
+});
+
 test("renders structured software design subsections, tables, and diagrams from converter output", async () => {
   const inputPackage = buildInputPackage();
   const convertedSession = buildSession(inputPackage, "draft_ready", {
@@ -735,8 +1240,19 @@ function buildInputPackage() {
   };
 }
 
+type P3DesignLabTestInputPackage = Omit<ReturnType<typeof buildInputPackage>, "related_designs"> & {
+  related_designs: Array<{
+    software_design_id: string;
+    title: string;
+    version_label: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }>;
+};
+
 function buildSession(
-  inputPackage: ReturnType<typeof buildInputPackage>,
+  inputPackage: ReturnType<typeof buildInputPackage> | P3DesignLabTestInputPackage,
   status: string,
   overrides: Record<string, unknown> = {},
 ) {

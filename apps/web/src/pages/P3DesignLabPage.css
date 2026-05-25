@@ -795,12 +795,51 @@
   line-height: 1.55;
 }
 
+.p3-design-scoped-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.p3-design-scoped-suggestions .ant-btn {
+  height: 24px;
+  padding-inline: 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
 .p3-design-scoped-patch-preview {
   display: grid;
   gap: 8px;
   padding: 10px;
   border: 1px solid #d5e3dd;
   background: #f7fbf9;
+}
+
+.p3-design-scoped-patch-preview > .ant-btn {
+  height: 30px;
+  border-radius: 4px;
+}
+
+.p3-design-scoped-turn-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #c9def6;
+  background: #f5f9ff;
+}
+
+.p3-design-scoped-turn-status > span {
+  display: grid;
+  gap: 2px;
+}
+
+.p3-design-scoped-turn-status .ant-typography,
+.p3-design-scoped-turn-alert .ant-alert-message,
+.p3-design-scoped-turn-alert .ant-alert-description {
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .p3-design-scoped-patch-blocks,
