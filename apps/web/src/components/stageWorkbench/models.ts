@@ -251,9 +251,118 @@ export type DocumentOutlineViewModel = {
       title?: string;
       root?: unknown;
     };
+    architectureViews?: StageArchitectureViewsViewModel;
     layeredArchitecture?: StageLayeredArchitectureViewModel;
   };
   emptyDescription: string;
+};
+
+export type StageArchitectureViewTabViewModel = {
+  viewId: string;
+  title: string;
+  viewType: string;
+  order: number;
+};
+
+export type StageArchitectureViewDefinitionViewModel = {
+  viewId: string;
+  viewType: string;
+  title: string;
+  description?: string;
+  nodeRefs: string[];
+  relationRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+};
+
+export type StageArchitectureNodeViewModel = {
+  nodeId: string;
+  nodeType: string;
+  title: string;
+  description?: string;
+  containerId?: string;
+  componentId?: string;
+  layerRoles: string[];
+  moduleRefs: string[];
+  functionRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+  position?: {
+    x: number;
+    y: number;
+  };
+};
+
+export type StageArchitectureRelationViewModel = {
+  relationId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  relationType?: string;
+  title: string;
+  description?: string;
+  functionRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+};
+
+export type StageArchitectureRuntimeStepViewModel = {
+  stepId: string;
+  order: number;
+  actorNodeId: string;
+  targetNodeId: string;
+  action: string;
+  dataRefs: string[];
+  relationRefs: string[];
+};
+
+export type StageArchitectureRuntimeScenarioViewModel = {
+  scenarioId: string;
+  title: string;
+  trigger?: string;
+  functionRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+  steps: StageArchitectureRuntimeStepViewModel[];
+};
+
+export type StageArchitectureLayerRoleViewModel = {
+  roleId: string;
+  roleType: string;
+  title: string;
+  description?: string;
+  componentRefs: string[];
+  functionRefs: string[];
+  designRefs: string[];
+};
+
+export type StageFunctionArchitectureMappingViewModel = {
+  mappingId: string;
+  functionNodeId: string;
+  architectureViewIds: string[];
+  containerIds: string[];
+  componentIds: string[];
+  runtimeScenarioIds: string[];
+  layerRoles: string[];
+  role?: string;
+  mappingStatus: string;
+  moduleRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+};
+
+export type StageArchitectureViewsViewModel = {
+  viewGroupId: string;
+  title: string;
+  defaultViewId: string;
+  tabs: StageArchitectureViewTabViewModel[];
+  views: StageArchitectureViewDefinitionViewModel[];
+  nodes: StageArchitectureNodeViewModel[];
+  architectureRelations: StageArchitectureRelationViewModel[];
+  runtimeScenarios: StageArchitectureRuntimeScenarioViewModel[];
+  layerRoles: StageArchitectureLayerRoleViewModel[];
+  functionArchitectureMappings: StageFunctionArchitectureMappingViewModel[];
+  mappingQuality?: StageLayeredArchitectureMappingQualityViewModel;
+  reviewFindings: string[];
 };
 
 export type StageLayeredArchitectureComponentViewModel = {
@@ -285,6 +394,39 @@ export type StageLayeredArchitectureMappingViewModel = {
   sourceRefs: string[];
 };
 
+export type StageLayeredArchitectureFunctionMappingViewModel = {
+  mappingId: string;
+  functionNodeId: string;
+  functionTitle?: string;
+  layerId: string;
+  layerName: string;
+  componentId: string;
+  componentName?: string;
+  role?: string;
+  mappingStatus: string;
+  moduleRefs: string[];
+  sourceRefs: string[];
+  designRefs: string[];
+};
+
+export type StageLayeredArchitectureCrossLayerRelationViewModel = {
+  relationId: string;
+  title: string;
+  fromLayerId?: string;
+  fromComponentId?: string;
+  toLayerId?: string;
+  toComponentId?: string;
+  relationType?: string;
+  functionRefs: string[];
+  sourceRefs: string[];
+};
+
+export type StageLayeredArchitectureMappingQualityViewModel = {
+  mappedFunctionCount: number;
+  unmappedFunctionCount: number;
+  pendingConfirmationCount: number;
+};
+
 export type StageLayeredArchitectureDiagramViewModel = {
   diagramId: string;
   title: string;
@@ -301,6 +443,9 @@ export type StageLayeredArchitectureViewModel = {
   designRefs: string[];
   layers: StageLayeredArchitectureLayerViewModel[];
   moduleLayerMappings: StageLayeredArchitectureMappingViewModel[];
+  functionLayerMappings: StageLayeredArchitectureFunctionMappingViewModel[];
+  crossLayerRelations: StageLayeredArchitectureCrossLayerRelationViewModel[];
+  mappingQuality?: StageLayeredArchitectureMappingQualityViewModel;
   diagrams: StageLayeredArchitectureDiagramViewModel[];
 };
 

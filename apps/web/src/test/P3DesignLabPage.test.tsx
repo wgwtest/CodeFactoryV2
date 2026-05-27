@@ -544,6 +544,90 @@ test("uses a compact inline title and subtitle treatment for all morph stage fra
   expectDesignMorphStageFrameHeaderToBeInline();
 });
 
+test("stretches layered architecture swimlanes instead of leaving a blank tail", () => {
+  expectLayeredArchitectureSwimlanesToFillStage();
+});
+
+test("links function tree selection to layered architecture mapping details", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "draft_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:20:00Z",
+      },
+    ],
+  };
+  const convertedSession = buildSession(inputPackage, "draft_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    conversion: buildConversion("draft_ready", "standard_sdd_draft"),
+    design_baseline: {
+      baseline_id: "sdb2-1",
+      architecture_mode: "business_module_oriented_layered_architecture",
+      modules: [{ module_id: "planning-task", name: "规划任务管理" }],
+      function_tree: buildFunctionTreeFixture(),
+      layered_architecture: buildLayeredArchitectureFixture(),
+    },
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: convertedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "进入编辑" }));
+  expect(await within(workspace).findByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+
+  const morphPlatform = within(workspace).getByTestId("design-morph-canvas-platform");
+  expect(within(morphPlatform).getByText("Canvas 窗口：软设文档 -> 功能树")).toBeInTheDocument();
+
+  const functionTreeObject = within(morphPlatform).getByTestId("stage-object-functionTree");
+  fireEvent.click(within(functionTreeObject).getByText("创建规划任务"));
+  const inspector = within(workspace).getByTestId("design-morph-inspector");
+  expect(within(inspector).getByText("对象：创建规划任务")).toBeInTheDocument();
+  expect(within(inspector).getByText("分层架构映射")).toBeInTheDocument();
+  expect(within(inspector).getByText("展示层")).toBeInTheDocument();
+  expect(within(inspector).getByText("服务层")).toBeInTheDocument();
+  expect(within(inspector).getByText("规划任务工作台")).toBeInTheDocument();
+  expect(within(inspector).getByText("规划任务服务")).toBeInTheDocument();
+
+  fireEvent.click(within(morphPlatform).getByRole("button", { name: "下一窗口" }));
+  expect(within(morphPlatform).getByText("Canvas 窗口：功能树 -> 分层架构")).toBeInTheDocument();
+  const layeredArchitectureObject = within(morphPlatform).getByTestId("stage-object-layeredArchitecture");
+  expect(within(layeredArchitectureObject).getByText("五层分层架构")).toBeInTheDocument();
+  expect(within(layeredArchitectureObject).getByTestId("architecture-component-cmp-task-workbench")).toHaveClass(
+    "is-linked-to-selection",
+  );
+  expect(within(layeredArchitectureObject).getByTestId("architecture-component-cmp-task-service")).toHaveClass(
+    "is-linked-to-selection",
+  );
+
+  fireEvent.click(within(layeredArchitectureObject).getByTestId("architecture-component-cmp-task-service"));
+  expect(within(inspector).getByText("对象：规划任务服务")).toBeInTheDocument();
+  expect(within(inspector).getByText("承载功能")).toBeInTheDocument();
+  expect(within(inspector).getByText("创建规划任务")).toBeInTheDocument();
+  expect(within(inspector).getByText("映射状态")).toBeInTheDocument();
+  expect(within(inspector).getAllByText("confirmed").length).toBeGreaterThanOrEqual(1);
+});
+
 test("refreshes P3 input packages while the page stays open", async () => {
   vi.useFakeTimers();
   const firstPackage = buildInputPackage();
@@ -1365,6 +1449,139 @@ function buildInputPackage() {
   };
 }
 
+function buildFunctionTreeFixture() {
+  return {
+    tree_id: "function-tree-p3dl-1",
+    title: "空域协同规划软件功能树",
+    root: {
+      node_id: "function-tree-root",
+      title: "空域协同规划软件",
+      node_type: "root",
+      children: [
+        {
+          node_id: "function-node-planning-task",
+          title: "规划任务管理",
+          node_type: "module",
+          source_refs: ["REQ-3.2"],
+          design_refs: ["goal"],
+          children: [
+            {
+              node_id: "cap-planning-task",
+              title: "规划任务管理能力",
+              node_type: "capability",
+              source_refs: ["REQ-3.2"],
+              design_refs: ["goal"],
+              children: [
+                {
+                  node_id: "fn-create-task",
+                  title: "创建规划任务",
+                  node_type: "function",
+                  status: "confirmed",
+                  source_refs: ["REQ-3.2"],
+                  design_refs: ["goal"],
+                  architecture_refs: ["cmp-task-workbench", "cmp-task-service"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function buildLayeredArchitectureFixture() {
+  return {
+    architecture_id: "layered-architecture",
+    title: "五层分层架构",
+    pattern: "business-module-oriented-layered-architecture",
+    source_refs: ["REQ-3.2"],
+    design_refs: ["goal"],
+    layers: [
+      {
+        layer_id: "presentation",
+        name: "展示层",
+        responsibility: "承载规划任务创建入口和用户反馈。",
+        inputs: ["规划任务创建指令"],
+        outputs: ["创建请求"],
+        components: [
+          {
+            component_id: "cmp-task-workbench",
+            name: "规划任务工作台",
+            component_type: "ui_workspace",
+            module_refs: ["planning-task"],
+            function_refs: ["fn-create-task"],
+          },
+        ],
+      },
+      {
+        layer_id: "service",
+        name: "服务层",
+        responsibility: "承载规划任务规则、状态校验和提交编排。",
+        inputs: ["创建请求"],
+        outputs: ["任务状态"],
+        components: [
+          {
+            component_id: "cmp-task-service",
+            name: "规划任务服务",
+            component_type: "domain_service",
+            module_refs: ["planning-task"],
+            function_refs: ["fn-create-task"],
+          },
+        ],
+      },
+    ],
+    function_layer_mappings: [
+      {
+        mapping_id: "map-fn-create-task-ui",
+        function_node_id: "fn-create-task",
+        function_title: "创建规划任务",
+        layer_id: "presentation",
+        layer_name: "展示层",
+        component_id: "cmp-task-workbench",
+        component_name: "规划任务工作台",
+        role: "ui_entry",
+        mapping_status: "confirmed",
+        module_refs: ["planning-task"],
+        source_refs: ["REQ-3.2"],
+        design_refs: ["goal"],
+      },
+      {
+        mapping_id: "map-fn-create-task-service",
+        function_node_id: "fn-create-task",
+        function_title: "创建规划任务",
+        layer_id: "service",
+        layer_name: "服务层",
+        component_id: "cmp-task-service",
+        component_name: "规划任务服务",
+        role: "domain_service",
+        mapping_status: "confirmed",
+        module_refs: ["planning-task"],
+        source_refs: ["REQ-3.2"],
+        design_refs: ["goal"],
+      },
+    ],
+    cross_layer_relations: [
+      {
+        relation_id: "rel-create-task",
+        title: "创建规划任务提交",
+        from_layer_id: "presentation",
+        from_component_id: "cmp-task-workbench",
+        to_layer_id: "service",
+        to_component_id: "cmp-task-service",
+        relation_type: "command_call",
+        function_refs: ["fn-create-task"],
+        source_refs: ["REQ-3.2"],
+      },
+    ],
+    mapping_quality: {
+      mapped_function_count: 1,
+      unmapped_function_count: 0,
+      pending_confirmation_count: 0,
+    },
+  };
+}
+
 type P3DesignLabTestInputPackage = Omit<ReturnType<typeof buildInputPackage>, "related_designs"> & {
   related_designs: Array<{
     software_design_id: string;
@@ -1554,6 +1771,14 @@ function expectDesignMorphStageFrameHeaderToBeInline() {
   expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*font-size:\s*10px;/s);
   expect(canvasCss).toMatch(/\.design-morph-object-title-meta\s*{[^}]*background:\s*rgba\(47,\s*119,\s*189,\s*0\.1\);/s);
   expect(canvasCss).not.toMatch(/\.design-morph-object-title-copy\s*{[^}]*display:\s*grid;/s);
+}
+
+function expectLayeredArchitectureSwimlanesToFillStage() {
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+
+  expect(canvasCss).toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*align-content:\s*stretch;/s);
+  expect(canvasCss).toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*grid-auto-rows:\s*minmax\(104px,\s*1fr\);/s);
+  expect(canvasCss).not.toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*align-content:\s*start;/s);
 }
 
 function expectWorkspaceFullscreenToCoverViewport() {

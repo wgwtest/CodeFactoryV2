@@ -148,6 +148,12 @@ export function buildP3DesignLabWorkbenchViewModel({
               name: module.name,
             })),
             functionTree: normalizeBaselineFunctionTree(designBaseline.function_tree ?? designBaseline.functionTree),
+            architectureViews: normalizeArchitectureViews(
+              getNestedRecord(designBaseline.design_package, "architecture_views") ??
+                getNestedRecord(designBaseline.design_package, "architectureViews") ??
+                getNestedRecord(designBaseline.designPackage, "architecture_views") ??
+                getNestedRecord(designBaseline.designPackage, "architectureViews"),
+            ),
             layeredArchitecture: normalizeLayeredArchitecture(
               designBaseline.layered_architecture ??
                 designBaseline.layeredArchitecture ??
@@ -211,6 +217,153 @@ export function buildP3DesignLabWorkbenchViewModel({
   };
 }
 
+function normalizeArchitectureViews(
+  value: unknown,
+): NonNullable<NonNullable<StageDocumentWorkbenchViewModel["outline"]["baseline"]>["architectureViews"]> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const tabs = toRecordList(value.tabs).map((tab, index) => ({
+    viewId: toDisplayString(tab.view_id ?? tab.viewId, `architecture-view-${index + 1}`),
+    title: toDisplayString(tab.title, `架构视图 ${index + 1}`),
+    viewType: toDisplayString(tab.view_type ?? tab.viewType, "architecture_view"),
+    order: toNumberValue(tab.order) || index + 1,
+  }));
+  const views = toRecordList(value.views).map((view, index) => ({
+    viewId: toDisplayString(view.view_id ?? view.viewId, tabs[index]?.viewId ?? `architecture-view-${index + 1}`),
+    viewType: toDisplayString(view.view_type ?? view.viewType, tabs[index]?.viewType ?? "architecture_view"),
+    title: toDisplayString(view.title, tabs[index]?.title ?? `架构视图 ${index + 1}`),
+    description: toOptionalDisplayString(view.description),
+    nodeRefs: toDisplayStringList(view.node_refs ?? view.nodeRefs),
+    relationRefs: toDisplayStringList(view.relation_refs ?? view.relationRefs),
+    sourceRefs: toDisplayStringList(view.source_refs ?? view.sourceRefs),
+    designRefs: toDisplayStringList(view.design_refs ?? view.designRefs),
+  }));
+  const nodes = [
+    ...toRecordList(value.business_contexts ?? value.businessContexts),
+    ...toRecordList(value.c4_containers ?? value.c4Containers),
+    ...toRecordList(value.c4_components ?? value.c4Components),
+    ...toRecordList(value.nodes),
+  ].map((node, index) => normalizeArchitectureNode(node, index));
+  const architectureRelations = toRecordList(value.architecture_relations ?? value.architectureRelations).map((relation, index) => ({
+    relationId: toDisplayString(relation.relation_id ?? relation.relationId, `architecture-relation-${index + 1}`),
+    fromNodeId: toDisplayString(relation.from_node_id ?? relation.fromNodeId, ""),
+    toNodeId: toDisplayString(relation.to_node_id ?? relation.toNodeId, ""),
+    relationType: toOptionalDisplayString(relation.relation_type ?? relation.relationType),
+    title: toDisplayString(relation.title, `架构关系 ${index + 1}`),
+    description: toOptionalDisplayString(relation.description),
+    functionRefs: toDisplayStringList(relation.function_refs ?? relation.functionRefs),
+    sourceRefs: toDisplayStringList(relation.source_refs ?? relation.sourceRefs),
+    designRefs: toDisplayStringList(relation.design_refs ?? relation.designRefs),
+  }));
+  const runtimeScenarios = toRecordList(value.runtime_scenarios ?? value.runtimeScenarios).map((scenario, index) => ({
+    scenarioId: toDisplayString(scenario.scenario_id ?? scenario.scenarioId, `runtime-scenario-${index + 1}`),
+    title: toDisplayString(scenario.title, `运行场景 ${index + 1}`),
+    trigger: toOptionalDisplayString(scenario.trigger),
+    functionRefs: toDisplayStringList(scenario.function_refs ?? scenario.functionRefs),
+    sourceRefs: toDisplayStringList(scenario.source_refs ?? scenario.sourceRefs),
+    designRefs: toDisplayStringList(scenario.design_refs ?? scenario.designRefs),
+    steps: toRecordList(scenario.steps).map((step, stepIndex) => ({
+      stepId: toDisplayString(step.step_id ?? step.stepId, `runtime-step-${index + 1}-${stepIndex + 1}`),
+      order: toNumberValue(step.order) || stepIndex + 1,
+      actorNodeId: toDisplayString(step.actor_node_id ?? step.actorNodeId, ""),
+      targetNodeId: toDisplayString(step.target_node_id ?? step.targetNodeId, ""),
+      action: toDisplayString(step.action, "待补充动作"),
+      dataRefs: toDisplayStringList(step.data_refs ?? step.dataRefs),
+      relationRefs: toDisplayStringList(step.relation_refs ?? step.relationRefs),
+    })),
+  }));
+  const layerRoles = toRecordList(value.layer_roles ?? value.layerRoles).map((role, index) => ({
+    roleId: toDisplayString(role.role_id ?? role.roleId, `layer-role-${index + 1}`),
+    roleType: toDisplayString(role.role_type ?? role.roleType, "layer_role"),
+    title: toDisplayString(role.title, `职责标签 ${index + 1}`),
+    description: toOptionalDisplayString(role.description),
+    componentRefs: toDisplayStringList(role.component_refs ?? role.componentRefs),
+    functionRefs: toDisplayStringList(role.function_refs ?? role.functionRefs),
+    designRefs: toDisplayStringList(role.design_refs ?? role.designRefs),
+  }));
+  const functionArchitectureMappings = toRecordList(
+    value.function_architecture_mappings ?? value.functionArchitectureMappings,
+  ).map((mapping, index) => ({
+    mappingId: toDisplayString(mapping.mapping_id ?? mapping.mappingId, `function-architecture-mapping-${index + 1}`),
+    functionNodeId: toDisplayString(mapping.function_node_id ?? mapping.functionNodeId, ""),
+    architectureViewIds: toDisplayStringList(mapping.architecture_view_ids ?? mapping.architectureViewIds),
+    containerIds: toDisplayStringList(mapping.container_ids ?? mapping.containerIds),
+    componentIds: toDisplayStringList(mapping.component_ids ?? mapping.componentIds),
+    runtimeScenarioIds: toDisplayStringList(mapping.runtime_scenario_ids ?? mapping.runtimeScenarioIds),
+    layerRoles: toDisplayStringList(mapping.layer_roles ?? mapping.layerRoles),
+    role: toOptionalDisplayString(mapping.role),
+    mappingStatus: toDisplayString(mapping.mapping_status ?? mapping.mappingStatus, "pending_confirmation"),
+    moduleRefs: toDisplayStringList(mapping.module_refs ?? mapping.moduleRefs),
+    sourceRefs: toDisplayStringList(mapping.source_refs ?? mapping.sourceRefs),
+    designRefs: toDisplayStringList(mapping.design_refs ?? mapping.designRefs),
+  }));
+  const reviewFindings = toDisplayStringList(value.review_findings ?? value.reviewFindings);
+
+  if (!tabs.length && !views.length && !nodes.length && !architectureRelations.length && !runtimeScenarios.length && !layerRoles.length) {
+    return undefined;
+  }
+
+  return {
+    viewGroupId: toDisplayString(value.view_group_id ?? value.viewGroupId, "architecture-views"),
+    title: toDisplayString(value.title, "架构视图组"),
+    defaultViewId: toDisplayString(value.default_view_id ?? value.defaultViewId, tabs[0]?.viewId ?? views[0]?.viewId ?? ""),
+    tabs,
+    views,
+    nodes: dedupeArchitectureNodes(nodes),
+    architectureRelations,
+    runtimeScenarios,
+    layerRoles,
+    functionArchitectureMappings,
+    mappingQuality: normalizeLayeredArchitectureMappingQuality(value.mapping_quality ?? value.mappingQuality),
+    reviewFindings,
+  };
+}
+
+function normalizeArchitectureNode(node: Record<string, unknown>, index: number) {
+  const nodeId = toDisplayString(
+    node.node_id ?? node.nodeId ?? node.container_id ?? node.containerId ?? node.component_id ?? node.componentId,
+    `architecture-node-${index + 1}`,
+  );
+  return {
+    nodeId,
+    nodeType: toDisplayString(node.node_type ?? node.nodeType, "component"),
+    title: toDisplayString(node.title ?? node.name, `架构节点 ${index + 1}`),
+    description: toOptionalDisplayString(node.description),
+    containerId: toOptionalDisplayString(node.container_id ?? node.containerId),
+    componentId: toOptionalDisplayString(node.component_id ?? node.componentId),
+    layerRoles: toDisplayStringList(node.layer_roles ?? node.layerRoles),
+    moduleRefs: toDisplayStringList(node.module_refs ?? node.moduleRefs),
+    functionRefs: toDisplayStringList(node.function_refs ?? node.functionRefs),
+    sourceRefs: toDisplayStringList(node.source_refs ?? node.sourceRefs),
+    designRefs: toDisplayStringList(node.design_refs ?? node.designRefs),
+    position: normalizeArchitecturePosition(node.position),
+  };
+}
+
+function normalizeArchitecturePosition(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const x = toNumberValue(value.x);
+  const y = toNumberValue(value.y);
+  if (!x && !y) {
+    return undefined;
+  }
+  return { x, y };
+}
+
+function dedupeArchitectureNodes<T extends { nodeId: string }>(nodes: T[]): T[] {
+  const seen = new Set<string>();
+  return nodes.filter((node) => {
+    if (seen.has(node.nodeId)) {
+      return false;
+    }
+    seen.add(node.nodeId);
+    return true;
+  });
+}
+
 function normalizeBaselineFunctionTree(value: unknown): NonNullable<StageDocumentWorkbenchViewModel["outline"]["baseline"]>["functionTree"] | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -253,13 +406,39 @@ function normalizeLayeredArchitecture(
     functionRefs: toDisplayStringList(mapping.function_refs ?? mapping.functionRefs),
     sourceRefs: toDisplayStringList(mapping.source_refs ?? mapping.sourceRefs),
   }));
+  const functionLayerMappings = toRecordList(value.function_layer_mappings ?? value.functionLayerMappings).map((mapping, index) => ({
+    mappingId: toDisplayString(mapping.mapping_id ?? mapping.mappingId, `function-layer-mapping-${index + 1}`),
+    functionNodeId: toDisplayString(mapping.function_node_id ?? mapping.functionNodeId, ""),
+    functionTitle: toOptionalDisplayString(mapping.function_title ?? mapping.functionTitle),
+    layerId: toDisplayString(mapping.layer_id ?? mapping.layerId, ""),
+    layerName: toDisplayString(mapping.layer_name ?? mapping.layerName, "未命名层"),
+    componentId: toDisplayString(mapping.component_id ?? mapping.componentId, ""),
+    componentName: toOptionalDisplayString(mapping.component_name ?? mapping.componentName),
+    role: toOptionalDisplayString(mapping.role),
+    mappingStatus: toDisplayString(mapping.mapping_status ?? mapping.mappingStatus, "pending"),
+    moduleRefs: toDisplayStringList(mapping.module_refs ?? mapping.moduleRefs),
+    sourceRefs: toDisplayStringList(mapping.source_refs ?? mapping.sourceRefs),
+    designRefs: toDisplayStringList(mapping.design_refs ?? mapping.designRefs),
+  }));
+  const crossLayerRelations = toRecordList(value.cross_layer_relations ?? value.crossLayerRelations).map((relation, index) => ({
+    relationId: toDisplayString(relation.relation_id ?? relation.relationId, `cross-layer-relation-${index + 1}`),
+    title: toDisplayString(relation.title, `跨层关系 ${index + 1}`),
+    fromLayerId: toOptionalDisplayString(relation.from_layer_id ?? relation.fromLayerId),
+    fromComponentId: toOptionalDisplayString(relation.from_component_id ?? relation.fromComponentId),
+    toLayerId: toOptionalDisplayString(relation.to_layer_id ?? relation.toLayerId),
+    toComponentId: toOptionalDisplayString(relation.to_component_id ?? relation.toComponentId),
+    relationType: toOptionalDisplayString(relation.relation_type ?? relation.relationType),
+    functionRefs: toDisplayStringList(relation.function_refs ?? relation.functionRefs),
+    sourceRefs: toDisplayStringList(relation.source_refs ?? relation.sourceRefs),
+  }));
+  const mappingQuality = normalizeLayeredArchitectureMappingQuality(value.mapping_quality ?? value.mappingQuality);
   const diagrams = toRecordList(value.diagrams).map((diagram, index) => ({
     diagramId: toDisplayString(diagram.diagram_id ?? diagram.diagramId, `diagram-${index + 1}`),
     title: toDisplayString(diagram.title, `架构图 ${index + 1}`),
     diagramType: toOptionalDisplayString(diagram.diagram_type ?? diagram.diagramType),
     content: toOptionalDisplayString(diagram.content),
   }));
-  if (!layers.length && !moduleLayerMappings.length && !diagrams.length) {
+  if (!layers.length && !moduleLayerMappings.length && !functionLayerMappings.length && !crossLayerRelations.length && !diagrams.length) {
     return undefined;
   }
   return {
@@ -271,7 +450,21 @@ function normalizeLayeredArchitecture(
     designRefs: toDisplayStringList(value.design_refs ?? value.designRefs),
     layers,
     moduleLayerMappings,
+    functionLayerMappings,
+    crossLayerRelations,
+    mappingQuality,
     diagrams,
+  };
+}
+
+function normalizeLayeredArchitectureMappingQuality(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return {
+    mappedFunctionCount: toNumberValue(value.mapped_function_count ?? value.mappedFunctionCount),
+    unmappedFunctionCount: toNumberValue(value.unmapped_function_count ?? value.unmappedFunctionCount),
+    pendingConfirmationCount: toNumberValue(value.pending_confirmation_count ?? value.pendingConfirmationCount),
   };
 }
 
@@ -289,6 +482,10 @@ function toRecordList(value: unknown): Record<string, unknown>[] {
 
 function toDisplayStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => toDisplayString(item, "")).filter(Boolean) : [];
+}
+
+function toNumberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -262,6 +262,8 @@ describe("P3 design morph model", () => {
           sourceRefs: ["REQ-3.2"],
         },
       ],
+      functionLayerMappings: [],
+      crossLayerRelations: [],
       diagrams: [{ diagramId: "D1", title: "分层架构与模块映射图", diagramType: "mermaid", content: "flowchart TB" }],
     };
 
@@ -273,9 +275,149 @@ describe("P3 design morph model", () => {
         summary: "分层架构设计：business-module-oriented-layered-architecture",
         items: ["展示交互层", "领域服务层", "规划任务管理 -> 领域服务层"],
         sourceRefs: ["REQ-3.2", "sdd-03"],
-        constraintSummary: "2 个架构层；1 条模块-层映射；1 张架构图",
+        constraintSummary: "2 个架构层；0 条功能-层映射；1 张架构图",
       }),
     );
+  });
+
+  test("prefers C4 architecture view group output for the architecture stage", () => {
+    const workbench = buildWorkbench();
+    workbench.outline.baseline = {
+      ...workbench.outline.baseline!,
+      architectureViews: {
+        viewGroupId: "architecture-views",
+        title: "架构视图组",
+        defaultViewId: "view-c4-structure",
+        tabs: [
+          { viewId: "view-business-boundary", title: "业务边界", viewType: "business_boundary", order: 1 },
+          { viewId: "view-c4-structure", title: "系统结构", viewType: "c4_component", order: 2 },
+          { viewId: "view-runtime-main", title: "运行链路", viewType: "runtime_scenario", order: 3 },
+          { viewId: "view-layer-roles", title: "职责层", viewType: "layer_roles", order: 4 },
+        ],
+        views: [
+          {
+            viewId: "view-c4-structure",
+            viewType: "c4_component",
+            title: "系统结构",
+            description: "展示系统容器、核心组件、数据存储和外部系统之间的结构关系。",
+            nodeRefs: ["container-planning-workbench", "component-task-command-service"],
+            relationRefs: ["rel-workbench-call-command-service"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-03"],
+          },
+        ],
+        nodes: [
+          {
+            nodeId: "container-planning-workbench",
+            nodeType: "container",
+            title: "规划任务工作台",
+            description: "承载规划任务的用户操作入口。",
+            layerRoles: ["presentation"],
+            moduleRefs: ["module-planning"],
+            functionRefs: ["fn-create-task"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-03"],
+          },
+          {
+            nodeId: "component-task-command-service",
+            nodeType: "component",
+            title: "规划任务命令服务",
+            description: "接收创建规划任务命令并编排领域规则。",
+            layerRoles: ["application_orchestration"],
+            moduleRefs: ["module-planning"],
+            functionRefs: ["fn-create-task"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-03"],
+          },
+        ],
+        architectureRelations: [
+          {
+            relationId: "rel-workbench-call-command-service",
+            fromNodeId: "container-planning-workbench",
+            toNodeId: "component-task-command-service",
+            relationType: "calls",
+            title: "提交创建任务命令",
+            functionRefs: ["fn-create-task"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-03"],
+          },
+        ],
+        runtimeScenarios: [
+          {
+            scenarioId: "scenario-create-task",
+            title: "创建规划任务运行链路",
+            trigger: "用户提交创建规划任务。",
+            functionRefs: ["fn-create-task"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-04"],
+            steps: [
+              {
+                stepId: "step-create-task-01",
+                order: 1,
+                actorNodeId: "container-planning-workbench",
+                targetNodeId: "component-task-command-service",
+                action: "提交创建任务命令。",
+                dataRefs: [],
+                relationRefs: ["rel-workbench-call-command-service"],
+              },
+            ],
+          },
+        ],
+        layerRoles: [
+          {
+            roleId: "role-application",
+            roleType: "application_orchestration",
+            title: "应用编排职责",
+            description: "负责命令编排、事务边界和调用协调。",
+            componentRefs: ["component-task-command-service"],
+            functionRefs: ["fn-create-task"],
+            designRefs: ["sdd-03"],
+          },
+        ],
+        functionArchitectureMappings: [
+          {
+            mappingId: "map-fn-create-task-to-architecture",
+            functionNodeId: "fn-create-task",
+            architectureViewIds: ["view-c4-structure", "view-runtime-main"],
+            containerIds: ["container-planning-workbench"],
+            componentIds: ["component-task-command-service"],
+            runtimeScenarioIds: ["scenario-create-task"],
+            layerRoles: ["presentation", "application_orchestration"],
+            role: "primary",
+            mappingStatus: "confirmed",
+            moduleRefs: ["module-planning"],
+            sourceRefs: ["REQ-3.2"],
+            designRefs: ["sdd-03"],
+          },
+        ],
+        mappingQuality: {
+          mappedFunctionCount: 1,
+          unmappedFunctionCount: 0,
+          pendingConfirmationCount: 0,
+        },
+        reviewFindings: [],
+      },
+    };
+
+    const model = buildP3DesignMorphModel(workbench);
+    const architectureStage = model.stages.find((stage) => stage.id === "layeredArchitecture");
+
+    expect(architectureStage).toEqual(
+      expect.objectContaining({
+        title: "架构视图组",
+        subtitle: "业务边界 / C4 / 运行链路",
+        summary: "架构视图组：4 个视图；2 个架构节点；1 条功能-架构映射",
+        items: ["业务边界", "系统结构", "运行链路", "职责层", "规划任务工作台", "规划任务命令服务"],
+        sourceRefs: ["REQ-3.2", "sdd-03"],
+        constraintSummary: "4 个架构视图；2 个节点；1 条关系；1 个运行场景",
+        architectureViews: expect.objectContaining({
+          viewGroupId: "architecture-views",
+          tabs: expect.arrayContaining([expect.objectContaining({ title: "系统结构" })]),
+          nodes: expect.arrayContaining([expect.objectContaining({ nodeId: "component-task-command-service" })]),
+        }),
+      }),
+    );
+    expect(architectureStage?.layeredArchitecture).toBeUndefined();
   });
 });
 

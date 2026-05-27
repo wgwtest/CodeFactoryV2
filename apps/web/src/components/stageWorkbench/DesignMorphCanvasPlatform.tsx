@@ -12,7 +12,21 @@ import {
 import { Button, Input, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import { A4DocumentSurface } from "./A4DocumentSurface";
-import type { StandardDocumentBlockViewModel, StandardDocumentSectionViewModel } from "./models";
+import type {
+  StageArchitectureNodeViewModel,
+  StageArchitectureRelationViewModel,
+  StageArchitectureRuntimeScenarioViewModel,
+  StageArchitectureViewDefinitionViewModel,
+  StageArchitectureViewsViewModel,
+  StageLayeredArchitectureComponentViewModel,
+  StageLayeredArchitectureCrossLayerRelationViewModel,
+  StageLayeredArchitectureFunctionMappingViewModel,
+  StageLayeredArchitectureLayerViewModel,
+  StageLayeredArchitectureMappingQualityViewModel,
+  StageLayeredArchitectureMappingViewModel,
+  StandardDocumentBlockViewModel,
+  StandardDocumentSectionViewModel,
+} from "./models";
 import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
 import "./design-morph-canvas.css";
 
@@ -37,6 +51,8 @@ export type DesignMorphStageViewModel = {
   constraintSummary: string;
   document?: DesignMorphDocumentViewModel;
   functionTree?: FunctionTreeViewModel;
+  architectureViews?: ArchitectureViewsViewModel;
+  layeredArchitecture?: LayeredArchitectureViewModel;
 };
 
 export type FunctionTreeOrigin = "converter" | "derived" | "empty";
@@ -79,6 +95,22 @@ export type FunctionTreeViewModel = {
   };
   root: FunctionTreeNodeViewModel | null;
 };
+
+export type LayeredArchitectureViewModel = {
+  architectureId: string;
+  title: string;
+  pattern?: string;
+  description?: string;
+  sourceRefs: string[];
+  designRefs: string[];
+  layers: StageLayeredArchitectureLayerViewModel[];
+  moduleLayerMappings: StageLayeredArchitectureMappingViewModel[];
+  functionLayerMappings: StageLayeredArchitectureFunctionMappingViewModel[];
+  crossLayerRelations: StageLayeredArchitectureCrossLayerRelationViewModel[];
+  mappingQuality?: StageLayeredArchitectureMappingQualityViewModel;
+};
+
+export type ArchitectureViewsViewModel = StageArchitectureViewsViewModel;
 
 export type DesignMorphDocumentSectionViewModel = {
   sectionId: string;
@@ -389,6 +421,7 @@ export function DesignMorphCanvasPlatform({
   const [viewport, setViewport] = useState<CanvasViewportState>(INITIAL_VIEWPORT);
   const [selectedStageId, setSelectedStageId] = useState(stages[1]?.id ?? stages[0]?.id ?? "");
   const [localSelectedObjectId, setLocalSelectedObjectId] = useState<string | null>(activeWindowId);
+  const [lastSelectedFunctionNodeId, setLastSelectedFunctionNodeId] = useState<string | null>(null);
   const [layoutRevision, setLayoutRevision] = useState(0);
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
   const [savedLayouts, setSavedLayouts] = useState<SavedCanvasLayoutRecord[]>(() => loadSavedCanvasLayouts());
@@ -402,6 +435,7 @@ export function DesignMorphCanvasPlatform({
   const selectedRelationId = windows.some((window) => window.id === effectiveSelectedObjectId) ? effectiveSelectedObjectId : null;
   const selectedRelationTitle = selectedRelationId ? windows.find((window) => window.id === selectedRelationId)?.title : null;
   const selectedBlockId = selectedRelationId ? null : effectiveSelectedObjectId;
+  const selectedFunctionNodeId = getSelectedFunctionNodeId(items, selectedBlockId) ?? lastSelectedFunctionNodeId;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -558,7 +592,27 @@ export function DesignMorphCanvasPlatform({
 
   function selectFunctionTreeNode(item: MorphCanvasItem, node: FunctionTreeNodeViewModel) {
     setSelectedStageId(item.id);
+    setLastSelectedFunctionNodeId(node.nodeId);
     emitMorphSelection(buildFunctionTreeNodeSelection(item, node));
+  }
+
+  function selectArchitectureLayer(
+    item: MorphCanvasItem,
+    architecture: LayeredArchitectureViewModel,
+    layer: StageLayeredArchitectureLayerViewModel,
+  ) {
+    setSelectedStageId(item.id);
+    emitMorphSelection(buildArchitectureLayerSelection(item, architecture, layer));
+  }
+
+  function selectArchitectureComponent(
+    item: MorphCanvasItem,
+    architecture: LayeredArchitectureViewModel,
+    layer: StageLayeredArchitectureLayerViewModel,
+    component: StageLayeredArchitectureComponentViewModel,
+  ) {
+    setSelectedStageId(item.id);
+    emitMorphSelection(buildArchitectureComponentSelection(item, architecture, layer, component));
   }
 
   function handleTrackPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -1132,6 +1186,51 @@ export function DesignMorphCanvasPlatform({
                 selectedNodeId={selectedBlockId}
                 viewport={viewport}
               />
+            ) : item.architectureViews ? (
+              <ArchitectureViewsStageObject
+                active={item.id === activeWindow?.fromStageId || item.id === activeWindow?.toStageId}
+                item={item}
+                key={item.id}
+                onDragEnd={() => {
+                  documentDragRef.current = null;
+                }}
+                onDragMove={(stageId, mode, clientX, clientY, pointerId) => {
+                  handleDocumentDragMove(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
+                  beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onSelectNode={(stageItem, architectureViews, node) => {
+                  setSelectedStageId(stageItem.id);
+                  emitMorphSelection(buildArchitectureViewNodeSelection(stageItem, architectureViews, node));
+                }}
+                selected={item.id === selectedStageId}
+                selectedFunctionNodeId={selectedFunctionNodeId}
+                selectedNodeId={selectedBlockId}
+                viewport={viewport}
+              />
+            ) : item.layeredArchitecture ? (
+              <LayeredArchitectureStageObject
+                active={item.id === activeWindow?.fromStageId || item.id === activeWindow?.toStageId}
+                item={item}
+                key={item.id}
+                onDragEnd={() => {
+                  documentDragRef.current = null;
+                }}
+                onDragMove={(stageId, mode, clientX, clientY, pointerId) => {
+                  handleDocumentDragMove(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onDragStart={(stageId, mode, clientX, clientY, pointerId) => {
+                  beginDocumentDrag(stageId, mode, clientX, clientY, pointerId);
+                }}
+                onSelectComponent={selectArchitectureComponent}
+                onSelectLayer={selectArchitectureLayer}
+                selected={item.id === selectedStageId}
+                selectedComponentId={selectedBlockId}
+                selectedFunctionNodeId={selectedFunctionNodeId}
+                selectedLayerId={selectedBlockId}
+                viewport={viewport}
+              />
             ) : null,
           )}
         </div>
@@ -1647,6 +1746,537 @@ function FunctionTreeStageObject({
   );
 }
 
+function LayeredArchitectureStageObject({
+  active,
+  item,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onSelectComponent,
+  onSelectLayer,
+  selected,
+  selectedComponentId,
+  selectedFunctionNodeId,
+  selectedLayerId,
+  viewport,
+}: {
+  active: boolean;
+  item: MorphCanvasItem;
+  onDragEnd: () => void;
+  onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onSelectComponent: (
+    item: MorphCanvasItem,
+    architecture: LayeredArchitectureViewModel,
+    layer: StageLayeredArchitectureLayerViewModel,
+    component: StageLayeredArchitectureComponentViewModel,
+  ) => void;
+  onSelectLayer: (
+    item: MorphCanvasItem,
+    architecture: LayeredArchitectureViewModel,
+    layer: StageLayeredArchitectureLayerViewModel,
+  ) => void;
+  selected: boolean;
+  selectedComponentId: string | null;
+  selectedFunctionNodeId?: string | null;
+  selectedLayerId: string | null;
+  viewport: CanvasViewportState;
+}) {
+  const architecture = item.layeredArchitecture;
+  if (!architecture) {
+    return null;
+  }
+
+  const objectStyle = {
+    transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
+    transformOrigin: "top left",
+    width: `${item.w}px`,
+    height: `${item.h}px`,
+    zIndex: selected ? 6 : active ? 5 : 4,
+  } as const;
+
+  const quality = architecture.mappingQuality;
+
+  return (
+    <section
+      className={[
+        "design-morph-object-frame",
+        "is-layered-architecture-stage-object",
+        selected ? "is-selected" : "",
+        active ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`stage-object-${item.id}`}
+      style={objectStyle}
+    >
+      <header
+        className="design-morph-object-titlebar"
+        data-testid="stage-object-compact-titlebar"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
+        <div className="design-morph-object-title-copy">
+          <span className="design-morph-object-title-row">
+            <strong>{item.title}</strong>
+            <span className="design-morph-object-title-meta">{item.subtitle}</span>
+          </span>
+        </div>
+      </header>
+      <div
+        className="design-morph-object-body"
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <div className="design-morph-layered-architecture-shell">
+          <div className="design-morph-layered-architecture-summary">
+            <div>
+              <strong>{architecture.title}</strong>
+              {architecture.pattern ? <span>{architecture.pattern}</span> : null}
+            </div>
+            {quality ? (
+              <dl>
+                <div>
+                  <dt>已映射</dt>
+                  <dd>{quality.mappedFunctionCount}</dd>
+                </div>
+                <div>
+                  <dt>未映射</dt>
+                  <dd>{quality.unmappedFunctionCount}</dd>
+                </div>
+                <div>
+                  <dt>待确认</dt>
+                  <dd>{quality.pendingConfirmationCount}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
+          <div className="design-morph-layered-architecture-body" role="list" aria-label="分层架构层次">
+            {architecture.layers.map((layer) => (
+              <section
+                className={[
+                  "design-morph-architecture-layer",
+                  selectedLayerId === layer.layerId ? "is-selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                key={layer.layerId}
+                role="listitem"
+              >
+                <button
+                  className="design-morph-architecture-layer-head"
+                  type="button"
+                  onClick={() => onSelectLayer(item, architecture, layer)}
+                >
+                  <strong>{layer.name}</strong>
+                  {layer.responsibility ? <span>{layer.responsibility}</span> : null}
+                </button>
+                <div className="design-morph-architecture-components">
+                  {layer.components.map((component) => {
+                    const linkedToSelection = isArchitectureComponentLinkedToFunction(
+                      architecture,
+                      component,
+                      selectedFunctionNodeId,
+                    );
+                    return (
+                      <button
+                        className={[
+                          "design-morph-architecture-component",
+                          selectedComponentId === component.componentId ? "is-selected" : "",
+                          linkedToSelection ? "is-linked-to-selection" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        data-testid={`architecture-component-${component.componentId}`}
+                        key={component.componentId}
+                        type="button"
+                        onClick={() => onSelectComponent(item, architecture, layer, component)}
+                      >
+                        <strong>{component.name}</strong>
+                        <span>{component.componentType || "component"}</span>
+                        {component.functionRefs.length ? <small>{component.functionRefs.length} 个功能映射</small> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      </div>
+      <button
+        aria-label={`${item.title} resize`}
+        className="design-morph-object-resize"
+        type="button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      />
+    </section>
+  );
+}
+
+function ArchitectureViewsStageObject({
+  active,
+  item,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onSelectNode,
+  selected,
+  selectedFunctionNodeId,
+  selectedNodeId,
+  viewport,
+}: {
+  active: boolean;
+  item: MorphCanvasItem;
+  onDragEnd: () => void;
+  onDragMove: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onDragStart: (stageId: string, mode: DocumentDragMode, clientX: number, clientY: number, pointerId: number) => void;
+  onSelectNode: (item: MorphCanvasItem, architectureViews: ArchitectureViewsViewModel, node: StageArchitectureNodeViewModel) => void;
+  selected: boolean;
+  selectedFunctionNodeId?: string | null;
+  selectedNodeId: string | null;
+  viewport: CanvasViewportState;
+}) {
+  const architectureViews = item.architectureViews;
+  const [activeViewId, setActiveViewId] = useState(architectureViews?.defaultViewId ?? architectureViews?.tabs[0]?.viewId ?? "");
+  useEffect(() => {
+    if (!architectureViews) {
+      return;
+    }
+    const nextViewId = architectureViews.defaultViewId || architectureViews.tabs[0]?.viewId || "";
+    setActiveViewId((current) => (architectureViews.tabs.some((tab) => tab.viewId === current) ? current : nextViewId));
+  }, [architectureViews]);
+
+  if (!architectureViews) {
+    return null;
+  }
+
+  const orderedTabs = [...architectureViews.tabs].sort((a, b) => a.order - b.order);
+  const activeTab = orderedTabs.find((tab) => tab.viewId === activeViewId) ?? orderedTabs[0];
+  const activeView = architectureViews.views.find((view) => view.viewId === activeTab?.viewId) ?? buildFallbackArchitectureView(activeTab, architectureViews);
+  const viewNodes = getArchitectureViewNodes(architectureViews, activeView);
+  const viewRelations = architectureViews.architectureRelations.filter((relation) => activeView.relationRefs.includes(relation.relationId));
+  const viewScenarios = getArchitectureViewRuntimeScenarios(architectureViews, activeView);
+  const quality = architectureViews.mappingQuality;
+  const objectStyle = {
+    transform: `translate(${item.x * viewport.scale + viewport.x}px, ${item.y * viewport.scale + viewport.y}px) scale(${viewport.scale})`,
+    transformOrigin: "top left",
+    width: `${item.w}px`,
+    height: `${item.h}px`,
+    zIndex: selected ? 6 : active ? 5 : 4,
+  } as const;
+
+  return (
+    <section
+      className={[
+        "design-morph-object-frame",
+        "is-layered-architecture-stage-object",
+        "is-architecture-views-stage-object",
+        selected ? "is-selected" : "",
+        active ? "is-active" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`stage-object-${item.id}`}
+      style={objectStyle}
+    >
+      <header
+        className="design-morph-object-titlebar"
+        data-testid="stage-object-compact-titlebar"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "move", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "move", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
+        <div className="design-morph-object-title-copy">
+          <span className="design-morph-object-title-row">
+            <strong>{item.title}</strong>
+            <span className="design-morph-object-title-meta">{item.subtitle}</span>
+          </span>
+        </div>
+      </header>
+      <div
+        className="design-morph-object-body"
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <div className="design-morph-architecture-views-shell">
+          <div className="design-morph-architecture-views-tabs" role="tablist" aria-label="架构视图组">
+            {orderedTabs.map((tab) => (
+              <button
+                aria-selected={tab.viewId === activeTab?.viewId}
+                className={tab.viewId === activeTab?.viewId ? "is-active" : ""}
+                key={tab.viewId}
+                role="tab"
+                type="button"
+                onClick={() => setActiveViewId(tab.viewId)}
+              >
+                {tab.title}
+              </button>
+            ))}
+          </div>
+          <div className="design-morph-architecture-views-summary">
+            <div>
+              <strong>{activeView.title}</strong>
+              {activeView.description ? <span>{activeView.description}</span> : null}
+            </div>
+            {quality ? (
+              <dl>
+                <div>
+                  <dt>已映射</dt>
+                  <dd>{quality.mappedFunctionCount}</dd>
+                </div>
+                <div>
+                  <dt>待确认</dt>
+                  <dd>{quality.pendingConfirmationCount}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
+          <div className="design-morph-architecture-view-body">
+            {activeView.viewType === "runtime_scenario" ? (
+              <ArchitectureRuntimeScenarioList scenarios={viewScenarios} />
+            ) : activeView.viewType === "layer_roles" ? (
+              <ArchitectureLayerRoleList architectureViews={architectureViews} onSelectNode={onSelectNode} item={item} />
+            ) : (
+              <ArchitectureStructureView
+                architectureViews={architectureViews}
+                nodes={viewNodes}
+                onSelectNode={onSelectNode}
+                relations={viewRelations}
+                selectedFunctionNodeId={selectedFunctionNodeId}
+                selectedNodeId={selectedNodeId}
+                item={item}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      <button
+        aria-label={`${item.title} resize`}
+        className="design-morph-object-resize"
+        type="button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDragStart(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+          if (typeof event.currentTarget.setPointerCapture === "function") {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={(event) => {
+          onDragMove(item.id, "resize", event.clientX, event.clientY, event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          onDragEnd();
+          if (typeof event.currentTarget.releasePointerCapture === "function") {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      />
+    </section>
+  );
+}
+
+function ArchitectureStructureView({
+  architectureViews,
+  item,
+  nodes,
+  onSelectNode,
+  relations,
+  selectedFunctionNodeId,
+  selectedNodeId,
+}: {
+  architectureViews: ArchitectureViewsViewModel;
+  item: MorphCanvasItem;
+  nodes: StageArchitectureNodeViewModel[];
+  onSelectNode: (item: MorphCanvasItem, architectureViews: ArchitectureViewsViewModel, node: StageArchitectureNodeViewModel) => void;
+  relations: StageArchitectureRelationViewModel[];
+  selectedFunctionNodeId?: string | null;
+  selectedNodeId: string | null;
+}) {
+  return (
+    <div className="design-morph-architecture-structure">
+      <div className="design-morph-architecture-node-grid">
+        {nodes.map((node) => {
+          const linkedToSelection = isArchitectureViewNodeLinkedToFunction(architectureViews, node, selectedFunctionNodeId);
+          return (
+            <button
+              className={[
+                "design-morph-architecture-view-node",
+                `is-${node.nodeType}`,
+                selectedNodeId === node.nodeId ? "is-selected" : "",
+                linkedToSelection ? "is-linked-to-selection" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              data-testid={`architecture-view-node-${node.nodeId}`}
+              key={node.nodeId}
+              type="button"
+              onClick={() => onSelectNode(item, architectureViews, node)}
+            >
+              <span>{getArchitectureNodeTypeLabel(node.nodeType)}</span>
+              <strong>{node.title}</strong>
+              {node.description ? <small>{node.description}</small> : null}
+              {node.layerRoles.length ? <em>{node.layerRoles.join(" / ")}</em> : null}
+            </button>
+          );
+        })}
+      </div>
+      {relations.length ? (
+        <div className="design-morph-architecture-relation-strip">
+          {relations.map((relation) => (
+            <span key={relation.relationId}>
+              <strong>{relation.title}</strong>
+              {relation.relationType ? <em>{relation.relationType}</em> : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ArchitectureRuntimeScenarioList({ scenarios }: { scenarios: StageArchitectureRuntimeScenarioViewModel[] }) {
+  return (
+    <div className="design-morph-architecture-runtime-list">
+      {scenarios.map((scenario) => (
+        <article key={scenario.scenarioId}>
+          <strong>{scenario.title}</strong>
+          {scenario.trigger ? <span>{scenario.trigger}</span> : null}
+          <ol>
+            {[...scenario.steps].sort((a, b) => a.order - b.order).map((step) => (
+              <li key={step.stepId}>
+                <b>{step.order}</b>
+                <span>{step.action}</span>
+              </li>
+            ))}
+          </ol>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ArchitectureLayerRoleList({
+  architectureViews,
+  item,
+  onSelectNode,
+}: {
+  architectureViews: ArchitectureViewsViewModel;
+  item: MorphCanvasItem;
+  onSelectNode: (item: MorphCanvasItem, architectureViews: ArchitectureViewsViewModel, node: StageArchitectureNodeViewModel) => void;
+}) {
+  return (
+    <div className="design-morph-architecture-role-list">
+      {architectureViews.layerRoles.map((role) => {
+        const roleNodes = architectureViews.nodes.filter((node) =>
+          node.layerRoles.includes(role.roleType) || role.componentRefs.includes(node.nodeId) || role.componentRefs.includes(node.componentId ?? ""),
+        );
+        return (
+          <article key={role.roleId}>
+            <span>{role.roleType}</span>
+            <strong>{role.title}</strong>
+            {role.description ? <small>{role.description}</small> : null}
+            <div>
+              {roleNodes.map((node) => (
+                <button key={node.nodeId} type="button" onClick={() => onSelectNode(item, architectureViews, node)}>
+                  {node.title}
+                </button>
+              ))}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function buildFallbackArchitectureView(
+  tab: ArchitectureViewsViewModel["tabs"][number] | undefined,
+  architectureViews: ArchitectureViewsViewModel,
+): StageArchitectureViewDefinitionViewModel {
+  return {
+    viewId: tab?.viewId ?? architectureViews.defaultViewId,
+    viewType: tab?.viewType ?? "c4_component",
+    title: tab?.title ?? architectureViews.title,
+    description: undefined,
+    nodeRefs: architectureViews.nodes.map((node) => node.nodeId),
+    relationRefs: architectureViews.architectureRelations.map((relation) => relation.relationId),
+    sourceRefs: [],
+    designRefs: [],
+  };
+}
+
+function getArchitectureViewNodes(
+  architectureViews: ArchitectureViewsViewModel,
+  view: StageArchitectureViewDefinitionViewModel,
+): StageArchitectureNodeViewModel[] {
+  const nodeRefs = new Set(view.nodeRefs);
+  if (!nodeRefs.size) {
+    return architectureViews.nodes;
+  }
+  return architectureViews.nodes.filter((node) => nodeRefs.has(node.nodeId));
+}
+
+function getArchitectureViewRuntimeScenarios(
+  architectureViews: ArchitectureViewsViewModel,
+  view: StageArchitectureViewDefinitionViewModel,
+): StageArchitectureRuntimeScenarioViewModel[] {
+  const nodeRefs = new Set(view.nodeRefs);
+  const relationRefs = new Set(view.relationRefs);
+  const matched = architectureViews.runtimeScenarios.filter((scenario) =>
+    scenario.steps.some((step) => nodeRefs.has(step.actorNodeId) || nodeRefs.has(step.targetNodeId) || step.relationRefs.some((ref) => relationRefs.has(ref))),
+  );
+  return matched.length ? matched : architectureViews.runtimeScenarios;
+}
+
 function getDefaultExpandedFunctionTreeKeys(functionTree: FunctionTreeViewModel | undefined): string[] {
   if (!functionTree?.root) {
     return [];
@@ -1731,6 +2361,64 @@ function buildFunctionTreeNodeMap(root: FunctionTreeNodeViewModel | null): Map<s
   }
   visit(root);
   return nodeMap;
+}
+
+function getSelectedFunctionNodeId(items: MorphCanvasItem[], selectedObjectId: string | null): string | null {
+  if (!selectedObjectId) {
+    return null;
+  }
+  return items.some((item) => item.functionTree && buildFunctionTreeNodeMap(item.functionTree.root).has(selectedObjectId))
+    ? selectedObjectId
+    : null;
+}
+
+function isArchitectureComponentLinkedToFunction(
+  architecture: LayeredArchitectureViewModel,
+  component: StageLayeredArchitectureComponentViewModel,
+  functionNodeId?: string | null,
+) {
+  if (!functionNodeId) {
+    return false;
+  }
+  if (component.functionRefs.includes(functionNodeId)) {
+    return true;
+  }
+  return architecture.functionLayerMappings.some(
+    (mapping) => mapping.functionNodeId === functionNodeId && mapping.componentId === component.componentId,
+  );
+}
+
+function isArchitectureViewNodeLinkedToFunction(
+  architectureViews: ArchitectureViewsViewModel,
+  node: StageArchitectureNodeViewModel,
+  functionNodeId?: string | null,
+) {
+  if (!functionNodeId) {
+    return false;
+  }
+  if (node.functionRefs.includes(functionNodeId)) {
+    return true;
+  }
+  return architectureViews.functionArchitectureMappings.some(
+    (mapping) =>
+      mapping.functionNodeId === functionNodeId &&
+      (mapping.containerIds.includes(node.nodeId) ||
+        mapping.componentIds.includes(node.nodeId) ||
+        mapping.componentIds.includes(node.componentId ?? "")),
+  );
+}
+
+function getArchitectureNodeTypeLabel(nodeType: string) {
+  const labels: Record<string, string> = {
+    actor: "参与者",
+    business_context: "业务边界",
+    component: "组件",
+    container: "容器",
+    data_store: "数据",
+    external_system: "外部系统",
+    layer_role: "职责",
+  };
+  return labels[nodeType] ?? nodeType;
 }
 
 function filterFunctionTreeNode(
@@ -2640,6 +3328,147 @@ function buildFunctionTreeNodeSelection(item: MorphCanvasItem, node: FunctionTre
   };
 }
 
+function buildArchitectureLayerSelection(
+  item: MorphCanvasItem,
+  architecture: LayeredArchitectureViewModel,
+  layer: StageLayeredArchitectureLayerViewModel,
+): DesignMorphSelection {
+  const componentIds = layer.components.map((component) => component.componentId);
+  const mappings = architecture.functionLayerMappings.filter((mapping) => mapping.layerId === layer.layerId);
+  const relations = architecture.crossLayerRelations.filter(
+    (relation) => relation.fromLayerId === layer.layerId || relation.toLayerId === layer.layerId,
+  );
+  return {
+    objectId: layer.layerId,
+    stageId: item.id,
+    kind: "architecture_layer",
+    title: layer.name,
+    summary: layer.responsibility,
+    status: "generated",
+    sourceRefs: uniqueStrings([...architecture.sourceRefs, ...mappings.flatMap((mapping) => mapping.sourceRefs)]),
+    qualityRefs: [],
+    actions: [
+      {
+        actionId: "inspect_layer_mappings",
+        label: "查看层内映射",
+        description: "查看该架构层承载的功能节点、构件和跨层关系。",
+      },
+    ],
+    payload: {
+      architectureId: architecture.architectureId,
+      architectureTitle: architecture.title,
+      layerId: layer.layerId,
+      layerName: layer.name,
+      responsibility: layer.responsibility,
+      componentIds,
+      componentCount: layer.components.length,
+      mappings,
+      relations,
+    },
+  };
+}
+
+function buildArchitectureComponentSelection(
+  item: MorphCanvasItem,
+  architecture: LayeredArchitectureViewModel,
+  layer: StageLayeredArchitectureLayerViewModel,
+  component: StageLayeredArchitectureComponentViewModel,
+): DesignMorphSelection {
+  const mappings = architecture.functionLayerMappings.filter((mapping) => mapping.componentId === component.componentId);
+  const relations = architecture.crossLayerRelations.filter(
+    (relation) => relation.fromComponentId === component.componentId || relation.toComponentId === component.componentId,
+  );
+  return {
+    objectId: component.componentId,
+    stageId: item.id,
+    kind: "architecture_module",
+    title: component.name,
+    summary: layer.responsibility,
+    status: mappings.find((mapping) => mapping.mappingStatus)?.mappingStatus ?? "generated",
+    sourceRefs: uniqueStrings([...architecture.sourceRefs, ...mappings.flatMap((mapping) => mapping.sourceRefs)]),
+    qualityRefs: [],
+    actions: [
+      {
+        actionId: "inspect_component_functions",
+        label: "查看承载功能",
+        description: "查看该构件承载的功能节点和映射状态。",
+      },
+      {
+        actionId: "propose_mapping_adjustment",
+        label: "提出映射调整",
+        description: "把拖拽或归属变化提交为待确认映射提案。",
+      },
+    ],
+    payload: {
+      architectureId: architecture.architectureId,
+      architectureTitle: architecture.title,
+      layerId: layer.layerId,
+      layerName: layer.name,
+      componentId: component.componentId,
+      componentName: component.name,
+      componentType: component.componentType,
+      moduleRefs: component.moduleRefs,
+      functionRefs: component.functionRefs,
+      mappings,
+      relations,
+    },
+  };
+}
+
+function buildArchitectureViewNodeSelection(
+  item: MorphCanvasItem,
+  architectureViews: ArchitectureViewsViewModel,
+  node: StageArchitectureNodeViewModel,
+): DesignMorphSelection {
+  const mappings = architectureViews.functionArchitectureMappings.filter(
+    (mapping) =>
+      mapping.containerIds.includes(node.nodeId) ||
+      mapping.componentIds.includes(node.nodeId) ||
+      mapping.componentIds.includes(node.componentId ?? ""),
+  );
+  const relations = architectureViews.architectureRelations.filter(
+    (relation) => relation.fromNodeId === node.nodeId || relation.toNodeId === node.nodeId,
+  );
+  return {
+    objectId: node.nodeId,
+    stageId: item.id,
+    kind: "architecture_module",
+    title: node.title,
+    summary: node.description,
+    status: mappings.find((mapping) => mapping.mappingStatus)?.mappingStatus ?? "generated",
+    sourceRefs: uniqueStrings([...node.sourceRefs, ...mappings.flatMap((mapping) => mapping.sourceRefs)]),
+    qualityRefs: [],
+    actions: [
+      {
+        actionId: "inspect_architecture_node_mappings",
+        label: "查看承载功能",
+        description: "查看该架构节点承载的功能、运行链路和职责标签。",
+      },
+      {
+        actionId: "propose_architecture_mapping_adjustment",
+        label: "提出映射调整",
+        description: "把功能树到架构视图组的关系调整提交为待确认提案。",
+      },
+    ],
+    payload: {
+      architectureId: architectureViews.viewGroupId,
+      architectureTitle: architectureViews.title,
+      componentId: node.nodeId,
+      componentName: node.title,
+      componentType: node.nodeType,
+      layerName: node.layerRoles.join(" / "),
+      moduleRefs: node.moduleRefs,
+      functionRefs: node.functionRefs,
+      architectureMappings: mappings,
+      architectureRelations: relations,
+      mappings,
+      relations,
+      layerRoles: node.layerRoles,
+      designRefs: node.designRefs,
+    },
+  };
+}
+
 function collectFunctionTreeSupportingNodesForSelection(node: FunctionTreeNodeViewModel): FunctionTreeNodeViewModel[] {
   return [
     ...(node.supportingNodes ?? []),
@@ -2784,6 +3613,10 @@ function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number
 
 function screenToWorld(point: { x: number; y: number }, viewport: CanvasViewportState) {
   return { x: (point.x - viewport.x) / viewport.scale, y: (point.y - viewport.y) / viewport.scale };
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.filter((value) => value.trim()))];
 }
 
 function wrapCanvasText(
