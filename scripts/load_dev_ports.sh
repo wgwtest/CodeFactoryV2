@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -f ".env.local" ]]; then
-  set -a
-  source ".env.local"
-  set +a
-  return 0 2>/dev/null || exit 0
-fi
-
 PORT_CONFIG="config/dev-ports.env"
 if [[ -f "${PORT_CONFIG}" ]]; then
   set -a
   source "${PORT_CONFIG}"
+  set +a
+fi
+
+LOCAL_DIFY_ENV="${CODEFACTORY_LOCAL_DIFY_ENV:-${HOME}/.codefactory/dify.local.env}"
+if [[ -f "${LOCAL_DIFY_ENV}" ]]; then
+  set -a
+  source "${LOCAL_DIFY_ENV}"
+  set +a
+fi
+
+if [[ -f ".env.local" ]]; then
+  set -a
+  source ".env.local"
   set +a
 fi
 
