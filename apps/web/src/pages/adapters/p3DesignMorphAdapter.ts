@@ -1,9 +1,11 @@
 import type {
+  ArchitectureViewsViewModel,
   DesignMorphDocumentViewModel,
   DesignMorphStageViewModel,
   DesignMorphWindowViewModel,
   FunctionTreeNodeViewModel,
   FunctionTreeViewModel,
+  LayeredArchitectureViewModel,
 } from "../../components/stageWorkbench/DesignMorphCanvasPlatform";
 import type { DesignMorphCanvasStageKind } from "../../components/stageWorkbench/designMorphRenderers";
 import type { StageDocumentWorkbenchViewModel } from "../../components/stageWorkbench/models";
@@ -21,6 +23,8 @@ type P3MorphStageSeed = {
   constraintSummary: (workbench: StageDocumentWorkbenchViewModel) => string;
   document?: (workbench: StageDocumentWorkbenchViewModel) => DesignMorphDocumentViewModel;
   functionTree?: (workbench: StageDocumentWorkbenchViewModel) => FunctionTreeViewModel;
+  architectureViews?: (workbench: StageDocumentWorkbenchViewModel) => ArchitectureViewsViewModel | undefined;
+  layeredArchitecture?: (workbench: StageDocumentWorkbenchViewModel) => LayeredArchitectureViewModel | undefined;
 };
 
 const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
@@ -79,6 +83,10 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     title: "分层架构",
     subtitle: "按层次放置设计对象",
     summary: (workbench) => {
+      const architectureViews = workbench.outline.baseline?.architectureViews;
+      if (architectureViews) {
+        return `${architectureViews.title}：${architectureViews.tabs.length} 个视图；${architectureViews.nodes.length} 个架构节点；${architectureViews.functionArchitectureMappings.length} 条功能-架构映射`;
+      }
       const architecture = workbench.outline.baseline?.layeredArchitecture;
       if (architecture) {
         return `${architecture.title}：${architecture.pattern || workbench.outline.baseline?.architectureMode || "结构化分层"}`;
@@ -87,18 +95,32 @@ const P3_MORPH_STAGE_SEEDS: P3MorphStageSeed[] = [
     },
     items: (workbench) => collectLayeredArchitectureItems(workbench),
     sourceRefs: (workbench) => {
+      const architectureViews = workbench.outline.baseline?.architectureViews;
+      if (architectureViews) {
+        return uniqueStrings([
+          ...architectureViews.views.flatMap((view) => [...view.sourceRefs, ...view.designRefs]),
+          ...architectureViews.nodes.flatMap((node) => [...node.sourceRefs, ...node.designRefs]),
+          ...architectureViews.architectureRelations.flatMap((relation) => [...relation.sourceRefs, ...relation.designRefs]),
+        ]);
+      }
       const architecture = workbench.outline.baseline?.layeredArchitecture;
       return architecture
         ? uniqueStrings([...architecture.sourceRefs, ...architecture.designRefs])
         : [workbench.outline.baseline?.label ?? "SoftwareDesignBaseline.architecture"];
     },
     constraintSummary: (workbench) => {
+      const architectureViews = workbench.outline.baseline?.architectureViews;
+      if (architectureViews) {
+        return `${architectureViews.tabs.length} 个架构视图；${architectureViews.nodes.length} 个节点；${architectureViews.architectureRelations.length} 条关系；${architectureViews.runtimeScenarios.length} 个运行场景`;
+      }
       const architecture = workbench.outline.baseline?.layeredArchitecture;
       if (architecture) {
-        return `${architecture.layers.length} 个架构层；${architecture.moduleLayerMappings.length} 条模块-层映射；${architecture.diagrams.length} 张架构图`;
+        return `${architecture.layers.length} 个架构层；${architecture.functionLayerMappings.length} 条功能-层映射；${architecture.diagrams.length} 张架构图`;
       }
       return `架构模式 ${workbench.outline.baseline?.architectureMode ?? "待生成"}；允许跨层承载`;
     },
+    architectureViews: (workbench) => workbench.outline.baseline?.architectureViews,
+    layeredArchitecture: (workbench) => buildLayeredArchitectureViewModel(workbench),
   },
   {
     id: "technicalImplementation",
@@ -148,14 +170,16 @@ export function buildP3DesignMorphModel(workbench: StageDocumentWorkbenchViewMod
       id: seed.id,
       entityType: seed.entityType,
       layoutKind: seed.layoutKind,
-      title: seed.title,
-      subtitle: seed.subtitle,
+      title: seed.id === "layeredArchitecture" && seed.architectureViews?.(workbench) ? "架构视图组" : seed.title,
+      subtitle: seed.id === "layeredArchitecture" && seed.architectureViews?.(workbench) ? "业务边界 / C4 / 运行链路" : seed.subtitle,
       summary: seed.summary(workbench),
       items: seed.items(workbench),
       sourceRefs: seed.sourceRefs(workbench).filter(Boolean),
       constraintSummary: seed.constraintSummary(workbench),
       document: seed.document?.(workbench),
       functionTree: seed.functionTree?.(workbench),
+      architectureViews: seed.architectureViews?.(workbench),
+      layeredArchitecture: seed.architectureViews?.(workbench) ? undefined : seed.layeredArchitecture?.(workbench),
     })),
     windows: [
       { id: "reqdoc", title: "需规文档 -> 软设文档", fromStageId: "requirement", toStageId: "document" },
@@ -268,6 +292,13 @@ function buildFunctionTreeViewModel(workbench: StageDocumentWorkbenchViewModel):
 }
 
 function collectLayeredArchitectureItems(workbench: StageDocumentWorkbenchViewModel): string[] {
+  const architectureViews = workbench.outline.baseline?.architectureViews;
+  if (architectureViews) {
+    return uniqueStrings([
+      ...[...architectureViews.tabs].sort((a, b) => a.order - b.order).map((tab) => tab.title),
+      ...architectureViews.nodes.map((node) => node.title),
+    ]).slice(0, 8);
+  }
   const architecture = workbench.outline.baseline?.layeredArchitecture;
   if (!architecture) {
     return ["展示层", "功能层", "服务层", "数据层"];
@@ -275,7 +306,30 @@ function collectLayeredArchitectureItems(workbench: StageDocumentWorkbenchViewMo
   return uniqueStrings([
     ...architecture.layers.map((layer) => layer.name),
     ...architecture.moduleLayerMappings.map((mapping) => `${mapping.moduleName} -> ${mapping.layerName}`),
+    ...architecture.functionLayerMappings.map(
+      (mapping) => `${mapping.functionTitle || mapping.functionNodeId} -> ${mapping.layerName}`,
+    ),
   ]).slice(0, 8);
+}
+
+function buildLayeredArchitectureViewModel(workbench: StageDocumentWorkbenchViewModel): LayeredArchitectureViewModel | undefined {
+  const architecture = workbench.outline.baseline?.layeredArchitecture;
+  if (!architecture) {
+    return undefined;
+  }
+  return {
+    architectureId: architecture.architectureId,
+    title: architecture.title,
+    pattern: architecture.pattern,
+    description: architecture.description,
+    sourceRefs: architecture.sourceRefs,
+    designRefs: architecture.designRefs,
+    layers: architecture.layers,
+    moduleLayerMappings: architecture.moduleLayerMappings,
+    functionLayerMappings: architecture.functionLayerMappings,
+    crossLayerRelations: architecture.crossLayerRelations,
+    mappingQuality: architecture.mappingQuality,
+  };
 }
 
 function buildConverterFunctionTreeViewModel(

@@ -761,6 +761,31 @@
   line-height: 24px;
 }
 
+.p3-design-architecture-mapping-list {
+  display: grid;
+  gap: 8px;
+}
+
+.p3-design-architecture-mapping-list article {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid #dbe5e1;
+  background: #f8fbfa;
+}
+
+.p3-design-architecture-mapping-list article > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.p3-design-architecture-relation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .p3-design-morph-common-banner,
 .p3-design-morph-common-group {
   border: 1px solid #d6ded9;

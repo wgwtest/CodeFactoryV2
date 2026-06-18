@@ -10,9 +10,13 @@ import {
 } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
 import { StageLabShell, type StageLabNavigationItem } from "../components/stageWorkbench/StageLabShell";
 import type {
+  StageArchitectureRelationViewModel,
   StageDocumentWorkbenchViewModel,
+  StageFunctionArchitectureMappingViewModel,
   StageInputFactsViewModel,
   StageInteractionViewModel,
+  StageLayeredArchitectureCrossLayerRelationViewModel,
+  StageLayeredArchitectureFunctionMappingViewModel,
 } from "../components/stageWorkbench/models";
 import { QualityCheckPanel } from "../components/stageWorkbench/panels/QualityCheckPanel";
 import type {
@@ -1661,6 +1665,10 @@ function MorphObjectDetailInspector({
     return <FunctionNodeDetailInspector selection={selection} workbench={workbench} />;
   }
 
+  if (selection.kind === "architecture_layer" || selection.kind === "architecture_module") {
+    return <ArchitectureDetailInspector selection={selection} workbench={workbench} />;
+  }
+
   if (selection.kind === "design_block") {
     return (
       <DesignBlockDetailInspector
@@ -2315,6 +2323,8 @@ function FunctionNodeDetailInspector({
   const moduleId = toInspectorText(selection.payload?.moduleId);
   const pendingAdjustmentSummary = toInspectorText(selection.payload?.pendingAdjustmentSummary);
   const supportingGroups = buildFunctionTreeSupportingGroups(selection.payload?.supportingNodes);
+  const architectureMappings = getFunctionLayerMappingsForNode(workbench, selection.objectId);
+  const architectureRelations = getCrossLayerRelationsForFunction(workbench, selection.objectId);
 
   return (
     <>
@@ -2352,6 +2362,8 @@ function FunctionNodeDetailInspector({
         </div>
       </div>
 
+      <ArchitectureMappingSection mappings={architectureMappings} relations={architectureRelations} />
+
       <div className="p3-design-morph-inspector-section">
         <Text strong>待应用调整</Text>
         <Text type="secondary">{pendingAdjustmentSummary}</Text>
@@ -2385,6 +2397,178 @@ function FunctionNodeDetailInspector({
   );
 }
 
+function ArchitectureDetailInspector({
+  selection,
+  workbench,
+}: {
+  selection: DesignMorphSelection;
+  workbench: StageDocumentWorkbenchViewModel;
+}) {
+  const architectureViewMappings = getFunctionArchitectureMappingsFromSelection(selection);
+  const architectureViewRelations = getArchitectureViewRelationsFromSelection(selection);
+  const mappings = getArchitectureMappingsFromSelection(selection);
+  const relations = getArchitectureRelationsFromSelection(selection);
+  const componentType = toInspectorText(selection.payload?.componentType);
+  const layerName = toInspectorText(selection.payload?.layerName);
+  const moduleRefs = toStringList(selection.payload?.moduleRefs);
+  const functionRefs = toStringList(selection.payload?.functionRefs);
+  const componentCount = typeof selection.payload?.componentCount === "number" ? selection.payload.componentCount : undefined;
+  const quality = workbench.outline.baseline?.architectureViews?.mappingQuality ?? workbench.outline.baseline?.layeredArchitecture?.mappingQuality;
+
+  return (
+    <>
+      <div className="p3-design-morph-inspector-section p3-design-morph-selection-card">
+        <Text strong>对象：{selection.title}</Text>
+        {selection.summary ? <Text type="secondary">{selection.summary}</Text> : null}
+        <Space wrap>
+          <Tag>{getSelectionKindLabel(selection.kind)}</Tag>
+          {selection.status ? <Tag color="blue">{selection.status}</Tag> : null}
+          {selection.sourceRefs.map((sourceRef) => (
+            <Tag key={sourceRef}>{sourceRef}</Tag>
+          ))}
+        </Space>
+      </div>
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>{architectureViewMappings.length ? "架构节点详情" : "分层对象详情"}</Text>
+        <div className="p3-design-morph-relation-facts">
+          <RelationFact label={architectureViewMappings.length ? "职责标签" : "所属层"} value={layerName} />
+          <RelationFact label="构件类型" value={componentType} />
+          <RelationFact label="模块引用" value={moduleRefs.join("、") || "-"} />
+          <RelationFact label="功能引用" value={functionRefs.join("、") || "-"} />
+          {componentCount !== undefined ? <RelationFact label="层内构件" value={`${componentCount}`} /> : null}
+        </div>
+      </div>
+
+      {quality ? (
+        <div className="p3-design-morph-inspector-section">
+          <Text strong>映射质量</Text>
+          <div className="p3-design-lab-baseline-summary">
+            <Metric label="已映射功能" value={`${quality.mappedFunctionCount}`} />
+            <Metric label="未映射功能" value={`${quality.unmappedFunctionCount}`} />
+            <Metric label="待确认映射" value={`${quality.pendingConfirmationCount}`} />
+          </div>
+        </div>
+      ) : null}
+
+      {architectureViewMappings.length || architectureViewRelations.length ? (
+        <FunctionArchitectureMappingSection mappings={architectureViewMappings} relations={architectureViewRelations} title="承载功能" />
+      ) : (
+        <ArchitectureMappingSection mappings={mappings} relations={relations} title="承载功能" />
+      )}
+
+      <div className="p3-design-morph-inspector-section">
+        <Text strong>局部动作</Text>
+        <SelectionActionList actions={selection.actions} />
+      </div>
+
+      <SelectedObjectTraceSummary selection={selection} />
+    </>
+  );
+}
+
+function ArchitectureMappingSection({
+  mappings,
+  relations,
+  title = "分层架构映射",
+}: {
+  mappings: StageLayeredArchitectureFunctionMappingViewModel[];
+  relations: StageLayeredArchitectureCrossLayerRelationViewModel[];
+  title?: string;
+}) {
+  return (
+    <div className="p3-design-morph-inspector-section">
+      <Text strong>{title}</Text>
+      {mappings.length ? (
+        <div className="p3-design-architecture-mapping-list">
+          {mappings.map((mapping) => (
+            <article key={mapping.mappingId}>
+              <div>
+                <Text strong>{mapping.functionTitle || mapping.functionNodeId}</Text>
+                <Text type="secondary">
+                  {mapping.layerName} / {mapping.componentName || mapping.componentId}
+                </Text>
+              </div>
+              <div className="p3-design-morph-relation-facts">
+                <RelationFact label="架构层" value={mapping.layerName || "-"} />
+                <RelationFact label="层内构件" value={mapping.componentName || mapping.componentId || "-"} />
+                <RelationFact label="映射角色" value={mapping.role || "-"} />
+                <RelationFact label="映射状态" value={mapping.mappingStatus || "-"} />
+                <RelationFact label="来源" value={mapping.sourceRefs.join("、") || "-"} />
+                <RelationFact label="软设引用" value={mapping.designRefs.join("、") || "-"} />
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Text type="secondary">当前对象还没有明确的功能-分层映射。</Text>
+      )}
+      {relations.length ? (
+        <div className="p3-design-architecture-relation-list">
+          <Text type="secondary">跨层关系</Text>
+          {relations.map((relation) => (
+            <Tag key={relation.relationId}>
+              {relation.title}
+              {relation.relationType ? ` · ${relation.relationType}` : ""}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FunctionArchitectureMappingSection({
+  mappings,
+  relations,
+  title = "架构视图组映射",
+}: {
+  mappings: StageFunctionArchitectureMappingViewModel[];
+  relations: StageArchitectureRelationViewModel[];
+  title?: string;
+}) {
+  return (
+    <div className="p3-design-morph-inspector-section">
+      <Text strong>{title}</Text>
+      {mappings.length ? (
+        <div className="p3-design-architecture-mapping-list">
+          {mappings.map((mapping) => (
+            <article key={mapping.mappingId}>
+              <div>
+                <Text strong>{mapping.functionNodeId}</Text>
+                <Text type="secondary">
+                  {mapping.componentIds.join("、") || mapping.containerIds.join("、") || "未绑定架构节点"}
+                </Text>
+              </div>
+              <div className="p3-design-morph-relation-facts">
+                <RelationFact label="视图" value={mapping.architectureViewIds.join("、") || "-"} />
+                <RelationFact label="容器" value={mapping.containerIds.join("、") || "-"} />
+                <RelationFact label="组件" value={mapping.componentIds.join("、") || "-"} />
+                <RelationFact label="运行场景" value={mapping.runtimeScenarioIds.join("、") || "-"} />
+                <RelationFact label="职责标签" value={mapping.layerRoles.join("、") || "-"} />
+                <RelationFact label="映射状态" value={mapping.mappingStatus || "-"} />
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Text type="secondary">当前对象还没有明确的功能-架构视图组映射。</Text>
+      )}
+      {relations.length ? (
+        <div className="p3-design-architecture-relation-list">
+          <Text type="secondary">架构关系</Text>
+          {relations.map((relation) => (
+            <Tag key={relation.relationId}>
+              {relation.title}
+              {relation.relationType ? ` · ${relation.relationType}` : ""}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function isFunctionTreeSummary(value: unknown): value is {
   nodeCount: number;
   tracedNodeCount: number;
@@ -2401,6 +2585,89 @@ function isFunctionTreeSummary(value: unknown): value is {
     typeof candidate.pendingNodeCount === "number" &&
     typeof candidate.maxDepth === "number"
   );
+}
+
+function getFunctionLayerMappingsForNode(workbench: StageDocumentWorkbenchViewModel, functionNodeId: string) {
+  return (
+    workbench.outline.baseline?.layeredArchitecture?.functionLayerMappings.filter(
+      (mapping) => mapping.functionNodeId === functionNodeId,
+    ) ?? []
+  );
+}
+
+function getCrossLayerRelationsForFunction(workbench: StageDocumentWorkbenchViewModel, functionNodeId: string) {
+  return (
+    workbench.outline.baseline?.layeredArchitecture?.crossLayerRelations.filter((relation) =>
+      relation.functionRefs.includes(functionNodeId),
+    ) ?? []
+  );
+}
+
+function getArchitectureMappingsFromSelection(selection: DesignMorphSelection) {
+  const mappings = selection.payload?.mappings;
+  return Array.isArray(mappings)
+    ? mappings.filter(isStageLayeredArchitectureFunctionMapping)
+    : [];
+}
+
+function getArchitectureRelationsFromSelection(selection: DesignMorphSelection) {
+  const relations = selection.payload?.relations;
+  return Array.isArray(relations)
+    ? relations.filter(isStageLayeredArchitectureCrossLayerRelation)
+    : [];
+}
+
+function getFunctionArchitectureMappingsFromSelection(selection: DesignMorphSelection) {
+  const mappings = selection.payload?.architectureMappings;
+  return Array.isArray(mappings) ? mappings.filter(isStageFunctionArchitectureMapping) : [];
+}
+
+function getArchitectureViewRelationsFromSelection(selection: DesignMorphSelection) {
+  const relations = selection.payload?.architectureRelations;
+  return Array.isArray(relations) ? relations.filter(isStageArchitectureRelation) : [];
+}
+
+function isStageLayeredArchitectureFunctionMapping(
+  value: unknown,
+): value is StageLayeredArchitectureFunctionMappingViewModel {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.mappingId === "string" &&
+    typeof candidate.functionNodeId === "string" &&
+    typeof candidate.layerId === "string" &&
+    typeof candidate.componentId === "string"
+  );
+}
+
+function isStageLayeredArchitectureCrossLayerRelation(
+  value: unknown,
+): value is StageLayeredArchitectureCrossLayerRelationViewModel {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.relationId === "string" && typeof candidate.title === "string";
+}
+
+function isStageFunctionArchitectureMapping(
+  value: unknown,
+): value is StageFunctionArchitectureMappingViewModel {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.mappingId === "string" && typeof candidate.functionNodeId === "string";
+}
+
+function isStageArchitectureRelation(value: unknown): value is StageArchitectureRelationViewModel {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.relationId === "string" && typeof candidate.title === "string";
 }
 
 function buildDesignTurnScopeAnchor(

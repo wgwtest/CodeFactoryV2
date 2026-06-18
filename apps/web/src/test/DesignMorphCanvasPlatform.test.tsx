@@ -249,6 +249,40 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("renders C4 architecture view group with bookmark tabs and linked structure nodes", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="funcarch"
+        stages={buildStagesWithArchitectureViews()}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const objectLayer = within(platform).getByTestId("design-morph-object-layer");
+    const architectureObject = within(objectLayer).getByTestId("stage-object-layeredArchitecture");
+
+    expect(within(architectureObject).getByRole("tab", { name: "业务边界" })).toBeInTheDocument();
+    expect(within(architectureObject).getByRole("tab", { name: "系统结构" })).toHaveAttribute("aria-selected", "true");
+    expect(within(architectureObject).getByRole("tab", { name: "运行链路" })).toBeInTheDocument();
+    expect(within(architectureObject).getByRole("tab", { name: "职责层" })).toBeInTheDocument();
+    expect(within(architectureObject).getByText("展示系统容器、核心组件、数据存储和外部系统之间的结构关系。")).toBeInTheDocument();
+    expect(within(architectureObject).getByTestId("architecture-view-node-container-planning-workbench")).toHaveTextContent("规划任务工作台");
+    expect(within(architectureObject).getByTestId("architecture-view-node-component-task-command-service")).toHaveTextContent("规划任务命令服务");
+    expect(within(architectureObject).getByText("提交创建任务命令")).toBeInTheDocument();
+
+    fireEvent.click(within(architectureObject).getByRole("tab", { name: "运行链路" }));
+
+    expect(within(architectureObject).getByRole("tab", { name: "运行链路" })).toHaveAttribute("aria-selected", "true");
+    expect(within(architectureObject).getByText("创建规划任务运行链路")).toBeInTheDocument();
+    expect(within(architectureObject).getByText("提交创建任务命令。")).toBeInTheDocument();
+
+    canvasMock.restore();
+  });
+
   test("reports a selected document block when the user clicks inside an A4 object", () => {
     const canvasMock = mockCanvasEnvironment();
     const onSelectMorphObject = vi.fn();
@@ -754,6 +788,118 @@ function buildStages(revision: number): DesignMorphStageViewModel[] {
     buildStage("presentationShape", "presentation_shape", "cards", "展示形态", "表达 UI 呈现方式", `展示 ${revision}`, ["Canvas 长卷"]),
     buildStage("p4Projection", "module_workorder_projection", "tree", "P4 投影", "下游工具包树", `投影 ${revision}`, ["P4-WO"]),
   ];
+}
+
+function buildStagesWithArchitectureViews(): DesignMorphStageViewModel[] {
+  const stages = buildStages(0);
+  return stages.map((stage) =>
+    stage.id === "layeredArchitecture"
+      ? {
+          ...stage,
+          title: "架构视图组",
+          subtitle: "业务边界 / C4 / 运行链路",
+          architectureViews: {
+            viewGroupId: "architecture-views",
+            title: "架构视图组",
+            defaultViewId: "view-c4-structure",
+            tabs: [
+              { viewId: "view-business-boundary", title: "业务边界", viewType: "business_boundary", order: 1 },
+              { viewId: "view-c4-structure", title: "系统结构", viewType: "c4_component", order: 2 },
+              { viewId: "view-runtime-main", title: "运行链路", viewType: "runtime_scenario", order: 3 },
+              { viewId: "view-layer-roles", title: "职责层", viewType: "layer_roles", order: 4 },
+            ],
+            views: [
+              {
+                viewId: "view-c4-structure",
+                viewType: "c4_component",
+                title: "系统结构",
+                description: "展示系统容器、核心组件、数据存储和外部系统之间的结构关系。",
+                nodeRefs: ["container-planning-workbench", "component-task-command-service"],
+                relationRefs: ["rel-workbench-call-command-service"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-03"],
+              },
+              {
+                viewId: "view-runtime-main",
+                viewType: "runtime_scenario",
+                title: "运行链路",
+                description: "展示创建规划任务的关键运行链路。",
+                nodeRefs: ["container-planning-workbench", "component-task-command-service"],
+                relationRefs: ["rel-workbench-call-command-service"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-04"],
+              },
+            ],
+            nodes: [
+              {
+                nodeId: "container-planning-workbench",
+                nodeType: "container",
+                title: "规划任务工作台",
+                description: "承载规划任务的用户操作入口。",
+                layerRoles: ["presentation"],
+                moduleRefs: ["module-planning"],
+                functionRefs: ["fn-create-task"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-03"],
+              },
+              {
+                nodeId: "component-task-command-service",
+                nodeType: "component",
+                title: "规划任务命令服务",
+                description: "接收创建规划任务命令并编排领域规则。",
+                layerRoles: ["application_orchestration"],
+                moduleRefs: ["module-planning"],
+                functionRefs: ["fn-create-task"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-03"],
+              },
+            ],
+            architectureRelations: [
+              {
+                relationId: "rel-workbench-call-command-service",
+                fromNodeId: "container-planning-workbench",
+                toNodeId: "component-task-command-service",
+                relationType: "calls",
+                title: "提交创建任务命令",
+                description: "工作台调用命令服务提交创建任务命令。",
+                functionRefs: ["fn-create-task"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-03"],
+              },
+            ],
+            runtimeScenarios: [
+              {
+                scenarioId: "scenario-create-task",
+                title: "创建规划任务运行链路",
+                trigger: "用户提交创建规划任务。",
+                functionRefs: ["fn-create-task"],
+                sourceRefs: ["REQ-3.2"],
+                designRefs: ["sdd-04"],
+                steps: [
+                  {
+                    stepId: "step-create-task-01",
+                    order: 1,
+                    actorNodeId: "container-planning-workbench",
+                    targetNodeId: "component-task-command-service",
+                    action: "提交创建任务命令。",
+                    dataRefs: [],
+                    relationRefs: ["rel-workbench-call-command-service"],
+                  },
+                ],
+              },
+            ],
+            layerRoles: [],
+            functionArchitectureMappings: [],
+            mappingQuality: {
+              mappedFunctionCount: 1,
+              unmappedFunctionCount: 0,
+              pendingConfirmationCount: 0,
+            },
+            reviewFindings: [],
+          },
+        }
+      : stage,
+  );
 }
 
 function buildStage(

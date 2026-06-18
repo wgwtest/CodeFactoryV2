@@ -437,6 +437,516 @@
   font-size: 12px;
 }
 
+.is-layered-architecture-stage-object .design-morph-object-body {
+  background: #f6faf9;
+}
+
+.design-morph-layered-architecture-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  color: #1f3330;
+}
+
+.design-morph-layered-architecture-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #d8e4df;
+  background: #fbfcfb;
+}
+
+.design-morph-layered-architecture-summary > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.design-morph-layered-architecture-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #183632;
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-layered-architecture-summary span {
+  min-width: 0;
+  overflow: hidden;
+  color: #687a75;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-layered-architecture-summary dl {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.design-morph-layered-architecture-summary dl div {
+  min-width: 54px;
+  display: grid;
+  gap: 2px;
+  padding: 5px 7px;
+  border: 1px solid #d5e0dc;
+  background: #ffffff;
+}
+
+.design-morph-layered-architecture-summary dt {
+  color: #71807b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.design-morph-layered-architecture-summary dd {
+  margin: 0;
+  color: #143e52;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.design-morph-layered-architecture-body {
+  min-height: 0;
+  display: grid;
+  grid-auto-rows: minmax(104px, 1fr);
+  align-content: stretch;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.design-morph-architecture-layer {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  min-height: 104px;
+  border: 1px solid #cfdbd7;
+  background: #ffffff;
+}
+
+.design-morph-architecture-layer.is-selected {
+  border-color: #2f77bd;
+  box-shadow: inset 3px 0 0 #2f77bd;
+}
+
+.design-morph-architecture-layer-head {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 12px;
+  border: 0;
+  border-right: 1px solid #dde8e4;
+  background: #f8fbfa;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.design-morph-architecture-layer-head strong {
+  color: #183632;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.design-morph-architecture-layer-head span {
+  color: #5f706b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.design-morph-architecture-components {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  padding: 10px;
+}
+
+.design-morph-architecture-component {
+  width: 168px;
+  min-height: 76px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #cfdad6;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1f3330;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(26, 47, 44, 0.06);
+}
+
+.design-morph-architecture-component strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #203330;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-architecture-component span,
+.design-morph-architecture-component small {
+  color: #64756f;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.design-morph-architecture-component:hover,
+.design-morph-architecture-component:focus-visible,
+.design-morph-architecture-layer-head:hover,
+.design-morph-architecture-layer-head:focus-visible {
+  border-color: #2f77bd;
+  outline: 0;
+}
+
+.design-morph-architecture-component.is-selected {
+  border-color: #143e52;
+  background: #f3f8fb;
+}
+
+.design-morph-architecture-component.is-linked-to-selection {
+  border-color: #2f77bd;
+  background: #edf7ff;
+  box-shadow:
+    inset 3px 0 0 #2f77bd,
+    0 8px 18px rgba(47, 119, 189, 0.16);
+}
+
+.is-architecture-views-stage-object .design-morph-object-body {
+  background: #f5f8f7;
+}
+
+.design-morph-architecture-views-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  color: #1f3330;
+}
+
+.design-morph-architecture-views-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 9px 10px 0;
+  border-bottom: 1px solid #cad8d3;
+  background: #eef4f1;
+}
+
+.design-morph-architecture-views-tabs button {
+  min-width: 92px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid #cad8d3;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  background: #e3ece8;
+  color: #435550;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.design-morph-architecture-views-tabs button.is-active {
+  position: relative;
+  bottom: -1px;
+  background: #ffffff;
+  color: #143e52;
+}
+
+.design-morph-architecture-views-tabs button:hover,
+.design-morph-architecture-views-tabs button:focus-visible {
+  border-color: #2f77bd;
+  outline: 0;
+}
+
+.design-morph-architecture-views-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #d8e4df;
+  background: #ffffff;
+}
+
+.design-morph-architecture-views-summary > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.design-morph-architecture-views-summary strong {
+  overflow: hidden;
+  color: #183632;
+  font-size: 14px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-architecture-views-summary span {
+  overflow: hidden;
+  color: #65756f;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-architecture-views-summary dl {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.design-morph-architecture-views-summary dl div {
+  min-width: 54px;
+  display: grid;
+  gap: 2px;
+  padding: 5px 7px;
+  border: 1px solid #d5e0dc;
+  background: #fbfdfc;
+}
+
+.design-morph-architecture-views-summary dt {
+  color: #71807b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.design-morph-architecture-views-summary dd {
+  margin: 0;
+  color: #143e52;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.design-morph-architecture-view-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.design-morph-architecture-structure {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.design-morph-architecture-node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  align-content: start;
+  gap: 10px;
+}
+
+.design-morph-architecture-view-node {
+  min-height: 116px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 11px;
+  border: 1px solid #cfdbd7;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1f3330;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(26, 47, 44, 0.06);
+}
+
+.design-morph-architecture-view-node > span {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #edf4f2;
+  color: #566965;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.design-morph-architecture-view-node strong {
+  overflow: hidden;
+  color: #203330;
+  font-size: 13px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-morph-architecture-view-node small {
+  color: #64756f;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.design-morph-architecture-view-node em {
+  color: #225b87;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.design-morph-architecture-view-node:hover,
+.design-morph-architecture-view-node:focus-visible {
+  border-color: #2f77bd;
+  outline: 0;
+}
+
+.design-morph-architecture-view-node.is-selected {
+  border-color: #143e52;
+  background: #f3f8fb;
+}
+
+.design-morph-architecture-view-node.is-linked-to-selection {
+  border-color: #2f77bd;
+  background: #edf7ff;
+  box-shadow:
+    inset 3px 0 0 #2f77bd,
+    0 8px 18px rgba(47, 119, 189, 0.16);
+}
+
+.design-morph-architecture-relation-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.design-morph-architecture-relation-strip span {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid #d6e2de;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #536660;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.design-morph-architecture-relation-strip strong,
+.design-morph-architecture-relation-strip em {
+  font: inherit;
+}
+
+.design-morph-architecture-relation-strip em {
+  color: #225b87;
+  font-style: normal;
+}
+
+.design-morph-architecture-runtime-list {
+  display: grid;
+  gap: 12px;
+}
+
+.design-morph-architecture-runtime-list article,
+.design-morph-architecture-role-list article {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d3dfdb;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.design-morph-architecture-runtime-list strong,
+.design-morph-architecture-role-list strong {
+  color: #183632;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.design-morph-architecture-runtime-list article > span,
+.design-morph-architecture-role-list small {
+  color: #687a75;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.design-morph-architecture-runtime-list ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design-morph-architecture-runtime-list li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #334844;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.design-morph-architecture-runtime-list b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #143e52;
+  color: #ffffff;
+  font-size: 11px;
+}
+
+.design-morph-architecture-role-list {
+  display: grid;
+  gap: 10px;
+}
+
+.design-morph-architecture-role-list article > span {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #edf4f2;
+  color: #566965;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.design-morph-architecture-role-list article > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.design-morph-architecture-role-list button {
+  padding: 5px 8px;
+  border: 1px solid #d6e2de;
+  border-radius: 999px;
+  background: #fbfdfc;
+  color: #203330;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .design-morph-main-canvas {
   cursor: grab;
   touch-action: none;
