@@ -53,6 +53,15 @@ corepack pnpm install
 
 如果本机已经有 `.env.local`，启动脚本会优先读取其中的端口覆盖项。
 
+Dify 接入配置分两层管理：`config/dev-ports.env` 保存可提交的 `BASE_URL`、`WORKFLOW_ID`、`TIMEOUT_SECONDS`；本机密钥只放在 `C:\Users\wgw\.codefactory\dify.local.env`，例如：
+
+```env
+CODEFACTORY_P3_DIFY_API_KEY=<P3需规转软设 App API Key>
+CODEFACTORY_P3_SCOPED_DIFY_API_KEY=<P3局部补丁 App API Key>
+```
+
+启动脚本会自动读取这两个位置，因此主目录和 `.worktrees/*` 不需要分别复制 Dify key。
+
 ## 4. 启动系统
 
 推荐使用仓库内脚本启动，避免端口和代理配置不一致。
@@ -75,7 +84,11 @@ docker compose up -d
 just api-dev
 ```
 
-等价脚本：`scripts/start_api_dev.sh`。
+等价脚本：`scripts/start_api_dev.sh`。Windows PowerShell 可用：
+
+```powershell
+just api-dev-ps
+```
 
 默认地址：
 
@@ -88,6 +101,12 @@ just api-dev
 
 ```bash
 just web-dev
+```
+
+Windows PowerShell 可用：
+
+```powershell
+just web-dev-ps
 ```
 
 默认地址：

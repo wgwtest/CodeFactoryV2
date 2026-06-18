@@ -195,17 +195,31 @@ corepack pnpm install
 just api-dev
 ```
 
+Windows PowerShell 可用：
+
+```powershell
+just api-dev-ps
+```
+
 启动前端：
 
 ```bash
 just web-dev
 ```
 
+Windows PowerShell 可用：
+
+```powershell
+just web-dev-ps
+```
+
 启动端口读取规则：
 
 1. `just api-dev` 和 `just web-dev` 都会先读取当前目录 `.env.local`。
-2. 如果当前目录没有 `.env.local`，启动脚本会按当前 git 分支读取 `config/dev-ports.env`。
-3. 如果分支没有登记端口，才回退到主目录默认值：API `8020`、Web `5173`。
+2. 启动脚本会读取 `config/dev-ports.env` 中可提交的端口和 Dify 非密钥配置。
+3. 启动脚本会读取 `C:\Users\wgw\.codefactory\dify.local.env` 中的本机 Dify API Key；也可用 `CODEFACTORY_LOCAL_DIFY_ENV` 覆盖路径。
+4. 如果当前目录存在 `.env.local`，它最后加载，可覆盖本 worktree 的本地调试值。
+5. 如果分支没有登记端口，才回退到主目录默认值：API `8020`、Web `5173`。
 
 分支端口表：
 
@@ -229,6 +243,15 @@ just web-dev
 - MinIO API：`localhost:9000`
 - MinIO Console：`localhost:9001`
 - PostgreSQL：`localhost:5432`
+
+Dify 接入变量：
+
+| 服务 | 非密钥配置位置 | 本机密钥变量 |
+| --- | --- | --- |
+| P3 需规转软设主转换 | `config/dev-ports.env` | `CODEFACTORY_P3_DIFY_API_KEY` |
+| P3 软设局部补丁提案 | `config/dev-ports.env` | `CODEFACTORY_P3_SCOPED_DIFY_API_KEY` |
+
+密钥只放 `C:\Users\wgw\.codefactory\dify.local.env` 或进程环境变量，不提交到仓库。
 
 ## 7. 常用验证命令
 
