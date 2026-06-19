@@ -253,6 +253,13 @@ Dify 接入变量：
 
 密钥只放 `C:\Users\wgw\.codefactory\dify.local.env` 或进程环境变量，不提交到仓库。
 
+Local Dify workflow IDs can also be machine-specific. Keep those overrides out
+of git when they differ from the shared defaults: use ignored
+`config/dify.local.env` for one checkout, or
+`C:\Users\<user>\.codefactory\dify.local.env` for all worktrees on the machine.
+Startup scripts load in this order: `config/dev-ports.env`,
+`config/dify.local.env`, user-level Dify env, then `.env.local`.
+
 ## 7. 常用验证命令
 
 全量倾向：

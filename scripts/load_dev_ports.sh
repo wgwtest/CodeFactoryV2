@@ -8,6 +8,13 @@ if [[ -f "${PORT_CONFIG}" ]]; then
   set +a
 fi
 
+REPO_LOCAL_DIFY_ENV="config/dify.local.env"
+if [[ -f "${REPO_LOCAL_DIFY_ENV}" ]]; then
+  set -a
+  source "${REPO_LOCAL_DIFY_ENV}"
+  set +a
+fi
+
 LOCAL_DIFY_ENV="${CODEFACTORY_LOCAL_DIFY_ENV:-${HOME}/.codefactory/dify.local.env}"
 if [[ -f "${LOCAL_DIFY_ENV}" ]]; then
   set -a

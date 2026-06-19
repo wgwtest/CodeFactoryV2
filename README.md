@@ -62,6 +62,12 @@ CODEFACTORY_P3_SCOPED_DIFY_API_KEY=<P3局部补丁 App API Key>
 
 启动脚本会自动读取这两个位置，因此主目录和 `.worktrees/*` 不需要分别复制 Dify key。
 
+Local Dify workflow IDs can differ between machines even when both Dify
+instances are healthy. Do not commit machine-specific IDs or keys. Use ignored
+`config/dify.local.env` for one checkout, or use
+`C:\Users\<user>\.codefactory\dify.local.env` for all worktrees on the same
+machine. `config/dify.local.env.example` documents the supported variables.
+
 ## 4. 启动系统
 
 推荐使用仓库内脚本启动，避免端口和代理配置不一致。

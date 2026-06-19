@@ -130,6 +130,81 @@ def test_load_dev_ports_sources_versioned_config_machine_secrets_and_local_overr
     assert "scoped_key=fake-scoped-key" in output
 
 
+def test_load_dev_ports_sources_repo_local_dify_env_before_user_env(tmp_path: Path) -> None:
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    (workdir / "scripts").mkdir()
+    (workdir / "config").mkdir()
+    shutil.copy(REPO_ROOT / "scripts" / "load_dev_ports.sh", workdir / "scripts" / "load_dev_ports.sh")
+
+    (workdir / "config" / "dev-ports.env").write_text(
+        "\n".join(
+            [
+                "MAIN_API_PORT=8020",
+                "MAIN_WEB_PORT=5173",
+                "MAIN_DEFAULT_ROUTE=/documents",
+                "CODEFACTORY_P3_DIFY_BASE_URL=http://shared.example/v1",
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=shared-conversion-workflow",
+                "CODEFACTORY_P3_DIFY_TIMEOUT_SECONDS=520",
+                "CODEFACTORY_P3_SCOPED_DIFY_BASE_URL=http://shared.example/v1",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=shared-scoped-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_TIMEOUT_SECONDS=180",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (workdir / "config" / "dify.local.env").write_text(
+        "\n".join(
+            [
+                "CODEFACTORY_P3_DIFY_BASE_URL=http://repo-local.example/v1",
+                "CODEFACTORY_P3_DIFY_API_KEY=repo-local-conversion-key",
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=repo-local-conversion-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_API_KEY=repo-local-scoped-key",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=repo-local-scoped-workflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    machine_env = tmp_path / "dify.local.env"
+    machine_env.write_text(
+        "\n".join(
+            [
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=user-conversion-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=user-scoped-workflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["CODEFACTORY_LOCAL_DIFY_ENV"] = _bash_path(machine_env)
+    output = subprocess.check_output(
+        [
+            str(GIT_BASH),
+            "-lc",
+            "source scripts/load_dev_ports.sh && "
+            "printf '%s\\n' "
+            "\"conversion_base=$CODEFACTORY_P3_DIFY_BASE_URL\" "
+            "\"conversion_workflow=$CODEFACTORY_P3_DIFY_WORKFLOW_ID\" "
+            "\"conversion_key=$CODEFACTORY_P3_DIFY_API_KEY\" "
+            "\"scoped_workflow=$CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID\" "
+            "\"scoped_key=$CODEFACTORY_P3_SCOPED_DIFY_API_KEY\"",
+        ],
+        cwd=workdir,
+        env=env,
+        text=True,
+    )
+
+    assert "conversion_base=http://repo-local.example/v1" in output
+    assert "conversion_workflow=user-conversion-workflow" in output
+    assert "conversion_key=repo-local-conversion-key" in output
+    assert "scoped_workflow=user-scoped-workflow" in output
+    assert "scoped_key=repo-local-scoped-key" in output
+
+
 def test_load_dev_ports_powershell_sources_versioned_config_machine_secrets_and_branch_ports(tmp_path: Path) -> None:
     if not POWERSHELL.exists():
         pytest.skip("Windows PowerShell is not available")
@@ -208,3 +283,104 @@ def test_load_dev_ports_powershell_sources_versioned_config_machine_secrets_and_
     assert "conversion_key=fake-conversion-key" in output
     assert "scoped_workflow=versioned-scoped-workflow" in output
     assert "scoped_key=fake-scoped-key" in output
+
+
+def test_load_dev_ports_powershell_sources_repo_local_dify_env_before_user_env(tmp_path: Path) -> None:
+    if not POWERSHELL.exists():
+        pytest.skip("Windows PowerShell is not available")
+
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    (workdir / "scripts").mkdir()
+    (workdir / "config").mkdir()
+    shutil.copy(REPO_ROOT / "scripts" / "load_dev_ports.ps1", workdir / "scripts" / "load_dev_ports.ps1")
+
+    (workdir / "config" / "dev-ports.env").write_text(
+        "\n".join(
+            [
+                "MAIN_API_PORT=8020",
+                "MAIN_WEB_PORT=5173",
+                "MAIN_DEFAULT_ROUTE=/documents",
+                "CODEFACTORY_P3_DIFY_BASE_URL=http://shared.example/v1",
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=shared-conversion-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_BASE_URL=http://shared.example/v1",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=shared-scoped-workflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (workdir / "config" / "dify.local.env").write_text(
+        "\n".join(
+            [
+                "CODEFACTORY_P3_DIFY_BASE_URL=http://repo-local.example/v1",
+                "CODEFACTORY_P3_DIFY_API_KEY=repo-local-conversion-key",
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=repo-local-conversion-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_API_KEY=repo-local-scoped-key",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=repo-local-scoped-workflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    machine_env = tmp_path / "dify.local.env"
+    machine_env.write_text(
+        "\n".join(
+            [
+                "CODEFACTORY_P3_DIFY_WORKFLOW_ID=user-conversion-workflow",
+                "CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID=user-scoped-workflow",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    command = "\n".join(
+        [
+            "$ErrorActionPreference = 'Stop'",
+            f"$env:CODEFACTORY_LOCAL_DIFY_ENV = {_powershell_literal(machine_env)}",
+            ". .\\scripts\\load_dev_ports.ps1",
+            '"conversion_base=$env:CODEFACTORY_P3_DIFY_BASE_URL"',
+            '"conversion_workflow=$env:CODEFACTORY_P3_DIFY_WORKFLOW_ID"',
+            '"conversion_key=$env:CODEFACTORY_P3_DIFY_API_KEY"',
+            '"scoped_workflow=$env:CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID"',
+            '"scoped_key=$env:CODEFACTORY_P3_SCOPED_DIFY_API_KEY"',
+        ]
+    )
+    output = subprocess.check_output(
+        [
+            str(POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ],
+        cwd=workdir,
+        env=_clean_env(),
+        text=True,
+    )
+
+    assert "conversion_base=http://repo-local.example/v1" in output
+    assert "conversion_workflow=user-conversion-workflow" in output
+    assert "conversion_key=repo-local-conversion-key" in output
+    assert "scoped_workflow=user-scoped-workflow" in output
+    assert "scoped_key=repo-local-scoped-key" in output
+
+
+def test_local_dify_override_files_are_git_ignored() -> None:
+    paths = [
+        "dify.local.env",
+        "config/dify.local.env",
+        ".codefactory/dify.local.env",
+    ]
+    result = subprocess.run(
+        ["git", "check-ignore", "--stdin"],
+        cwd=REPO_ROOT,
+        input=("\n".join(paths) + "\n").encode(),
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert set(result.stdout.decode().splitlines()) == set(paths)

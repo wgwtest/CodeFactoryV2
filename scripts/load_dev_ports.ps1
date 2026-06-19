@@ -66,6 +66,7 @@ function Set-ProcessEnvDefault {
 }
 
 Import-DotEnvFile -Path "config/dev-ports.env"
+Import-DotEnvFile -Path "config/dify.local.env"
 
 $localDifyEnv = Get-ProcessEnv -Name "CODEFACTORY_LOCAL_DIFY_ENV"
 if ([string]::IsNullOrWhiteSpace($localDifyEnv)) {
