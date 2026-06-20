@@ -1129,29 +1129,48 @@ class SoftwareDesignV2Service:
             "response_mode": response_mode,
             "user": f"codefactory-p3-scoped-{design_session['session_id']}",
         }
-        try:
-            response = httpx.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=request_payload,
-                timeout=timeout_seconds,
-                trust_env=False,
-            )
-            response.raise_for_status()
-            remote_payload = response.json()
-        except httpx.HTTPStatusError as exc:
-            response_text = exc.response.text.strip()
-            detail = f"{exc}"
-            if response_text:
-                detail = f"{detail}; response_body={response_text[:1200]}"
-            raise ValueError(f"remote scoped dify workflow request failed: {detail}") from exc
-        except httpx.HTTPError as exc:
-            raise ValueError(f"remote scoped dify workflow request failed: {exc}") from exc
-        except ValueError as exc:
-            raise ValueError("remote scoped dify workflow returned non-JSON response") from exc
+        candidate_urls = [(url, False)]
+        if workflow_id:
+            candidate_urls.append((self._dify_workflow_run_url(base_url=base_url, workflow_id=""), True))
+        used_default_workflow = False
+        remote_payload: dict | None = None
+        for candidate_url, is_default_workflow in candidate_urls:
+            try:
+                response = httpx.post(
+                    candidate_url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=request_payload,
+                    timeout=timeout_seconds,
+                    trust_env=False,
+                )
+                response.raise_for_status()
+                remote_payload = response.json()
+                used_default_workflow = is_default_workflow
+                break
+            except httpx.HTTPStatusError as exc:
+                response_text = exc.response.text.strip()
+                normalized_response_text = response_text.lower()
+                if (
+                    not is_default_workflow
+                    and workflow_id
+                    and exc.response.status_code == 404
+                    and "not_found" in normalized_response_text
+                    and "workflow" in normalized_response_text
+                ):
+                    continue
+                detail = f"{exc}"
+                if response_text:
+                    detail = f"{detail}; response_body={response_text[:1200]}"
+                raise ValueError(f"remote scoped dify workflow request failed: {detail}") from exc
+            except httpx.HTTPError as exc:
+                raise ValueError(f"remote scoped dify workflow request failed: {exc}") from exc
+            except ValueError as exc:
+                raise ValueError("remote scoped dify workflow returned non-JSON response") from exc
+        if remote_payload is None:
+            raise ValueError("remote scoped dify workflow returned empty response")
 
         data = dict(remote_payload.get("data") or {})
         workflow_status = str(data.get("status") or "").strip()
@@ -1172,16 +1191,20 @@ class SoftwareDesignV2Service:
         if not isinstance(parsed, dict):
             raise ValueError("remote scoped dify result_json is not a JSON object")
 
+        workflow_trace = {
+            "provider": "dify_scoped_patch",
+            "workflow_id": str(data.get("workflow_id") or workflow_id or "").strip(),
+            "workflow_run_id": workflow_run_id,
+            "status": workflow_status,
+            "response_mode": response_mode,
+            "turn_id": turn_id,
+        }
+        if used_default_workflow and workflow_id:
+            workflow_trace["configured_workflow_id"] = workflow_id
+
         return {
             **dict(parsed),
-            "workflow_trace": {
-                "provider": "dify_scoped_patch",
-                "workflow_id": workflow_id,
-                "workflow_run_id": workflow_run_id,
-                "status": workflow_status,
-                "response_mode": response_mode,
-                "turn_id": turn_id,
-            },
+            "workflow_trace": workflow_trace,
         }
 
     def _build_scoped_dify_inputs(
@@ -1493,6 +1516,8 @@ class SoftwareDesignV2Service:
             "interaction_mode": interaction_mode,
             "observability_level": "full",
         }
+        if workflow_trace.get("configured_workflow_id"):
+            audit["configured_workflow_id"] = str(workflow_trace["configured_workflow_id"])
         if isinstance(value, dict):
             for key, remote_value in value.items():
                 if key not in {"provider", "workflow_id", "run_id"}:

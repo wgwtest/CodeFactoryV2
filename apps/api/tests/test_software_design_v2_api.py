@@ -1052,6 +1052,101 @@ def test_software_design_v2_scoped_turn_uses_scoped_dify_workflow(monkeypatch) -
     assert payload["session"]["status"] == "patch_ready"
 
 
+def test_software_design_v2_scoped_turn_falls_back_to_default_workflow_when_fixed_id_is_not_found(monkeypatch) -> None:
+    from app.software_design_v2 import service as service_module
+
+    captured_urls: list[str] = []
+    json_module = json
+
+    def fake_post(url, *, headers, json, timeout, trust_env):
+        captured_urls.append(url)
+        if len(captured_urls) == 1:
+            return httpx.Response(
+                404,
+                request=httpx.Request("POST", url),
+                json={
+                    "code": "not_found",
+                    "message": "Workflow not found with id: stale-workflow-id",
+                    "status": 404,
+                },
+            )
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "workflow_run_id": "run-scoped-default",
+                "data": {
+                    "id": "run-scoped-default",
+                    "workflow_id": "current-default-workflow",
+                    "status": "succeeded",
+                    "outputs": {
+                        "result_json": json_module.dumps(
+                            {
+                                "assistant_message": "已基于默认发布版本生成局部补丁提案。",
+                                "patch_proposal": {
+                                    "proposal_id": "patch-default-workflow",
+                                    "base_revision_id": "v0.1",
+                                    "target_anchor": {
+                                        "anchor_type": "design_block",
+                                        "section_id": "goal",
+                                        "block_id": "goal-body",
+                                    },
+                                    "operations": [
+                                        {
+                                            "op": "rewrite_block",
+                                            "target_block_id": "goal-body",
+                                            "content": "补充模块边界和设计理由。",
+                                        }
+                                    ],
+                                    "quality_notes": [],
+                                    "status": "proposed",
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_BASE_URL", "http://localhost/v1")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_API_KEY", "scoped-api-key")
+    monkeypatch.setenv("CODEFACTORY_P3_SCOPED_DIFY_WORKFLOW_ID", "stale-workflow-id")
+    monkeypatch.setattr(service_module.httpx, "post", fake_post, raising=False)
+
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "扩写当前段落，补充模块边界和设计理由。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "v0.1",
+            },
+            "expected_output": ["document_patch"],
+        },
+    )
+
+    assert scoped_turn.status_code == 200
+    payload = scoped_turn.json()
+    assert captured_urls == [
+        "http://localhost/v1/workflows/stale-workflow-id/run",
+        "http://localhost/v1/workflows/run",
+    ]
+    assert payload["turn"]["assistant_message"] == "已基于默认发布版本生成局部补丁提案。"
+    assert payload["turn"]["patch_proposal"]["proposal_id"] == "patch-default-workflow"
+    assert payload["turn"]["provider_call_audit"]["workflow_id"] == "current-default-workflow"
+    assert payload["turn"]["provider_call_audit"]["configured_workflow_id"] == "stale-workflow-id"
+
+
 def test_software_design_v2_scoped_turn_accepts_string_layer_summaries(monkeypatch) -> None:
     from app.software_design_v2 import service as service_module
 
