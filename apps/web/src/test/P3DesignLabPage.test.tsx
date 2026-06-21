@@ -291,7 +291,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
   expect(screen.getByRole("dialog", { name: "新建软件设计说明" })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("软设名称"), { target: { value: newDesignTitle } });
   fireEvent.change(screen.getByLabelText("版本标识"), { target: { value: newVersionLabel } });
-  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建软设会话" }));
 
   await waitFor(() =>
     expect(postMock).toHaveBeenCalledWith(
@@ -303,6 +303,7 @@ test("renders P3 Design Lab with a unified software design morph workspace", asy
     ),
   );
   expect(postMock).not.toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1/generate");
+  expect(postMock.mock.calls.filter(([url]) => url === "/software-design-v2/sessions/p3dl-1/conversion")).toHaveLength(0);
   expect(within(navigation).getByRole("tab", { name: /软设工作区/ })).toHaveAttribute("aria-selected", "true");
   expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
   expect(within(workspace).getByTestId("p3-design-morph-workspace")).toBeInTheDocument();
@@ -683,6 +684,54 @@ test("refreshes P3 input packages while the page stays open", async () => {
   expect(screen.getByRole("button", { name: "刷新输入包" })).toBeInTheDocument();
 });
 
+test("restores persisted P3 design session from the URL query on page load", async () => {
+  const inputPackage: P3DesignLabTestInputPackage = {
+    ...buildInputPackage(),
+    related_designs: [
+      {
+        software_design_id: "p3dl-1",
+        title: "空域协同规划软件设计说明",
+        version_label: "v0.1",
+        status: "projection_ready",
+        created_at: "2026-05-13T10:00:00Z",
+        updated_at: "2026-05-13T10:23:00Z",
+      },
+    ],
+  };
+  const persistedSession = buildSession(inputPackage, "projection_ready", {
+    design_title: "空域协同规划软件设计说明",
+    version_label: "v0.1",
+    status: "projection_ready",
+    updated_at: "2026-05-13T10:23:00Z",
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    if (url === "/software-design-v2/sessions/p3dl-1") {
+      return Promise.resolve({ data: persistedSession });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter
+      initialEntries={["/p3-design-lab?session_id=p3dl-1"]}
+      future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+    >
+      <App />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => expect(getMock).toHaveBeenCalledWith("/software-design-v2/sessions/p3dl-1"));
+  const workspace = await screen.findByTestId("p3-design-lab-workspace");
+  expect(within(workspace).getByRole("heading", { name: "软设工作区" })).toBeInTheDocument();
+  expect(screen.getByText("设计会话：projection_ready")).toBeInTheDocument();
+  expect(within(workspace).getByText("P4 投影")).toBeInTheDocument();
+  expect(within(workspace).getByText("Canvas 窗口：软设文档 -> 功能树")).toBeInTheDocument();
+});
+
 test("prefills new software design metadata from the selected requirement and existing related designs", async () => {
   const inputPackage = {
     ...buildInputPackage(),
@@ -757,7 +806,7 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   expect(screen.queryByRole("button", { name: "生成软件设计说明" })).not.toBeInTheDocument();
   const workspace = screen.getByTestId("p3-design-lab-workspace");
   fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
-  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建软设会话" }));
   await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
 
   const conversionButton = await within(workspace).findByRole("button", { name: "执行基础转换" });
@@ -1411,7 +1460,7 @@ test("renders structured software design subsections, tables, and diagrams from 
   expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
   const workspace = screen.getByTestId("p3-design-lab-workspace");
   fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
-  fireEvent.click(screen.getByRole("button", { name: "创建并转换" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建软设会话" }));
 
   expect(await within(workspace).findByRole("heading", { name: "4.1 架构上下文" })).toBeInTheDocument();
   expect(within(workspace).getByRole("table", { name: "表 4-1 总体分层表" })).toBeInTheDocument();

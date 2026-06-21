@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Alert, Button, Empty, Input, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 
 import {
@@ -121,6 +122,9 @@ function getApiErrorDetail(error: unknown) {
 }
 
 export function P3DesignLabPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const restoredSessionIdRef = useRef<string | null>(null);
   const [inputPackages, setInputPackages] = useState<P3DesignLabInputPackage[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [designSession, setDesignSession] = useState<P3DesignLabSession | null>(null);
@@ -136,6 +140,7 @@ export function P3DesignLabPage() {
   const [conversionElapsedSeconds, setConversionElapsedSeconds] = useState(0);
   const [completedConversionLocateRequestId, setCompletedConversionLocateRequestId] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const sessionIdFromQuery = useMemo(() => new URLSearchParams(location.search).get("session_id"), [location.search]);
 
   const loadInputPackages = useCallback(async () => {
     const response = await getSoftwareDesignV2InputPackages();
@@ -185,6 +190,67 @@ export function P3DesignLabPage() {
     return () => window.clearInterval(timerId);
   }, [conversionInFlightSessionId, conversionStartedAtMs]);
 
+  useEffect(() => {
+    if (!sessionIdFromQuery || designSession?.session_id === sessionIdFromQuery || restoredSessionIdRef.current === sessionIdFromQuery) {
+      return undefined;
+    }
+    let cancelled = false;
+    restoredSessionIdRef.current = sessionIdFromQuery;
+    setSubmitting(true);
+    getSoftwareDesignV2Session(sessionIdFromQuery)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setDesignSession(response.data);
+        setSelectedPackageId(response.data.input_package.input_package_id);
+        setConversionStrategy(toConversionStrategy(response.data.conversion?.strategy));
+        mergeSessionIntoInputPackages(response.data);
+        setActiveNavigationKey("workspace");
+        setActiveMorphWindowId(response.data.design_document ? "docfunc" : "reqdoc");
+        setError(null);
+      })
+      .catch((restoreError) => {
+        if (!cancelled) {
+          setError(restoreError instanceof Error ? restoreError.message : "恢复软件设计说明失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSubmitting(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [designSession?.session_id, sessionIdFromQuery]);
+
+  const syncSessionQuery = useCallback(
+    (sessionId: string | null) => {
+      const params = new URLSearchParams(location.search);
+      if (sessionId) {
+        if (params.get("session_id") === sessionId) {
+          return;
+        }
+        params.set("session_id", sessionId);
+      } else {
+        if (!params.has("session_id")) {
+          return;
+        }
+        params.delete("session_id");
+      }
+      const nextSearch = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+        },
+        { replace: true },
+      );
+    },
+    [location.pathname, location.search, navigate],
+  );
+
   function mergeSessionIntoInputPackages(session: P3DesignLabSession) {
     setInputPackages((current) =>
       current.map((item) =>
@@ -204,7 +270,7 @@ export function P3DesignLabPage() {
     setCreateModalOpen(true);
   }
 
-  async function handleCreateConversionSession(meta: P3DesignDraftMeta) {
+  async function handleCreateDesignSession(meta: P3DesignDraftMeta) {
     if (!selectedPackage) {
       return;
     }
@@ -223,8 +289,10 @@ export function P3DesignLabPage() {
         generation_policy: DEFAULT_POLICY,
       });
       setDesignSession(created.data);
+      setSelectedPackageId(created.data.input_package.input_package_id);
       setConversionStrategy(toConversionStrategy(created.data.conversion?.strategy));
       mergeSessionIntoInputPackages(created.data);
+      syncSessionQuery(created.data.session_id);
       setActiveNavigationKey("workspace");
       setActiveMorphWindowId("reqdoc");
       setCreateModalOpen(false);
@@ -241,8 +309,10 @@ export function P3DesignLabPage() {
       setSubmitting(true);
       const response = await getSoftwareDesignV2Session(sessionId);
       setDesignSession(response.data);
+      setSelectedPackageId(response.data.input_package.input_package_id);
       setConversionStrategy(toConversionStrategy(response.data.conversion?.strategy));
       mergeSessionIntoInputPackages(response.data);
+      syncSessionQuery(response.data.session_id);
       setActiveNavigationKey("workspace");
       setActiveMorphWindowId(response.data.design_document ? "docfunc" : "reqdoc");
       setError(null);
@@ -265,6 +335,7 @@ export function P3DesignLabPage() {
       );
       if (designSession?.session_id === sessionId) {
         setDesignSession(null);
+        syncSessionQuery(null);
       }
       setError(null);
     } catch (deleteError) {
@@ -532,7 +603,7 @@ export function P3DesignLabPage() {
         submitting={submitting}
         onCancel={() => setCreateModalOpen(false)}
         onChange={setDraftMeta}
-        onSubmit={() => void handleCreateConversionSession(draftMeta)}
+        onSubmit={() => void handleCreateDesignSession(draftMeta)}
       />
     </>
   );
@@ -574,7 +645,7 @@ function CreateDesignSessionModal({
     <Modal
       cancelText="取消"
       okButtonProps={{ disabled: !draftMeta.title.trim() || !draftMeta.versionLabel.trim(), loading: submitting }}
-      okText="创建并转换"
+      okText="创建软设会话"
       open={open}
       title="新建软件设计说明"
       onCancel={onCancel}

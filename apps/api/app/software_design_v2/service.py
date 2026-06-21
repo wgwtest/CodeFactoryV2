@@ -26,6 +26,8 @@ from app.software_design_v2.sdd_template_profile import (
     build_sdd_81435_quality_rules,
     build_sdd_81435_template_profile,
 )
+from app.stage_artifacts.models import StageArtifactCurrentCommand, StageArtifactSnapshotCommand
+from app.stage_artifacts.service import StageArtifactService
 
 
 def _env(*names: str) -> str:
@@ -72,6 +74,7 @@ class SoftwareDesignV2Service:
         self.session = session
         self.platform_exchange_service = PlatformExchangeService(session)
         self.requirement_spec_work_item_service = RequirementSpecWorkItemService(session)
+        self.stage_artifact_service = StageArtifactService(session)
 
     def list_input_packages(self) -> dict:
         artifact_items = self.platform_exchange_service.list_artifacts(
@@ -146,10 +149,14 @@ class SoftwareDesignV2Service:
                     result_status="accepted",
                 ),
             )
+        self._persist_design_session(design_session)
         return design_session
 
     def get_session(self, session_id: str) -> dict | None:
-        return self._sessions.get(session_id)
+        design_session = self._sessions.get(session_id)
+        if design_session is not None:
+            return design_session
+        return self._load_persisted_design_session(session_id)
 
     def run_conversion(self, session_id: str, payload: P3DesignConversionRun) -> dict | None:
         design_session = self.get_session(session_id)
@@ -220,6 +227,7 @@ class SoftwareDesignV2Service:
             *design_session["runtime_events"],
             self._build_runtime_event("conversion_failed", f"需规转软设转换失败：{error_message}"),
         ]
+        self._persist_design_session(design_session)
 
     def _build_converter_request(
         self,
@@ -534,6 +542,7 @@ class SoftwareDesignV2Service:
             "stage_relation",
         }:
             raise ValueError("unsupported P3 scoped design turn anchor_type")
+        scope_anchor["design_revision_id"] = self._current_design_revision_id(design_session)
 
         turn_id = f"p3turn-{uuid4().hex[:10]}"
         remote_result = self._call_scoped_dify_workflow(
@@ -1445,7 +1454,7 @@ class SoftwareDesignV2Service:
         patch_proposal.setdefault("proposal_id", f"patch-{uuid4().hex[:10]}")
         patch_proposal.setdefault(
             "base_revision_id",
-            str(scope_anchor.get("design_revision_id") or design_session.get("version_label") or "current"),
+            self._current_design_revision_id(design_session),
         )
         patch_proposal.setdefault(
             "target_anchor",
@@ -1535,7 +1544,7 @@ class SoftwareDesignV2Service:
         section_id = str(scope_anchor.get("section_id") or "selected-section")
         design_revision_id = str(
             scope_anchor.get("design_revision_id")
-            or design_session.get("version_label")
+            or self._current_design_revision_id(design_session)
             or design_session.get("updated_at")
             or "current"
         )
@@ -1710,6 +1719,8 @@ class SoftwareDesignV2Service:
             *design_session["runtime_events"],
             self._build_runtime_event("freeze", "冻结软件设计基线和设计包"),
         ]
+        self._persist_design_session(design_session, lifecycle_status="draft_saved")
+        self._create_frozen_stage_snapshot(design_session)
         self._refresh_related_designs(design_session)
         return design_session
 
@@ -1719,6 +1730,9 @@ class SoftwareDesignV2Service:
             return None
         if design_session["status"] == "frozen":
             raise ValueError("frozen P3 design session cannot be deleted")
+        design_session["status"] = "deleted"
+        design_session["updated_at"] = self._now()
+        self._persist_design_session(design_session, lifecycle_status="deleted")
         del self._sessions[session_id]
         return {"deleted_session_id": session_id}
 
@@ -1762,19 +1776,109 @@ class SoftwareDesignV2Service:
         }
 
     def _list_related_designs(self, input_package_id: str) -> list[dict]:
-        related_designs = []
+        related_by_id = {}
+        persisted = self.stage_artifact_service.list_artifacts(
+            producer_stage="P3",
+            artifact_type="software_design_session",
+            scope_type="p3_design_input",
+            scope_id=input_package_id,
+        )["items"]
+        for artifact in persisted:
+            if artifact["lifecycle_status"] == "deleted":
+                continue
+            payload = artifact.get("payload") or {}
+            if payload.get("design_document"):
+                related_by_id[payload["session_id"]] = self._build_related_design_summary(payload)
+
         for design_session in self._sessions.values():
             if (
                 design_session.get("input_package", {}).get("input_package_id") == input_package_id
                 and design_session.get("design_document")
+                and design_session.get("status") != "deleted"
             ):
-                related_designs.append(self._build_related_design_summary(design_session))
-        return sorted(related_designs, key=lambda item: item["updated_at"], reverse=True)
+                related_by_id[design_session["session_id"]] = self._build_related_design_summary(design_session)
+        return sorted(related_by_id.values(), key=lambda item: item["updated_at"], reverse=True)
 
     def _refresh_related_designs(self, design_session: dict) -> None:
+        self._persist_design_session(design_session)
         input_package = design_session.get("input_package")
         if input_package:
             input_package["related_designs"] = self._list_related_designs(input_package["input_package_id"])
+
+    def _persist_design_session(self, design_session: dict, *, lifecycle_status: str | None = None) -> None:
+        input_package = dict(design_session.get("input_package") or {})
+        input_package_id = str(input_package.get("input_package_id") or "").strip()
+        if not input_package_id:
+            return
+        self.stage_artifact_service.upsert_current_artifact(
+            StageArtifactCurrentCommand(
+                artifact_id=design_session["session_id"],
+                owner_user_id="default",
+                producer_stage="P3",
+                artifact_type="software_design_session",
+                artifact_version=str(design_session.get("version_label") or "v0.1"),
+                schema_version="p3_software_design_session.v1",
+                scope_type="p3_design_input",
+                scope_id=input_package_id,
+                source_artifact_ids=[input_package_id],
+                lifecycle_status=lifecycle_status or self._stage_lifecycle_status(design_session),
+                payload=dict(design_session),
+                source_trace={
+                    "session_id": design_session["session_id"],
+                    "input_package_id": input_package_id,
+                    "source_document_id": input_package.get("source_document_id"),
+                    "source_title": input_package.get("source_title"),
+                    "p3_status": design_session.get("status"),
+                },
+            )
+        )
+
+    def _load_persisted_design_session(self, session_id: str) -> dict | None:
+        artifact = self.stage_artifact_service.get_artifact(session_id)
+        if artifact is None:
+            return None
+        if artifact["artifact_type"] != "software_design_session" or artifact["lifecycle_status"] == "deleted":
+            return None
+        payload = artifact.get("payload") or {}
+        if not isinstance(payload, dict) or payload.get("session_id") != session_id:
+            return None
+        self._sessions[session_id] = payload
+        input_package = payload.get("input_package")
+        if input_package:
+            input_package["related_designs"] = self._list_related_designs(input_package["input_package_id"])
+        return payload
+
+    def _create_frozen_stage_snapshot(self, design_session: dict) -> None:
+        try:
+            snapshot = self.stage_artifact_service.create_snapshot(
+                design_session["session_id"],
+                StageArtifactSnapshotCommand(
+                    artifact_type="software_design_package",
+                    artifact_version=str(design_session.get("version_label") or "v0.1"),
+                    schema_version="p3_software_design_package.v1",
+                    lifecycle_status="snapshot",
+                    source_trace={
+                        "session_id": design_session["session_id"],
+                        "snapshot_kind": "p3_frozen_design_package",
+                    },
+                ),
+            )
+            self.stage_artifact_service.freeze_artifact(snapshot["artifact_id"])
+        except ValueError:
+            return
+
+    @staticmethod
+    def _stage_lifecycle_status(design_session: dict) -> str:
+        status = str(design_session.get("status") or "working")
+        if status == "frozen":
+            return "frozen"
+        if status == "published":
+            return "published"
+        if status in {"draft_saved", "projection_ready"}:
+            return "draft_saved"
+        if status == "deleted":
+            return "deleted"
+        return "working"
 
     def _build_related_design_summary(self, design_session: dict) -> dict:
         design_document = design_session["design_document"] or {}

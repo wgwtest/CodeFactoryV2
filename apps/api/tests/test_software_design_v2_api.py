@@ -422,6 +422,122 @@ def test_software_design_v2_applies_scoped_patch_proposal_to_design_document() -
     assert payload["updated_session"]["runtime_events"][-1]["event_type"] == "patch_application"
 
 
+def test_software_design_v2_uses_document_revision_for_scoped_patch_after_persisted_session_restore() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    persisted_session = SoftwareDesignV2Service._sessions[session_id]
+    persisted_session["version_label"] = "debug-2026-06-21"
+    persisted_session["design_document"]["version_label"] = "v0.1"
+    persisted_session["design_document"].pop("revision_id", None)
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "扩写当前段落，补充模块边界和设计理由。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "debug-2026-06-21",
+                "source_refs": ["REQ-3.2"],
+                "selection_snapshot": {
+                    "title": "1. 设计目标与范围",
+                    "excerpt": "覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                },
+            },
+            "expected_output": ["document_patch", "traceability_update", "quality_note"],
+        },
+    )
+    assert scoped_turn.status_code == 200
+    turn = scoped_turn.json()["turn"]
+    proposal = turn["patch_proposal"]
+    assert proposal["base_revision_id"] == "v0.1"
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/{proposal['proposal_id']}/apply",
+        json={
+            "turn_id": turn["turn_id"],
+            "base_revision_id": proposal["base_revision_id"],
+            "apply_scope": "document_only",
+        },
+    )
+
+    assert applied.status_code == 200
+    payload = applied.json()
+    assert payload["status"] == "applied"
+    assert payload["updated_session"]["status"] == "patched"
+    assert payload["updated_session"]["turns"][-2]["patch_proposal"]["status"] == "applied"
+
+
+def test_software_design_v2_persists_scoped_patch_turn_and_application() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session = _create_and_convert_design_session(client, input_package_id)
+    session_id = session["session_id"]
+
+    scoped_turn = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/turns",
+        json={
+            "turn_type": "scoped_design_edit",
+            "user_input": "扩写当前段落，补充模块边界和设计理由。",
+            "interaction_mode": "propose_patch",
+            "scope_anchor": {
+                "anchor_type": "design_block",
+                "section_id": "goal",
+                "block_id": "goal-body",
+                "design_revision_id": "stale-client-version",
+                "source_refs": ["REQ-3.2"],
+                "selection_snapshot": {
+                    "title": "1. 设计目标与范围",
+                    "excerpt": "覆盖规划任务创建、冲突识别、协同确认、处置记录和状态追溯能力。",
+                },
+            },
+            "expected_output": ["document_patch", "traceability_update", "quality_note"],
+        },
+    )
+    assert scoped_turn.status_code == 200
+    turn = scoped_turn.json()["turn"]
+    proposal = turn["patch_proposal"]
+
+    SoftwareDesignV2Service._sessions.clear()
+
+    restored = client.get(f"/api/software-design-v2/sessions/{session_id}")
+    assert restored.status_code == 200
+    restored_session = restored.json()
+    assert restored_session["turns"][-1]["turn_id"] == turn["turn_id"]
+    assert restored_session["turns"][-1]["patch_proposal"]["proposal_id"] == proposal["proposal_id"]
+    assert restored_session["turns"][-1]["patch_proposal"]["base_revision_id"] == "v0.1"
+
+    applied = client.post(
+        f"/api/software-design-v2/sessions/{session_id}/patch-proposals/{proposal['proposal_id']}/apply",
+        json={
+            "turn_id": turn["turn_id"],
+            "base_revision_id": proposal["base_revision_id"],
+            "apply_scope": "document_only",
+        },
+    )
+    assert applied.status_code == 200
+    applied_payload = applied.json()
+    result_revision_id = applied_payload["application"]["result_revision_id"]
+
+    SoftwareDesignV2Service._sessions.clear()
+
+    restored_after_apply = client.get(f"/api/software-design-v2/sessions/{session_id}")
+    assert restored_after_apply.status_code == 200
+    restored_applied_session = restored_after_apply.json()
+    assert restored_applied_session["status"] == "patched"
+    assert restored_applied_session["design_document"]["version_label"] == result_revision_id
+    assert restored_applied_session["turns"][-2]["patch_proposal"]["status"] == "applied"
+    assert restored_applied_session["turns"][-1]["turn_type"] == "patch_application"
+
+
 def test_software_design_v2_rejects_empty_scoped_patch_operations() -> None:
     client = TestClient(create_app())
     _create_frozen_requirement_authoring_document(client)
@@ -2314,6 +2430,44 @@ def test_software_design_v2_records_converter_failure_detail(monkeypatch) -> Non
     assert failed_session["conversion"]["steps"][0]["status"] == "failed"
     assert failed_session["runtime_events"][-1]["event_type"] == "conversion_failed"
     assert "result_json missing" in failed_session["runtime_events"][-1]["message"]
+
+
+def test_software_design_v2_restores_persisted_session_and_related_designs_after_memory_cache_clear() -> None:
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    converted_session = _create_and_convert_design_session(client, input_package_id)
+
+    projected = client.post(f"/api/software-design-v2/sessions/{converted_session['session_id']}/projection")
+    assert projected.status_code == 200
+    projected_session = projected.json()
+    assert projected_session["status"] == "projection_ready"
+    assert projected_session["workorder_projection"]["tree"]["title"] == "P4-WO-StageLab-Workbench"
+
+    SoftwareDesignV2Service._sessions.clear()
+
+    restored = client.get(f"/api/software-design-v2/sessions/{projected_session['session_id']}")
+    assert restored.status_code == 200
+    restored_session = restored.json()
+    assert restored_session["session_id"] == projected_session["session_id"]
+    assert restored_session["status"] == "projection_ready"
+    assert restored_session["design_document"]["title"] == projected_session["design_document"]["title"]
+    assert restored_session["design_baseline"]["baseline_id"] == projected_session["design_baseline"]["baseline_id"]
+    assert restored_session["workorder_projection"]["tree"]["children"][1]["title"] == "B. P3 适配工具包"
+
+    packages = client.get("/api/software-design-v2/input-packages")
+    assert packages.status_code == 200
+    related_designs = packages.json()["items"][0]["related_designs"]
+    assert related_designs == [
+        {
+            "software_design_id": projected_session["session_id"],
+            "title": projected_session["design_document"]["title"],
+            "version_label": "v0.1",
+            "status": "projection_ready",
+            "created_at": projected_session["created_at"],
+            "updated_at": projected_session["updated_at"],
+        }
+    ]
 
 
 def test_software_design_v2_rejects_unsupported_design_converter() -> None:
