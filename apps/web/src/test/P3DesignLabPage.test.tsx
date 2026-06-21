@@ -552,6 +552,14 @@ test("stretches layered architecture swimlanes instead of leaving a blank tail",
   expectLayeredArchitectureSwimlanesToFillStage();
 });
 
+test("keeps architecture view relation chips attached to the node grid", () => {
+  expectArchitectureViewRelationsToFollowContent();
+});
+
+test("keeps architecture view stage height controlled by the saved canvas layout", () => {
+  expectArchitectureViewStageHeightToFollowSavedLayout();
+});
+
 test("links function tree selection to layered architecture mapping details", async () => {
   const inputPackage: P3DesignLabTestInputPackage = {
     ...buildInputPackage(),
@@ -1831,6 +1839,22 @@ function expectLayeredArchitectureSwimlanesToFillStage() {
   expect(canvasCss).toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*align-content:\s*stretch;/s);
   expect(canvasCss).toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*grid-auto-rows:\s*minmax\(104px,\s*1fr\);/s);
   expect(canvasCss).not.toMatch(/\.design-morph-layered-architecture-body\s*{[^}]*align-content:\s*start;/s);
+}
+
+function expectArchitectureViewRelationsToFollowContent() {
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+
+  expect(canvasCss).toMatch(/\.design-morph-architecture-structure\s*{[^}]*grid-template-rows:\s*auto auto;/s);
+  expect(canvasCss).toMatch(/\.design-morph-architecture-structure\s*{[^}]*align-content:\s*start;/s);
+  expect(canvasCss).not.toMatch(/\.design-morph-architecture-structure\s*{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s*auto;/s);
+  expect(canvasCss).not.toMatch(/\.design-morph-architecture-structure\s*{[^}]*min-height:\s*100%;/s);
+}
+
+function expectArchitectureViewStageHeightToFollowSavedLayout() {
+  const canvasCss = readFileSync(resolve(process.cwd(), "src/components/stageWorkbench/design-morph-canvas.css"), "utf8");
+
+  expect(canvasCss).not.toMatch(/\.is-architecture-views-stage-object\s*{[^}]*max-height:/s);
+  expect(canvasCss).not.toMatch(/\.is-architecture-views-stage-object\s+\.design-morph-object-body\s*{[^}]*max-height:/s);
 }
 
 function expectWorkspaceFullscreenToCoverViewport() {

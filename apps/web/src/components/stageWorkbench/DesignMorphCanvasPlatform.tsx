@@ -3226,7 +3226,12 @@ function drawItem(context: CanvasRenderingContext2D, item: MorphCanvasItem, sele
 
   drawItemControls(context, item, selected);
 
+  context.save();
+  context.beginPath();
+  context.rect(item.x, item.y, item.w, item.h);
+  context.clip();
   resolveCanvasStageRenderer(item.layoutKind)(context, item);
+  context.restore();
 }
 
 function drawItemControls(context: CanvasRenderingContext2D, item: MorphCanvasItem, selected: boolean) {

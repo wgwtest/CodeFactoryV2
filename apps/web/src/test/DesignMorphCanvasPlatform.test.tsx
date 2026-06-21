@@ -568,6 +568,23 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("clips canvas stage renderer output to the stage frame", () => {
+    const canvasMock = mockCanvasEnvironment();
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="funcarch"
+        stages={buildStagesWithArchitectureViews()}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(canvasMock.context.clip).toHaveBeenCalled();
+
+    canvasMock.restore();
+  });
+
   test("moves a document object when the user drags its visible compact title bar", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -1118,6 +1135,7 @@ function buildWindows(): DesignMorphWindowViewModel[] {
 }
 
 type CanvasContextMock = CanvasRenderingContext2D & {
+  clip: Mock<() => void>;
   fillText: Mock<(text: string, x: number, y: number, maxWidth?: number) => void>;
   rect: Mock<(x: number, y: number, w: number, h: number) => void>;
 };
@@ -1128,6 +1146,7 @@ function buildCanvasContextMock(): CanvasContextMock {
     beginPath: vi.fn(),
     bezierCurveTo: vi.fn(),
     clearRect: vi.fn(),
+    clip: vi.fn(),
     closePath: vi.fn(),
     fill: vi.fn(),
     fillRect: vi.fn(),
