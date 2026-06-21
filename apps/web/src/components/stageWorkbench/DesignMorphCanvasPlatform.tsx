@@ -28,6 +28,13 @@ import type {
   StandardDocumentSectionViewModel,
 } from "./models";
 import { resolveCanvasStageRenderer, type DesignMorphCanvasStageKind } from "./designMorphRenderers";
+import {
+  createWorkspaceLayout,
+  deleteWorkspaceLayout,
+  listWorkspaceLayouts,
+  upsertCurrentWorkspaceLayout,
+  type WorkspaceLayoutRecord,
+} from "../../lib/workspaceLayouts";
 import "./design-morph-canvas.css";
 
 export type DesignMorphStageEntityType =
@@ -347,9 +354,19 @@ type DesignMorphCanvasPlatformProps = {
   windows: DesignMorphWindowViewModel[];
   activeWindowId: string;
   onActiveWindowChange: (windowId: string) => void;
+  layoutPersistence?: DesignMorphCanvasLayoutPersistenceConfig;
   selectedMorphObjectId?: string | null;
   focusRequest?: DesignMorphFocusRequest | null;
   onSelectMorphObject?: (selection: DesignMorphSelection) => void;
+};
+
+export type DesignMorphCanvasLayoutPersistenceConfig = {
+  ownerUserId?: string;
+  scopeType: string;
+  scopeId: string;
+  layoutKind: string;
+  payloadSchemaVersion?: string;
+  enabled?: boolean;
 };
 
 type SavedCanvasLayoutSnapshot = {
@@ -376,6 +393,9 @@ const STAGE_RELATION_HIT_WIDTH = 24;
 const TRACK_PADDING_X = 36;
 const TRACK_HANDLE_HIT_WIDTH = 16;
 const SAVED_LAYOUT_STORAGE_KEY = "p3-design-morph-layouts";
+const DEFAULT_LAYOUT_OWNER_USER_ID = "default";
+const CANVAS_LAYOUT_PAYLOAD_SCHEMA_VERSION = "p3_design_morph_canvas.v1";
+const CURRENT_LAYOUT_AUTOSAVE_DELAY_MS = 600;
 const DOCUMENT_OUTLINE_DEFAULT_WIDTH = 172;
 const DOCUMENT_OUTLINE_MIN_WIDTH = 120;
 const DOCUMENT_OUTLINE_MAX_WIDTH = 260;
@@ -404,6 +424,7 @@ export function DesignMorphCanvasPlatform({
   windows,
   activeWindowId,
   onActiveWindowChange,
+  layoutPersistence,
   selectedMorphObjectId,
   focusRequest,
   onSelectMorphObject,
@@ -426,6 +447,11 @@ export function DesignMorphCanvasPlatform({
   const [stageLayouts, setStageLayouts] = useState<Record<string, CanvasStageLayoutState>>(() => buildCanvasLayoutState(stages));
   const [savedLayouts, setSavedLayouts] = useState<SavedCanvasLayoutRecord[]>(() => loadSavedCanvasLayouts());
   const [selectedSavedLayoutId, setSelectedSavedLayoutId] = useState("");
+  const [layoutPersistenceReady, setLayoutPersistenceReady] = useState(false);
+  const viewportRef = useRef(viewport);
+  const stageLayoutsRef = useRef(stageLayouts);
+  const activeWindowIdRef = useRef(activeWindowId);
+  const lastPersistedAutoSnapshotRef = useRef("");
   const items = useMemo(() => buildCanvasItems(stages, stageLayouts), [stageLayouts, stages]);
   const activePairIndex = Math.max(0, windows.findIndex((window) => window.id === activeWindowId));
   const activeWindow = windows[activePairIndex] ?? windows[0];
@@ -436,10 +462,31 @@ export function DesignMorphCanvasPlatform({
   const selectedRelationTitle = selectedRelationId ? windows.find((window) => window.id === selectedRelationId)?.title : null;
   const selectedBlockId = selectedRelationId ? null : effectiveSelectedObjectId;
   const selectedFunctionNodeId = getSelectedFunctionNodeId(items, selectedBlockId) ?? lastSelectedFunctionNodeId;
+  const layoutOwnerUserId = layoutPersistence?.ownerUserId ?? DEFAULT_LAYOUT_OWNER_USER_ID;
+  const layoutScopeType = layoutPersistence?.scopeType ?? "";
+  const layoutScopeId = layoutPersistence?.scopeId ?? "";
+  const layoutKind = layoutPersistence?.layoutKind ?? "";
+  const layoutPayloadSchemaVersion = layoutPersistence?.payloadSchemaVersion ?? CANVAS_LAYOUT_PAYLOAD_SCHEMA_VERSION;
+  const layoutPersistenceEnabled = Boolean(layoutPersistence?.enabled !== false && layoutScopeType && layoutScopeId && layoutKind);
+  const layoutPersistenceKey = layoutPersistenceEnabled
+    ? `${layoutOwnerUserId}:${layoutScopeType}:${layoutScopeId}:${layoutKind}:${layoutPayloadSchemaVersion}`
+    : "";
 
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  useEffect(() => {
+    viewportRef.current = viewport;
+  }, [viewport]);
+
+  useEffect(() => {
+    stageLayoutsRef.current = stageLayouts;
+  }, [stageLayouts]);
+
+  useEffect(() => {
+    activeWindowIdRef.current = activeWindowId;
+  }, [activeWindowId]);
 
   useEffect(() => {
     setStageLayouts((current) => reconcileCanvasLayouts(stages, current));
@@ -462,6 +509,90 @@ export function DesignMorphCanvasPlatform({
     }
     setSelectedStageId(items[1]?.id ?? items[0]?.id ?? "");
   }, [items, selectedStageId]);
+
+  useEffect(() => {
+    if (!layoutPersistenceEnabled) {
+      setLayoutPersistenceReady(false);
+      lastPersistedAutoSnapshotRef.current = "";
+      return;
+    }
+    let cancelled = false;
+    setLayoutPersistenceReady(false);
+    lastPersistedAutoSnapshotRef.current = "";
+
+    async function loadPersistedLayouts() {
+      try {
+        const envelope = await listWorkspaceLayouts({
+          owner_user_id: layoutOwnerUserId,
+          scope_type: layoutScopeType,
+          scope_id: layoutScopeId,
+          layout_kind: layoutKind,
+        });
+        if (cancelled) {
+          return;
+        }
+        const selectableLayouts = envelope.items
+          .filter((layout) => layout.layout_role !== "current_auto")
+          .map(workspaceRecordToSavedCanvasLayoutRecord)
+          .filter((layout): layout is SavedCanvasLayoutRecord => Boolean(layout));
+        if (selectableLayouts.length > 0) {
+          setSavedLayouts((current) => mergeSavedCanvasLayouts(current, selectableLayouts));
+        }
+        const layoutToApply = choosePersistedCanvasLayout(envelope.items);
+        if (layoutToApply) {
+          applyCanvasLayoutSnapshot(layoutToApply.snapshot);
+          setSelectedSavedLayoutId(layoutToApply.layout.layout_role === "current_auto" ? "" : layoutToApply.savedLayout.id);
+          lastPersistedAutoSnapshotRef.current = serializeSavedCanvasLayoutSnapshot(layoutToApply.snapshot);
+        } else {
+          lastPersistedAutoSnapshotRef.current = serializeSavedCanvasLayoutSnapshot(
+            buildSavedCanvasLayoutSnapshot(activeWindowIdRef.current, stageLayoutsRef.current, viewportRef.current),
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          lastPersistedAutoSnapshotRef.current = serializeSavedCanvasLayoutSnapshot(
+            buildSavedCanvasLayoutSnapshot(activeWindowIdRef.current, stageLayoutsRef.current, viewportRef.current),
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLayoutPersistenceReady(true);
+        }
+      }
+    }
+
+    void loadPersistedLayouts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [layoutKind, layoutOwnerUserId, layoutPersistenceEnabled, layoutPersistenceKey, layoutScopeId, layoutScopeType]);
+
+  useEffect(() => {
+    if (!layoutPersistenceEnabled || !layoutPersistenceReady) {
+      return undefined;
+    }
+    const snapshot = buildSavedCanvasLayoutSnapshot(activeWindowId, stageLayouts, viewport);
+    const serializedSnapshot = serializeSavedCanvasLayoutSnapshot(snapshot);
+    if (!lastPersistedAutoSnapshotRef.current) {
+      lastPersistedAutoSnapshotRef.current = serializedSnapshot;
+      return undefined;
+    }
+    if (lastPersistedAutoSnapshotRef.current === serializedSnapshot) {
+      return undefined;
+    }
+    const timerId = window.setTimeout(() => {
+      void persistCurrentCanvasLayout(snapshot, serializedSnapshot);
+    }, CURRENT_LAYOUT_AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timerId);
+  }, [
+    activeWindowId,
+    layoutPersistenceEnabled,
+    layoutPersistenceKey,
+    layoutPersistenceReady,
+    stageLayouts,
+    viewport,
+  ]);
 
   const centerItem = useCallback(
     (stageId: string, scale: number) => {
@@ -1003,6 +1134,26 @@ export function DesignMorphCanvasPlatform({
     centerItem(stages[3]?.id ?? items[3]?.id ?? selectedStageId, 0.62);
   }
 
+  async function persistCurrentCanvasLayout(snapshot: SavedCanvasLayoutSnapshot, serializedSnapshot: string) {
+    if (!layoutPersistenceEnabled) {
+      return;
+    }
+    try {
+      await upsertCurrentWorkspaceLayout({
+        owner_user_id: layoutOwnerUserId,
+        scope_type: layoutScopeType,
+        scope_id: layoutScopeId,
+        layout_kind: layoutKind,
+        name: "当前布局",
+        payload_schema_version: layoutPayloadSchemaVersion,
+        payload: snapshot as unknown as Record<string, unknown>,
+      });
+      lastPersistedAutoSnapshotRef.current = serializedSnapshot;
+    } catch {
+      // 布局持久化失败不能阻断画布主流程，下一次布局变化会继续尝试。
+    }
+  }
+
   function recordCurrentLayout() {
     const nextIndex = getNextSavedLayoutIndex(savedLayouts);
     const nextLayout: SavedCanvasLayoutRecord = {
@@ -1013,6 +1164,43 @@ export function DesignMorphCanvasPlatform({
     };
     setSavedLayouts((current) => [...current, nextLayout]);
     setSelectedSavedLayoutId(nextLayout.id);
+    if (!layoutPersistenceEnabled) {
+      return;
+    }
+    void createWorkspaceLayout({
+      owner_user_id: layoutOwnerUserId,
+      scope_type: layoutScopeType,
+      scope_id: layoutScopeId,
+      layout_kind: layoutKind,
+      layout_role: "named_snapshot",
+      name: nextLayout.name,
+      is_default: false,
+      payload_schema_version: layoutPayloadSchemaVersion,
+      payload: nextLayout.snapshot as unknown as Record<string, unknown>,
+    })
+      .then((record) => {
+        const persistedLayout = workspaceRecordToSavedCanvasLayoutRecord(record);
+        if (!persistedLayout) {
+          return;
+        }
+        setSavedLayouts((current) => current.map((layout) => (layout.id === nextLayout.id ? persistedLayout : layout)));
+        setSelectedSavedLayoutId(persistedLayout.id);
+      })
+      .catch(() => {
+        // 本地快照已保存，后端异常时保留本地可用状态。
+      });
+  }
+
+  function applyCanvasLayoutSnapshot(snapshot: SavedCanvasLayoutSnapshot) {
+    setStageLayouts(reconcileCanvasLayouts(stages, snapshot.stageLayouts));
+    setViewport(snapshot.viewport);
+    const nextWindow = windows.find((window) => window.id === snapshot.activeWindowId);
+    if (nextWindow) {
+      const nextPairIndex = Math.max(0, windows.findIndex((window) => window.id === nextWindow.id));
+      suppressedAutoCenterWindowKeyRef.current = buildActiveWindowKey(nextWindow, nextPairIndex);
+      onActiveWindowChange(nextWindow.id);
+      emitMorphSelection(buildDesignMorphStageRelationSelection(nextWindow));
+    }
   }
 
   function applySavedLayout(layoutId: string) {
@@ -1021,15 +1209,7 @@ export function DesignMorphCanvasPlatform({
     if (!savedLayout) {
       return;
     }
-    setStageLayouts(reconcileCanvasLayouts(stages, savedLayout.snapshot.stageLayouts));
-    setViewport(savedLayout.snapshot.viewport);
-    const nextWindow = windows.find((window) => window.id === savedLayout.snapshot.activeWindowId);
-    if (nextWindow) {
-      const nextPairIndex = Math.max(0, windows.findIndex((window) => window.id === nextWindow.id));
-      suppressedAutoCenterWindowKeyRef.current = buildActiveWindowKey(nextWindow, nextPairIndex);
-      onActiveWindowChange(nextWindow.id);
-      emitMorphSelection(buildDesignMorphStageRelationSelection(nextWindow));
-    }
+    applyCanvasLayoutSnapshot(savedLayout.snapshot);
   }
 
   function deleteSelectedSavedLayout() {
@@ -1042,6 +1222,11 @@ export function DesignMorphCanvasPlatform({
     }
     setSavedLayouts((current) => current.filter((layout) => layout.id !== selectedSavedLayoutId));
     setSelectedSavedLayoutId("");
+    if (layoutPersistenceEnabled && selectedSavedLayoutId.startsWith("wsl-")) {
+      void deleteWorkspaceLayout(selectedSavedLayoutId).catch(() => {
+        // 删除失败不恢复本地项，下一次刷新会重新以服务端为准。
+      });
+    }
   }
 
   function beginDocumentDrag(
@@ -2549,6 +2734,66 @@ function persistSavedCanvasLayouts(layouts: SavedCanvasLayoutRecord[]) {
   window.localStorage.setItem(SAVED_LAYOUT_STORAGE_KEY, JSON.stringify(layouts));
 }
 
+function choosePersistedCanvasLayout(records: WorkspaceLayoutRecord[]):
+  | { layout: WorkspaceLayoutRecord; savedLayout: SavedCanvasLayoutRecord; snapshot: SavedCanvasLayoutSnapshot }
+  | null {
+  const candidates = records
+    .map((layout) => {
+      const savedLayout = workspaceRecordToSavedCanvasLayoutRecord(layout);
+      return savedLayout ? { layout, savedLayout, snapshot: savedLayout.snapshot } : null;
+    })
+    .filter(
+      (
+        item,
+      ): item is { layout: WorkspaceLayoutRecord; savedLayout: SavedCanvasLayoutRecord; snapshot: SavedCanvasLayoutSnapshot } =>
+        Boolean(item),
+    );
+  return (
+    candidates.find((item) => item.layout.layout_role === "current_auto") ??
+    candidates.find((item) => item.layout.is_default) ??
+    candidates.find((item) => item.layout.layout_role === "user_default") ??
+    null
+  );
+}
+
+function workspaceRecordToSavedCanvasLayoutRecord(record: WorkspaceLayoutRecord): SavedCanvasLayoutRecord | null {
+  const snapshot = normalizeSavedCanvasLayoutSnapshot(record.payload);
+  if (!snapshot) {
+    return null;
+  }
+  return {
+    id: record.layout_id,
+    name: record.name,
+    createdAt: record.created_at,
+    snapshot,
+  };
+}
+
+function mergeSavedCanvasLayouts(current: SavedCanvasLayoutRecord[], persisted: SavedCanvasLayoutRecord[]) {
+  const persistedIds = new Set(persisted.map((layout) => layout.id));
+  return [...current.filter((layout) => !persistedIds.has(layout.id)), ...persisted];
+}
+
+function normalizeSavedCanvasLayoutSnapshot(value: unknown): SavedCanvasLayoutSnapshot | null {
+  if (!isSavedCanvasLayoutSnapshot(value)) {
+    return null;
+  }
+  return {
+    activeWindowId: value.activeWindowId,
+    viewport: { ...value.viewport },
+    stageLayouts: Object.entries(value.stageLayouts).reduce<Record<string, CanvasStageLayoutState>>((layouts, [stageId, layout]) => {
+      if (isCanvasStageLayoutState(layout)) {
+        layouts[stageId] = { ...layout };
+      }
+      return layouts;
+    }, {}),
+  };
+}
+
+function serializeSavedCanvasLayoutSnapshot(snapshot: SavedCanvasLayoutSnapshot) {
+  return JSON.stringify(snapshot);
+}
+
 function getNextSavedLayoutIndex(layouts: SavedCanvasLayoutRecord[]) {
   const usedIndexes = layouts
     .map((layout) => Number(layout.id.replace(/^layout-/, "")))
@@ -2577,7 +2822,7 @@ function isSavedCanvasLayoutSnapshot(value: unknown): value is SavedCanvasLayout
   return (
     typeof candidate.activeWindowId === "string" &&
     isCanvasViewportState(candidate.viewport) &&
-    isRecordObject(candidate.stageLayouts)
+    isCanvasStageLayoutRecord(candidate.stageLayouts)
   );
 }
 
@@ -2587,6 +2832,26 @@ function isCanvasViewportState(value: unknown): value is CanvasViewportState {
   }
   const candidate = value as Partial<CanvasViewportState>;
   return typeof candidate.x === "number" && typeof candidate.y === "number" && typeof candidate.scale === "number";
+}
+
+function isCanvasStageLayoutRecord(value: unknown): value is Record<string, CanvasStageLayoutState> {
+  if (!isRecordObject(value)) {
+    return false;
+  }
+  return Object.values(value).every(isCanvasStageLayoutState);
+}
+
+function isCanvasStageLayoutState(value: unknown): value is CanvasStageLayoutState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<CanvasStageLayoutState>;
+  return (
+    typeof candidate.x === "number" &&
+    typeof candidate.y === "number" &&
+    typeof candidate.w === "number" &&
+    typeof candidate.h === "number"
+  );
 }
 
 function isRecordObject(value: unknown): value is Record<string, unknown> {

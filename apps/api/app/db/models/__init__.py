@@ -1,4 +1,4 @@
-from app.db.models import document, knowledge, platform_exchange, requirements, tool_hub_delivery
+from app.db.models import document, knowledge, platform_exchange, requirements, tool_hub_delivery, workspace_layouts
 from app.db.models.document import Document, DocumentSegment, DocumentVersion, ParseRun
 from app.db.models.knowledge import AuditLog, CandidateItem, KnowledgeItem, KnowledgeVersion
 from app.db.models.platform_exchange import PlatformExchangeArtifact, PlatformExchangeConsumption
@@ -15,6 +15,7 @@ from app.db.models.tool_hub_delivery import (
     ToolBuildRunRecord,
     ToolValidationReportRecord,
 )
+from app.db.models.workspace_layouts import WorkspaceLayoutRecord
 
 __all__ = [
     "AuditLog",
@@ -36,9 +37,11 @@ __all__ = [
     "ToolBuildRequestRecord",
     "ToolBuildRunRecord",
     "ToolValidationReportRecord",
+    "WorkspaceLayoutRecord",
     "document",
     "knowledge",
     "platform_exchange",
     "requirements",
     "tool_hub_delivery",
+    "workspace_layouts",
 ]

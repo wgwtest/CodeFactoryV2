@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, test, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from "vitest";
 
 import {
   calculateRelationArrowGeometry,
@@ -13,6 +13,33 @@ import {
   type DesignMorphStageViewModel,
   type DesignMorphWindowViewModel,
 } from "../components/stageWorkbench/DesignMorphCanvasPlatform";
+
+const apiGetMock = vi.fn();
+const apiPostMock = vi.fn();
+const apiPutMock = vi.fn();
+const apiDeleteMock = vi.fn();
+
+vi.mock("../lib/api", () => ({
+  api: {
+    get: (...args: unknown[]) => apiGetMock(...args),
+    post: (...args: unknown[]) => apiPostMock(...args),
+    put: (...args: unknown[]) => apiPutMock(...args),
+    delete: (...args: unknown[]) => apiDeleteMock(...args),
+  },
+}));
+
+beforeEach(() => {
+  vi.useRealTimers();
+  apiGetMock.mockReset();
+  apiPostMock.mockReset();
+  apiPutMock.mockReset();
+  apiDeleteMock.mockReset();
+  window.localStorage.clear();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("DesignMorphCanvasPlatform", () => {
   test("projects the real canvas viewport as the primary track window", () => {
@@ -611,6 +638,120 @@ describe("DesignMorphCanvasPlatform", () => {
     canvasMock.restore();
   });
 
+  test("loads persisted current layout from the workspace layout service", async () => {
+    const canvasMock = mockCanvasEnvironment();
+    const onActiveWindowChange = vi.fn();
+    apiGetMock.mockResolvedValue({
+      data: {
+        items: [
+          buildWorkspaceLayoutRecord("wsl-current", "current_auto", {
+            activeWindowId: "docfunc",
+            viewport: { x: 30, y: 120, scale: 0.44 },
+            stageLayouts: {
+              document: { x: 787, y: 153, w: 520, h: 640 },
+            },
+          }),
+        ],
+      },
+    });
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        layoutPersistence={{
+          scopeType: "p3_design_session",
+          scopeId: "p3dl-1",
+          layoutKind: "p3_design_morph_canvas@1",
+        }}
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={onActiveWindowChange}
+      />,
+    );
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    await waitFor(() =>
+      expect(apiGetMock).toHaveBeenCalledWith("/workspace-layouts", {
+        params: {
+          owner_user_id: "default",
+          scope_type: "p3_design_session",
+          scope_id: "p3dl-1",
+          layout_kind: "p3_design_morph_canvas@1",
+        },
+      }),
+    );
+    await waitFor(() => expect(within(platform).getByText("缩放 44%")).toBeInTheDocument());
+    expect(within(platform).getByText("节点：软设文档 @787,153 · 520x640")).toBeInTheDocument();
+    expect(onActiveWindowChange).toHaveBeenCalledWith("docfunc");
+
+    canvasMock.restore();
+  });
+
+  test("debounces current layout persistence after the user moves a stage node", async () => {
+    vi.useFakeTimers();
+    const canvasMock = mockCanvasEnvironment();
+    apiGetMock.mockResolvedValue({ data: { items: [] } });
+    apiPutMock.mockResolvedValue({
+      data: buildWorkspaceLayoutRecord("wsl-current", "current_auto", {
+        activeWindowId: "reqdoc",
+        viewport: { x: -314, y: -3, scale: 0.9 },
+        stageLayouts: {
+          document: { x: 787, y: 153, w: 520, h: 640 },
+        },
+      }),
+    });
+
+    render(
+      <DesignMorphCanvasPlatform
+        activeWindowId="reqdoc"
+        layoutPersistence={{
+          scopeType: "p3_design_session",
+          scopeId: "p3dl-1",
+          layoutKind: "p3_design_morph_canvas@1",
+        }}
+        stages={buildStages(0)}
+        windows={buildWindows()}
+        onActiveWindowChange={vi.fn()}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(apiGetMock).toHaveBeenCalled();
+    apiPutMock.mockClear();
+
+    const platform = screen.getByTestId("design-morph-canvas-platform");
+    const mainCanvas = within(platform).getByTestId("design-morph-main-canvas");
+    fireEvent.mouseDown(mainCanvas, { button: 0, clientX: 280, clientY: 140 });
+    fireEvent.mouseMove(mainCanvas, { clientX: 340, clientY: 170 });
+    fireEvent.mouseUp(mainCanvas, { clientX: 340, clientY: 170 });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(apiPutMock).toHaveBeenCalledWith(
+      "/workspace-layouts/current",
+      expect.objectContaining({
+        owner_user_id: "default",
+        scope_type: "p3_design_session",
+        scope_id: "p3dl-1",
+        layout_kind: "p3_design_morph_canvas@1",
+        payload_schema_version: "p3_design_morph_canvas.v1",
+        payload: expect.objectContaining({
+          activeWindowId: "reqdoc",
+          stageLayouts: expect.objectContaining({
+            document: expect.objectContaining({ x: 787, y: 153 }),
+          }),
+        }),
+      }),
+    );
+
+    canvasMock.restore();
+  });
+
   test("records, restores, persists, and deletes canvas layout snapshots", () => {
     const canvasMock = mockCanvasEnvironment();
 
@@ -658,6 +799,32 @@ function readZoomPercent(platform: HTMLElement) {
 
 function readPanLabel(platform: HTMLElement) {
   return within(platform).getByText(/^平移 /).textContent;
+}
+
+function buildWorkspaceLayoutRecord(
+  layoutId: string,
+  layoutRole: string,
+  snapshot: {
+    activeWindowId: string;
+    viewport: { x: number; y: number; scale: number };
+    stageLayouts: Record<string, { x: number; y: number; w: number; h: number }>;
+  },
+) {
+  return {
+    layout_id: layoutId,
+    owner_user_id: "default",
+    scope_type: "p3_design_session",
+    scope_id: "p3dl-1",
+    layout_kind: "p3_design_morph_canvas@1",
+    layout_role: layoutRole,
+    name: layoutRole === "current_auto" ? "当前布局" : "布局 1",
+    is_default: false,
+    payload_schema_version: "p3_design_morph_canvas.v1",
+    payload: snapshot,
+    created_at: "2026-06-20T00:00:00Z",
+    updated_at: "2026-06-20T00:00:00Z",
+    last_used_at: "2026-06-20T00:00:00Z",
+  };
 }
 
 function CanvasRefreshHarness() {

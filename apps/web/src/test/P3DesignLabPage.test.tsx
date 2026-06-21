@@ -9,12 +9,14 @@ import App from "../App";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const putMock = vi.fn();
 const deleteMock = vi.fn();
 
 vi.mock("../lib/api", () => ({
   api: {
     get: (...args: unknown[]) => getMock(...args),
     post: (...args: unknown[]) => postMock(...args),
+    put: (...args: unknown[]) => putMock(...args),
     delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
@@ -23,6 +25,7 @@ beforeEach(() => {
   vi.useRealTimers();
   getMock.mockReset();
   postMock.mockReset();
+  putMock.mockReset();
   deleteMock.mockReset();
 });
 

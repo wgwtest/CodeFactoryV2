@@ -1130,6 +1130,15 @@ function SoftwareDesignWorkspaceView({
           <DesignMorphCanvasPlatform
             activeWindowId={activeWindow?.id ?? "reqdoc"}
             focusRequest={focusRequest}
+            layoutPersistence={
+              hasSession && session
+                ? {
+                    scopeType: "p3_design_session",
+                    scopeId: session.session_id,
+                    layoutKind: "p3_design_morph_canvas@1",
+                  }
+                : undefined
+            }
             selectedMorphObjectId={selectedMorphObject?.objectId}
             stages={morphModel.stages}
             windows={morphModel.windows}

@@ -14,6 +14,10 @@
 8. `DOC/CODEX_DOC/02_设计说明/00_总纲/03-P1-P6数据互联互通与平台交换层设计.md`
 9. `DOC/CODEX_DOC/02_设计说明/00_总纲/04-Orchestrator基础包壳与注册机制设计.md`
 10. `DOC/CODEX_DOC/02_设计说明/BasePlatform_基础平台/BasePlatform-平台数据资源底座设计.md`
+   - `DOC/CODEX_DOC/01_需求分析/04-BasePlatform共性持久化能力需求规格说明.md`
+   - `DOC/CODEX_DOC/02_设计说明/BasePlatform_基础平台/BasePlatform-共性持久化能力体系设计.md`
+   - `DOC/CODEX_DOC/01_需求分析/03-共性工作区布局服务需求规格说明.md`
+   - `DOC/CODEX_DOC/02_设计说明/BasePlatform_基础平台/BasePlatform-共性工作区布局服务设计.md`
 11. `DOC/CODEX_DOC/02_设计说明/P1_业务知识库/P1-业务知识库设计.md`
 12. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计.md`
 13. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260430-0016-可配置需求规格说明编写系统设计.md`
@@ -22,6 +26,8 @@
 16. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260501-2323-需求分析Turn引擎与状态机设计.md`
 17. `DOC/CODEX_DOC/02_设计说明/P2_需求分析系统/P2-需求分析系统设计-260502-0022-XG-Orchestrator组织器包规范设计.md`
 18. `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计.md`
+   - `DOC/CODEX_DOC/01_需求分析/05-P3软设产物持久化需求规格说明.md`
+   - `DOC/CODEX_DOC/02_设计说明/P3_软件设计系统/P3-软件设计系统设计-260621-软设产物持久化补充案.md`
 19. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计.md`
 20. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1000-核心业务循环补充.md`
 21. `DOC/CODEX_DOC/02_设计说明/P4_工具仓库/P4-工具仓库设计-260419-1010-真实工具落地验证补充.md`

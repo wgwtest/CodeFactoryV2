@@ -16,6 +16,7 @@ from app.api.routes.software_build import router as software_build_router
 from app.api.routes.software_design import router as software_design_router
 from app.api.routes.software_design_v2 import router as software_design_v2_router
 from app.api.routes.tool_hub import router as tool_hub_router
+from app.api.routes.workspace_layouts import router as workspace_layouts_router
 from app.api.routes.xx_p1_sim import router as xx_p1_sim_router
 from fastapi import FastAPI
 
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(platform_config_router, prefix=settings.api_prefix)
     app.include_router(platform_exchange_router, prefix=settings.api_prefix)
     app.include_router(platform_display_router, prefix=settings.api_prefix)
+    app.include_router(workspace_layouts_router, prefix=settings.api_prefix)
     app.include_router(modeling_router, prefix=settings.api_prefix)
     app.include_router(requirement_authoring_router, prefix=settings.api_prefix)
     app.include_router(requirements_router, prefix=settings.api_prefix)
