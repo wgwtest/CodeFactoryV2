@@ -21,6 +21,7 @@ def fake_design_converter_loader(monkeypatch):
         "CODEFACTORY_P3_SCOPED_DIFY_RESPONSE_MODE",
     ):
         monkeypatch.delenv(env_name, raising=False)
+    monkeypatch.setenv("CODEFACTORY_P3_DIFY_API_KEY", "test-p3-dify-key")
 
     class FakeDesignConverterAdapter:
         def __init__(self, converter_id: str) -> None:
@@ -361,6 +362,54 @@ def test_software_design_v2_lists_available_design_converters() -> None:
     assert items[0]["protocol"] == "p3-design-converter-protocol@1"
     assert items[0]["observability_level"] == "limited"
     assert items[0]["capabilities"]["design_document"] is True
+    assert items[0]["readiness"]["ready"] is True
+    assert items[0]["readiness"]["status"] == "ready"
+    assert "CODEFACTORY_P3_DIFY_API_KEY" in items[0]["readiness"]["required_config_keys"]
+
+
+def test_software_design_v2_blocks_dify_conversion_when_api_key_missing(monkeypatch) -> None:
+    monkeypatch.delenv("CODEFACTORY_P3_DIFY_API_KEY", raising=False)
+    monkeypatch.delenv("DIFY_API_KEY", raising=False)
+    client = TestClient(create_app())
+    _create_frozen_requirement_authoring_document(client)
+
+    converters = client.get("/api/software-design-v2/converters")
+    assert converters.status_code == 200
+    converter = converters.json()["items"][0]
+    assert converter["readiness"]["ready"] is False
+    assert converter["readiness"]["status"] == "missing_configuration"
+    assert "DIFY_API_KEY" in converter["readiness"]["message"]
+
+    input_package_id = client.get("/api/software-design-v2/input-packages").json()["items"][0]["input_package_id"]
+    session_response = client.post(
+        "/api/software-design-v2/sessions",
+        json={
+            "input_package_id": input_package_id,
+            "design_title": "空域协同规划软件设计说明 - 未配置转换器",
+            "version_label": "v0.1",
+            "generation_policy": {
+                "architecture_preference": "统一服务优先，保留拆分点",
+                "module_granularity": "3-5 个业务模块，不拆太细",
+                "output_style": "按标准软设正文写，不写聊天语气",
+            },
+        },
+    )
+    assert session_response.status_code == 200
+    session = session_response.json()
+    assert session["conversion"]["converter"]["readiness"]["ready"] is False
+
+    converted = client.post(
+        f"/api/software-design-v2/sessions/{session['session_id']}/conversion",
+        json={"strategy": "standard_sdd_draft"},
+    )
+    assert converted.status_code == 400
+    assert "DIFY_API_KEY" in converted.json()["detail"]
+
+    failed_session = client.get(f"/api/software-design-v2/sessions/{session['session_id']}").json()
+    assert failed_session["status"] == "conversion_failed"
+    assert failed_session["conversion"]["status"] == "conversion_failed"
+    assert failed_session["conversion"]["converter"]["readiness"]["ready"] is False
+    assert failed_session["conversion"]["process_output"]["error"]["source"] == "design_converter"
 
 
 def test_software_design_v2_applies_scoped_patch_proposal_to_design_document() -> None:

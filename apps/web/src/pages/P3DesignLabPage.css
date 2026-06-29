@@ -407,6 +407,22 @@
   font-weight: 850;
 }
 
+.p3-design-lab-converter-readiness {
+  border-radius: 0;
+}
+
+.p3-design-lab-converter-readiness .ant-alert-message {
+  color: #1f3330;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.p3-design-lab-converter-readiness .ant-alert-description {
+  color: #4e625d;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .p3-design-lab-conversion-strategy-picker {
   display: grid;
   gap: 7px;

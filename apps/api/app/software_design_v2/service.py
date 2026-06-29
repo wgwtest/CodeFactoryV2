@@ -100,7 +100,7 @@ class SoftwareDesignV2Service:
 
     def list_converters(self) -> dict:
         registry = get_design_converter_plugin_registry()
-        return {"items": [converter.to_api() for converter in registry.list_converters()]}
+        return {"items": [self._converter_to_api(converter) for converter in registry.list_converters()]}
 
     def create_session(self, payload: P3DesignSessionCreate) -> dict:
         input_package = self._get_input_package(payload.input_package_id)
@@ -125,7 +125,13 @@ class SoftwareDesignV2Service:
                 "output_style": payload.generation_policy.get("output_style", "按标准软设正文写，不写聊天语气"),
             },
             "status": "conversion_pending",
-            "conversion": self._build_conversion_state("conversion_pending", "standard_sdd_draft", None, None),
+            "conversion": self._build_conversion_state(
+                "conversion_pending",
+                "standard_sdd_draft",
+                None,
+                None,
+                converter=self._default_converter_api(),
+            ),
             "design_document": None,
             "design_baseline": None,
             "workorder_projection": None,
@@ -171,14 +177,27 @@ class SoftwareDesignV2Service:
     def _run_design_converter(self, design_session: dict, payload: P3DesignConversionRun, strategy: str) -> dict:
         registry = get_design_converter_plugin_registry()
         manifest = registry.require(payload.converter_id.strip() if payload.converter_id else registry.default_converter().converter_id)
-        design_session["conversion"] = self._build_conversion_state("conversion_running", strategy, None, None, converter=manifest.to_api())
+        converter_api = self._converter_to_api(manifest)
+        readiness = dict(converter_api.get("readiness") or {})
+        if readiness and readiness.get("ready") is False:
+            message = str(readiness.get("message") or "P3 design converter is not ready")
+            self._record_conversion_failure(design_session, strategy, converter_api, message)
+            raise ValueError(message)
+
+        design_session["conversion"] = self._build_conversion_state(
+            "conversion_running",
+            strategy,
+            None,
+            None,
+            converter=converter_api,
+        )
 
         request = self._build_converter_request(design_session, payload, strategy)
         adapter = load_design_converter_adapter(manifest)
         try:
             result = adapter.run(request)
         except ValueError as exc:
-            self._record_conversion_failure(design_session, strategy, manifest.to_api(), str(exc))
+            self._record_conversion_failure(design_session, strategy, converter_api, str(exc))
             raise
         design_document = self._normalize_converter_design_document(result, design_session)
         design_baseline = self._build_design_baseline_from_converter_result(result, design_session)
@@ -193,7 +212,7 @@ class SoftwareDesignV2Service:
             strategy,
             design_document,
             design_baseline,
-            converter=result.converter,
+            converter=self._merge_converter_readiness(result.converter, converter_api),
             process_output=result.process_output,
         )
         design_session["updated_at"] = self._now()
@@ -228,6 +247,62 @@ class SoftwareDesignV2Service:
             self._build_runtime_event("conversion_failed", f"需规转软设转换失败：{error_message}"),
         ]
         self._persist_design_session(design_session)
+
+    def _default_converter_api(self) -> dict | None:
+        try:
+            registry = get_design_converter_plugin_registry()
+            return self._converter_to_api(registry.default_converter())
+        except ValueError:
+            return None
+
+    def _converter_to_api(self, manifest) -> dict:
+        converter = manifest.to_api()
+        converter["readiness"] = self._build_converter_readiness(converter)
+        return converter
+
+    def _merge_converter_readiness(self, converter: dict, fallback_converter: dict) -> dict:
+        normalized = dict(converter or {})
+        fallback = dict(fallback_converter or {})
+        if "readiness" not in normalized and fallback.get("readiness"):
+            normalized["readiness"] = fallback["readiness"]
+        if "requires" not in normalized and fallback.get("requires"):
+            normalized["requires"] = fallback["requires"]
+        if "name" not in normalized and fallback.get("name"):
+            normalized["name"] = fallback["name"]
+        return normalized
+
+    @staticmethod
+    def _build_converter_readiness(converter: dict) -> dict:
+        requires = dict(converter.get("requires") or {})
+        if requires.get("dify_api") is not True:
+            return {
+                "ready": True,
+                "status": "ready",
+                "message": "转换器不依赖外部 Dify API 配置。",
+                "required_config_keys": [],
+                "missing_config_keys": [],
+            }
+
+        api_key_configured = bool(_env("CODEFACTORY_P3_DIFY_API_KEY", "DIFY_API_KEY"))
+        required_config_keys = ["CODEFACTORY_P3_DIFY_API_KEY", "DIFY_API_KEY"]
+        if api_key_configured:
+            return {
+                "ready": True,
+                "status": "ready",
+                "message": "P3 Dify 转换器已检测到 API Key，可执行需规转软设转换。",
+                "required_config_keys": required_config_keys,
+                "missing_config_keys": [],
+                "configured": {"dify_api_key": True},
+            }
+        return {
+            "ready": False,
+            "status": "missing_configuration",
+            "message": "DIFY_API_KEY is not configured for requirement-to-sdd-dify-workflow",
+            "required_config_keys": required_config_keys,
+            "missing_config_keys": required_config_keys,
+            "configured": {"dify_api_key": False},
+            "operator_hint": "请在本地或部署环境配置 CODEFACTORY_P3_DIFY_API_KEY，或兼容配置 DIFY_API_KEY。",
+        }
 
     def _build_converter_request(
         self,

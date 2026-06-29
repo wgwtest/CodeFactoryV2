@@ -121,6 +121,28 @@ function getApiErrorDetail(error: unknown) {
   return "";
 }
 
+function getConversionReadinessNotice(workbench: StageDocumentWorkbenchViewModel) {
+  const readiness = workbench.conversion.converter?.readiness;
+  if (!readiness) {
+    return null;
+  }
+  const missingKeys = readiness.missingConfigKeys.length ? readiness.missingConfigKeys.join(" / ") : "";
+  if (readiness.ready) {
+    return {
+      ready: true,
+      title: "转换器已就绪",
+      description: readiness.message || "当前转换器已通过本地配置检查。",
+    };
+  }
+  return {
+    ready: false,
+    title: "转换器未就绪",
+    description:
+      readiness.operatorHint ||
+      (missingKeys ? `缺少配置：${missingKeys}` : readiness.message || "当前转换器缺少必要运行配置。"),
+  };
+}
+
 export function P3DesignLabPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -415,6 +437,11 @@ export function P3DesignLabPage() {
       return;
     }
     if (conversionInFlightSessionId === designSession.session_id) {
+      return;
+    }
+    const readinessNotice = getConversionReadinessNotice(workbench);
+    if (readinessNotice && !readinessNotice.ready) {
+      setError(`${readinessNotice.title}：${readinessNotice.description}`);
       return;
     }
     const runningSessionId = designSession.session_id;
@@ -1546,6 +1573,8 @@ function StageRelationInspector({
 }) {
   const relationType = typeof selection.payload?.relationType === "string" ? selection.payload.relationType : "";
   const isBasicConversion = selection.objectId === "reqdoc";
+  const readinessNotice = getConversionReadinessNotice(workbench);
+  const converterUnavailable = Boolean(hasSession && readinessNotice && !readinessNotice.ready);
 
   return (
     <>
@@ -1571,6 +1600,16 @@ function StageRelationInspector({
             <span>转换为</span>
             <span>{toInspectorText(selection.payload?.outputSummary)}</span>
           </div>
+          {readinessNotice ? (
+            <Alert
+              className="p3-design-lab-converter-readiness"
+              data-testid="p3-design-lab-converter-readiness"
+              description={readinessNotice.description}
+              message={readinessNotice.title}
+              showIcon
+              type={readinessNotice.ready ? "success" : "warning"}
+            />
+          ) : null}
           <div className="p3-design-lab-conversion-strategy-picker">
             <Text className="p3-design-lab-conversion-strategy-label" type="secondary">
               转换策略
@@ -1588,7 +1627,7 @@ function StageRelationInspector({
             <Button
               block
               aria-label={workbench.conversion.running ? "正在生成软设" : "执行基础转换"}
-              disabled={!hasSession || workspaceBusy}
+              disabled={!hasSession || workspaceBusy || converterUnavailable}
               loading={workbench.conversion.running}
               type="primary"
               onClick={onRunConversion}
