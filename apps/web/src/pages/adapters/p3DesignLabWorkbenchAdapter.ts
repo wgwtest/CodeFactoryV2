@@ -541,6 +541,7 @@ function buildConversionViewModel(
       elapsedSeconds,
       progressNote: conversionRunning ? "预计进度，Dify 返回后以实际结果为准" : undefined,
       strategy: "standard_sdd_draft",
+      converter: null,
       strategyOptions: [
         {
           value: "standard_sdd_draft",
@@ -580,6 +581,7 @@ function buildConversionViewModel(
     elapsedSeconds,
     progressNote: running ? "预计进度，Dify 返回后以实际结果为准" : undefined,
     strategy: conversion.strategy,
+    converter: buildConversionConverterViewModel(conversion.converter),
     strategyOptions: conversion.strategy_options,
     steps: running ? buildEstimatedConversionSteps(steps, elapsedSeconds) : steps,
     draftPreview: conversion.draft_preview
@@ -598,6 +600,30 @@ function buildConversionViewModel(
       : null,
     processOutput: conversion.process_output,
     emptyDescription: "新建软件设计说明后显示基础转换过程。",
+  };
+}
+
+function buildConversionConverterViewModel(
+  converter: NonNullable<P3DesignLabSession["conversion"]>["converter"],
+): StageDocumentWorkbenchViewModel["conversion"]["converter"] {
+  if (!converter) {
+    return null;
+  }
+  const readiness = converter.readiness;
+  return {
+    converterId: converter.converter_id,
+    name: converter.name,
+    converterType: converter.converter_type,
+    readiness: readiness
+      ? {
+          ready: readiness.ready,
+          status: readiness.status,
+          message: readiness.message,
+          requiredConfigKeys: readiness.required_config_keys ?? [],
+          missingConfigKeys: readiness.missing_config_keys ?? [],
+          operatorHint: readiness.operator_hint,
+        }
+      : undefined,
   };
 }
 

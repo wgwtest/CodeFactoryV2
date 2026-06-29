@@ -177,6 +177,19 @@ export type StageConversionViewModel = {
   elapsedSeconds: number;
   progressNote?: string;
   strategy: string;
+  converter?: {
+    converterId: string;
+    name?: string;
+    converterType?: string;
+    readiness?: {
+      ready: boolean;
+      status: string;
+      message: string;
+      requiredConfigKeys: string[];
+      missingConfigKeys: string[];
+      operatorHint?: string;
+    };
+  } | null;
   strategyOptions: Array<{
     value: string;
     label: string;

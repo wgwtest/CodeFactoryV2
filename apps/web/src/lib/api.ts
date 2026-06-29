@@ -2605,9 +2605,34 @@ export type P3DesignLabConversionStep = {
   status: "pending" | "running" | "done" | "failed" | string;
 };
 
+export type P3DesignConverterReadiness = {
+  ready: boolean;
+  status: "ready" | "missing_configuration" | "unavailable" | string;
+  message: string;
+  required_config_keys?: string[];
+  missing_config_keys?: string[];
+  configured?: Record<string, boolean>;
+  operator_hint?: string;
+};
+
+export type P3DesignConverter = {
+  converter_id: string;
+  name?: string;
+  converter_type?: string;
+  document_type?: string;
+  protocol?: string;
+  status?: string;
+  priority?: number;
+  capabilities?: Record<string, boolean>;
+  requires?: Record<string, unknown>;
+  observability_level?: string;
+  readiness?: P3DesignConverterReadiness;
+};
+
 export type P3DesignLabConversionState = {
   status: "conversion_pending" | "conversion_running" | "conversion_failed" | "draft_ready" | string;
   strategy: string;
+  converter?: P3DesignConverter | null;
   strategy_options: Array<{ value: string; label: string; description: string }>;
   steps: P3DesignLabConversionStep[];
   draft_preview?: {

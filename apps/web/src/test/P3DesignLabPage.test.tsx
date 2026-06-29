@@ -857,6 +857,60 @@ test("shows a persistent conversion waiting state and locks the conversion trigg
   await waitFor(() => expect(within(workspace).queryByText("正在调用 Dify 生成软件设计说明")).not.toBeInTheDocument());
 });
 
+test("shows converter readiness feedback and blocks conversion when Dify API key is missing", async () => {
+  const inputPackage = buildInputPackage();
+  const createdSession = buildSession(inputPackage, "created", {
+    status: "created",
+    conversion: buildConversion("conversion_pending", "standard_sdd_draft", {
+      converter: buildConverter({
+        readiness: {
+          ready: false,
+          status: "missing_configuration",
+          message: "DIFY_API_KEY is not configured for requirement-to-sdd-dify-workflow",
+          required_config_keys: ["CODEFACTORY_P3_DIFY_API_KEY", "DIFY_API_KEY"],
+          missing_config_keys: ["CODEFACTORY_P3_DIFY_API_KEY", "DIFY_API_KEY"],
+          configured: { dify_api_key: false },
+          operator_hint: "请在本地或部署环境配置 CODEFACTORY_P3_DIFY_API_KEY，或兼容配置 DIFY_API_KEY。",
+        },
+      }),
+    }),
+  });
+
+  getMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/input-packages") {
+      return Promise.resolve({ data: { items: [inputPackage] } });
+    }
+    throw new Error(`unexpected get url: ${url}`);
+  });
+  postMock.mockImplementation((url: string) => {
+    if (url === "/software-design-v2/sessions") {
+      return Promise.resolve({ data: createdSession });
+    }
+    throw new Error(`unexpected post url: ${url}`);
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/p3-design-lab"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("P3 Software Design Lab")).toBeInTheDocument();
+  const workspace = screen.getByTestId("p3-design-lab-workspace");
+  fireEvent.click(within(workspace).getByRole("button", { name: "新建软设" }));
+  fireEvent.click(screen.getByRole("button", { name: "创建软设会话" }));
+  await waitFor(() => expect(postMock).toHaveBeenCalledWith("/software-design-v2/sessions", expect.any(Object)));
+
+  const readiness = await within(workspace).findByTestId("p3-design-lab-converter-readiness");
+  expect(within(readiness).getByText("转换器未就绪")).toBeInTheDocument();
+  expect(within(readiness).getByText(/CODEFACTORY_P3_DIFY_API_KEY/)).toBeInTheDocument();
+
+  const conversionButton = within(workspace).getByRole("button", { name: "执行基础转换" });
+  expect(conversionButton).toBeDisabled();
+  fireEvent.click(conversionButton);
+  expect(postMock.mock.calls.filter(([url]) => url === "/software-design-v2/sessions/p3dl-1/conversion")).toHaveLength(0);
+});
+
 test("shows scoped patch waiting and local failure feedback inside the inspector", async () => {
   const inputPackage: P3DesignLabTestInputPackage = {
     ...buildInputPackage(),
@@ -1784,11 +1838,32 @@ function buildSession(
   };
 }
 
-function buildConversion(status: string, strategy: string) {
+function buildConverter(overrides: Record<string, unknown> = {}) {
+  return {
+    converter_id: "requirement-to-sdd-dify-workflow",
+    name: "P3 Requirement to SDD Dify Workflow",
+    converter_type: "dify_workflow",
+    protocol: "p3-design-converter-protocol@1",
+    status: "active",
+    requires: { dify_api: true, workflow_id: "external" },
+    readiness: {
+      ready: true,
+      status: "ready",
+      message: "P3 Dify 转换器已检测到 API Key，可执行需规转软设转换。",
+      required_config_keys: ["CODEFACTORY_P3_DIFY_API_KEY", "DIFY_API_KEY"],
+      missing_config_keys: [],
+      configured: { dify_api_key: true },
+    },
+    ...overrides,
+  };
+}
+
+function buildConversion(status: string, strategy: string, overrides: Record<string, unknown> = {}) {
   const done = status === "draft_ready";
   return {
     status,
     strategy,
+    converter: buildConverter(),
     strategy_options: [
       { value: "standard_sdd_draft", label: "标准软设草稿生成", description: "按标准软设章节生成初稿。" },
       { value: "component_first", label: "组件优先拆解", description: "优先抽取组件、接口和可复用工作台对象。" },
@@ -1807,6 +1882,7 @@ function buildConversion(status: string, strategy: string) {
         }
       : null,
     traceability_summary: done ? { mapped_clause_count: 2, target_count: 4, pending_confirmation_count: 0 } : null,
+    ...overrides,
   };
 }
 
